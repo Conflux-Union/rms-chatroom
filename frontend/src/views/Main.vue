@@ -9,13 +9,14 @@ import ChatArea from '../components/ChatArea.vue'
 import VoicePanel from '../components/VoicePanel.vue'
 import VoiceControls from '../components/VoiceControls.vue'
 import MusicPanel from '../components/MusicPanel.vue'
-import { Music } from 'lucide-vue-next'
+import { Music, Menu, X } from 'lucide-vue-next'
 
 const auth = useAuthStore()
 const chat = useChatStore()
 const voice = useVoiceStore()
 
 const showMusicPanel = ref(false)
+const showMobileSidebar = ref(false)
 
 onMounted(async () => {
   await chat.fetchServers()
@@ -36,24 +37,52 @@ watch(
     }
   }
 )
+
+// Close mobile sidebar when channel is selected
+watch(
+  () => chat.currentChannel,
+  () => {
+    showMobileSidebar.value = false
+  }
+)
 </script>
 
 <template>
   <div class="app-container">
-    <ServerList />
-    <ChannelList />
+    <!-- Mobile Header -->
+    <div class="mobile-header">
+      <button class="mobile-menu-btn" @click="showMobileSidebar = !showMobileSidebar">
+        <X v-if="showMobileSidebar" :size="24" />
+        <Menu v-else :size="24" />
+      </button>
+      <span class="mobile-title">{{ chat.currentChannel?.name || '选择频道' }}</span>
+    </div>
+
+    <!-- Mobile Sidebar Overlay -->
+    <div 
+      v-if="showMobileSidebar" 
+      class="mobile-overlay" 
+      @click="showMobileSidebar = false"
+    ></div>
+
+    <!-- Sidebar Container -->
+    <div class="sidebar-container" :class="{ 'mobile-open': showMobileSidebar }">
+      <ServerList />
+      <ChannelList />
+      <div class="user-panel">
+        <VoiceControls />
+        <div class="user-info">
+          <span class="username">{{ auth.user?.nickname || auth.user?.username }}</span>
+          <button class="logout-btn" @click="auth.logout()">退出</button>
+        </div>
+      </div>
+    </div>
+
     <div class="main-content">
       <ChatArea v-if="chat.currentChannel?.type === 'text'" />
       <VoicePanel v-else-if="chat.currentChannel?.type === 'voice'" />
       <div v-else class="no-channel">
-        <p>Select a channel to start</p>
-      </div>
-    </div>
-    <div class="user-panel">
-      <VoiceControls />
-      <div class="user-info">
-        <span class="username">{{ auth.user?.nickname || auth.user?.username }}</span>
-        <button class="logout-btn" @click="auth.logout()">Logout</button>
+        <p>选择一个频道开始聊天</p>
       </div>
     </div>
     
@@ -86,10 +115,65 @@ watch(
   -webkit-backdrop-filter: blur(var(--blur-strength));
 }
 
+/* Mobile Header - Hidden on desktop */
+.mobile-header {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 56px;
+  background: var(--surface-glass-strong);
+  backdrop-filter: blur(var(--blur-strength));
+  -webkit-backdrop-filter: blur(var(--blur-strength));
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  z-index: 200;
+  align-items: center;
+  padding: 0 16px;
+  gap: 12px;
+}
+
+.mobile-menu-btn {
+  background: transparent;
+  border: none;
+  color: var(--color-text-main);
+  cursor: pointer;
+  padding: 8px;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mobile-menu-btn:hover {
+  background: var(--surface-glass);
+}
+
+.mobile-title {
+  font-weight: 600;
+  font-size: 16px;
+  color: var(--color-text-main);
+}
+
+.mobile-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 149;
+}
+
+/* Sidebar Container */
+.sidebar-container {
+  display: flex;
+  flex-shrink: 0;
+}
+
 .main-content {
   flex: 1;
   display: flex;
   flex-direction: column;
+  min-width: 0;
 }
 
 .no-channel {
@@ -107,6 +191,9 @@ watch(
   width: 240px;
   padding: 8px;
   border-top: 1px dashed rgba(128, 128, 128, 0.4);
+  background: var(--surface-glass);
+  backdrop-filter: blur(var(--blur-strength));
+  -webkit-backdrop-filter: blur(var(--blur-strength));
 }
 
 .user-info {
@@ -188,5 +275,76 @@ watch(
 .slide-enter-from,
 .slide-leave-to {
   transform: translateX(100%);
+}
+
+/* Mobile Responsive Styles */
+@media (max-width: 768px) {
+  .mobile-header {
+    display: flex;
+  }
+
+  .mobile-overlay {
+    display: block;
+  }
+
+  .app-container {
+    flex-direction: column;
+    padding-top: 56px;
+  }
+
+  .sidebar-container {
+    position: fixed;
+    top: 56px;
+    left: 0;
+    bottom: 0;
+    width: 312px;
+    z-index: 150;
+    background: rgba(255, 255, 255, 0.6);
+    backdrop-filter: blur(var(--blur-strength));
+    -webkit-backdrop-filter: blur(var(--blur-strength));
+    transform: translateX(-100%);
+    transition: transform 0.3s ease;
+    flex-direction: row;
+    border-right: 1px solid rgba(255, 255, 255, 0.1);
+  }
+
+  .sidebar-container.mobile-open {
+    transform: translateX(0);
+  }
+
+  .user-panel {
+    position: absolute;
+    bottom: 0;
+    left: 72px;
+    width: 240px;
+  }
+
+  .main-content {
+    flex: 1;
+    height: calc(100vh - 56px);
+  }
+
+  .music-sidebar {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .music-toggle-btn {
+    bottom: 20px;
+    right: 16px;
+    width: 48px;
+    height: 48px;
+  }
+}
+
+@media (max-width: 480px) {
+  .sidebar-container {
+    width: 100%;
+  }
+
+  .user-panel {
+    left: 72px;
+    width: calc(100% - 72px);
+  }
 }
 </style>

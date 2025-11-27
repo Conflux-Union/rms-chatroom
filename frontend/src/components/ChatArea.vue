@@ -102,7 +102,7 @@ function formatTime(dateStr: string) {
     <div class="chat-input">
       <input
         v-model="messageInput"
-        :placeholder="`Message #${chat.currentChannel?.name || ''}`"
+        :placeholder="`发送消息到 #${chat.currentChannel?.name || ''}`"
         @keyup.enter="sendMessage"
       />
     </div>
@@ -215,5 +215,53 @@ function formatTime(dateStr: string) {
   border-color: rgba(255, 255, 255, 0.5);
   transform: translateY(-2px);
   box-shadow: var(--shadow-md);
+}
+
+/* Mobile Responsive */
+@media (max-width: 768px) {
+  .chat-header {
+    height: 44px;
+    padding: 0 12px;
+  }
+
+  .channel-hash {
+    font-size: 20px;
+  }
+
+  .channel-name {
+    font-size: 15px;
+  }
+
+  .messages {
+    padding: 12px;
+  }
+
+  .message {
+    margin-bottom: 12px;
+  }
+
+  .message-avatar {
+    width: 32px;
+    height: 32px;
+    margin-right: 10px;
+    font-size: 14px;
+  }
+
+  .message-author {
+    font-size: 14px;
+  }
+
+  .message-text {
+    font-size: 14px;
+  }
+
+  .chat-input {
+    padding: 0 12px 16px;
+  }
+
+  .chat-input input {
+    padding: 10px 14px;
+    font-size: 15px;
+  }
 }
 </style>

@@ -33,7 +33,7 @@ function hideContextMenu() {
 
 async function deleteServer() {
   if (!contextMenu.value.serverId) return
-  if (confirm('Are you sure you want to delete this server?')) {
+  if (confirm('确定要删除此服务器吗？')) {
     await chat.deleteServer(contextMenu.value.serverId)
   }
   hideContextMenu()
@@ -54,7 +54,7 @@ async function deleteServer() {
       {{ server.name.charAt(0).toUpperCase() }}
     </div>
 
-    <div v-if="auth.isAdmin" class="server-icon add-server glow-effect" @click="showCreate = true" title="Create Server">
+    <div v-if="auth.isAdmin" class="server-icon add-server glow-effect" @click="showCreate = true" title="创建服务器">
       +
     </div>
 
@@ -65,20 +65,20 @@ async function deleteServer() {
       :style="{ left: contextMenu.x + 'px', top: contextMenu.y + 'px' }"
       @click.stop
     >
-      <div class="context-menu-item delete" @click="deleteServer">Delete Server</div>
+      <div class="context-menu-item delete" @click="deleteServer">删除服务器</div>
     </div>
 
     <div v-if="showCreate" class="create-modal" @click.self="showCreate = false">
       <div class="modal-content">
-        <h3>Create Server</h3>
+        <h3>创建服务器</h3>
         <input
           v-model="newServerName"
-          placeholder="Server name"
+          placeholder="服务器名称"
           @keyup.enter="createServer"
         />
         <div class="modal-actions">
-          <button class="glow-effect" @click="showCreate = false">Cancel</button>
-          <button class="primary glow-effect" @click="createServer">Create</button>
+          <button class="glow-effect" @click="showCreate = false">取消</button>
+          <button class="primary glow-effect" @click="createServer">创建</button>
         </div>
       </div>
     </div>

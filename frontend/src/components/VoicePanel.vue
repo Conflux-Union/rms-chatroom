@@ -60,7 +60,7 @@ function closeVolumeWarning() {
       <Volume2 class="channel-icon" :size="20" />
       <span class="channel-name">{{ chat.currentChannel?.name }}</span>
       <span v-if="voice.isConnected" class="connection-mode connected">
-        Connected
+        已连接
       </span>
     </div>
 
@@ -68,13 +68,13 @@ function closeVolumeWarning() {
       <!-- Device Selection (always visible) -->
       <div class="device-selection">
         <div class="device-group">
-          <label class="device-label"><Mic :size="14" /> Input Device</label>
+          <label class="device-label"><Mic :size="14" /> 输入设备</label>
           <select
             class="device-select"
             :value="voice.selectedAudioInput"
             @change="voice.setAudioInputDevice(($event.target as HTMLSelectElement).value)"
           >
-            <option value="">System Default</option>
+            <option value="">系统默认</option>
             <option
               v-for="device in voice.audioInputDevices"
               :key="device.deviceId"
@@ -85,13 +85,13 @@ function closeVolumeWarning() {
           </select>
         </div>
         <div class="device-group">
-          <label class="device-label"><Volume2 :size="14" /> Output Device</label>
+          <label class="device-label"><Volume2 :size="14" /> 输出设备</label>
           <select
             class="device-select"
             :value="voice.selectedAudioOutput"
             @change="voice.setAudioOutputDevice(($event.target as HTMLSelectElement).value)"
           >
-            <option value="">System Default</option>
+            <option value="">系统默认</option>
             <option
               v-for="device in voice.audioOutputDevices"
               :key="device.deviceId"
@@ -104,13 +104,13 @@ function closeVolumeWarning() {
       </div>
 
       <div v-if="!voice.isConnected" class="voice-connect">
-        <p>Click to join the voice channel</p>
+        <p>点击加入语音频道</p>
         <button
           class="join-btn glow-effect"
           :disabled="voice.isConnecting"
           @click="joinVoice"
         >
-          {{ voice.isConnecting ? 'Connecting...' : 'Join Voice' }}
+          {{ voice.isConnecting ? '连接中...' : '加入语音' }}
         </button>
       </div>
 
@@ -128,7 +128,7 @@ function closeVolumeWarning() {
               </div>
               <span class="user-name">
                 {{ participant.name }}
-                <span v-if="participant.isLocal" class="local-tag">(You)</span>
+                <span v-if="participant.isLocal" class="local-tag">(你)</span>
               </span>
               <MicOff v-if="participant.isMuted" class="status-icon" :size="14" />
               <Mic v-if="participant.isSpeaking" class="speaking-icon" :size="14" />
@@ -153,7 +153,7 @@ function closeVolumeWarning() {
             class="control-btn glow-effect"
             :class="{ active: voice.isMuted }"
             @click="voice.toggleMute()"
-            title="Toggle Mute"
+            title="切换静音"
           >
             <MicOff v-if="voice.isMuted" :size="20" />
             <Mic v-else :size="20" />
@@ -161,7 +161,7 @@ function closeVolumeWarning() {
           <button
             class="control-btn disconnect glow-effect"
             @click="voice.disconnect()"
-            title="Disconnect"
+            title="断开连接"
           >
             <Phone :size="20" />
           </button>
@@ -174,13 +174,13 @@ function closeVolumeWarning() {
       <div v-if="showVolumeWarning" class="volume-warning-overlay" @click.self="closeVolumeWarning">
         <div class="volume-warning-dialog">
           <AlertTriangle class="warning-icon" :size="48" />
-          <h3 class="warning-title">High Volume Warning</h3>
+          <h3 class="warning-title">高音量警告</h3>
           <p class="warning-message">
-            High volume may damage your hearing and audio equipment.
+            高音量可能损害您的听力和音频设备。
           </p>
           <div class="warning-actions">
-            <button class="warning-btn cancel" @click="closeVolumeWarning">Cancel</button>
-            <button class="warning-btn confirm" @click="confirmVolumeWarning">I Understand</button>
+            <button class="warning-btn cancel" @click="closeVolumeWarning">取消</button>
+            <button class="warning-btn confirm" @click="confirmVolumeWarning">我已了解</button>
           </div>
         </div>
       </div>
@@ -574,5 +574,40 @@ function closeVolumeWarning() {
 
 .warning-btn.confirm:hover {
   filter: brightness(1.1);
+}
+
+/* Mobile Responsive */
+@media (max-width: 768px) {
+  .voice-content {
+    padding: 16px;
+  }
+
+  .device-selection {
+    max-width: 100%;
+  }
+
+  .voice-connected {
+    max-width: 100%;
+  }
+
+  .join-btn {
+    padding: 12px 24px;
+    font-size: 15px;
+  }
+
+  .user-avatar {
+    width: 28px;
+    height: 28px;
+    font-size: 12px;
+  }
+
+  .volume-control {
+    padding-left: 40px;
+  }
+
+  .control-btn {
+    width: 44px;
+    height: 44px;
+  }
 }
 </style>

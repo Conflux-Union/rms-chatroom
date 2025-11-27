@@ -101,7 +101,7 @@ async function muteVoiceUser() {
 
 async function deleteChannel() {
   if (!contextMenu.value.channelId || !chat.currentServer) return
-  if (confirm('Are you sure you want to delete this channel?')) {
+  if (confirm('确定要删除此频道吗？')) {
     await chat.deleteChannel(chat.currentServer.id, contextMenu.value.channelId)
   }
   hideContextMenu()
@@ -111,12 +111,12 @@ async function deleteChannel() {
 <template>
   <div class="channel-list" @click="hideContextMenu">
     <div class="server-header">
-      <h2>{{ chat.currentServer?.name || 'Select Server' }}</h2>
+      <h2>{{ chat.currentServer?.name || '选择服务器' }}</h2>
     </div>
 
     <div class="channels">
       <div class="channel-category">
-        <span class="category-name">TEXT CHANNELS</span>
+        <span class="category-name">文字频道</span>
         <button v-if="auth.isAdmin" class="add-channel" @click="showCreate = true; newChannelType = 'text'">+</button>
       </div>
       <div
@@ -132,7 +132,7 @@ async function deleteChannel() {
       </div>
 
       <div class="channel-category">
-        <span class="category-name">VOICE CHANNELS</span>
+        <span class="category-name">语音频道</span>
         <button v-if="auth.isAdmin" class="add-channel" @click="showCreate = true; newChannelType = 'voice'">+</button>
       </div>
       <div
@@ -180,7 +180,7 @@ async function deleteChannel() {
       :style="{ left: contextMenu.x + 'px', top: contextMenu.y + 'px' }"
       @click.stop
     >
-      <div class="context-menu-item delete" @click="deleteChannel">Delete Channel</div>
+      <div class="context-menu-item delete" @click="deleteChannel">删除频道</div>
     </div>
 
     <!-- Voice User Context Menu -->
@@ -190,20 +190,20 @@ async function deleteChannel() {
       :style="{ left: userContextMenu.x + 'px', top: userContextMenu.y + 'px' }"
       @click.stop
     >
-      <div class="context-menu-item" @click="muteVoiceUser">Mute Microphone</div>
+      <div class="context-menu-item" @click="muteVoiceUser">静音麦克风</div>
     </div>
 
     <div v-if="showCreate" class="create-modal" @click.self="showCreate = false">
       <div class="modal-content">
-        <h3>Create {{ newChannelType === 'text' ? 'Text' : 'Voice' }} Channel</h3>
+        <h3>创建{{ newChannelType === 'text' ? '文字' : '语音' }}频道</h3>
         <input
           v-model="newChannelName"
-          placeholder="Channel name"
+          placeholder="频道名称"
           @keyup.enter="createChannel"
         />
         <div class="modal-actions">
-          <button class="glow-effect" @click="showCreate = false">Cancel</button>
-          <button class="primary glow-effect" @click="createChannel">Create</button>
+          <button class="glow-effect" @click="showCreate = false">取消</button>
+          <button class="primary glow-effect" @click="createChannel">创建</button>
         </div>
       </div>
     </div>

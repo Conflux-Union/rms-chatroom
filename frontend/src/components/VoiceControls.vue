@@ -57,7 +57,7 @@ const hostButtonDisabled = computed(() =>
         }"
         :disabled="hostButtonDisabled"
         @click="voice.toggleHostMode()"
-        :title="hostButtonDisabled ? '其他人正在主持' : (voice.hostModeEnabled ? '关闭主持人模式' : '开启主持人模式')"
+        :title="hostButtonDisabled ? '其他用户正在主持' : (voice.hostModeEnabled ? '关闭主持人模式' : '开启主持人模式')"
       >
         <Crown :size="16" />
       </button>
@@ -71,7 +71,7 @@ const hostButtonDisabled = computed(() =>
     </div>
     <div v-if="voice.hostModeEnabled" class="host-mode-banner">
       <Crown :size="12" />
-      <span>{{ voice.hostModeHostName }} is hosting</span>
+      <span>{{ voice.hostModeHostName }} 正在主持</span>
     </div>
   </div>
 </template>

@@ -28,7 +28,7 @@ onMounted(async () => {
   <div class="callback-container">
     <div class="loading">
       <div class="spinner"></div>
-      <p>Processing login...</p>
+      <p>正在处理登录...</p>
     </div>
   </div>
 </template>

@@ -88,20 +88,20 @@ async function handleBotPlayPause() {
   <div class="music-panel">
     <div class="music-header">
       <Music class="header-icon" :size="20" />
-      <span class="header-title">Music Player</span>
+      <span class="header-title">音乐播放器</span>
       <span 
         v-if="music.botConnected" 
         class="bot-status connected"
         @click="music.stopBot()"
-        title="Bot connected - Click to disconnect"
+        title="机器人已连接 - 点击断开"
       >
-        <Bot :size="14" /> Bot
+        <Bot :size="14" /> 机器人
       </span>
       <span 
         v-if="music.isLoggedIn" 
         class="login-status logged-in"
         @click="music.logout()"
-        title="Click to logout"
+        title="点击退出登录"
       >
         QQ VIP
       </span>
@@ -110,7 +110,7 @@ async function handleBotPlayPause() {
         class="login-status"
         @click="startLogin"
       >
-        Login
+        登录
       </span>
     </div>
 
@@ -118,17 +118,17 @@ async function handleBotPlayPause() {
       <!-- QR Code Login Dialog -->
       <div v-if="music.qrCodeUrl" class="qr-login-overlay" @click.self="music.qrCodeUrl = null">
         <div class="qr-login-dialog">
-          <h3>Scan to Login QQ Music</h3>
+          <h3>扫码登录 QQ 音乐</h3>
           <img :src="music.qrCodeUrl" alt="QR Code" class="qr-code" />
           <p class="login-hint">
-            {{ music.loginStatus === 'waiting' ? 'Waiting for scan...' :
-               music.loginStatus === 'scanned' ? 'Scanned! Confirm on phone...' :
-               music.loginStatus === 'expired' ? 'QR Code expired' :
-               music.loginStatus === 'refused' ? 'Login refused' :
-               'Loading...' }}
+            {{ music.loginStatus === 'waiting' ? '等待扫码...' :
+               music.loginStatus === 'scanned' ? '扫码成功！请在手机上确认...' :
+               music.loginStatus === 'expired' ? '二维码已过期' :
+               music.loginStatus === 'refused' ? '登录被拒绝' :
+               '加载中...' }}
           </p>
           <button v-if="music.loginStatus === 'expired'" class="refresh-btn" @click="startLogin">
-            Refresh QR Code
+            刷新二维码
           </button>
         </div>
       </div>
@@ -141,40 +141,40 @@ async function handleBotPlayPause() {
           <div class="song-artist">{{ music.currentSong.artist }}</div>
         </div>
         <div class="playback-controls">
-          <button class="control-btn" @click="music.previous()" title="Previous"><SkipBack :size="18" /></button>
+          <button class="control-btn" @click="music.previous()" title="上一首"><SkipBack :size="18" /></button>
           <button 
             class="control-btn play-btn" 
             @click="handleBotPlayPause"
             :disabled="!voice.isConnected"
-            :title="voice.isConnected ? '' : 'Join voice channel first'"
+            :title="voice.isConnected ? '' : '请先加入语音频道'"
           >
             <Pause v-if="music.isPlaying" :size="22" />
             <Play v-else :size="22" />
           </button>
-          <button class="control-btn" @click="music.skip()" title="Next"><SkipForward :size="18" /></button>
+          <button class="control-btn" @click="music.skip()" title="下一首"><SkipForward :size="18" /></button>
         </div>
       </div>
 
       <!-- Empty State -->
       <div v-else class="empty-state">
         <Music class="empty-icon" :size="48" />
-        <p>No song playing</p>
+        <p>暂无播放</p>
         <button class="add-song-btn glow-effect" @click="showSearch = true">
-          Add Songs
+          添加歌曲
         </button>
       </div>
 
       <!-- Queue -->
       <div class="queue-section">
         <div class="queue-header">
-          <span>Queue ({{ music.queue.length }})</span>
+          <span>播放队列 ({{ music.queue.length }})</span>
           <div class="queue-actions">
-            <button class="icon-btn" @click="showSearch = true" title="Add song"><Plus :size="16" /></button>
+            <button class="icon-btn" @click="showSearch = true" title="添加歌曲"><Plus :size="16" /></button>
             <button 
               v-if="music.queue.length > 0" 
               class="icon-btn" 
               @click="music.clearQueue()" 
-              title="Clear queue"
+              title="清空队列"
             ><Trash2 :size="16" /></button>
           </div>
         </div>
@@ -194,7 +194,7 @@ async function handleBotPlayPause() {
             <button class="remove-btn" @click="music.removeFromQueue(index)"><X :size="14" /></button>
           </div>
           <div v-if="music.queue.length === 0" class="queue-empty">
-            Queue is empty
+            队列为空
           </div>
         </div>
       </div>
@@ -207,7 +207,7 @@ async function handleBotPlayPause() {
               <input 
                 v-model="searchInput"
                 type="text"
-                placeholder="Search songs..."
+                placeholder="搜索歌曲..."
                 class="search-input"
                 @keyup.enter="handleSearch"
                 autofocus
@@ -232,10 +232,10 @@ async function handleBotPlayPause() {
                 <span class="search-duration">{{ music.formatDuration(song.duration) }}</span>
               </div>
               <div v-if="music.searchResults.length === 0 && searchInput" class="search-empty">
-                {{ music.isSearching ? 'Searching...' : 'No results found' }}
+                {{ music.isSearching ? '搜索中...' : '未找到结果' }}
               </div>
             </div>
-            <button class="close-search" @click="showSearch = false">Close</button>
+            <button class="close-search" @click="showSearch = false">关闭</button>
           </div>
         </div>
       </Teleport>
