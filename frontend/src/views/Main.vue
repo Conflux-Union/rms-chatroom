@@ -1,15 +1,20 @@
 <script setup lang="ts">
-import { onMounted, watch } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import { useAuthStore } from '../stores/auth'
 import { useChatStore } from '../stores/chat'
+import { useVoiceStore } from '../stores/voice'
 import ServerList from '../components/ServerList.vue'
 import ChannelList from '../components/ChannelList.vue'
 import ChatArea from '../components/ChatArea.vue'
 import VoicePanel from '../components/VoicePanel.vue'
 import VoiceControls from '../components/VoiceControls.vue'
+import MusicPanel from '../components/MusicPanel.vue'
 
 const auth = useAuthStore()
 const chat = useChatStore()
+const voice = useVoiceStore()
+
+const showMusicPanel = ref(false)
 
 onMounted(async () => {
   await chat.fetchServers()
@@ -50,6 +55,23 @@ watch(
         <button class="logout-btn" @click="auth.logout()">Logout</button>
       </div>
     </div>
+    
+    <!-- Music Button (shown when connected to voice) -->
+    <button 
+      v-if="voice.isConnected" 
+      class="music-toggle-btn glow-effect"
+      @click="showMusicPanel = !showMusicPanel"
+      :class="{ active: showMusicPanel }"
+    >
+      🎵
+    </button>
+    
+    <!-- Music Panel Sidebar -->
+    <Transition name="slide">
+      <div v-if="showMusicPanel" class="music-sidebar">
+        <MusicPanel />
+      </div>
+    </Transition>
   </div>
 </template>
 
@@ -110,5 +132,57 @@ watch(
 
 .logout-btn:hover {
   color: var(--color-primary);
+}
+
+/* Music Toggle Button */
+.music-toggle-btn {
+  position: fixed;
+  bottom: 80px;
+  right: 20px;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--color-gradient-primary);
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  box-shadow: var(--shadow-glow);
+  transition: all 0.3s ease;
+  z-index: 100;
+}
+
+.music-toggle-btn:hover {
+  transform: scale(1.1);
+}
+
+.music-toggle-btn.active {
+  background: var(--color-primary);
+}
+
+/* Music Sidebar */
+.music-sidebar {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: 380px;
+  height: 100vh;
+  background: var(--surface-glass-strong, rgba(20, 20, 30, 0.95));
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-left: 1px solid rgba(255, 255, 255, 0.1);
+  z-index: 99;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Slide transition */
+.slide-enter-active,
+.slide-leave-active {
+  transition: transform 0.3s ease;
+}
+
+.slide-enter-from,
+.slide-leave-to {
+  transform: translateX(100%);
 }
 </style>

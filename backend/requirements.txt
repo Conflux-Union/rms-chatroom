@@ -8,3 +8,6 @@ pydantic-settings>=2.1.0
 python-multipart>=0.0.6
 websockets>=12.0
 livekit-api>=1.0.0
+livekit>=1.0.0
+qqmusic-api-python>=0.3.0
+av>=16.0.0
