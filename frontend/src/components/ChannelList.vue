@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch, onUnmounted } from 'vue'
 import { useChatStore } from '../stores/chat'
 import { useAuthStore } from '../stores/auth'
 import type { Channel } from '../types'
@@ -11,6 +11,36 @@ const newChannelName = ref('')
 const newChannelType = ref<'text' | 'voice'>('text')
 const contextMenu = ref<{ show: boolean; x: number; y: number; channelId: number | null }>({
   show: false, x: 0, y: 0, channelId: null
+})
+
+// Refresh interval for voice channel users
+let voiceUsersInterval: ReturnType<typeof setInterval> | null = null
+
+function startVoiceUsersPolling() {
+  stopVoiceUsersPolling()
+  chat.fetchAllVoiceChannelUsers()
+  voiceUsersInterval = setInterval(() => {
+    chat.fetchAllVoiceChannelUsers()
+  }, 5000)
+}
+
+function stopVoiceUsersPolling() {
+  if (voiceUsersInterval) {
+    clearInterval(voiceUsersInterval)
+    voiceUsersInterval = null
+  }
+}
+
+watch(() => chat.currentServer, (server) => {
+  if (server) {
+    startVoiceUsersPolling()
+  } else {
+    stopVoiceUsersPolling()
+  }
+}, { immediate: true })
+
+onUnmounted(() => {
+  stopVoiceUsersPolling()
 })
 
 const textChannels = computed(() => 
@@ -80,13 +110,34 @@ async function deleteChannel() {
       <div
         v-for="channel in voiceChannels"
         :key="channel.id"
-        class="channel glow-effect"
-        :class="{ active: chat.currentChannel?.id === channel.id }"
-        @click="selectChannel(channel)"
-        @contextmenu="auth.isAdmin ? showContextMenu($event, channel.id) : undefined"
+        class="voice-channel-wrapper"
       >
-        <span class="channel-icon">🔊</span>
-        <span class="channel-name">{{ channel.name }}</span>
+        <div
+          class="channel glow-effect"
+          :class="{ active: chat.currentChannel?.id === channel.id }"
+          @click="selectChannel(channel)"
+          @contextmenu="auth.isAdmin ? showContextMenu($event, channel.id) : undefined"
+        >
+          <span class="channel-icon">🔊</span>
+          <span class="channel-name">{{ channel.name }}</span>
+          <span v-if="chat.getVoiceChannelUsers(channel.id).length > 0" class="user-count">
+            {{ chat.getVoiceChannelUsers(channel.id).length }}
+          </span>
+        </div>
+        <div
+          v-if="chat.getVoiceChannelUsers(channel.id).length > 0"
+          class="voice-users-list"
+        >
+          <div
+            v-for="user in chat.getVoiceChannelUsers(channel.id)"
+            :key="user.id"
+            class="voice-user-item"
+          >
+            <span class="voice-user-avatar">{{ user.name.charAt(0).toUpperCase() }}</span>
+            <span class="voice-user-name">{{ user.name }}</span>
+            <span v-if="user.is_muted" class="voice-user-muted">🔇</span>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -309,5 +360,59 @@ async function deleteChannel() {
 
 .context-menu-item.delete:hover {
   background: rgba(237, 66, 69, 0.2);
+}
+
+.voice-channel-wrapper {
+  margin-bottom: 2px;
+}
+
+.user-count {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--color-text-muted);
+  background: var(--surface-glass);
+  padding: 1px 6px;
+  border-radius: 10px;
+}
+
+.voice-users-list {
+  padding-left: 28px;
+  margin-bottom: 4px;
+}
+
+.voice-user-item {
+  display: flex;
+  align-items: center;
+  padding: 4px 8px;
+  margin: 2px 8px 2px 0;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  font-size: 13px;
+}
+
+.voice-user-avatar {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--color-gradient-primary);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-weight: 600;
+  color: #fff;
+  margin-right: 8px;
+  font-size: 10px;
+}
+
+.voice-user-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.voice-user-muted {
+  font-size: 12px;
+  margin-left: 4px;
 }
 </style>

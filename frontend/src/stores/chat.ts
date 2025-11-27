@@ -6,11 +6,20 @@ import { useAuthStore } from './auth'
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000'
 
+// Voice channel user info from API
+interface VoiceChannelUser {
+  id: string
+  name: string
+  is_muted: boolean
+}
+
 export const useChatStore = defineStore('chat', () => {
   const servers = ref<Server[]>([])
   const currentServer = ref<Server | null>(null)
   const currentChannel = ref<Channel | null>(null)
   const messages = ref<Message[]>([])
+  // Map: channelId -> users in that voice channel
+  const voiceChannelUsers = ref<Map<number, VoiceChannelUser[]>>(new Map())
 
   function getAuthHeaders() {
     const auth = useAuthStore()
@@ -138,11 +147,34 @@ export const useChatStore = defineStore('chat', () => {
     messages.value.push(message)
   }
 
+  async function fetchVoiceChannelUsers(channelId: number) {
+    try {
+      const resp = await axios.get<VoiceChannelUser[]>(
+        `${API_BASE}/api/voice/${channelId}/users`,
+        { headers: getAuthHeaders() }
+      )
+      voiceChannelUsers.value.set(channelId, resp.data)
+    } catch {
+      voiceChannelUsers.value.set(channelId, [])
+    }
+  }
+
+  async function fetchAllVoiceChannelUsers() {
+    if (!currentServer.value?.channels) return
+    const voiceChannels = currentServer.value.channels.filter(c => c.type === 'voice')
+    await Promise.all(voiceChannels.map(c => fetchVoiceChannelUsers(c.id)))
+  }
+
+  function getVoiceChannelUsers(channelId: number): VoiceChannelUser[] {
+    return voiceChannelUsers.value.get(channelId) || []
+  }
+
   return {
     servers,
     currentServer,
     currentChannel,
     messages,
+    voiceChannelUsers,
     fetchServers,
     fetchServer,
     createServer,
@@ -152,5 +184,8 @@ export const useChatStore = defineStore('chat', () => {
     fetchMessages,
     setCurrentChannel,
     addMessage,
+    fetchVoiceChannelUsers,
+    fetchAllVoiceChannelUsers,
+    getVoiceChannelUsers,
   }
 })
