@@ -56,6 +56,10 @@ export const useVoiceStore = defineStore('voice', () => {
   const hostModeHostId = ref<string | null>(null)
   const hostModeHostName = ref<string | null>(null)
 
+  // Server-side mute state cache (from API)
+  const serverMuteState = ref<Map<string, boolean>>(new Map())
+  let syncInterval: ReturnType<typeof setInterval> | null = null
+
   function updateParticipants() {
     if (!room.value) {
       participants.value = []
@@ -75,10 +79,15 @@ export const useVoiceStore = defineStore('voice', () => {
     })
 
     room.value.remoteParticipants.forEach((p) => {
+      // Prefer server-side mute state, fallback to client state
+      const serverMuted = serverMuteState.value.get(p.identity)
+      const clientMuted = !p.isMicrophoneEnabled
+      const isMuted = serverMuted !== undefined ? serverMuted : clientMuted
+
       list.push({
         id: p.identity,
         name: p.name || p.identity,
-        isMuted: !p.isMicrophoneEnabled,
+        isMuted,
         isSpeaking: p.isSpeaking,
         isLocal: false,
         volume: userVolumes.value.get(p.identity) ?? 100,
@@ -86,6 +95,47 @@ export const useVoiceStore = defineStore('voice', () => {
     })
 
     participants.value = list
+  }
+
+  /**
+   * Fetch mute state from server and sync with local participants.
+   */
+  async function syncParticipantsFromServer(): Promise<void> {
+    if (!currentVoiceChannel.value || !isConnected.value) return
+
+    const auth = useAuthStore()
+    try {
+      const response = await fetch(
+        `${API_BASE}/api/voice/${currentVoiceChannel.value.id}/users`,
+        { headers: { Authorization: `Bearer ${auth.token}` } }
+      )
+      if (response.ok) {
+        const users: Array<{ id: string; is_muted: boolean; is_host: boolean }> = await response.json()
+        const newMuteState = new Map<string, boolean>()
+        for (const user of users) {
+          newMuteState.set(user.id, user.is_muted)
+        }
+        serverMuteState.value = newMuteState
+        updateParticipants()
+      }
+    } catch (e) {
+      console.error('Failed to sync participants from server:', e)
+    }
+  }
+
+  function startSyncInterval() {
+    stopSyncInterval()
+    syncParticipantsFromServer()
+    syncInterval = setInterval(() => {
+      syncParticipantsFromServer()
+    }, 2000)
+  }
+
+  function stopSyncInterval() {
+    if (syncInterval) {
+      clearInterval(syncInterval)
+      syncInterval = null
+    }
   }
 
   async function enumerateDevices(): Promise<void> {
@@ -278,6 +328,9 @@ export const useVoiceStore = defineStore('voice', () => {
       // Fetch host mode status after joining
       await fetchHostModeStatus()
 
+      // Start periodic sync from server for accurate mute state
+      startSyncInterval()
+
       return true
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to connect'
@@ -289,7 +342,9 @@ export const useVoiceStore = defineStore('voice', () => {
   }
 
   function disconnect() {
+    stopSyncInterval()
     participantAudioMap.clear()
+    serverMuteState.value.clear()
     
     if (audioContext.value) {
       audioContext.value.close()
