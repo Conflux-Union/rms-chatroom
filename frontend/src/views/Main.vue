@@ -6,6 +6,7 @@ import ServerList from '../components/ServerList.vue'
 import ChannelList from '../components/ChannelList.vue'
 import ChatArea from '../components/ChatArea.vue'
 import VoicePanel from '../components/VoicePanel.vue'
+import VoiceControls from '../components/VoiceControls.vue'
 
 const auth = useAuthStore()
 const chat = useChatStore()
@@ -43,6 +44,7 @@ watch(
       </div>
     </div>
     <div class="user-panel">
+      <VoiceControls />
       <div class="user-info">
         <span class="username">{{ auth.user?.nickname || auth.user?.username }}</span>
         <button class="logout-btn" @click="auth.logout()">Logout</button>

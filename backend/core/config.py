@@ -22,6 +22,9 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "frontend_dist_path": "../frontend/dist",
     "cors_origins": ["http://localhost:5173", "http://127.0.0.1:5173"],
     "deploy_token": "",
+    "livekit_host": "ws://localhost:7880",
+    "livekit_api_key": "rms_discord",
+    "livekit_api_secret": "rmsdiscordsecretkey123456",
 }
 
 
@@ -56,6 +59,9 @@ class Settings(BaseSettings):
     frontend_dist_path: str = "../frontend/dist"
     cors_origins: list[str] = ["http://localhost:5173"]
     deploy_token: str = ""
+    livekit_host: str = "ws://localhost:7880"
+    livekit_api_key: str = "rms_discord"
+    livekit_api_secret: str = "rmsdiscordsecretkey123456"
 
 
 def _env_overrides() -> dict[str, Any]:

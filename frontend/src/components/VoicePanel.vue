@@ -1,251 +1,17 @@
 <script setup lang="ts">
-import { ref, watch, onUnmounted, computed } from 'vue'
 import { useChatStore } from '../stores/chat'
-import { useAuthStore } from '../stores/auth'
-import { useWebSocket } from '../composables/useWebSocket'
-import { useWebRTC } from '../composables/useWebRTC'
-import { useAudioRelay } from '../composables/useAudioRelay'
-import type { VoiceUser } from '../types'
+import { useVoiceStore } from '../stores/voice'
 
 const chat = useChatStore()
-const auth = useAuthStore()
-
-const isConnected = ref(false)
-const voiceUsers = ref<VoiceUser[]>([])
-const audioElements = ref<Map<number, HTMLAudioElement>>(new Map())
-const isRelayMode = ref(false)
-const connectionStatus = ref<'connecting' | 'p2p' | 'relay'>('connecting')
-
-let ws: ReturnType<typeof useWebSocket> | null = null
-
-// Initialize WebRTC with connection failure callback
-const webrtc = useWebRTC(playRemoteStream, handleP2PFailed)
-
-// Initialize audio relay for server-mediated mode
-const audioRelay = useAudioRelay()
-
-// Display connection mode
-const connectionModeText = computed(() => {
-  if (!isConnected.value) return ''
-  if (connectionStatus.value === 'connecting') return 'Connecting...'
-  if (connectionStatus.value === 'p2p') return 'P2P'
-  return 'Relay'
-})
-
-// Handle P2P connection failure - switch to relay mode
-function handleP2PFailed(_userId: number) {
-  if (!isRelayMode.value) {
-    enableRelayMode()
-  }
-}
-
-// Enable relay mode and notify server
-async function enableRelayMode() {
-  if (isRelayMode.value) return
-
-  isRelayMode.value = true
-  connectionStatus.value = 'relay'
-
-  // Start audio capture for relay
-  await audioRelay.startCapture((audioData) => {
-    ws?.sendBinary(audioData)
-  })
-
-  // Notify server we're in relay mode
-  ws?.send({ type: 'relay_mode', enabled: true })
-}
-
-// Play remote audio stream (P2P mode)
-function playRemoteStream(userId: number, stream: MediaStream) {
-  let audio = audioElements.value.get(userId)
-  if (!audio) {
-    audio = new Audio()
-    audio.autoplay = true
-    audioElements.value.set(userId, audio)
-  }
-  audio.srcObject = stream
-  audio.play().catch((e) => console.error('Audio play failed:', e))
-}
-
-// Stop remote audio
-function stopRemoteAudio(userId: number) {
-  const audio = audioElements.value.get(userId)
-  if (audio) {
-    audio.srcObject = null
-    audioElements.value.delete(userId)
-  }
-  audioRelay.stopRemoteAudio(userId)
-}
+const voice = useVoiceStore()
 
 async function joinVoice() {
   if (!chat.currentChannel) return
-
-  // Start local stream for WebRTC P2P attempts
-  const started = await webrtc.startLocalStream()
-  if (!started) {
-    alert('Failed to access microphone')
-    return
+  const success = await voice.joinVoice(chat.currentChannel)
+  if (!success && voice.error) {
+    alert(voice.error)
   }
-
-  connectionStatus.value = 'connecting'
-  ws = useWebSocket(`/ws/voice/${chat.currentChannel.id}`)
-
-  // Handle binary audio data (relay mode)
-  ws.onBinaryMessage(async (blob: Blob) => {
-    const buffer = await blob.arrayBuffer()
-    // First 4 bytes are user_id (big endian)
-    const view = new DataView(buffer)
-    const userId = view.getUint32(0, false)
-    const audioData = buffer.slice(4)
-
-    if (userId !== auth.user?.id) {
-      audioRelay.playRemoteAudio(userId, audioData)
-    }
-  })
-
-  ws.onMessage(async (data) => {
-    switch (data.type) {
-      case 'users':
-        voiceUsers.value = data.users
-        // Create offers for existing users (attempt P2P)
-        for (const user of data.users) {
-          if (user.id !== auth.user?.id) {
-            // If user is already in relay mode, skip P2P attempt
-            if (user.relay_mode) {
-              if (!isRelayMode.value) {
-                enableRelayMode()
-              }
-              continue
-            }
-            const offer = await webrtc.createOffer(user.id, (candidate) => {
-              ws?.send({
-                type: 'ice-candidate',
-                target_user_id: user.id,
-                candidate: candidate.toJSON(),
-              })
-            })
-            ws?.send({
-              type: 'offer',
-              target_user_id: user.id,
-              sdp: offer,
-            })
-          }
-        }
-        break
-
-      case 'user_joined':
-        voiceUsers.value.push({
-          id: data.user_id,
-          username: data.username,
-          muted: false,
-          deafened: false,
-        })
-        break
-
-      case 'user_left':
-        voiceUsers.value = voiceUsers.value.filter((u) => u.id !== data.user_id)
-        stopRemoteAudio(data.user_id)
-        webrtc.closePeerConnection(data.user_id)
-        break
-
-      case 'offer':
-        const answer = await webrtc.handleOffer(data.from_user_id, data.sdp, (candidate) => {
-          ws?.send({
-            type: 'ice-candidate',
-            target_user_id: data.from_user_id,
-            candidate: candidate.toJSON(),
-          })
-        })
-        ws?.send({
-          type: 'answer',
-          target_user_id: data.from_user_id,
-          sdp: answer,
-        })
-        break
-
-      case 'answer':
-        await webrtc.handleAnswer(data.from_user_id, data.sdp)
-        // Check if P2P succeeded after a moment
-        setTimeout(() => {
-          if (webrtc.hasAnyP2PConnection()) {
-            connectionStatus.value = 'p2p'
-          }
-        }, 1000)
-        break
-
-      case 'ice-candidate':
-        await webrtc.handleIceCandidate(data.from_user_id, data.candidate)
-        break
-
-      case 'user_mute':
-        const mutedUser = voiceUsers.value.find((u) => u.id === data.user_id)
-        if (mutedUser) mutedUser.muted = data.muted
-        break
-
-      case 'user_deafen':
-        const deafenedUser = voiceUsers.value.find((u) => u.id === data.user_id)
-        if (deafenedUser) deafenedUser.deafened = data.deafened
-        break
-
-      case 'user_relay_mode':
-        // Another user switched to relay mode - we may need to as well
-        if (data.relay_mode && !isRelayMode.value) {
-          enableRelayMode()
-        }
-        break
-    }
-  })
-
-  ws.connect()
-  isConnected.value = true
 }
-
-function leaveVoice() {
-  if (ws) {
-    ws.disconnect()
-    ws = null
-  }
-  // Clean up all audio elements
-  audioElements.value.forEach((audio) => {
-    audio.srcObject = null
-  })
-  audioElements.value.clear()
-  webrtc.closeAllConnections()
-  audioRelay.cleanup()
-  voiceUsers.value = []
-  isConnected.value = false
-  isRelayMode.value = false
-  connectionStatus.value = 'connecting'
-}
-
-function toggleMute() {
-  const muted = isRelayMode.value ? audioRelay.toggleMute() : webrtc.toggleMute()
-  ws?.send({ type: 'mute', muted })
-}
-
-function toggleDeafen() {
-  const deafened = isRelayMode.value ? audioRelay.toggleDeafen() : webrtc.toggleDeafen()
-  ws?.send({ type: 'deafen', deafened })
-}
-
-// Current mute/deafen state based on mode
-const isMuted = computed(() => (isRelayMode.value ? audioRelay.isMuted.value : webrtc.isMuted.value))
-const isDeafened = computed(() =>
-  isRelayMode.value ? audioRelay.isDeafened.value : webrtc.isDeafened.value
-)
-
-watch(
-  () => chat.currentChannel,
-  () => {
-    if (isConnected.value) {
-      leaveVoice()
-    }
-  }
-)
-
-onUnmounted(() => {
-  leaveVoice()
-})
 </script>
 
 <template>
@@ -253,45 +19,57 @@ onUnmounted(() => {
     <div class="voice-header">
       <span class="channel-icon">🔊</span>
       <span class="channel-name">{{ chat.currentChannel?.name }}</span>
-      <span v-if="isConnected" class="connection-mode" :class="connectionStatus">
-        {{ connectionModeText }}
+      <span v-if="voice.isConnected" class="connection-mode connected">
+        Connected
       </span>
     </div>
 
     <div class="voice-content">
-      <div v-if="!isConnected" class="voice-connect">
+      <div v-if="!voice.isConnected" class="voice-connect">
         <p>Click to join the voice channel</p>
-        <button class="join-btn glow-effect" @click="joinVoice">Join Voice</button>
+        <button
+          class="join-btn glow-effect"
+          :disabled="voice.isConnecting"
+          @click="joinVoice"
+        >
+          {{ voice.isConnecting ? 'Connecting...' : 'Join Voice' }}
+        </button>
       </div>
 
       <div v-else class="voice-connected">
         <div class="voice-users">
-          <div v-for="user in voiceUsers" :key="user.id" class="voice-user">
-            <div class="user-avatar">{{ user.username.charAt(0).toUpperCase() }}</div>
-            <span class="user-name">{{ user.username }}</span>
-            <span v-if="user.muted" class="status-icon">🔇</span>
-            <span v-if="user.deafened" class="status-icon">🔕</span>
+          <div
+            v-for="participant in voice.participants"
+            :key="participant.id"
+            class="voice-user"
+            :class="{ speaking: participant.isSpeaking }"
+          >
+            <div class="user-avatar">
+              {{ participant.name.charAt(0).toUpperCase() }}
+            </div>
+            <span class="user-name">
+              {{ participant.name }}
+              <span v-if="participant.isLocal" class="local-tag">(You)</span>
+            </span>
+            <span v-if="participant.isMuted" class="status-icon">🔇</span>
+            <span v-if="participant.isSpeaking" class="speaking-icon">🎙️</span>
           </div>
         </div>
 
         <div class="voice-controls">
           <button
             class="control-btn glow-effect"
-            :class="{ active: isMuted }"
-            @click="toggleMute"
+            :class="{ active: voice.isMuted }"
+            @click="voice.toggleMute()"
             title="Toggle Mute"
           >
-            {{ isMuted ? '🔇' : '🎤' }}
+            {{ voice.isMuted ? '🔇' : '🎤' }}
           </button>
           <button
-            class="control-btn glow-effect"
-            :class="{ active: isDeafened }"
-            @click="toggleDeafen"
-            title="Toggle Deafen"
+            class="control-btn disconnect glow-effect"
+            @click="voice.disconnect()"
+            title="Disconnect"
           >
-            {{ isDeafened ? '🔕' : '🔊' }}
-          </button>
-          <button class="control-btn disconnect glow-effect" @click="leaveVoice" title="Disconnect">
             📞
           </button>
         </div>
@@ -333,18 +111,8 @@ onUnmounted(() => {
   font-weight: 500;
 }
 
-.connection-mode.connecting {
-  background: var(--color-warning, #f59e0b);
-  color: #000;
-}
-
-.connection-mode.p2p {
+.connection-mode.connected {
   background: var(--color-success, #10b981);
-  color: #fff;
-}
-
-.connection-mode.relay {
-  background: var(--color-primary, #6366f1);
   color: #fff;
 }
 
@@ -379,9 +147,14 @@ onUnmounted(() => {
   box-shadow: var(--shadow-glow);
 }
 
-.join-btn:hover {
+.join-btn:hover:not(:disabled) {
   transform: translateY(-2px);
   filter: brightness(1.1);
+}
+
+.join-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .voice-connected {
@@ -403,6 +176,14 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   padding: 8px 0;
+  transition: all 0.2s ease;
+}
+
+.voice-user.speaking {
+  background: rgba(16, 185, 129, 0.1);
+  border-radius: 8px;
+  padding: 8px;
+  margin: 0 -8px;
 }
 
 .user-avatar {
@@ -417,6 +198,11 @@ onUnmounted(() => {
   color: #fff;
   margin-right: 12px;
   font-size: 14px;
+  transition: box-shadow 0.2s ease;
+}
+
+.voice-user.speaking .user-avatar {
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.5);
 }
 
 .user-name {
@@ -424,7 +210,13 @@ onUnmounted(() => {
   color: var(--color-text-main);
 }
 
-.status-icon {
+.local-tag {
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.status-icon,
+.speaking-icon {
   margin-left: 8px;
   font-size: 14px;
 }
