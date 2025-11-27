@@ -1,9 +1,15 @@
 <script setup lang="ts">
+import { ref } from 'vue'
 import { useChatStore } from '../stores/chat'
 import { useVoiceStore } from '../stores/voice'
 
 const chat = useChatStore()
 const voice = useVoiceStore()
+
+// Volume warning dialog state
+const showVolumeWarning = ref(false)
+const pendingVolumeParticipant = ref<string | null>(null)
+const pendingVolumeValue = ref(100)
 
 async function joinVoice() {
   if (!chat.currentChannel) return
@@ -11,6 +17,35 @@ async function joinVoice() {
   if (!success && voice.error) {
     alert(voice.error)
   }
+}
+
+function handleVolumeChange(participantId: string, event: Event) {
+  const target = event.target as HTMLInputElement
+  const newVolume = parseInt(target.value, 10)
+  
+  const result = voice.setUserVolume(participantId, newVolume)
+  
+  if (result.showWarning) {
+    // Block at 100% and show warning
+    target.value = '100'
+    pendingVolumeParticipant.value = participantId
+    pendingVolumeValue.value = newVolume
+    showVolumeWarning.value = true
+  }
+}
+
+function confirmVolumeWarning() {
+  if (pendingVolumeParticipant.value) {
+    voice.acknowledgeVolumeWarning(pendingVolumeParticipant.value)
+    voice.setUserVolume(pendingVolumeParticipant.value, pendingVolumeValue.value, true)
+  }
+  closeVolumeWarning()
+}
+
+function closeVolumeWarning() {
+  showVolumeWarning.value = false
+  pendingVolumeParticipant.value = null
+  pendingVolumeValue.value = 100
 }
 </script>
 
@@ -44,15 +79,29 @@ async function joinVoice() {
             class="voice-user"
             :class="{ speaking: participant.isSpeaking }"
           >
-            <div class="user-avatar">
-              {{ participant.name.charAt(0).toUpperCase() }}
+            <div class="user-info">
+              <div class="user-avatar">
+                {{ participant.name.charAt(0).toUpperCase() }}
+              </div>
+              <span class="user-name">
+                {{ participant.name }}
+                <span v-if="participant.isLocal" class="local-tag">(You)</span>
+              </span>
+              <span v-if="participant.isMuted" class="status-icon">🔇</span>
+              <span v-if="participant.isSpeaking" class="speaking-icon">🎙️</span>
             </div>
-            <span class="user-name">
-              {{ participant.name }}
-              <span v-if="participant.isLocal" class="local-tag">(You)</span>
-            </span>
-            <span v-if="participant.isMuted" class="status-icon">🔇</span>
-            <span v-if="participant.isSpeaking" class="speaking-icon">🎙️</span>
+            <div v-if="!participant.isLocal" class="volume-control">
+              <span class="volume-icon">🔊</span>
+              <input
+                type="range"
+                class="volume-slider"
+                min="0"
+                max="300"
+                :value="participant.volume"
+                @input="handleVolumeChange(participant.id, $event)"
+              />
+              <span class="volume-value">{{ participant.volume }}%</span>
+            </div>
           </div>
         </div>
 
@@ -75,6 +124,23 @@ async function joinVoice() {
         </div>
       </div>
     </div>
+
+    <!-- Volume Warning Dialog -->
+    <Teleport to="body">
+      <div v-if="showVolumeWarning" class="volume-warning-overlay" @click.self="closeVolumeWarning">
+        <div class="volume-warning-dialog">
+          <div class="warning-icon">⚠️</div>
+          <h3 class="warning-title">High Volume Warning</h3>
+          <p class="warning-message">
+            High volume may damage your hearing and audio equipment.
+          </p>
+          <div class="warning-actions">
+            <button class="warning-btn cancel" @click="closeVolumeWarning">Cancel</button>
+            <button class="warning-btn confirm" @click="confirmVolumeWarning">I Understand</button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -174,7 +240,7 @@ async function joinVoice() {
 
 .voice-user {
   display: flex;
-  align-items: center;
+  flex-direction: column;
   padding: 8px 0;
   transition: all 0.2s ease;
 }
@@ -184,6 +250,12 @@ async function joinVoice() {
   border-radius: 8px;
   padding: 8px;
   margin: 0 -8px;
+}
+
+.user-info {
+  display: flex;
+  align-items: center;
+  width: 100%;
 }
 
 .user-avatar {
@@ -219,6 +291,59 @@ async function joinVoice() {
 .speaking-icon {
   margin-left: 8px;
   font-size: 14px;
+}
+
+.volume-control {
+  display: flex;
+  align-items: center;
+  margin-top: 6px;
+  padding-left: 44px;
+  gap: 8px;
+}
+
+.volume-icon {
+  font-size: 14px;
+}
+
+.volume-slider {
+  flex: 1;
+  height: 4px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.volume-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--color-primary, #6366f1);
+  cursor: pointer;
+  transition: transform 0.15s ease;
+}
+
+.volume-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+}
+
+.volume-slider::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border: none;
+  border-radius: 50%;
+  background: var(--color-primary, #6366f1);
+  cursor: pointer;
+}
+
+.volume-value {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  min-width: 40px;
+  text-align: right;
 }
 
 .voice-controls {
@@ -258,5 +383,83 @@ async function joinVoice() {
 .control-btn.disconnect:hover {
   filter: brightness(0.9);
   transform: rotate(135deg) scale(1.1);
+}
+
+/* Volume Warning Dialog Styles */
+.volume-warning-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 9999;
+  backdrop-filter: blur(4px);
+}
+
+.volume-warning-dialog {
+  background: var(--surface-glass-strong, rgba(30, 30, 40, 0.95));
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: var(--radius-lg, 16px);
+  padding: 24px;
+  max-width: 400px;
+  text-align: center;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+}
+
+.warning-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+}
+
+.warning-title {
+  color: var(--color-warning, #f59e0b);
+  font-size: 20px;
+  font-weight: 600;
+  margin: 0 0 12px 0;
+}
+
+.warning-message {
+  color: var(--color-text-muted, #9ca3af);
+  font-size: 14px;
+  line-height: 1.5;
+  margin: 0 0 20px 0;
+}
+
+.warning-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+}
+
+.warning-btn {
+  padding: 10px 20px;
+  border-radius: var(--radius-md, 8px);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: none;
+}
+
+.warning-btn.cancel {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--color-text-main, #fff);
+}
+
+.warning-btn.cancel:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.warning-btn.confirm {
+  background: var(--color-warning, #f59e0b);
+  color: #000;
+}
+
+.warning-btn.confirm:hover {
+  filter: brightness(1.1);
 }
 </style>
