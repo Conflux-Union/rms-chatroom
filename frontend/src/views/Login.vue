@@ -13,7 +13,7 @@ function handleLogin() {
     <div class="page-surface">
       <div class="page-surface__inner">
         <div class="page-content">
-          <h1 class="title">RMS Chat</h1>
+          <h1 class="title">RMS ChatRoom</h1>
           <p class="subtitle">欢迎！请使用 RMS 账号登录</p>
           <button class="btn glow-effect" @click="handleLogin">RMS 账号登录</button>
         </div>
@@ -25,6 +25,7 @@ function handleLogin() {
 <style scoped>
 .page-shell {
   min-height: 100vh;
+  min-height: 100dvh;
   width: 100%;
   display: flex;
   justify-content: flex-end;
@@ -34,6 +35,7 @@ function handleLogin() {
 
 .page-surface {
   min-height: 100vh;
+  min-height: 100dvh;
   width: auto;
   min-width: 480px;
   max-width: 100%;

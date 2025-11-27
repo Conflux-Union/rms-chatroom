@@ -24,7 +24,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="RMS Chat", lifespan=lifespan)
+app = FastAPI(title="RMS ChatRoom", lifespan=lifespan)
 
 # CORS for development
 app.add_middleware(

@@ -1,20 +1,66 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useChatStore } from '../stores/chat'
 import { useVoiceStore } from '../stores/voice'
-import { Volume2, Mic, MicOff, Phone, AlertTriangle } from 'lucide-vue-next'
+import { useAuthStore } from '../stores/auth'
+import { Volume2, VolumeX, Mic, MicOff, Phone, AlertTriangle, Crown } from 'lucide-vue-next'
 
 const chat = useChatStore()
 const voice = useVoiceStore()
+const auth = useAuthStore()
 
 onMounted(() => {
   voice.enumerateDevices()
 })
 
+// Host mode computed
+const isCurrentUserHost = computed(() => 
+  voice.hostModeHostId === String(auth.user?.id)
+)
+const hostButtonDisabled = computed(() => 
+  voice.hostModeEnabled && !isCurrentUserHost.value
+)
+
 // Volume warning dialog state
 const showVolumeWarning = ref(false)
 const pendingVolumeParticipant = ref<string | null>(null)
 const pendingVolumeValue = ref(100)
+
+// Mobile swipe state
+const swipedUserId = ref<string | null>(null)
+const touchStartX = ref(0)
+const touchCurrentX = ref(0)
+
+function handleTouchStart(event: TouchEvent, _participantId: string) {
+  const touch = event.touches[0]
+  if (touch) {
+    touchStartX.value = touch.clientX
+    touchCurrentX.value = touch.clientX
+  }
+}
+
+function handleTouchMove(event: TouchEvent, participantId: string) {
+  const touch = event.touches[0]
+  if (touch) {
+    touchCurrentX.value = touch.clientX
+    const diff = touchStartX.value - touchCurrentX.value
+    if (diff > 50) {
+      swipedUserId.value = participantId
+    } else if (diff < -30) {
+      swipedUserId.value = null
+    }
+  }
+}
+
+function handleTouchEnd() {
+  touchStartX.value = 0
+  touchCurrentX.value = 0
+}
+
+async function muteParticipant(participantId: string) {
+  await voice.muteParticipant(participantId, true)
+  swipedUserId.value = null
+}
 
 async function joinVoice() {
   if (!chat.currentChannel) return
@@ -119,33 +165,56 @@ function closeVolumeWarning() {
           <div
             v-for="participant in voice.participants"
             :key="participant.id"
-            class="voice-user"
-            :class="{ speaking: participant.isSpeaking }"
+            class="voice-user-wrapper"
+            :class="{ swiped: swipedUserId === participant.id && !participant.isLocal && auth.isAdmin }"
           >
-            <div class="user-info">
-              <div class="user-avatar">
-                {{ participant.name.charAt(0).toUpperCase() }}
+            <div
+              class="voice-user"
+              :class="{ speaking: participant.isSpeaking }"
+              @touchstart="!participant.isLocal && auth.isAdmin ? handleTouchStart($event, participant.id) : null"
+              @touchmove="!participant.isLocal && auth.isAdmin ? handleTouchMove($event, participant.id) : null"
+              @touchend="handleTouchEnd"
+            >
+              <div class="user-info">
+                <div class="user-avatar">
+                  {{ participant.name.charAt(0).toUpperCase() }}
+                </div>
+                <span class="user-name">
+                  {{ participant.name }}
+                  <span v-if="participant.isLocal" class="local-tag">(你)</span>
+                </span>
+                <MicOff v-if="participant.isMuted" class="status-icon" :size="14" />
+                <Mic v-if="participant.isSpeaking" class="speaking-icon" :size="14" />
               </div>
-              <span class="user-name">
-                {{ participant.name }}
-                <span v-if="participant.isLocal" class="local-tag">(你)</span>
-              </span>
-              <MicOff v-if="participant.isMuted" class="status-icon" :size="14" />
-              <Mic v-if="participant.isSpeaking" class="speaking-icon" :size="14" />
+              <div v-if="!participant.isLocal" class="volume-control">
+                <Volume2 class="volume-icon" :size="14" />
+                <input
+                  type="range"
+                  class="volume-slider"
+                  min="0"
+                  max="300"
+                  :value="participant.volume"
+                  @input="handleVolumeChange(participant.id, $event)"
+                />
+                <span class="volume-value">{{ participant.volume }}%</span>
+              </div>
             </div>
-            <div v-if="!participant.isLocal" class="volume-control">
-              <Volume2 class="volume-icon" :size="14" />
-              <input
-                type="range"
-                class="volume-slider"
-                min="0"
-                max="300"
-                :value="participant.volume"
-                @input="handleVolumeChange(participant.id, $event)"
-              />
-              <span class="volume-value">{{ participant.volume }}%</span>
-            </div>
+            <!-- Swipe action button -->
+            <button 
+              v-if="!participant.isLocal && auth.isAdmin"
+              class="swipe-action-btn"
+              @click="muteParticipant(participant.id)"
+            >
+              <MicOff :size="18" />
+              <span>静音</span>
+            </button>
           </div>
+        </div>
+
+        <!-- Host mode banner -->
+        <div v-if="voice.hostModeEnabled" class="host-mode-banner">
+          <Crown :size="14" />
+          <span>{{ voice.hostModeHostName }} 正在主持</span>
         </div>
 
         <div class="voice-controls">
@@ -153,10 +222,32 @@ function closeVolumeWarning() {
             class="control-btn glow-effect"
             :class="{ active: voice.isMuted }"
             @click="voice.toggleMute()"
-            title="切换静音"
+            :title="voice.isMuted ? '取消静音' : '静音'"
           >
             <MicOff v-if="voice.isMuted" :size="20" />
             <Mic v-else :size="20" />
+          </button>
+          <button
+            class="control-btn glow-effect"
+            :class="{ active: voice.isDeafened }"
+            @click="voice.toggleDeafen()"
+            :title="voice.isDeafened ? '打开扬声器' : '关闭扬声器'"
+          >
+            <VolumeX v-if="voice.isDeafened" :size="20" />
+            <Volume2 v-else :size="20" />
+          </button>
+          <button
+            v-if="auth.isAdmin"
+            class="control-btn glow-effect"
+            :class="{ 
+              'host-mode-active': voice.hostModeEnabled && isCurrentUserHost,
+              'host-mode-disabled': hostButtonDisabled 
+            }"
+            :disabled="hostButtonDisabled"
+            @click="voice.toggleHostMode()"
+            :title="hostButtonDisabled ? '其他用户正在主持' : (voice.hostModeEnabled ? '关闭主持人模式' : '开启主持人模式')"
+          >
+            <Crown :size="20" />
           </button>
           <button
             class="control-btn disconnect glow-effect"
@@ -345,11 +436,20 @@ function closeVolumeWarning() {
   border: 1px solid rgba(255, 255, 255, 0.15);
 }
 
+.voice-user-wrapper {
+  position: relative;
+  overflow: hidden;
+  margin-bottom: 4px;
+}
+
 .voice-user {
   display: flex;
   flex-direction: column;
   padding: 8px 0;
-  transition: all 0.2s ease;
+  transition: all 0.2s ease, transform 0.3s ease;
+  position: relative;
+  z-index: 1;
+  background: transparent;
 }
 
 .voice-user.speaking {
@@ -357,6 +457,37 @@ function closeVolumeWarning() {
   border-radius: 8px;
   padding: 8px;
   margin: 0 -8px;
+}
+
+.swipe-action-btn {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 70px;
+  background: var(--color-error, #ef4444);
+  border: none;
+  color: white;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  opacity: 0;
+  transform: translateX(100%);
+  transition: all 0.3s ease;
+  border-radius: 8px;
+}
+
+.voice-user-wrapper.swiped .voice-user {
+  transform: translateX(-70px);
+}
+
+.voice-user-wrapper.swiped .swipe-action-btn {
+  opacity: 1;
+  transform: translateX(0);
 }
 
 .user-info {
@@ -496,6 +627,41 @@ function closeVolumeWarning() {
 .control-btn.disconnect:hover {
   filter: brightness(0.9);
   transform: scale(1.1);
+}
+
+.control-btn.host-mode-active {
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  border-color: #f59e0b;
+  color: white;
+}
+
+.control-btn.host-mode-active:hover {
+  filter: brightness(1.1);
+}
+
+.control-btn.host-mode-disabled {
+  background: var(--surface-glass);
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.control-btn.host-mode-disabled:hover {
+  transform: none;
+  background: var(--surface-glass);
+}
+
+.host-mode-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding: 8px 12px;
+  background: rgba(245, 158, 11, 0.2);
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.3);
 }
 
 /* Volume Warning Dialog Styles */

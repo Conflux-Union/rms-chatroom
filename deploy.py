@@ -25,7 +25,7 @@ except ImportError:
 
 
 # Configuration - modify these for your deployment
-SERVER_URL = os.environ.get("DEPLOY_SERVER", "https://test-discord.rms.net.cn")
+SERVER_URL = os.environ.get("DEPLOY_SERVER", "https://preview-chatroom.rms.net.cn")
 DEPLOY_TOKEN = os.environ.get("DEPLOY_TOKEN", "rmstoken")
 
 PROJECT_ROOT = Path(__file__).parent.resolve()

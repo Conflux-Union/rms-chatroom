@@ -109,6 +109,7 @@ watch(
 .app-container {
   display: flex;
   height: 100vh;
+  height: 100dvh; /* Dynamic viewport height for mobile browsers */
   color: var(--color-text-main);
   background: var(--surface-glass);
   backdrop-filter: blur(var(--blur-strength));
@@ -191,9 +192,7 @@ watch(
   width: 240px;
   padding: 8px;
   border-top: 1px dashed rgba(128, 128, 128, 0.4);
-  background: var(--surface-glass);
-  backdrop-filter: blur(var(--blur-strength));
-  -webkit-backdrop-filter: blur(var(--blur-strength));
+  background: transparent;
 }
 
 .user-info {
@@ -257,6 +256,7 @@ watch(
   right: 0;
   width: 380px;
   height: 100vh;
+  height: 100dvh;
   background: var(--surface-glass-strong, rgba(20, 20, 30, 0.95));
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
@@ -299,7 +299,7 @@ watch(
     bottom: 0;
     width: 312px;
     z-index: 150;
-    background: rgba(255, 255, 255, 0.6);
+    background: var(--surface-glass-strong);
     backdrop-filter: blur(var(--blur-strength));
     -webkit-backdrop-filter: blur(var(--blur-strength));
     transform: translateX(-100%);
@@ -322,6 +322,7 @@ watch(
   .main-content {
     flex: 1;
     height: calc(100vh - 56px);
+    height: calc(100dvh - 56px);
   }
 
   .music-sidebar {
