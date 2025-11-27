@@ -1,10 +1,14 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useChatStore } from '../stores/chat'
 import { useVoiceStore } from '../stores/voice'
 
 const chat = useChatStore()
 const voice = useVoiceStore()
+
+onMounted(() => {
+  voice.enumerateDevices()
+})
 
 // Volume warning dialog state
 const showVolumeWarning = ref(false)
@@ -60,6 +64,44 @@ function closeVolumeWarning() {
     </div>
 
     <div class="voice-content">
+      <!-- Device Selection (always visible) -->
+      <div class="device-selection">
+        <div class="device-group">
+          <label class="device-label">🎤 Input Device</label>
+          <select
+            class="device-select"
+            :value="voice.selectedAudioInput"
+            @change="voice.setAudioInputDevice(($event.target as HTMLSelectElement).value)"
+          >
+            <option value="">System Default</option>
+            <option
+              v-for="device in voice.audioInputDevices"
+              :key="device.deviceId"
+              :value="device.deviceId"
+            >
+              {{ device.label }}
+            </option>
+          </select>
+        </div>
+        <div class="device-group">
+          <label class="device-label">🔊 Output Device</label>
+          <select
+            class="device-select"
+            :value="voice.selectedAudioOutput"
+            @change="voice.setAudioOutputDevice(($event.target as HTMLSelectElement).value)"
+          >
+            <option value="">System Default</option>
+            <option
+              v-for="device in voice.audioOutputDevices"
+              :key="device.deviceId"
+              :value="device.deviceId"
+            >
+              {{ device.label }}
+            </option>
+          </select>
+        </div>
+      </div>
+
       <div v-if="!voice.isConnected" class="voice-connect">
         <p>Click to join the voice channel</p>
         <button
@@ -186,9 +228,72 @@ function closeVolumeWarning() {
   flex: 1;
   display: flex;
   flex-direction: column;
-  justify-content: center;
+  justify-content: flex-start;
   align-items: center;
   padding: 24px;
+}
+
+.device-selection {
+  width: 100%;
+  max-width: 400px;
+  margin-bottom: 24px;
+}
+
+.device-group {
+  margin-bottom: 12px;
+}
+
+.device-group:last-child {
+  margin-bottom: 0;
+}
+
+.device-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-main);
+  margin-bottom: 8px;
+}
+
+.device-select {
+  width: 100%;
+  padding: 12px 16px;
+  font-size: 14px;
+  color: var(--color-text-main);
+  background: var(--surface-glass-input);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23666' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+  padding-right: 36px;
+}
+
+.device-select:hover {
+  background: var(--surface-glass-input-focus);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
+}
+
+.device-select:focus {
+  outline: none;
+  background: var(--surface-glass-input-focus);
+  border-color: rgba(252, 121, 97, 0.5);
+  box-shadow: 0 0 0 3px rgba(252, 121, 97, 0.15);
+  transform: translateY(-1px);
+}
+
+.device-select option {
+  background: #fff;
+  color: var(--color-text-main);
+  padding: 8px;
 }
 
 .voice-connect {

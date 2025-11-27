@@ -6,6 +6,9 @@ import { useAuthStore } from './auth'
 
 const API_BASE = import.meta.env.VITE_API_BASE || ''
 
+const STORAGE_KEY_INPUT = 'rms-voice-input-device'
+const STORAGE_KEY_OUTPUT = 'rms-voice-output-device'
+
 export interface VoiceParticipant {
   id: string
   name: string
@@ -13,6 +16,11 @@ export interface VoiceParticipant {
   isSpeaking: boolean
   isLocal: boolean
   volume: number
+}
+
+export interface AudioDevice {
+  deviceId: string
+  label: string
 }
 
 interface ParticipantAudio {
@@ -36,6 +44,12 @@ export const useVoiceStore = defineStore('voice', () => {
   const participantAudioMap = new Map<string, ParticipantAudio>()
   const userVolumes = ref<Map<string, number>>(new Map())
   const volumeWarningAcknowledged = ref<Set<string>>(new Set())
+
+  // Audio device state
+  const audioInputDevices = ref<AudioDevice[]>([])
+  const audioOutputDevices = ref<AudioDevice[]>([])
+  const selectedAudioInput = ref<string>(localStorage.getItem(STORAGE_KEY_INPUT) || '')
+  const selectedAudioOutput = ref<string>(localStorage.getItem(STORAGE_KEY_OUTPUT) || '')
 
   function updateParticipants() {
     if (!room.value) {
@@ -69,7 +83,89 @@ export const useVoiceStore = defineStore('voice', () => {
     participants.value = list
   }
 
+  async function enumerateDevices(): Promise<void> {
+    try {
+      // Request permission first to get device labels
+      await navigator.mediaDevices.getUserMedia({ audio: true })
+        .then(stream => stream.getTracks().forEach(t => t.stop()))
+        .catch(() => { /* Ignore permission denial */ })
 
+      const devices = await navigator.mediaDevices.enumerateDevices()
+      
+      audioInputDevices.value = devices
+        .filter(d => d.kind === 'audioinput')
+        .map(d => ({
+          deviceId: d.deviceId,
+          label: d.label || `Microphone ${d.deviceId.slice(0, 8)}`
+        }))
+
+      audioOutputDevices.value = devices
+        .filter(d => d.kind === 'audiooutput')
+        .map(d => ({
+          deviceId: d.deviceId,
+          label: d.label || `Speaker ${d.deviceId.slice(0, 8)}`
+        }))
+
+      // Validate saved selections still exist
+      if (selectedAudioInput.value && !audioInputDevices.value.find(d => d.deviceId === selectedAudioInput.value)) {
+        selectedAudioInput.value = ''
+        localStorage.removeItem(STORAGE_KEY_INPUT)
+      }
+      if (selectedAudioOutput.value && !audioOutputDevices.value.find(d => d.deviceId === selectedAudioOutput.value)) {
+        selectedAudioOutput.value = ''
+        localStorage.removeItem(STORAGE_KEY_OUTPUT)
+      }
+    } catch (e) {
+      console.error('Failed to enumerate devices:', e)
+    }
+  }
+
+  async function setAudioInputDevice(deviceId: string): Promise<boolean> {
+    selectedAudioInput.value = deviceId
+    if (deviceId) {
+      localStorage.setItem(STORAGE_KEY_INPUT, deviceId)
+    } else {
+      localStorage.removeItem(STORAGE_KEY_INPUT)
+    }
+
+    // If connected, switch device immediately
+    if (room.value && isConnected.value) {
+      try {
+        await room.value.switchActiveDevice('audioinput', deviceId || 'default')
+        return true
+      } catch (e) {
+        console.error('Failed to switch audio input device:', e)
+        return false
+      }
+    }
+    return true
+  }
+
+  async function setAudioOutputDevice(deviceId: string): Promise<boolean> {
+    selectedAudioOutput.value = deviceId
+    if (deviceId) {
+      localStorage.setItem(STORAGE_KEY_OUTPUT, deviceId)
+    } else {
+      localStorage.removeItem(STORAGE_KEY_OUTPUT)
+    }
+
+    // Apply to all audio elements
+    const audioElements = document.querySelectorAll('audio[data-livekit-audio="true"]')
+    const targetId = deviceId || 'default'
+    
+    for (const el of audioElements) {
+      const audioEl = el as HTMLAudioElement & { setSinkId?: (id: string) => Promise<void> }
+      if (audioEl.setSinkId) {
+        try {
+          await audioEl.setSinkId(targetId)
+        } catch (e) {
+          console.error('Failed to set audio output device:', e)
+          return false
+        }
+      }
+    }
+    return true
+  }
 
   async function joinVoice(channel: Channel): Promise<boolean> {
     if (isConnecting.value || isConnected.value) return false
@@ -97,9 +193,10 @@ export const useVoiceStore = defineStore('voice', () => {
           autoGainControl: true,
           noiseSuppression: true,
           echoCancellation: true,
+          deviceId: selectedAudioInput.value || undefined,
         },
         publishDefaults: {
-          audioPreset: AudioPresets.musicHighQualityStereo,  // 128kbps max quality
+          audioPreset: AudioPresets.musicHighQualityStereo,
         },
       })
 
@@ -114,7 +211,7 @@ export const useVoiceStore = defineStore('voice', () => {
         currentVoiceChannel.value = null
       })
 
-      room.value.on(RoomEvent.TrackSubscribed, (track, _pub, participant) => {
+      room.value.on(RoomEvent.TrackSubscribed, async (track, _pub, participant) => {
         if (track.kind === Track.Kind.Audio && participant instanceof RemoteParticipant) {
           const audioElement = track.attach()
           audioElement.dataset.livekitAudio = 'true'
@@ -122,6 +219,13 @@ export const useVoiceStore = defineStore('voice', () => {
           // Apply saved volume
           const savedVolume = userVolumes.value.get(participant.identity) ?? 100
           audioElement.volume = Math.min(savedVolume / 100, 1)
+          // Apply output device
+          if (selectedAudioOutput.value) {
+            const el = audioElement as HTMLAudioElement & { setSinkId?: (id: string) => Promise<void> }
+            if (el.setSinkId) {
+              try { await el.setSinkId(selectedAudioOutput.value) } catch { /* Ignore */ }
+            }
+          }
           document.body.appendChild(audioElement)
         }
       })
@@ -241,6 +345,10 @@ export const useVoiceStore = defineStore('voice', () => {
     participants,
     error,
     currentVoiceChannel,
+    audioInputDevices,
+    audioOutputDevices,
+    selectedAudioInput,
+    selectedAudioOutput,
     joinVoice,
     disconnect,
     toggleMute,
@@ -248,5 +356,8 @@ export const useVoiceStore = defineStore('voice', () => {
     setUserVolume,
     acknowledgeVolumeWarning,
     isVolumeWarningAcknowledged,
+    enumerateDevices,
+    setAudioInputDevice,
+    setAudioOutputDevice,
   }
 })
