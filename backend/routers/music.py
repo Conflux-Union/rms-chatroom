@@ -65,11 +65,11 @@ async def get_login_qrcode():
     """Generate QQ login QR code."""
     global _current_qr
     try:
-        _current_qr = await login.get_qrcode(QRLoginType.QQ)
+        _current_qr = await login.get_qrcode(QRLoginType.WX)
         qr_base64 = base64.b64encode(_current_qr.data).decode('utf-8')
         return {
             "qrcode": f"data:{_current_qr.mimetype};base64,{qr_base64}",
-            "type": "qq"
+            "type": "wechat"
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get QR code: {e}")
@@ -137,16 +137,20 @@ async def search_songs(req: SearchRequest, _user: CurrentUser):
     try:
         results = await search.search_by_type(keyword=req.keyword, num=req.num)
         
+        # results is a list directly
+        song_list = results if isinstance(results, list) else results.get("list", [])
+        
         songs = []
-        for item in results.get("list", []):
+        for item in song_list:
             singer_names = [s.get("name", "") for s in item.get("singer", [])]
+            album_info = item.get("album", {}) or {}
             songs.append({
                 "mid": item.get("mid", ""),
                 "name": item.get("name", ""),
                 "artist": ", ".join(singer_names),
-                "album": item.get("album", {}).get("name", ""),
+                "album": album_info.get("name", ""),
                 "duration": item.get("interval", 0),
-                "cover": f"https://y.qq.com/music/photo_new/T002R300x300M000{item.get('album', {}).get('mid', '')}.jpg"
+                "cover": f"https://y.qq.com/music/photo_new/T002R300x300M000{album_info.get('mid', '')}.jpg"
             })
         
         return {"songs": songs}
@@ -292,7 +296,7 @@ class BotStartRequest(BaseModel):
 
 @router.post("/bot/start")
 async def start_bot(req: BotStartRequest, _user: CurrentUser):
-    """Start music bot in a voice channel room."""
+    """Start music bot for a voice channel room (uses Ingress)."""
     global _music_bot, _current_room
     
     try:
@@ -300,6 +304,7 @@ async def start_bot(req: BotStartRequest, _user: CurrentUser):
         if _music_bot:
             await _music_bot.disconnect()
         
+        # Create bot instance (no WebRTC connection needed, uses Ingress)
         _music_bot = await get_or_create_bot(req.room_name)
         _current_room = req.room_name
         
@@ -337,7 +342,7 @@ async def get_bot_status(_user: CurrentUser):
 
 @router.post("/bot/play")
 async def bot_play(_user: CurrentUser):
-    """Start playing the current song through the bot."""
+    """Start playing the current song through the bot via Ingress."""
     global _music_bot, _play_queue, _current_index, _is_playing, _credential
     
     if not _music_bot:
@@ -361,20 +366,14 @@ async def bot_play(_user: CurrentUser):
         if not url:
             raise HTTPException(status_code=404, detail="Song URL not available")
         
-        _is_playing = True
+        # Play via Ingress URL Input
+        success = await _music_bot.play_url(url, current_song["name"])
         
-        # Play asynchronously
-        async def on_song_end():
-            global _current_index, _is_playing
-            if _current_index < len(_play_queue) - 1:
-                _current_index += 1
-                await bot_play(_user)
-            else:
-                _is_playing = False
-        
-        asyncio.create_task(_music_bot.play_url(url, on_song_end))
-        
-        return {"success": True, "playing": current_song["name"]}
+        if success:
+            _is_playing = True
+            return {"success": True, "playing": current_song["name"]}
+        else:
+            raise HTTPException(status_code=500, detail="Failed to start playback")
         
     except HTTPException:
         raise
@@ -389,7 +388,7 @@ async def bot_pause(_user: CurrentUser):
     global _music_bot, _is_playing
     
     if _music_bot:
-        _music_bot.stop()
+        await _music_bot.stop()
         _is_playing = False
     
     return {"success": True}
@@ -401,7 +400,7 @@ async def bot_skip(_user: CurrentUser):
     global _music_bot, _current_index, _play_queue, _is_playing
     
     if _music_bot:
-        _music_bot.stop()
+        await _music_bot.stop()
     
     if _current_index < len(_play_queue) - 1:
         _current_index += 1
