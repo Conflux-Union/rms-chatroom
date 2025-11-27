@@ -2,6 +2,7 @@
 import { ref, onMounted } from 'vue'
 import { useChatStore } from '../stores/chat'
 import { useVoiceStore } from '../stores/voice'
+import { Volume2, Mic, MicOff, Phone, AlertTriangle } from 'lucide-vue-next'
 
 const chat = useChatStore()
 const voice = useVoiceStore()
@@ -56,7 +57,7 @@ function closeVolumeWarning() {
 <template>
   <div class="voice-panel">
     <div class="voice-header">
-      <span class="channel-icon">🔊</span>
+      <Volume2 class="channel-icon" :size="20" />
       <span class="channel-name">{{ chat.currentChannel?.name }}</span>
       <span v-if="voice.isConnected" class="connection-mode connected">
         Connected
@@ -67,7 +68,7 @@ function closeVolumeWarning() {
       <!-- Device Selection (always visible) -->
       <div class="device-selection">
         <div class="device-group">
-          <label class="device-label">🎤 Input Device</label>
+          <label class="device-label"><Mic :size="14" /> Input Device</label>
           <select
             class="device-select"
             :value="voice.selectedAudioInput"
@@ -84,7 +85,7 @@ function closeVolumeWarning() {
           </select>
         </div>
         <div class="device-group">
-          <label class="device-label">🔊 Output Device</label>
+          <label class="device-label"><Volume2 :size="14" /> Output Device</label>
           <select
             class="device-select"
             :value="voice.selectedAudioOutput"
@@ -129,11 +130,11 @@ function closeVolumeWarning() {
                 {{ participant.name }}
                 <span v-if="participant.isLocal" class="local-tag">(You)</span>
               </span>
-              <span v-if="participant.isMuted" class="status-icon">🔇</span>
-              <span v-if="participant.isSpeaking" class="speaking-icon">🎙️</span>
+              <MicOff v-if="participant.isMuted" class="status-icon" :size="14" />
+              <Mic v-if="participant.isSpeaking" class="speaking-icon" :size="14" />
             </div>
             <div v-if="!participant.isLocal" class="volume-control">
-              <span class="volume-icon">🔊</span>
+              <Volume2 class="volume-icon" :size="14" />
               <input
                 type="range"
                 class="volume-slider"
@@ -154,14 +155,15 @@ function closeVolumeWarning() {
             @click="voice.toggleMute()"
             title="Toggle Mute"
           >
-            {{ voice.isMuted ? '🔇' : '🎤' }}
+            <MicOff v-if="voice.isMuted" :size="20" />
+            <Mic v-else :size="20" />
           </button>
           <button
             class="control-btn disconnect glow-effect"
             @click="voice.disconnect()"
             title="Disconnect"
           >
-            📞
+            <Phone :size="20" />
           </button>
         </div>
       </div>
@@ -171,7 +173,7 @@ function closeVolumeWarning() {
     <Teleport to="body">
       <div v-if="showVolumeWarning" class="volume-warning-overlay" @click.self="closeVolumeWarning">
         <div class="volume-warning-dialog">
-          <div class="warning-icon">⚠️</div>
+          <AlertTriangle class="warning-icon" :size="48" />
           <h3 class="warning-title">High Volume Warning</h3>
           <p class="warning-message">
             High volume may damage your hearing and audio equipment.
@@ -467,6 +469,9 @@ function closeVolumeWarning() {
   font-size: 20px;
   cursor: pointer;
   transition: all var(--transition-fast);
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .control-btn:hover {
@@ -482,12 +487,15 @@ function closeVolumeWarning() {
 .control-btn.disconnect {
   background: var(--color-error);
   border-color: var(--color-error);
+}
+
+.control-btn.disconnect svg {
   transform: rotate(135deg);
 }
 
 .control-btn.disconnect:hover {
   filter: brightness(0.9);
-  transform: rotate(135deg) scale(1.1);
+  transform: scale(1.1);
 }
 
 /* Volume Warning Dialog Styles */

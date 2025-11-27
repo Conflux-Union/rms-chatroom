@@ -2,6 +2,7 @@
 import { ref, onMounted, onUnmounted, watch } from 'vue'
 import { useMusicStore, type Song } from '../stores/music'
 import { useVoiceStore } from '../stores/voice'
+import { Music, Bot, SkipBack, Pause, Play, SkipForward, Plus, Trash2, X, Search } from 'lucide-vue-next'
 
 const music = useMusicStore()
 const voice = useVoiceStore()
@@ -86,7 +87,7 @@ async function handleBotPlayPause() {
 <template>
   <div class="music-panel">
     <div class="music-header">
-      <span class="header-icon">🎵</span>
+      <Music class="header-icon" :size="20" />
       <span class="header-title">Music Player</span>
       <span 
         v-if="music.botConnected" 
@@ -94,7 +95,7 @@ async function handleBotPlayPause() {
         @click="music.stopBot()"
         title="Bot connected - Click to disconnect"
       >
-        🤖 Bot
+        <Bot :size="14" /> Bot
       </span>
       <span 
         v-if="music.isLoggedIn" 
@@ -140,22 +141,23 @@ async function handleBotPlayPause() {
           <div class="song-artist">{{ music.currentSong.artist }}</div>
         </div>
         <div class="playback-controls">
-          <button class="control-btn" @click="music.previous()" title="Previous">⏮️</button>
+          <button class="control-btn" @click="music.previous()" title="Previous"><SkipBack :size="18" /></button>
           <button 
             class="control-btn play-btn" 
             @click="handleBotPlayPause"
             :disabled="!voice.isConnected"
             :title="voice.isConnected ? '' : 'Join voice channel first'"
           >
-            {{ music.isPlaying ? '⏸️' : '▶️' }}
+            <Pause v-if="music.isPlaying" :size="22" />
+            <Play v-else :size="22" />
           </button>
-          <button class="control-btn" @click="music.skip()" title="Next">⏭️</button>
+          <button class="control-btn" @click="music.skip()" title="Next"><SkipForward :size="18" /></button>
         </div>
       </div>
 
       <!-- Empty State -->
       <div v-else class="empty-state">
-        <div class="empty-icon">🎵</div>
+        <Music class="empty-icon" :size="48" />
         <p>No song playing</p>
         <button class="add-song-btn glow-effect" @click="showSearch = true">
           Add Songs
@@ -167,13 +169,13 @@ async function handleBotPlayPause() {
         <div class="queue-header">
           <span>Queue ({{ music.queue.length }})</span>
           <div class="queue-actions">
-            <button class="icon-btn" @click="showSearch = true" title="Add song">➕</button>
+            <button class="icon-btn" @click="showSearch = true" title="Add song"><Plus :size="16" /></button>
             <button 
               v-if="music.queue.length > 0" 
               class="icon-btn" 
               @click="music.clearQueue()" 
               title="Clear queue"
-            >🗑️</button>
+            ><Trash2 :size="16" /></button>
           </div>
         </div>
         <div class="queue-list">
@@ -189,7 +191,7 @@ async function handleBotPlayPause() {
               <div class="queue-song-artist">{{ item.song.artist }}</div>
             </div>
             <span class="queue-duration">{{ music.formatDuration(item.song.duration) }}</span>
-            <button class="remove-btn" @click="music.removeFromQueue(index)">✕</button>
+            <button class="remove-btn" @click="music.removeFromQueue(index)"><X :size="14" /></button>
           </div>
           <div v-if="music.queue.length === 0" class="queue-empty">
             Queue is empty
@@ -211,7 +213,8 @@ async function handleBotPlayPause() {
                 autofocus
               />
               <button class="search-btn" @click="handleSearch" :disabled="music.isSearching">
-                {{ music.isSearching ? '...' : '🔍' }}
+                <span v-if="music.isSearching">...</span>
+                <Search v-else :size="18" />
               </button>
             </div>
             <div class="search-results">

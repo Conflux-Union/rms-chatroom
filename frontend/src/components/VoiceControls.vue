@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useVoiceStore } from '../stores/voice'
+import { Volume2, VolumeX, Mic, MicOff, Phone } from 'lucide-vue-next'
 
 const voice = useVoiceStore()
 </script>
@@ -8,7 +9,7 @@ const voice = useVoiceStore()
   <div v-if="voice.isConnected" class="voice-controls">
     <div class="voice-status">
       <div class="status-info">
-        <span class="status-icon">🔊</span>
+        <Volume2 class="status-icon" :size="16" />
         <div class="status-text">
           <span class="status-label">通话中</span>
           <span class="channel-name">{{ voice.currentVoiceChannel?.name }}</span>
@@ -22,8 +23,8 @@ const voice = useVoiceStore()
         @click="voice.toggleMute()"
         :title="voice.isMuted ? '取消静音' : '静音'"
       >
-        <span v-if="voice.isMuted">🔇</span>
-        <span v-else>🎤</span>
+        <MicOff v-if="voice.isMuted" :size="16" />
+        <Mic v-else :size="16" />
       </button>
       <button
         class="control-btn"
@@ -31,15 +32,15 @@ const voice = useVoiceStore()
         @click="voice.toggleDeafen()"
         :title="voice.isDeafened ? '取消耳聋' : '耳聋'"
       >
-        <span v-if="voice.isDeafened">🔈</span>
-        <span v-else>🔊</span>
+        <VolumeX v-if="voice.isDeafened" :size="16" />
+        <Volume2 v-else :size="16" />
       </button>
       <button
         class="control-btn disconnect"
         @click="voice.disconnect()"
         title="离开语音"
       >
-        <span>📞</span>
+        <Phone :size="16" />
       </button>
     </div>
   </div>
@@ -120,8 +121,7 @@ const voice = useVoiceStore()
   border-color: var(--color-error);
 }
 
-.control-btn.disconnect span {
-  display: inline-block;
+.control-btn.disconnect svg {
   transform: rotate(135deg);
 }
 

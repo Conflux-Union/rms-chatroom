@@ -2,6 +2,7 @@
 import { ref, computed, watch, onUnmounted } from 'vue'
 import { useChatStore } from '../stores/chat'
 import { useAuthStore } from '../stores/auth'
+import { Volume2, MicOff } from 'lucide-vue-next'
 import type { Channel } from '../types'
 
 const chat = useChatStore()
@@ -118,7 +119,7 @@ async function deleteChannel() {
           @click="selectChannel(channel)"
           @contextmenu="auth.isAdmin ? showContextMenu($event, channel.id) : undefined"
         >
-          <span class="channel-icon">🔊</span>
+          <Volume2 class="channel-icon" :size="18" />
           <span class="channel-name">{{ channel.name }}</span>
           <span v-if="chat.getVoiceChannelUsers(channel.id).length > 0" class="user-count">
             {{ chat.getVoiceChannelUsers(channel.id).length }}
@@ -135,7 +136,7 @@ async function deleteChannel() {
           >
             <span class="voice-user-avatar">{{ user.name.charAt(0).toUpperCase() }}</span>
             <span class="voice-user-name">{{ user.name }}</span>
-            <span v-if="user.is_muted" class="voice-user-muted">🔇</span>
+            <MicOff v-if="user.is_muted" class="voice-user-muted" :size="12" />
           </div>
         </div>
       </div>

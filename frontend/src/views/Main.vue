@@ -9,6 +9,7 @@ import ChatArea from '../components/ChatArea.vue'
 import VoicePanel from '../components/VoicePanel.vue'
 import VoiceControls from '../components/VoiceControls.vue'
 import MusicPanel from '../components/MusicPanel.vue'
+import { Music } from 'lucide-vue-next'
 
 const auth = useAuthStore()
 const chat = useChatStore()
@@ -63,7 +64,7 @@ watch(
       @click="showMusicPanel = !showMusicPanel"
       :class="{ active: showMusicPanel }"
     >
-      🎵
+      <Music :size="24" />
     </button>
     
     <!-- Music Panel Sidebar -->
@@ -149,6 +150,9 @@ watch(
   box-shadow: var(--shadow-glow);
   transition: all 0.3s ease;
   z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .music-toggle-btn:hover {
