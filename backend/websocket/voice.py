@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import json
+import struct
 from datetime import datetime
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from sqlalchemy import select, delete
+from starlette.websockets import WebSocketState
 
 from ..core.database import async_session_maker
 from ..models.server import Channel, ChannelType, VoiceState
@@ -14,20 +16,23 @@ from .manager import voice_manager
 
 router = APIRouter()
 
+# Track which users are in relay mode
+relay_mode_users: dict[int, set[int]] = {}  # channel_id -> set of user_ids
+
 
 @router.websocket("/ws/voice/{channel_id}")
 async def voice_websocket(websocket: WebSocket, channel_id: int, token: str | None = None):
     """
-    WebSocket endpoint for WebRTC voice signaling.
+    WebSocket endpoint for WebRTC voice signaling and audio relay.
 
-    Messages:
-    - join: User joins voice channel
-    - leave: User leaves voice channel
-    - offer: WebRTC SDP offer
-    - answer: WebRTC SDP answer
-    - ice-candidate: ICE candidate
-    - mute/unmute: Audio state changes
+    Text Messages (JSON):
+    - offer/answer/ice-candidate: WebRTC signaling (P2P mode)
+    - relay_mode: Switch to server relay mode
+    - mute/deafen: Audio state changes
     - users: List of users in channel
+
+    Binary Messages:
+    - Audio frames: [user_id: 4 bytes BE] + [opus_frame: N bytes]
     """
     if not token:
         await websocket.close(code=4001, reason="Missing token")
@@ -74,13 +79,45 @@ async def voice_websocket(websocket: WebSocket, channel_id: int, token: str | No
 
         # Send current users list to the new user
         users = voice_manager.get_channel_users(channel_id)
+        relay_users = relay_mode_users.get(channel_id, set())
         await websocket.send_json({
             "type": "users",
-            "users": [{"id": u["id"], "username": u.get("nickname") or u["username"]} for u in users],
+            "users": [
+                {
+                    "id": u["id"],
+                    "username": u.get("nickname") or u["username"],
+                    "relay_mode": u["id"] in relay_users,
+                }
+                for u in users
+            ],
         })
 
         while True:
-            data = await websocket.receive_text()
+            message = await websocket.receive()
+
+            # Handle binary audio data (relay mode)
+            if "bytes" in message:
+                audio_data = message["bytes"]
+                # Prepend sender's user_id and broadcast to relay mode users
+                frame = struct.pack(">I", user["id"]) + audio_data
+                # Only broadcast to users in relay mode
+                if channel_id in voice_manager.active_connections:
+                    for ws, u in voice_manager.active_connections[channel_id]:
+                        if ws == websocket:
+                            continue
+                        # Send to users in relay mode
+                        if u["id"] in relay_mode_users.get(channel_id, set()):
+                            try:
+                                await ws.send_bytes(frame)
+                            except Exception:
+                                pass
+                continue
+
+            # Handle text messages (JSON)
+            if "text" not in message:
+                continue
+
+            data = message["text"]
             try:
                 msg = json.loads(data)
             except json.JSONDecodeError:
@@ -150,10 +187,34 @@ async def voice_websocket(websocket: WebSocket, channel_id: int, token: str | No
                     "deafened": msg.get("deafened", False),
                 })
 
+            elif msg_type == "relay_mode":
+                # User switches to relay mode (P2P failed)
+                enabled = msg.get("enabled", True)
+                if channel_id not in relay_mode_users:
+                    relay_mode_users[channel_id] = set()
+
+                if enabled:
+                    relay_mode_users[channel_id].add(user["id"])
+                else:
+                    relay_mode_users[channel_id].discard(user["id"])
+
+                # Notify others about mode change
+                await voice_manager.broadcast_to_channel(channel_id, {
+                    "type": "user_relay_mode",
+                    "user_id": user["id"],
+                    "relay_mode": enabled,
+                })
+
     except WebSocketDisconnect:
         pass
     finally:
         await voice_manager.disconnect(websocket, channel_id)
+
+        # Remove from relay mode tracking
+        if channel_id in relay_mode_users:
+            relay_mode_users[channel_id].discard(user["id"])
+            if not relay_mode_users[channel_id]:
+                del relay_mode_users[channel_id]
 
         # Remove voice state
         async with async_session_maker() as db:

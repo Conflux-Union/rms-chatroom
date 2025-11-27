@@ -65,6 +65,23 @@ class ConnectionManager:
                     await self.disconnect(ws, channel_id)
                 break
 
+    async def broadcast_binary(self, channel_id: int, data: bytes, exclude: WebSocket | None = None):
+        """Broadcast binary data to all connections in a channel."""
+        if channel_id not in self.active_connections:
+            return
+
+        disconnected = []
+        for ws, user in self.active_connections[channel_id]:
+            if ws == exclude:
+                continue
+            try:
+                await ws.send_bytes(data)
+            except Exception:
+                disconnected.append(ws)
+
+        for ws in disconnected:
+            await self.disconnect(ws, channel_id)
+
     def get_channel_users(self, channel_id: int) -> list[dict[str, Any]]:
         """Get list of users connected to a channel."""
         if channel_id not in self.active_connections:

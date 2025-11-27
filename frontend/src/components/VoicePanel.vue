@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { ref, watch, onUnmounted } from 'vue'
+import { ref, watch, onUnmounted, computed } from 'vue'
 import { useChatStore } from '../stores/chat'
 import { useAuthStore } from '../stores/auth'
 import { useWebSocket } from '../composables/useWebSocket'
 import { useWebRTC } from '../composables/useWebRTC'
+import { useAudioRelay } from '../composables/useAudioRelay'
 import type { VoiceUser } from '../types'
 
 const chat = useChatStore()
@@ -12,11 +13,49 @@ const auth = useAuthStore()
 const isConnected = ref(false)
 const voiceUsers = ref<VoiceUser[]>([])
 const audioElements = ref<Map<number, HTMLAudioElement>>(new Map())
+const isRelayMode = ref(false)
+const connectionStatus = ref<'connecting' | 'p2p' | 'relay'>('connecting')
 
 let ws: ReturnType<typeof useWebSocket> | null = null
-const webrtc = useWebRTC(playRemoteStream)
 
-// Play remote audio stream
+// Initialize WebRTC with connection failure callback
+const webrtc = useWebRTC(playRemoteStream, handleP2PFailed)
+
+// Initialize audio relay for server-mediated mode
+const audioRelay = useAudioRelay()
+
+// Display connection mode
+const connectionModeText = computed(() => {
+  if (!isConnected.value) return ''
+  if (connectionStatus.value === 'connecting') return 'Connecting...'
+  if (connectionStatus.value === 'p2p') return 'P2P'
+  return 'Relay'
+})
+
+// Handle P2P connection failure - switch to relay mode
+function handleP2PFailed(_userId: number) {
+  if (!isRelayMode.value) {
+    enableRelayMode()
+  }
+}
+
+// Enable relay mode and notify server
+async function enableRelayMode() {
+  if (isRelayMode.value) return
+
+  isRelayMode.value = true
+  connectionStatus.value = 'relay'
+
+  // Start audio capture for relay
+  await audioRelay.startCapture((audioData) => {
+    ws?.sendBinary(audioData)
+  })
+
+  // Notify server we're in relay mode
+  ws?.send({ type: 'relay_mode', enabled: true })
+}
+
+// Play remote audio stream (P2P mode)
 function playRemoteStream(userId: number, stream: MediaStream) {
   let audio = audioElements.value.get(userId)
   if (!audio) {
@@ -25,7 +64,7 @@ function playRemoteStream(userId: number, stream: MediaStream) {
     audioElements.value.set(userId, audio)
   }
   audio.srcObject = stream
-  audio.play().catch(e => console.error('Audio play failed:', e))
+  audio.play().catch((e) => console.error('Audio play failed:', e))
 }
 
 // Stop remote audio
@@ -35,26 +74,49 @@ function stopRemoteAudio(userId: number) {
     audio.srcObject = null
     audioElements.value.delete(userId)
   }
+  audioRelay.stopRemoteAudio(userId)
 }
 
 async function joinVoice() {
   if (!chat.currentChannel) return
 
+  // Start local stream for WebRTC P2P attempts
   const started = await webrtc.startLocalStream()
   if (!started) {
     alert('Failed to access microphone')
     return
   }
 
+  connectionStatus.value = 'connecting'
   ws = useWebSocket(`/ws/voice/${chat.currentChannel.id}`)
+
+  // Handle binary audio data (relay mode)
+  ws.onBinaryMessage(async (blob: Blob) => {
+    const buffer = await blob.arrayBuffer()
+    // First 4 bytes are user_id (big endian)
+    const view = new DataView(buffer)
+    const userId = view.getUint32(0, false)
+    const audioData = buffer.slice(4)
+
+    if (userId !== auth.user?.id) {
+      audioRelay.playRemoteAudio(userId, audioData)
+    }
+  })
 
   ws.onMessage(async (data) => {
     switch (data.type) {
       case 'users':
         voiceUsers.value = data.users
-        // Create offers for existing users
+        // Create offers for existing users (attempt P2P)
         for (const user of data.users) {
           if (user.id !== auth.user?.id) {
+            // If user is already in relay mode, skip P2P attempt
+            if (user.relay_mode) {
+              if (!isRelayMode.value) {
+                enableRelayMode()
+              }
+              continue
+            }
             const offer = await webrtc.createOffer(user.id, (candidate) => {
               ws?.send({
                 type: 'ice-candidate',
@@ -72,7 +134,12 @@ async function joinVoice() {
         break
 
       case 'user_joined':
-        voiceUsers.value.push({ id: data.user_id, username: data.username, muted: false, deafened: false })
+        voiceUsers.value.push({
+          id: data.user_id,
+          username: data.username,
+          muted: false,
+          deafened: false,
+        })
         break
 
       case 'user_left':
@@ -98,6 +165,12 @@ async function joinVoice() {
 
       case 'answer':
         await webrtc.handleAnswer(data.from_user_id, data.sdp)
+        // Check if P2P succeeded after a moment
+        setTimeout(() => {
+          if (webrtc.hasAnyP2PConnection()) {
+            connectionStatus.value = 'p2p'
+          }
+        }, 1000)
         break
 
       case 'ice-candidate':
@@ -112,6 +185,13 @@ async function joinVoice() {
       case 'user_deafen':
         const deafenedUser = voiceUsers.value.find((u) => u.id === data.user_id)
         if (deafenedUser) deafenedUser.deafened = data.deafened
+        break
+
+      case 'user_relay_mode':
+        // Another user switched to relay mode - we may need to as well
+        if (data.relay_mode && !isRelayMode.value) {
+          enableRelayMode()
+        }
         break
     }
   })
@@ -131,19 +211,28 @@ function leaveVoice() {
   })
   audioElements.value.clear()
   webrtc.closeAllConnections()
+  audioRelay.cleanup()
   voiceUsers.value = []
   isConnected.value = false
+  isRelayMode.value = false
+  connectionStatus.value = 'connecting'
 }
 
 function toggleMute() {
-  const muted = webrtc.toggleMute()
+  const muted = isRelayMode.value ? audioRelay.toggleMute() : webrtc.toggleMute()
   ws?.send({ type: 'mute', muted })
 }
 
 function toggleDeafen() {
-  const deafened = webrtc.toggleDeafen()
+  const deafened = isRelayMode.value ? audioRelay.toggleDeafen() : webrtc.toggleDeafen()
   ws?.send({ type: 'deafen', deafened })
 }
+
+// Current mute/deafen state based on mode
+const isMuted = computed(() => (isRelayMode.value ? audioRelay.isMuted.value : webrtc.isMuted.value))
+const isDeafened = computed(() =>
+  isRelayMode.value ? audioRelay.isDeafened.value : webrtc.isDeafened.value
+)
 
 watch(
   () => chat.currentChannel,
@@ -164,6 +253,9 @@ onUnmounted(() => {
     <div class="voice-header">
       <span class="channel-icon">🔊</span>
       <span class="channel-name">{{ chat.currentChannel?.name }}</span>
+      <span v-if="isConnected" class="connection-mode" :class="connectionStatus">
+        {{ connectionModeText }}
+      </span>
     </div>
 
     <div class="voice-content">
@@ -185,19 +277,19 @@ onUnmounted(() => {
         <div class="voice-controls">
           <button
             class="control-btn glow-effect"
-            :class="{ active: webrtc.isMuted.value }"
+            :class="{ active: isMuted }"
             @click="toggleMute"
             title="Toggle Mute"
           >
-            {{ webrtc.isMuted.value ? '🔇' : '🎤' }}
+            {{ isMuted ? '🔇' : '🎤' }}
           </button>
           <button
             class="control-btn glow-effect"
-            :class="{ active: webrtc.isDeafened.value }"
+            :class="{ active: isDeafened }"
             @click="toggleDeafen"
             title="Toggle Deafen"
           >
-            {{ webrtc.isDeafened.value ? '🔕' : '🔊' }}
+            {{ isDeafened ? '🔕' : '🔊' }}
           </button>
           <button class="control-btn disconnect glow-effect" @click="leaveVoice" title="Disconnect">
             📞
@@ -231,6 +323,29 @@ onUnmounted(() => {
 .channel-name {
   font-weight: 600;
   color: var(--color-text-main);
+}
+
+.connection-mode {
+  margin-left: auto;
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-weight: 500;
+}
+
+.connection-mode.connecting {
+  background: var(--color-warning, #f59e0b);
+  color: #000;
+}
+
+.connection-mode.p2p {
+  background: var(--color-success, #10b981);
+  color: #fff;
+}
+
+.connection-mode.relay {
+  background: var(--color-primary, #6366f1);
+  color: #fff;
 }
 
 .voice-content {

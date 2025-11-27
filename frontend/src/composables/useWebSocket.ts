@@ -30,6 +30,12 @@ export function useWebSocket(path: string) {
     }
 
     ws.value.onmessage = (event) => {
+      // Handle binary data
+      if (event.data instanceof Blob) {
+        binaryHandlers.forEach((handler) => handler(event.data))
+        return
+      }
+      // Handle text (JSON) data
       try {
         const data = JSON.parse(event.data)
         lastMessage.value = data
@@ -54,8 +60,20 @@ export function useWebSocket(path: string) {
     }
   }
 
+  function sendBinary(data: ArrayBuffer | Blob) {
+    if (ws.value && ws.value.readyState === WebSocket.OPEN) {
+      ws.value.send(data)
+    }
+  }
+
   function onMessage(handler: (data: any) => void) {
     messageHandlers.push(handler)
+  }
+
+  const binaryHandlers: ((data: Blob) => void)[] = []
+
+  function onBinaryMessage(handler: (data: Blob) => void) {
+    binaryHandlers.push(handler)
   }
 
   onUnmounted(() => {
@@ -69,6 +87,8 @@ export function useWebSocket(path: string) {
     connect,
     disconnect,
     send,
+    sendBinary,
     onMessage,
+    onBinaryMessage,
   }
 }
