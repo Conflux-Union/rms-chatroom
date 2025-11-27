@@ -69,43 +69,7 @@ export const useVoiceStore = defineStore('voice', () => {
     participants.value = list
   }
 
-  function ensureAudioContext(): AudioContext {
-    if (!audioContext.value) {
-      audioContext.value = new AudioContext()
-    }
-    return audioContext.value
-  }
 
-  function setupParticipantAudio(participant: RemoteParticipant, audioElement: HTMLAudioElement) {
-    const existingAudio = participantAudioMap.get(participant.identity)
-    if (existingAudio) {
-      return existingAudio
-    }
-
-    const ctx = ensureAudioContext()
-    const sourceNode = ctx.createMediaElementSource(audioElement)
-    const gainNode = ctx.createGain()
-    
-    sourceNode.connect(gainNode)
-    gainNode.connect(ctx.destination)
-    
-    const volume = userVolumes.value.get(participant.identity) ?? 100
-    gainNode.gain.value = volume / 100
-
-    const audioData: ParticipantAudio = { audioElement, gainNode, sourceNode }
-    participantAudioMap.set(participant.identity, audioData)
-    
-    return audioData
-  }
-
-  function cleanupParticipantAudio(participantId: string) {
-    const audioData = participantAudioMap.get(participantId)
-    if (audioData) {
-      audioData.sourceNode.disconnect()
-      audioData.gainNode.disconnect()
-      participantAudioMap.delete(participantId)
-    }
-  }
 
   async function joinVoice(channel: Channel): Promise<boolean> {
     if (isConnecting.value || isConnected.value) return false
@@ -140,10 +104,7 @@ export const useVoiceStore = defineStore('voice', () => {
       })
 
       room.value.on(RoomEvent.ParticipantConnected, () => updateParticipants())
-      room.value.on(RoomEvent.ParticipantDisconnected, (participant) => {
-        cleanupParticipantAudio(participant.identity)
-        updateParticipants()
-      })
+      room.value.on(RoomEvent.ParticipantDisconnected, () => updateParticipants())
       room.value.on(RoomEvent.TrackMuted, () => updateParticipants())
       room.value.on(RoomEvent.TrackUnmuted, () => updateParticipants())
       room.value.on(RoomEvent.ActiveSpeakersChanged, () => updateParticipants())
@@ -158,15 +119,14 @@ export const useVoiceStore = defineStore('voice', () => {
           const audioElement = track.attach()
           audioElement.dataset.livekitAudio = 'true'
           audioElement.dataset.participantId = participant.identity
+          // Apply saved volume
+          const savedVolume = userVolumes.value.get(participant.identity) ?? 100
+          audioElement.volume = Math.min(savedVolume / 100, 1)
           document.body.appendChild(audioElement)
-          setupParticipantAudio(participant, audioElement)
         }
       })
 
-      room.value.on(RoomEvent.TrackUnsubscribed, (track, _pub, participant) => {
-        if (track.kind === Track.Kind.Audio) {
-          cleanupParticipantAudio(participant.identity)
-        }
+      room.value.on(RoomEvent.TrackUnsubscribed, (track) => {
         track.detach().forEach((el) => el.remove())
       })
 
@@ -190,8 +150,6 @@ export const useVoiceStore = defineStore('voice', () => {
   }
 
   function disconnect() {
-    // Cleanup all audio nodes
-    participantAudioMap.forEach((_, id) => cleanupParticipantAudio(id))
     participantAudioMap.clear()
     
     if (audioContext.value) {
@@ -255,10 +213,10 @@ export const useVoiceStore = defineStore('voice', () => {
       volumeWarningAcknowledged.value.add(participantId)
     }
 
-    // Apply volume to gain node
-    const audioData = participantAudioMap.get(participantId)
-    if (audioData) {
-      audioData.gainNode.gain.value = clampedVolume / 100
+    // Apply volume directly to audio element (max 100%)
+    const audioEl = document.querySelector(`audio[data-participant-id="${participantId}"]`) as HTMLAudioElement | null
+    if (audioEl) {
+      audioEl.volume = Math.min(clampedVolume / 100, 1)
     }
 
     userVolumes.value.set(participantId, clampedVolume)

@@ -75,7 +75,7 @@ function handleAudioEnded() {
 
 async function handleStartBot() {
   if (voice.currentVoiceChannel) {
-    const roomName = `voice-${voice.currentVoiceChannel.id}`
+    const roomName = `voice_${voice.currentVoiceChannel.id}`
     await music.startBot(roomName)
   }
 }

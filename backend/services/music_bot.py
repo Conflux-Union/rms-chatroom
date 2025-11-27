@@ -8,8 +8,9 @@ from livekit.protocol.ingress import (
     DeleteIngressRequest,
     IngressInput,
     IngressAudioOptions,
-    IngressAudioEncodingPreset,
+    IngressAudioEncodingOptions,
 )
+from livekit.protocol.models import AudioCodec
 
 from ..core.config import get_settings
 
@@ -36,7 +37,7 @@ class MusicBot:
             # Stop any existing playback
             await self.stop()
             
-            # Create URL input ingress
+            # Create URL input ingress with high quality audio (256kbps stereo)
             request = CreateIngressRequest(
                 input_type=IngressInput.URL_INPUT,
                 url=url,
@@ -46,7 +47,12 @@ class MusicBot:
                 participant_name="Music Bot",
                 audio=IngressAudioOptions(
                     name="music-audio",
-                    preset=IngressAudioEncodingPreset.OPUS_STEREO_96KBPS,
+                    options=IngressAudioEncodingOptions(
+                        audio_codec=AudioCodec.OPUS,
+                        bitrate=256000,  # 256kbps
+                        channels=2,      # stereo
+                        disable_dtx=True,
+                    ),
                 ),
             )
             
