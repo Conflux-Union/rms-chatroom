@@ -21,6 +21,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "debug": True,
     "frontend_dist_path": "../frontend/dist",
     "cors_origins": ["http://localhost:5173", "http://127.0.0.1:5173"],
+    "deploy_token": "",
 }
 
 
@@ -54,6 +55,7 @@ class Settings(BaseSettings):
     debug: bool = True
     frontend_dist_path: str = "../frontend/dist"
     cors_origins: list[str] = ["http://localhost:5173"]
+    deploy_token: str = ""
 
 
 def _env_overrides() -> dict[str, Any]:

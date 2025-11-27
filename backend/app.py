@@ -11,7 +11,7 @@ from fastapi.responses import FileResponse
 
 from .core.config import get_settings
 from .core.database import init_db
-from .routers import auth, servers, channels, messages
+from .routers import auth, servers, channels, messages, system
 from .websocket import chat, voice
 
 
@@ -24,7 +24,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="RMS Discord", lifespan=lifespan)
+app = FastAPI(title="RMS Chat", lifespan=lifespan)
 
 # CORS for development
 app.add_middleware(
@@ -40,6 +40,7 @@ app.include_router(auth.router)
 app.include_router(servers.router)
 app.include_router(channels.router)
 app.include_router(messages.router)
+app.include_router(system.router)
 
 # WebSocket routes
 app.include_router(chat.router)

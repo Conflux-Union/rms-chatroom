@@ -13,7 +13,7 @@ function handleLogin() {
     <div class="page-surface">
       <div class="page-surface__inner">
         <div class="page-content">
-          <h1 class="title">RMS Discord</h1>
+          <h1 class="title">RMS Chat</h1>
           <p class="subtitle">Welcome! Please login with your RMS account.</p>
           <button class="btn glow-effect" @click="handleLogin">Login with RMS SSO</button>
         </div>
