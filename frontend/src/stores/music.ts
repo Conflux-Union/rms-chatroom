@@ -329,15 +329,18 @@ export const useMusicStore = defineStore('music', () => {
     }
   }
   
-  async function botPlay() {
+  async function botPlay(roomName: string) {
     try {
       const res = await fetch(`${API_BASE}/api/music/bot/play`, {
         method: 'POST',
-        headers: headers()
+        headers: { ...headers(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ room_name: roomName })
       })
       const data = await res.json()
       if (data.success) {
         isPlaying.value = true
+        botConnected.value = true
+        botRoom.value = roomName
       }
       return data.success
     } catch (e) {

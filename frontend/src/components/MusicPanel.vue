@@ -73,18 +73,12 @@ function handleAudioEnded() {
   music.skip()
 }
 
-async function handleStartBot() {
-  if (voice.currentVoiceChannel) {
-    const roomName = `voice_${voice.currentVoiceChannel.id}`
-    await music.startBot(roomName)
-  }
-}
-
 async function handleBotPlayPause() {
   if (music.isPlaying) {
     await music.botPause()
-  } else {
-    await music.botPlay()
+  } else if (voice.currentVoiceChannel) {
+    const roomName = `voice_${voice.currentVoiceChannel.id}`
+    await music.botPlay(roomName)
   }
 }
 </script>
@@ -101,14 +95,6 @@ async function handleBotPlayPause() {
         title="Bot connected - Click to disconnect"
       >
         🤖 Bot
-      </span>
-      <span 
-        v-else-if="voice.isConnected"
-        class="bot-status"
-        @click="handleStartBot"
-        title="Start music bot in voice channel"
-      >
-        🤖 Start Bot
       </span>
       <span 
         v-if="music.isLoggedIn" 
@@ -156,20 +142,14 @@ async function handleBotPlayPause() {
         <div class="playback-controls">
           <button class="control-btn" @click="music.previous()" title="Previous">⏮️</button>
           <button 
-            v-if="music.botConnected"
             class="control-btn play-btn" 
             @click="handleBotPlayPause"
+            :disabled="!voice.isConnected"
+            :title="voice.isConnected ? '' : 'Join voice channel first'"
           >
             {{ music.isPlaying ? '⏸️' : '▶️' }}
           </button>
-          <button 
-            v-else
-            class="control-btn play-btn" 
-            @click="music.isPlaying ? music.pause() : music.play()"
-          >
-            {{ music.isPlaying ? '⏸️' : '▶️' }}
-          </button>
-          <button class="control-btn" @click="music.botConnected ? music.botSkip() : music.skip()" title="Next">⏭️</button>
+          <button class="control-btn" @click="music.skip()" title="Next">⏭️</button>
         </div>
       </div>
 

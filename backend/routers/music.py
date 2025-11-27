@@ -340,13 +340,21 @@ async def get_bot_status(_user: CurrentUser):
     }
 
 
+class BotPlayRequest(BaseModel):
+    room_name: str
+
+
 @router.post("/bot/play")
-async def bot_play(_user: CurrentUser):
+async def bot_play(req: BotPlayRequest, _user: CurrentUser):
     """Start playing the current song through the bot via Ingress."""
-    global _music_bot, _play_queue, _current_index, _is_playing, _credential
+    global _music_bot, _play_queue, _current_index, _is_playing, _credential, _current_room
     
-    if not _music_bot:
-        raise HTTPException(status_code=400, detail="Bot not connected. Start the bot first.")
+    # Auto-create bot if not exists or room changed
+    if not _music_bot or _current_room != req.room_name:
+        if _music_bot:
+            await _music_bot.disconnect()
+        _music_bot = await get_or_create_bot(req.room_name)
+        _current_room = req.room_name
     
     if not _play_queue or _current_index >= len(_play_queue):
         raise HTTPException(status_code=400, detail="No song in queue")
