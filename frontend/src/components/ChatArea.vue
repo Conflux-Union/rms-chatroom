@@ -72,7 +72,9 @@ function sendMessage() {
 }
 
 function formatTime(dateStr: string) {
-  const date = new Date(dateStr)
+  // Backend stores UTC time but isoformat() omits timezone suffix
+  const utcStr = dateStr.endsWith('Z') ? dateStr : dateStr + 'Z'
+  const date = new Date(utcStr)
   return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
 </script>
