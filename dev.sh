@@ -1,12 +1,12 @@
 #!/bin/bash
 # Development mode: run backend and frontend separately
 
+DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "$DIR"
+
 echo "Starting backend..."
-cd backend
-source .venv/bin/activate
-python -m uvicorn backend.app:app --host 0.0.0.0 --port 8000 --reload &
+backend/.venv/bin/python -m uvicorn backend.app:app --host 0.0.0.0 --port 8000 --reload &
 BACKEND_PID=$!
-cd ..
 
 echo "Starting frontend..."
 cd frontend

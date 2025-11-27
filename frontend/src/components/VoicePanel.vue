@@ -11,9 +11,31 @@ const auth = useAuthStore()
 
 const isConnected = ref(false)
 const voiceUsers = ref<VoiceUser[]>([])
+const audioElements = ref<Map<number, HTMLAudioElement>>(new Map())
 
 let ws: ReturnType<typeof useWebSocket> | null = null
-const webrtc = useWebRTC()
+const webrtc = useWebRTC(playRemoteStream)
+
+// Play remote audio stream
+function playRemoteStream(userId: number, stream: MediaStream) {
+  let audio = audioElements.value.get(userId)
+  if (!audio) {
+    audio = new Audio()
+    audio.autoplay = true
+    audioElements.value.set(userId, audio)
+  }
+  audio.srcObject = stream
+  audio.play().catch(e => console.error('Audio play failed:', e))
+}
+
+// Stop remote audio
+function stopRemoteAudio(userId: number) {
+  const audio = audioElements.value.get(userId)
+  if (audio) {
+    audio.srcObject = null
+    audioElements.value.delete(userId)
+  }
+}
 
 async function joinVoice() {
   if (!chat.currentChannel) return
@@ -55,6 +77,7 @@ async function joinVoice() {
 
       case 'user_left':
         voiceUsers.value = voiceUsers.value.filter((u) => u.id !== data.user_id)
+        stopRemoteAudio(data.user_id)
         webrtc.closePeerConnection(data.user_id)
         break
 
@@ -102,6 +125,11 @@ function leaveVoice() {
     ws.disconnect()
     ws = null
   }
+  // Clean up all audio elements
+  audioElements.value.forEach((audio) => {
+    audio.srcObject = null
+  })
+  audioElements.value.clear()
   webrtc.closeAllConnections()
   voiceUsers.value = []
   isConnected.value = false
@@ -141,7 +169,7 @@ onUnmounted(() => {
     <div class="voice-content">
       <div v-if="!isConnected" class="voice-connect">
         <p>Click to join the voice channel</p>
-        <button class="join-btn" @click="joinVoice">Join Voice</button>
+        <button class="join-btn glow-effect" @click="joinVoice">Join Voice</button>
       </div>
 
       <div v-else class="voice-connected">
@@ -156,7 +184,7 @@ onUnmounted(() => {
 
         <div class="voice-controls">
           <button
-            class="control-btn"
+            class="control-btn glow-effect"
             :class="{ active: webrtc.isMuted.value }"
             @click="toggleMute"
             title="Toggle Mute"
@@ -164,14 +192,14 @@ onUnmounted(() => {
             {{ webrtc.isMuted.value ? '🔇' : '🎤' }}
           </button>
           <button
-            class="control-btn"
+            class="control-btn glow-effect"
             :class="{ active: webrtc.isDeafened.value }"
             @click="toggleDeafen"
             title="Toggle Deafen"
           >
             {{ webrtc.isDeafened.value ? '🔕' : '🔊' }}
           </button>
-          <button class="control-btn disconnect" @click="leaveVoice" title="Disconnect">
+          <button class="control-btn disconnect glow-effect" @click="leaveVoice" title="Disconnect">
             📞
           </button>
         </div>
@@ -192,8 +220,7 @@ onUnmounted(() => {
   padding: 0 16px;
   display: flex;
   align-items: center;
-  border-bottom: 1px solid #202225;
-  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.2);
+  border-bottom: 1px dashed rgba(128, 128, 128, 0.4);
 }
 
 .channel-icon {
@@ -203,7 +230,7 @@ onUnmounted(() => {
 
 .channel-name {
   font-weight: 600;
-  color: #fff;
+  color: var(--color-text-main);
 }
 
 .voice-content {
@@ -220,23 +247,26 @@ onUnmounted(() => {
 }
 
 .voice-connect p {
-  color: #72767d;
+  color: var(--color-text-muted);
   margin-bottom: 16px;
 }
 
 .join-btn {
-  background: #3ba55c;
+  background: var(--color-gradient-primary);
   color: #fff;
   border: none;
-  padding: 12px 24px;
+  padding: 14px 28px;
   font-size: 16px;
-  border-radius: 4px;
+  font-weight: 600;
+  border-radius: var(--radius-md);
   cursor: pointer;
-  transition: background 0.2s;
+  transition: all var(--transition-normal);
+  box-shadow: var(--shadow-glow);
 }
 
 .join-btn:hover {
-  background: #2d7d46;
+  transform: translateY(-2px);
+  filter: brightness(1.1);
 }
 
 .voice-connected {
@@ -245,10 +275,13 @@ onUnmounted(() => {
 }
 
 .voice-users {
-  background: #2f3136;
-  border-radius: 8px;
+  background: var(--surface-glass);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-radius: var(--radius-lg);
   padding: 16px;
   margin-bottom: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
 }
 
 .voice-user {
@@ -261,7 +294,7 @@ onUnmounted(() => {
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  background: #5865f2;
+  background: var(--color-gradient-primary);
   display: flex;
   justify-content: center;
   align-items: center;
@@ -273,7 +306,7 @@ onUnmounted(() => {
 
 .user-name {
   flex: 1;
-  color: #dcddde;
+  color: var(--color-text-main);
 }
 
 .status-icon {
@@ -291,27 +324,32 @@ onUnmounted(() => {
   width: 48px;
   height: 48px;
   border-radius: 50%;
-  background: #4f545c;
-  border: none;
+  background: var(--surface-glass);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
   font-size: 20px;
   cursor: pointer;
-  transition: background 0.2s;
+  transition: all var(--transition-fast);
 }
 
 .control-btn:hover {
-  background: #5d6269;
+  background: var(--surface-glass-strong);
+  transform: scale(1.1);
 }
 
 .control-btn.active {
-  background: #ed4245;
+  background: var(--color-error);
+  border-color: var(--color-error);
 }
 
 .control-btn.disconnect {
-  background: #ed4245;
+  background: var(--color-error);
+  border-color: var(--color-error);
   transform: rotate(135deg);
 }
 
 .control-btn.disconnect:hover {
-  background: #c73639;
+  filter: brightness(0.9);
+  transform: rotate(135deg) scale(1.1);
 }
 </style>

@@ -71,6 +71,41 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
+  async function deleteServer(serverId: number) {
+    try {
+      await axios.delete(`${API_BASE}/api/servers/${serverId}`, {
+        headers: getAuthHeaders(),
+      })
+      if (currentServer.value?.id === serverId) {
+        currentServer.value = null
+        currentChannel.value = null
+        messages.value = []
+      }
+      await fetchServers()
+      return true
+    } catch (e) {
+      console.error('Failed to delete server:', e)
+      return false
+    }
+  }
+
+  async function deleteChannel(serverId: number, channelId: number) {
+    try {
+      await axios.delete(`${API_BASE}/api/servers/${serverId}/channels/${channelId}`, {
+        headers: getAuthHeaders(),
+      })
+      if (currentChannel.value?.id === channelId) {
+        currentChannel.value = null
+        messages.value = []
+      }
+      await fetchServer(serverId)
+      return true
+    } catch (e) {
+      console.error('Failed to delete channel:', e)
+      return false
+    }
+  }
+
   async function fetchMessages(channelId: number, before?: number) {
     try {
       const params: Record<string, any> = { limit: 50 }
@@ -112,6 +147,8 @@ export const useChatStore = defineStore('chat', () => {
     fetchServer,
     createServer,
     createChannel,
+    deleteServer,
+    deleteChannel,
     fetchMessages,
     setCurrentChannel,
     addMessage,

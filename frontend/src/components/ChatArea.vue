@@ -119,19 +119,18 @@ function formatTime(dateStr: string) {
   padding: 0 16px;
   display: flex;
   align-items: center;
-  border-bottom: 1px solid #202225;
-  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.2);
+  border-bottom: 1px dashed rgba(128, 128, 128, 0.4);
 }
 
 .channel-hash {
-  color: #72767d;
+  color: var(--color-text-muted);
   font-size: 24px;
   margin-right: 8px;
 }
 
 .channel-name {
   font-weight: 600;
-  color: #fff;
+  color: var(--color-text-main);
 }
 
 .messages {
@@ -150,7 +149,7 @@ function formatTime(dateStr: string) {
   width: 40px;
   height: 40px;
   border-radius: 50%;
-  background: #5865f2;
+  background: var(--color-gradient-primary);
   display: flex;
   justify-content: center;
   align-items: center;
@@ -174,16 +173,16 @@ function formatTime(dateStr: string) {
 
 .message-author {
   font-weight: 500;
-  color: #fff;
+  color: var(--color-text-main);
 }
 
 .message-time {
   font-size: 12px;
-  color: #72767d;
+  color: var(--color-text-muted);
 }
 
 .message-text {
-  color: #dcddde;
+  color: var(--color-text-main);
   line-height: 1.4;
   word-wrap: break-word;
 }
@@ -195,19 +194,24 @@ function formatTime(dateStr: string) {
 .chat-input input {
   width: 100%;
   padding: 12px 16px;
-  border: none;
-  border-radius: 8px;
-  background: #40444b;
-  color: #dcddde;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: var(--surface-glass-input);
+  color: var(--color-text-main);
   font-size: 14px;
   box-sizing: border-box;
+  transition: all var(--transition-fast);
 }
 
 .chat-input input::placeholder {
-  color: #72767d;
+  color: var(--color-text-muted);
 }
 
 .chat-input input:focus {
   outline: none;
+  background: var(--surface-glass-input-focus);
+  border-color: rgba(255, 255, 255, 0.5);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
 }
 </style>

@@ -35,4 +35,4 @@ def require_permission(min_level: int):
     return checker
 
 
-AdminUser = Annotated[dict[str, Any], Depends(require_permission(5))]
+AdminUser = Annotated[dict[str, Any], Depends(require_permission(4))]

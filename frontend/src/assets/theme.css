@@ -1,0 +1,50 @@
+:root {
+  /* Palette */
+  --color-primary: rgb(252, 121, 97);
+  --color-primary-hover: rgb(214, 86, 69);
+  --color-gradient-primary: linear-gradient(135deg, rgb(252, 121, 97), rgb(235, 92, 80));
+  
+  --color-text-main: #1a1a1a;
+  --color-text-muted: #666666;
+  --color-text-light: #ffffff;
+
+  /* Surface (Glassmorphism) */
+  --surface-glass: rgba(255, 255, 255, 0.45);
+  --surface-glass-strong: rgba(255, 255, 255, 0.55);
+  --surface-glass-darker: rgba(255, 255, 255, 0.35);
+  --surface-glass-input: rgba(255, 255, 255, 0.3);
+  --surface-glass-input-focus: rgba(255, 255, 255, 0.4);
+  --blur-strength: 40px;
+
+  /* Status Colors */
+  --color-success: #2ed573;
+  --color-error: #ff4757;
+  --color-warning: #ffa502;
+  --color-online: #43b581;
+  --color-offline: #747f8d;
+
+  /* Spacing */
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 16px;
+  --spacing-lg: 24px;
+  --spacing-xl: 32px;
+  --spacing-xxl: 48px;
+
+  /* Radius */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 20px;
+  --radius-pill: 9999px;
+
+  /* Shadows */
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.12);
+  --shadow-glow: 0 8px 20px rgba(252, 121, 97, 0.25);
+
+  /* Transitions */
+  --transition-fast: 0.2s ease;
+  --transition-normal: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-bounce: 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}

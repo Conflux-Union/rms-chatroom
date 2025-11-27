@@ -55,15 +55,16 @@ watch(
 .app-container {
   display: flex;
   height: 100vh;
-  background: #36393f;
-  color: #dcddde;
+  color: var(--color-text-main);
+  background: var(--surface-glass);
+  backdrop-filter: blur(var(--blur-strength));
+  -webkit-backdrop-filter: blur(var(--blur-strength));
 }
 
 .main-content {
   flex: 1;
   display: flex;
   flex-direction: column;
-  background: #36393f;
 }
 
 .no-channel {
@@ -71,7 +72,7 @@ watch(
   display: flex;
   justify-content: center;
   align-items: center;
-  color: #72767d;
+  color: var(--color-text-muted);
 }
 
 .user-panel {
@@ -79,9 +80,8 @@ watch(
   bottom: 0;
   left: 72px;
   width: 240px;
-  background: #292b2f;
   padding: 8px;
-  border-top: 1px solid #202225;
+  border-top: 1px dashed rgba(128, 128, 128, 0.4);
 }
 
 .user-info {
@@ -93,18 +93,20 @@ watch(
 .username {
   font-size: 14px;
   font-weight: 500;
+  color: var(--color-text-main);
 }
 
 .logout-btn {
   background: transparent;
-  color: #b9bbbe;
+  color: var(--color-text-muted);
   border: none;
   cursor: pointer;
   padding: 4px 8px;
   font-size: 12px;
+  transition: color var(--transition-fast);
 }
 
 .logout-btn:hover {
-  color: #fff;
+  color: var(--color-primary);
 }
 </style>

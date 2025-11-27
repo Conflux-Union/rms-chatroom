@@ -1,7 +1,7 @@
 import { ref, onUnmounted } from 'vue'
 import type { VoiceUser } from '../types'
 
-export function useWebRTC() {
+export function useWebRTC(onRemoteStream?: (userId: number, stream: MediaStream) => void) {
   const localStream = ref<MediaStream | null>(null)
   const remoteStreams = ref<Map<number, MediaStream>>(new Map())
   const peerConnections = ref<Map<number, RTCPeerConnection>>(new Map())
@@ -46,6 +46,9 @@ export function useWebRTC() {
     pc.ontrack = (event) => {
       if (event.streams && event.streams[0]) {
         remoteStreams.value.set(userId, event.streams[0])
+        if (onRemoteStream) {
+          onRemoteStream(userId, event.streams[0])
+        }
       }
     }
 
