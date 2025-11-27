@@ -25,6 +25,7 @@ MAX_BACKUPS = 3
 PROTECTED_PATTERNS = {
     "backend/config.json",
     "backend/.venv",
+    "frontend/.env",
     "discord.db",
     ".backup",
     ".git",
@@ -200,15 +201,19 @@ async def update_system(
     # Build frontend
     result["build"] = await _build_frontend()
     
-    # Schedule restart (give time for response to be sent)
-    # The actual restart is handled by systemd watching the process
+    # Schedule restart after response is sent
     if result["build"]["success"]:
-        result["restart"] = {"scheduled": True, "method": "systemd"}
-        # Touch a restart marker file that systemd can watch
-        restart_marker = PROJECT_ROOT / ".restart_marker"
-        restart_marker.write_text(datetime.now().isoformat())
+        result["restart"] = {"scheduled": True, "method": "systemd", "delay": 2}
+        asyncio.get_event_loop().call_later(2, _schedule_restart)
     
     return result
+
+
+def _schedule_restart():
+    """Exit process to trigger systemd restart."""
+    import os
+    import signal
+    os.kill(os.getpid(), signal.SIGTERM)
 
 
 @router.get("/health")
