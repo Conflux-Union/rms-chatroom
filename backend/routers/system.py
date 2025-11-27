@@ -97,6 +97,51 @@ async def _run_command(cmd: list[str], cwd: Path) -> tuple[int, str, str]:
     return proc.returncode or 0, stdout.decode(), stderr.decode()
 
 
+async def _install_backend_deps() -> dict[str, Any]:
+    """Install Python backend dependencies."""
+    backend_dir = PROJECT_ROOT / "backend"
+    venv_pip = backend_dir / ".venv" / "bin" / "pip"
+    requirements = backend_dir / "requirements.txt"
+    
+    if not requirements.exists():
+        return {"success": False, "error": "requirements.txt not found"}
+    
+    if not venv_pip.exists():
+        return {"success": False, "error": ".venv/bin/pip not found"}
+    
+    returncode, stdout, stderr = await _run_command(
+        [str(venv_pip), "install", "-r", "requirements.txt"],
+        backend_dir,
+    )
+    
+    return {
+        "success": returncode == 0,
+        "returncode": returncode,
+        "stdout": stdout[-2000:] if len(stdout) > 2000 else stdout,
+        "stderr": stderr[-2000:] if len(stderr) > 2000 else stderr,
+    }
+
+
+async def _install_frontend_deps() -> dict[str, Any]:
+    """Install frontend npm dependencies."""
+    frontend_dir = PROJECT_ROOT / "frontend"
+    
+    if not (frontend_dir / "package.json").exists():
+        return {"success": False, "error": "package.json not found"}
+    
+    returncode, stdout, stderr = await _run_command(
+        ["npm", "install"],
+        frontend_dir,
+    )
+    
+    return {
+        "success": returncode == 0,
+        "returncode": returncode,
+        "stdout": stdout[-2000:] if len(stdout) > 2000 else stdout,
+        "stderr": stderr[-2000:] if len(stderr) > 2000 else stderr,
+    }
+
+
 async def _build_frontend() -> dict[str, Any]:
     """Build frontend assets."""
     frontend_dir = PROJECT_ROOT / "frontend"
@@ -147,6 +192,8 @@ async def update_system(
         "backup": None,
         "extracted_files": 0,
         "skipped_files": [],
+        "backend_deps": None,
+        "frontend_deps": None,
         "build": None,
         "restart": None,
     }
@@ -198,13 +245,27 @@ async def update_system(
             shutil.copy2(src_file, dst_file)
             result["extracted_files"] += 1
     
+    # Install backend dependencies
+    result["backend_deps"] = await _install_backend_deps()
+    if not result["backend_deps"]["success"]:
+        result["restart"] = {"scheduled": False, "reason": "Backend deps install failed"}
+        return result
+    
+    # Install frontend dependencies
+    result["frontend_deps"] = await _install_frontend_deps()
+    if not result["frontend_deps"]["success"]:
+        result["restart"] = {"scheduled": False, "reason": "Frontend deps install failed"}
+        return result
+    
     # Build frontend
     result["build"] = await _build_frontend()
+    if not result["build"]["success"]:
+        result["restart"] = {"scheduled": False, "reason": "Frontend build failed"}
+        return result
     
-    # Schedule restart after response is sent
-    if result["build"]["success"]:
-        result["restart"] = {"scheduled": True, "method": "systemd", "delay": 2}
-        asyncio.get_event_loop().call_later(2, _schedule_restart)
+    # Schedule restart after response is sent (only if all steps succeeded)
+    result["restart"] = {"scheduled": True, "method": "systemd", "delay": 2}
+    asyncio.get_event_loop().call_later(2, _schedule_restart)
     
     return result
 
