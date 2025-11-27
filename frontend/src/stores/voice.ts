@@ -51,6 +51,11 @@ export const useVoiceStore = defineStore('voice', () => {
   const selectedAudioInput = ref<string>(localStorage.getItem(STORAGE_KEY_INPUT) || '')
   const selectedAudioOutput = ref<string>(localStorage.getItem(STORAGE_KEY_OUTPUT) || '')
 
+  // Host mode state
+  const hostModeEnabled = ref(false)
+  const hostModeHostId = ref<string | null>(null)
+  const hostModeHostName = ref<string | null>(null)
+
   function updateParticipants() {
     if (!room.value) {
       participants.value = []
@@ -200,10 +205,37 @@ export const useVoiceStore = defineStore('voice', () => {
         },
       })
 
-      room.value.on(RoomEvent.ParticipantConnected, () => updateParticipants())
-      room.value.on(RoomEvent.ParticipantDisconnected, () => updateParticipants())
-      room.value.on(RoomEvent.TrackMuted, () => updateParticipants())
-      room.value.on(RoomEvent.TrackUnmuted, () => updateParticipants())
+      room.value.on(RoomEvent.ParticipantConnected, async (participant) => {
+        updateParticipants()
+        // Host mode: auto-mute new participants (only host triggers this)
+        const auth = useAuthStore()
+        if (hostModeEnabled.value && hostModeHostId.value === String(auth.user?.id)) {
+          await muteParticipant(participant.identity, true)
+        }
+      })
+      room.value.on(RoomEvent.ParticipantDisconnected, (participant) => {
+        updateParticipants()
+        // If host leaves, clear host mode state locally
+        if (hostModeEnabled.value && participant.identity === hostModeHostId.value) {
+          hostModeEnabled.value = false
+          hostModeHostId.value = null
+          hostModeHostName.value = null
+        }
+      })
+      room.value.on(RoomEvent.TrackMuted, (publication, participant) => {
+        // Sync local muted state when server mutes local participant's mic
+        if (participant === room.value?.localParticipant && publication.source === Track.Source.Microphone) {
+          isMuted.value = true
+        }
+        updateParticipants()
+      })
+      room.value.on(RoomEvent.TrackUnmuted, (publication, participant) => {
+        // Sync local muted state when server unmutes local participant's mic
+        if (participant === room.value?.localParticipant && publication.source === Track.Source.Microphone) {
+          isMuted.value = false
+        }
+        updateParticipants()
+      })
       room.value.on(RoomEvent.ActiveSpeakersChanged, () => updateParticipants())
       room.value.on(RoomEvent.Disconnected, () => {
         isConnected.value = false
@@ -243,6 +275,9 @@ export const useVoiceStore = defineStore('voice', () => {
       currentVoiceChannel.value = channel
       updateParticipants()
 
+      // Fetch host mode status after joining
+      await fetchHostModeStatus()
+
       return true
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to connect'
@@ -270,6 +305,9 @@ export const useVoiceStore = defineStore('voice', () => {
     currentVoiceChannel.value = null
     userVolumes.value.clear()
     volumeWarningAcknowledged.value.clear()
+    hostModeEnabled.value = false
+    hostModeHostId.value = null
+    hostModeHostName.value = null
   }
 
   async function toggleMute(): Promise<boolean> {
@@ -336,6 +374,88 @@ export const useVoiceStore = defineStore('voice', () => {
     return volumeWarningAcknowledged.value.has(participantId)
   }
 
+  /**
+   * Admin: Mute a participant's microphone via server API.
+   */
+  async function muteParticipant(userId: string, muted = true): Promise<boolean> {
+    if (!currentVoiceChannel.value) return false
+
+    const auth = useAuthStore()
+    try {
+      const response = await fetch(
+        `${API_BASE}/api/voice/${currentVoiceChannel.value.id}/mute/${userId}`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${auth.token}`,
+          },
+          body: JSON.stringify({ muted }),
+        }
+      )
+      return response.ok
+    } catch (e) {
+      console.error('Failed to mute participant:', e)
+      return false
+    }
+  }
+
+  /**
+   * Fetch host mode status from server.
+   */
+  async function fetchHostModeStatus(): Promise<void> {
+    if (!currentVoiceChannel.value) return
+
+    const auth = useAuthStore()
+    try {
+      const response = await fetch(
+        `${API_BASE}/api/voice/${currentVoiceChannel.value.id}/host-mode`,
+        { headers: { Authorization: `Bearer ${auth.token}` } }
+      )
+      if (response.ok) {
+        const data = await response.json()
+        hostModeEnabled.value = data.enabled
+        hostModeHostId.value = data.host_id
+        hostModeHostName.value = data.host_name
+      }
+    } catch (e) {
+      console.error('Failed to fetch host mode status:', e)
+    }
+  }
+
+  /**
+   * Admin: Toggle host mode on/off.
+   */
+  async function toggleHostMode(): Promise<boolean> {
+    if (!currentVoiceChannel.value) return false
+
+    const auth = useAuthStore()
+    try {
+      const response = await fetch(
+        `${API_BASE}/api/voice/${currentVoiceChannel.value.id}/host-mode`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${auth.token}`,
+          },
+          body: JSON.stringify({ enabled: !hostModeEnabled.value }),
+        }
+      )
+      if (response.ok) {
+        const data = await response.json()
+        hostModeEnabled.value = data.enabled
+        hostModeHostId.value = data.host_id
+        hostModeHostName.value = data.host_name
+        return true
+      }
+      return false
+    } catch (e) {
+      console.error('Failed to toggle host mode:', e)
+      return false
+    }
+  }
+
   return {
     room,
     isConnected,
@@ -349,6 +469,9 @@ export const useVoiceStore = defineStore('voice', () => {
     audioOutputDevices,
     selectedAudioInput,
     selectedAudioOutput,
+    hostModeEnabled,
+    hostModeHostId,
+    hostModeHostName,
     joinVoice,
     disconnect,
     toggleMute,
@@ -359,5 +482,8 @@ export const useVoiceStore = defineStore('voice', () => {
     enumerateDevices,
     setAudioInputDevice,
     setAudioOutputDevice,
+    muteParticipant,
+    fetchHostModeStatus,
+    toggleHostMode,
   }
 })

@@ -11,6 +11,7 @@ interface VoiceChannelUser {
   id: string
   name: string
   is_muted: boolean
+  is_host: boolean
 }
 
 export const useChatStore = defineStore('chat', () => {
@@ -153,9 +154,14 @@ export const useChatStore = defineStore('chat', () => {
         `${API_BASE}/api/voice/${channelId}/users`,
         { headers: getAuthHeaders() }
       )
-      voiceChannelUsers.value.set(channelId, resp.data)
+      // Create new Map to trigger reactivity
+      const newMap = new Map(voiceChannelUsers.value)
+      newMap.set(channelId, resp.data)
+      voiceChannelUsers.value = newMap
     } catch {
-      voiceChannelUsers.value.set(channelId, [])
+      const newMap = new Map(voiceChannelUsers.value)
+      newMap.set(channelId, [])
+      voiceChannelUsers.value = newMap
     }
   }
 

@@ -1,8 +1,21 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { useVoiceStore } from '../stores/voice'
-import { Volume2, VolumeX, Mic, MicOff, Phone } from 'lucide-vue-next'
+import { useAuthStore } from '../stores/auth'
+import { Volume2, VolumeX, Mic, MicOff, Phone, Crown } from 'lucide-vue-next'
 
 const voice = useVoiceStore()
+const auth = useAuthStore()
+
+// Check if current user is the host
+const isCurrentUserHost = computed(() => 
+  voice.hostModeHostId === String(auth.user?.id)
+)
+
+// Disable host button if someone else is hosting
+const hostButtonDisabled = computed(() => 
+  voice.hostModeEnabled && !isCurrentUserHost.value
+)
 </script>
 
 <template>
@@ -30,10 +43,23 @@ const voice = useVoiceStore()
         class="control-btn"
         :class="{ active: voice.isDeafened }"
         @click="voice.toggleDeafen()"
-        :title="voice.isDeafened ? '取消耳聋' : '耳聋'"
+        :title="voice.isDeafened ? '打开扬声器' : '关闭扬声器'"
       >
         <VolumeX v-if="voice.isDeafened" :size="16" />
         <Volume2 v-else :size="16" />
+      </button>
+      <button
+        v-if="auth.isAdmin"
+        class="control-btn"
+        :class="{ 
+          'host-mode-active': voice.hostModeEnabled && isCurrentUserHost,
+          'host-mode-disabled': hostButtonDisabled 
+        }"
+        :disabled="hostButtonDisabled"
+        @click="voice.toggleHostMode()"
+        :title="hostButtonDisabled ? '其他人正在主持' : (voice.hostModeEnabled ? '关闭主持人模式' : '开启主持人模式')"
+      >
+        <Crown :size="16" />
       </button>
       <button
         class="control-btn disconnect"
@@ -42,6 +68,10 @@ const voice = useVoiceStore()
       >
         <Phone :size="16" />
       </button>
+    </div>
+    <div v-if="voice.hostModeEnabled" class="host-mode-banner">
+      <Crown :size="12" />
+      <span>{{ voice.hostModeHostName }} is hosting</span>
     </div>
   </div>
 </template>
@@ -127,5 +157,39 @@ const voice = useVoiceStore()
 
 .control-btn.disconnect:hover {
   filter: brightness(0.9);
+}
+
+.control-btn.host-mode-active {
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  border-color: #f59e0b;
+  color: white;
+}
+
+.control-btn.host-mode-active:hover {
+  filter: brightness(1.1);
+}
+
+.control-btn.host-mode-disabled {
+  background: var(--surface-glass);
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.control-btn.host-mode-disabled:hover {
+  transform: none;
+  background: var(--surface-glass);
+}
+
+.host-mode-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 4px 8px;
+  background: rgba(245, 158, 11, 0.2);
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  color: #f59e0b;
 }
 </style>

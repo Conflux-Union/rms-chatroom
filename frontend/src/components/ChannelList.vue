@@ -2,16 +2,23 @@
 import { ref, computed, watch, onUnmounted } from 'vue'
 import { useChatStore } from '../stores/chat'
 import { useAuthStore } from '../stores/auth'
-import { Volume2, MicOff } from 'lucide-vue-next'
+import { useVoiceStore } from '../stores/voice'
+import { Volume2, MicOff, Crown } from 'lucide-vue-next'
 import type { Channel } from '../types'
 
 const chat = useChatStore()
 const auth = useAuthStore()
+const voice = useVoiceStore()
 const showCreate = ref(false)
 const newChannelName = ref('')
 const newChannelType = ref<'text' | 'voice'>('text')
 const contextMenu = ref<{ show: boolean; x: number; y: number; channelId: number | null }>({
   show: false, x: 0, y: 0, channelId: null
+})
+
+// Voice user context menu state
+const userContextMenu = ref<{ show: boolean; x: number; y: number; channelId: number | null; userId: string | null }>({
+  show: false, x: 0, y: 0, channelId: null, userId: null
 })
 
 // Refresh interval for voice channel users
@@ -20,8 +27,15 @@ let voiceUsersInterval: ReturnType<typeof setInterval> | null = null
 function startVoiceUsersPolling() {
   stopVoiceUsersPolling()
   chat.fetchAllVoiceChannelUsers()
+  // Also sync host mode status if connected to voice
+  if (voice.isConnected) {
+    voice.fetchHostModeStatus()
+  }
   voiceUsersInterval = setInterval(() => {
     chat.fetchAllVoiceChannelUsers()
+    if (voice.isConnected) {
+      voice.fetchHostModeStatus()
+    }
   }, 5000)
 }
 
@@ -70,6 +84,19 @@ function showContextMenu(event: MouseEvent, channelId: number) {
 
 function hideContextMenu() {
   contextMenu.value = { show: false, x: 0, y: 0, channelId: null }
+  userContextMenu.value = { show: false, x: 0, y: 0, channelId: null, userId: null }
+}
+
+function showUserContextMenu(event: MouseEvent, channelId: number, userId: string) {
+  event.preventDefault()
+  event.stopPropagation()
+  userContextMenu.value = { show: true, x: event.clientX, y: event.clientY, channelId, userId }
+}
+
+async function muteVoiceUser() {
+  if (!userContextMenu.value.channelId || !userContextMenu.value.userId) return
+  await voice.muteParticipant(userContextMenu.value.userId, true)
+  hideContextMenu()
 }
 
 async function deleteChannel() {
@@ -133,8 +160,12 @@ async function deleteChannel() {
             v-for="user in chat.getVoiceChannelUsers(channel.id)"
             :key="user.id"
             class="voice-user-item"
+            @contextmenu="auth.isAdmin ? showUserContextMenu($event, channel.id, user.id) : undefined"
           >
-            <span class="voice-user-avatar">{{ user.name.charAt(0).toUpperCase() }}</span>
+            <div class="voice-user-avatar-wrapper">
+              <span class="voice-user-avatar">{{ user.name.charAt(0).toUpperCase() }}</span>
+              <Crown v-if="user.is_host" class="voice-user-host-badge" :size="10" />
+            </div>
             <span class="voice-user-name">{{ user.name }}</span>
             <MicOff v-if="user.is_muted" class="voice-user-muted" :size="12" />
           </div>
@@ -142,7 +173,7 @@ async function deleteChannel() {
       </div>
     </div>
 
-    <!-- Context Menu -->
+    <!-- Channel Context Menu -->
     <div
       v-if="contextMenu.show && auth.isAdmin"
       class="context-menu"
@@ -150,6 +181,16 @@ async function deleteChannel() {
       @click.stop
     >
       <div class="context-menu-item delete" @click="deleteChannel">Delete Channel</div>
+    </div>
+
+    <!-- Voice User Context Menu -->
+    <div
+      v-if="userContextMenu.show && auth.isAdmin"
+      class="context-menu"
+      :style="{ left: userContextMenu.x + 'px', top: userContextMenu.y + 'px' }"
+      @click.stop
+    >
+      <div class="context-menu-item" @click="muteVoiceUser">Mute Microphone</div>
     </div>
 
     <div v-if="showCreate" class="create-modal" @click.self="showCreate = false">
@@ -391,6 +432,11 @@ async function deleteChannel() {
   font-size: 13px;
 }
 
+.voice-user-avatar-wrapper {
+  position: relative;
+  margin-right: 8px;
+}
+
 .voice-user-avatar {
   width: 20px;
   height: 20px;
@@ -401,8 +447,15 @@ async function deleteChannel() {
   align-items: center;
   font-weight: 600;
   color: #fff;
-  margin-right: 8px;
   font-size: 10px;
+}
+
+.voice-user-host-badge {
+  position: absolute;
+  bottom: -2px;
+  right: -4px;
+  color: #f59e0b;
+  filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.5));
 }
 
 .voice-user-name {
