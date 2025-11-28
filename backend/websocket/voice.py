@@ -551,3 +551,66 @@ async def join_voice_as_guest(
         room_name=room_name,
         channel_name=invite.channel.name,
     )
+
+
+# ============================================================================
+# QQ Bot APIs
+# ============================================================================
+
+class VoiceChannelInfo(BaseModel):
+    channel_id: int
+    channel_name: str
+    server_name: str
+    users: list[str]
+
+
+class AllVoiceChannelsResponse(BaseModel):
+    channels: list[VoiceChannelInfo]
+    total_users: int
+
+
+@router.get("/api/qqbot/get_voice_channel_people", response_model=AllVoiceChannelsResponse)
+async def get_all_voice_channel_people(
+    db: AsyncSession = Depends(get_db),
+):
+    """Get all users currently in voice channels (for QQ bot)."""
+    # Get all voice channels with server info
+    result = await db.execute(
+        select(Channel)
+        .options(joinedload(Channel.server))
+        .where(Channel.type == ChannelType.VOICE)
+    )
+    channels = result.scalars().all()
+    
+    settings = get_settings()
+    livekit_http_url = settings.livekit_internal_host.replace("ws://", "http://").replace("wss://", "https://")
+    api = LiveKitAPI(
+        url=livekit_http_url,
+        api_key=settings.livekit_api_key,
+        api_secret=settings.livekit_api_secret,
+    )
+    
+    channel_infos: list[VoiceChannelInfo] = []
+    total_users = 0
+    
+    try:
+        for channel in channels:
+            room_name = f"voice_{channel.id}"
+            try:
+                response = await api.room.list_participants(ListParticipantsRequest(room=room_name))
+                users = [p.name or p.identity for p in response.participants]
+                if users:
+                    channel_infos.append(VoiceChannelInfo(
+                        channel_id=channel.id,
+                        channel_name=channel.name,
+                        server_name=channel.server.name if channel.server else "未知服务器",
+                        users=users,
+                    ))
+                    total_users += len(users)
+            except Exception:
+                # Room may not exist (no participants)
+                pass
+    finally:
+        await api.aclose()
+    
+    return AllVoiceChannelsResponse(channels=channel_infos, total_users=total_users)

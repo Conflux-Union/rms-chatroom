@@ -3,6 +3,7 @@ import { ref, onMounted, watch } from 'vue'
 import { useAuthStore } from '../stores/auth'
 import { useChatStore } from '../stores/chat'
 import { useVoiceStore } from '../stores/voice'
+import { useSwipe } from '../composables/useSwipe'
 import ServerList from '../components/ServerList.vue'
 import ChannelList from '../components/ChannelList.vue'
 import ChatArea from '../components/ChatArea.vue'
@@ -17,6 +18,20 @@ const voice = useVoiceStore()
 
 const showMusicPanel = ref(false)
 const showMobileSidebar = ref(false)
+const appContainer = ref<HTMLElement | null>(null)
+
+// Swipe gesture for mobile sidebar
+const { onSwipeLeft, onSwipeRight } = useSwipe(appContainer, { threshold: 50 })
+onSwipeRight(() => {
+  if (window.innerWidth <= 768) {
+    showMobileSidebar.value = true
+  }
+})
+onSwipeLeft(() => {
+  if (window.innerWidth <= 768) {
+    showMobileSidebar.value = false
+  }
+})
 
 onMounted(async () => {
   await chat.fetchServers()
@@ -48,7 +63,7 @@ watch(
 </script>
 
 <template>
-  <div class="app-container">
+  <div ref="appContainer" class="app-container">
     <!-- Mobile Header -->
     <div class="mobile-header">
       <button class="mobile-menu-btn" @click="showMobileSidebar = !showMobileSidebar">
