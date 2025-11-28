@@ -6,6 +6,7 @@ import base64
 import logging
 from typing import Any
 
+import httpx
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
@@ -13,7 +14,9 @@ from qqmusic_api import search, song, login
 from qqmusic_api.login import QRLoginType, QRCodeLoginEvents, Credential
 
 from .deps import get_current_user, CurrentUser
-from ..services.music_bot import get_or_create_bot, remove_bot, MusicBot
+
+# Go music service URL
+MUSIC_SERVICE_URL = "http://127.0.0.1:9100"
 
 logger = logging.getLogger(__name__)
 
@@ -25,9 +28,33 @@ _credential: Credential | None = None
 _current_qr: login.QR | None = None
 _play_queue: list[dict[str, Any]] = []
 _current_index: int = 0
-_is_playing: bool = False
 _current_room: str | None = None
-_music_bot: MusicBot | None = None
+
+# WebSocket broadcast function (set by websocket module)
+_ws_broadcast: Any = None
+
+
+def set_ws_broadcast(broadcast_func):
+    """Set WebSocket broadcast function for progress updates."""
+    global _ws_broadcast
+    _ws_broadcast = broadcast_func
+
+
+# --- Go Music Service Client ---
+
+async def _call_music_service(method: str, endpoint: str, json_data: dict | None = None) -> dict:
+    """Call the Go music service."""
+    async with httpx.AsyncClient(timeout=5.0) as client:
+        url = f"{MUSIC_SERVICE_URL}{endpoint}"
+        if method == "GET":
+            resp = await client.get(url, params=json_data)
+        else:
+            resp = await client.post(url, json=json_data)
+        
+        if resp.status_code != 200:
+            raise HTTPException(status_code=resp.status_code, detail=resp.text)
+        
+        return resp.json()
 
 
 # --- Models ---
@@ -220,14 +247,14 @@ async def remove_from_queue(index: int, _user: CurrentUser):
 @router.get("/queue")
 async def get_queue(_user: CurrentUser):
     """Get current play queue."""
-    global _play_queue, _current_index, _is_playing
+    global _play_queue, _current_index, _current_room
     
     current_song = None
     if _play_queue and 0 <= _current_index < len(_play_queue):
         current_song = _play_queue[_current_index]["song"]
     
     return {
-        "is_playing": _is_playing,
+        "is_playing": _current_room is not None,
         "current_song": current_song,
         "current_index": _current_index,
         "queue": _play_queue
@@ -237,11 +264,16 @@ async def get_queue(_user: CurrentUser):
 @router.post("/queue/clear")
 async def clear_queue(_user: CurrentUser):
     """Clear the play queue."""
-    global _play_queue, _current_index, _is_playing
+    global _play_queue, _current_index, _current_room
+    
+    if _current_room:
+        try:
+            await _call_music_service("POST", "/stop", {"room_name": _current_room})
+        except Exception:
+            pass
     
     _play_queue = []
     _current_index = 0
-    _is_playing = False
     
     return {"success": True}
 
@@ -251,23 +283,37 @@ async def clear_queue(_user: CurrentUser):
 @router.post("/control/play")
 async def play(_user: CurrentUser):
     """Start/resume playback."""
-    global _is_playing
-    _is_playing = True
-    return {"success": True, "is_playing": True}
+    global _current_room
+    if _current_room:
+        try:
+            await _call_music_service("POST", "/resume", {"room_name": _current_room})
+        except Exception:
+            pass
+    return {"success": True}
 
 
 @router.post("/control/pause")
 async def pause(_user: CurrentUser):
     """Pause playback."""
-    global _is_playing
-    _is_playing = False
+    global _current_room
+    if _current_room:
+        try:
+            await _call_music_service("POST", "/pause", {"room_name": _current_room})
+        except Exception:
+            pass
     return {"success": True, "is_playing": False}
 
 
 @router.post("/control/skip")
 async def skip(_user: CurrentUser):
     """Skip to next song."""
-    global _current_index, _play_queue
+    global _current_index, _play_queue, _current_room
+    
+    if _current_room:
+        try:
+            await _call_music_service("POST", "/stop", {"room_name": _current_room})
+        except Exception:
+            pass
     
     if _current_index < len(_play_queue) - 1:
         _current_index += 1
@@ -279,7 +325,13 @@ async def skip(_user: CurrentUser):
 @router.post("/control/previous")
 async def previous(_user: CurrentUser):
     """Go to previous song."""
-    global _current_index
+    global _current_index, _current_room
+    
+    if _current_room:
+        try:
+            await _call_music_service("POST", "/stop", {"room_name": _current_room})
+        except Exception:
+            pass
     
     if _current_index > 0:
         _current_index -= 1
@@ -294,20 +346,62 @@ class BotStartRequest(BaseModel):
     room_name: str
 
 
+async def _play_current_song() -> bool:
+    """Internal: load and play current song via Go service."""
+    global _play_queue, _current_index, _credential, _current_room
+    
+    if not _current_room or not _play_queue or _current_index >= len(_play_queue):
+        return False
+    
+    current = _play_queue[_current_index]["song"]
+    
+    # Get song URL
+    try:
+        file_type = song.SongFileType.MP3_320 if _credential else song.SongFileType.MP3_128
+        urls = await song.get_song_urls([current["mid"]], file_type=file_type, credential=_credential)
+        url = urls.get(current["mid"], "")
+        
+        if not url:
+            urls = await song.get_song_urls([current["mid"]], file_type=song.SongFileType.MP3_128)
+            url = urls.get(current["mid"], "")
+        
+        if not url:
+            logger.error(f"Song URL not available: {current['name']}")
+            return False
+        
+        # Call Go music service to play
+        await _call_music_service("POST", "/play", {
+            "room_name": _current_room,
+            "song": {
+                "mid": current["mid"],
+                "name": current["name"],
+                "artist": current["artist"],
+                "duration": current["duration"],
+                "url": url,
+            }
+        })
+        
+        return True
+        
+    except Exception as e:
+        logger.error(f"Failed to play song: {e}")
+        return False
+
+
 @router.post("/bot/start")
 async def start_bot(req: BotStartRequest, _user: CurrentUser):
-    """Start music bot for a voice channel room (uses Ingress)."""
-    global _music_bot, _current_room
+    """Start music bot for a voice channel room."""
+    global _current_room
     
     try:
-        # Disconnect existing bot if any
-        if _music_bot:
-            await _music_bot.disconnect()
+        # Stop existing player if room changed
+        if _current_room and _current_room != req.room_name:
+            try:
+                await _call_music_service("POST", "/stop", {"room_name": _current_room})
+            except Exception:
+                pass
         
-        # Create bot instance (no WebRTC connection needed, uses Ingress)
-        _music_bot = await get_or_create_bot(req.room_name)
         _current_room = req.room_name
-        
         return {"success": True, "room": req.room_name}
     except Exception as e:
         logger.error(f"Failed to start bot: {e}")
@@ -317,13 +411,14 @@ async def start_bot(req: BotStartRequest, _user: CurrentUser):
 @router.post("/bot/stop")
 async def stop_bot(_user: CurrentUser):
     """Stop the music bot."""
-    global _music_bot, _current_room, _is_playing
+    global _current_room
     
-    if _music_bot:
-        await _music_bot.disconnect()
-        _music_bot = None
+    if _current_room:
+        try:
+            await _call_music_service("POST", "/stop", {"room_name": _current_room})
+        except Exception:
+            pass
         _current_room = None
-        _is_playing = False
     
     return {"success": True}
 
@@ -331,12 +426,20 @@ async def stop_bot(_user: CurrentUser):
 @router.get("/bot/status")
 async def get_bot_status(_user: CurrentUser):
     """Get music bot status."""
-    global _music_bot, _current_room, _is_playing
+    global _current_room
+    
+    is_playing = False
+    if _current_room:
+        try:
+            progress = await _call_music_service("GET", "/progress", {"room_name": _current_room})
+            is_playing = progress.get("state") == "playing"
+        except Exception:
+            pass
     
     return {
-        "connected": _music_bot is not None,
+        "connected": _current_room is not None,
         "room": _current_room,
-        "is_playing": _is_playing and _music_bot and _music_bot.is_playing
+        "is_playing": is_playing
     }
 
 
@@ -344,41 +447,26 @@ class BotPlayRequest(BaseModel):
     room_name: str
 
 
+class SeekRequest(BaseModel):
+    position_ms: int
+
+
 @router.post("/bot/play")
 async def bot_play(req: BotPlayRequest, _user: CurrentUser):
-    """Start playing the current song through the bot via Ingress."""
-    global _music_bot, _play_queue, _current_index, _is_playing, _credential, _current_room
+    """Start playing the current song through the bot."""
+    global _play_queue, _current_index, _current_room
     
-    # Auto-create bot if not exists or room changed
-    if not _music_bot or _current_room != req.room_name:
-        if _music_bot:
-            await _music_bot.disconnect()
-        _music_bot = await get_or_create_bot(req.room_name)
-        _current_room = req.room_name
+    _current_room = req.room_name
     
     if not _play_queue or _current_index >= len(_play_queue):
         raise HTTPException(status_code=400, detail="No song in queue")
     
     current_song = _play_queue[_current_index]["song"]
     
-    # Get song URL
     try:
-        file_type = song.SongFileType.MP3_320 if _credential else song.SongFileType.MP3_128
-        urls = await song.get_song_urls([current_song["mid"]], file_type=file_type, credential=_credential)
-        url = urls.get(current_song["mid"], "")
-        
-        if not url:
-            urls = await song.get_song_urls([current_song["mid"]], file_type=song.SongFileType.MP3_128)
-            url = urls.get(current_song["mid"], "")
-        
-        if not url:
-            raise HTTPException(status_code=404, detail="Song URL not available")
-        
-        # Play via Ingress URL Input
-        success = await _music_bot.play_url(url, current_song["name"])
+        success = await _play_current_song()
         
         if success:
-            _is_playing = True
             return {"success": True, "playing": current_song["name"]}
         else:
             raise HTTPException(status_code=500, detail="Failed to start playback")
@@ -393,28 +481,94 @@ async def bot_play(req: BotPlayRequest, _user: CurrentUser):
 @router.post("/bot/pause")
 async def bot_pause(_user: CurrentUser):
     """Pause the bot playback."""
-    global _music_bot, _is_playing
+    global _current_room
     
-    if _music_bot:
-        await _music_bot.stop()
-        _is_playing = False
+    if _current_room:
+        try:
+            await _call_music_service("POST", "/pause", {"room_name": _current_room})
+        except Exception:
+            pass
     
     return {"success": True}
+
+
+@router.post("/bot/resume")
+async def bot_resume(_user: CurrentUser):
+    """Resume the bot playback."""
+    global _current_room
+    
+    if _current_room:
+        try:
+            await _call_music_service("POST", "/resume", {"room_name": _current_room})
+            return {"success": True, "is_playing": True}
+        except Exception:
+            pass
+    
+    return {"success": False, "message": "No player"}
 
 
 @router.post("/bot/skip")
 async def bot_skip(_user: CurrentUser):
     """Skip to next song on the bot."""
-    global _music_bot, _current_index, _play_queue, _is_playing
+    global _current_index, _play_queue, _current_room
     
-    if _music_bot:
-        await _music_bot.stop()
+    if _current_room:
+        try:
+            await _call_music_service("POST", "/stop", {"room_name": _current_room})
+        except Exception:
+            pass
     
     if _current_index < len(_play_queue) - 1:
         _current_index += 1
-        if _music_bot and _is_playing:
-            return await bot_play(_user)
+        if _current_room:
+            success = await _play_current_song()
+            if success:
+                return {"success": True, "current_index": _current_index}
         return {"success": True, "current_index": _current_index}
     
-    _is_playing = False
     return {"success": False, "message": "No more songs in queue"}
+
+
+@router.post("/bot/seek")
+async def bot_seek(req: SeekRequest, _user: CurrentUser):
+    """Seek to position in the current song."""
+    global _current_room
+    
+    if not _current_room:
+        raise HTTPException(status_code=400, detail="No player")
+    
+    await _call_music_service("POST", "/seek", {
+        "room_name": _current_room,
+        "position_ms": req.position_ms
+    })
+    return {"success": True, "position_ms": req.position_ms}
+
+
+@router.get("/bot/progress")
+async def bot_progress(_user: CurrentUser):
+    """Get current playback progress."""
+    global _current_room
+    
+    if not _current_room:
+        return {
+            "position_ms": 0,
+            "duration_ms": 0,
+            "state": "idle",
+            "current_song": None,
+        }
+    
+    try:
+        progress = await _call_music_service("GET", "/progress", {"room_name": _current_room})
+        return {
+            "position_ms": progress.get("position_ms", 0),
+            "duration_ms": progress.get("duration_ms", 0),
+            "state": progress.get("state", "idle"),
+            "current_song": progress.get("song"),
+        }
+    except Exception:
+        return {
+            "position_ms": 0,
+            "duration_ms": 0,
+            "state": "idle",
+            "current_song": None,
+        }

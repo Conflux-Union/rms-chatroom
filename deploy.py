@@ -49,6 +49,7 @@ EXCLUDE_PATTERNS = {
     ".env.local",
     ".DS_Store",
     "Thumbs.db",
+    "music-service",
 }
 
 

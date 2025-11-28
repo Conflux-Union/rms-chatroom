@@ -36,6 +36,9 @@ export const useMusicStore = defineStore('music', () => {
   const currentSong = ref<Song | null>(null)
   const currentIndex = ref(0)
   const queue = ref<QueueItem[]>([])
+  const playbackState = ref<string>('idle')  // idle, loading, playing, paused, stopped
+  const positionMs = ref(0)
+  const durationMs = ref(0)
   
   // Current song URL for audio playback
   const currentSongUrl = ref<string | null>(null)
@@ -356,8 +359,25 @@ export const useMusicStore = defineStore('music', () => {
         headers: headers()
       })
       isPlaying.value = false
+      playbackState.value = 'paused'
     } catch (e) {
       console.error('Bot pause failed:', e)
+    }
+  }
+  
+  async function botResume() {
+    try {
+      const res = await fetch(`${API_BASE}/api/music/bot/resume`, {
+        method: 'POST',
+        headers: headers()
+      })
+      const data = await res.json()
+      if (data.success) {
+        isPlaying.value = data.is_playing
+        playbackState.value = 'playing'
+      }
+    } catch (e) {
+      console.error('Bot resume failed:', e)
     }
   }
   
@@ -371,6 +391,48 @@ export const useMusicStore = defineStore('music', () => {
       await refreshQueue()
     } catch (e) {
       console.error('Bot skip failed:', e)
+    }
+  }
+  
+  async function botSeek(positionMs: number) {
+    try {
+      await fetch(`${API_BASE}/api/music/bot/seek`, {
+        method: 'POST',
+        headers: headers(),
+        body: JSON.stringify({ position_ms: positionMs })
+      })
+    } catch (e) {
+      console.error('Bot seek failed:', e)
+    }
+  }
+  
+  async function getProgress() {
+    try {
+      const res = await fetch(`${API_BASE}/api/music/bot/progress`, {
+        headers: headers()
+      })
+      const data = await res.json()
+      positionMs.value = data.position_ms || 0
+      durationMs.value = data.duration_ms || 0
+      playbackState.value = data.state || 'idle'
+      if (data.current_song) {
+        currentSong.value = data.current_song
+      }
+      return data
+    } catch (e) {
+      console.error('Failed to get progress:', e)
+      return null
+    }
+  }
+  
+  // Called from WebSocket to update progress
+  function updateProgress(data: { position_ms: number; duration_ms: number; state: string; current_song?: Song }) {
+    positionMs.value = data.position_ms
+    durationMs.value = data.duration_ms
+    playbackState.value = data.state
+    isPlaying.value = data.state === 'playing'
+    if (data.current_song) {
+      currentSong.value = data.current_song
     }
   }
   
@@ -402,6 +464,9 @@ export const useMusicStore = defineStore('music', () => {
     
     // Playback state
     isPlaying,
+    playbackState,
+    positionMs,
+    durationMs,
     play,
     pause,
     skip,
@@ -416,7 +481,11 @@ export const useMusicStore = defineStore('music', () => {
     getBotStatus,
     botPlay,
     botPause,
+    botResume,
     botSkip,
+    botSeek,
+    getProgress,
+    updateProgress,
     
     // Utils
     formatDuration

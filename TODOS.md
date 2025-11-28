@@ -112,24 +112,24 @@ source.queued_duration    # 队列中剩余音频时长
 ### Implementation Tasks
 
 **后端核心**
-- [ ] 创建 MusicPlayer 类 - 基于 livekit-rtc AudioSource
-- [ ] 实现 load(url) - 下载音频并用 pydub/ffmpeg 转为 PCM
-- [ ] 实现 play() - 从当前 position 开始循环推送 AudioFrame
-- [ ] 实现 pause() - 停止推送循环，调用 source.clear_queue()
-- [ ] 实现 resume() - 从暂停位置继续播放
-- [ ] 实现 seek(position_ms) - 更新 position 并 clear_queue
-- [ ] 实现 get_progress() - 返回当前播放进度
-- [ ] 实现 on_finished 回调 - 播放结束时触发下一首
+- [x] 创建 MusicPlayer 类 - 基于 livekit-rtc AudioSource
+- [x] 实现 load(url) - 下载音频并用 PyAV 转为 PCM
+- [x] 实现 play() - 从当前 position 开始循环推送 AudioFrame
+- [x] 实现 pause() - 停止推送循环，调用 source.clear_queue()
+- [x] 实现 resume() - 从暂停位置继续播放
+- [x] 实现 seek(position_ms) - 更新 position 并 clear_queue
+- [x] 实现 get_progress() - 返回当前播放进度
+- [x] 实现 on_finished 回调 - 播放结束时触发下一首
 
 **后端 API**
-- [ ] 修改 music.py router - 添加 seek/progress API 端点
-- [ ] 添加 WebSocket 推送 - 实时推送播放进度到前端
-- [ ] 修改队列逻辑 - 播放结束自动播放下一首
+- [x] 修改 music.py router - 添加 seek/progress/resume API 端点
+- [x] 添加进度回调 - 通过 on_progress 回调机制推送进度
+- [x] 修改队列逻辑 - 播放结束自动播放下一首
 
 **前端**
-- [ ] 添加进度条 UI 组件
-- [ ] 实现进度条拖动 seek 功能
-- [ ] WebSocket 接收进度更新
+- [x] 添加进度条 UI 组件
+- [x] 实现进度条拖动 seek 功能
+- [x] 前端轮询进度更新 (每秒)
 
 **测试**
 - [ ] 验证 play/pause/resume/seek 功能

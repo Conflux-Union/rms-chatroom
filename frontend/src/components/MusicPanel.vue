@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useMusicStore, type Song } from '../stores/music'
 import { useVoiceStore } from '../stores/voice'
-import { Music, Bot, SkipBack, Pause, Play, SkipForward, Plus, Trash2, X, Search } from 'lucide-vue-next'
+import { Music, Bot, SkipBack, Pause, Play, SkipForward, Plus, Trash2, X, Search, Loader2 } from 'lucide-vue-next'
 
 const music = useMusicStore()
 const voice = useVoiceStore()
@@ -11,18 +11,79 @@ const searchInput = ref('')
 const showSearch = ref(false)
 const loginPollingInterval = ref<number | null>(null)
 const audioRef = ref<HTMLAudioElement | null>(null)
+const progressPollingInterval = ref<number | null>(null)
+const isDragging = ref(false)
+const dragPosition = ref(0)
+
+// Computed progress percentage
+const progressPercent = computed(() => {
+  if (music.durationMs <= 0) return 0
+  const pos = isDragging.value ? dragPosition.value : music.positionMs
+  return (pos / music.durationMs) * 100
+})
+
+// Format milliseconds to mm:ss
+function formatTime(ms: number): string {
+  const seconds = Math.floor(ms / 1000)
+  const mins = Math.floor(seconds / 60)
+  const secs = seconds % 60
+  return `${mins}:${secs.toString().padStart(2, '0')}`
+}
 
 onMounted(async () => {
   await music.checkLoginStatus()
   await music.refreshQueue()
   await music.getBotStatus()
+  
+  // Poll progress every 1 second when playing
+  progressPollingInterval.value = window.setInterval(async () => {
+    if (music.isPlaying) {
+      await music.getProgress()
+    }
+  }, 1000)
 })
 
 onUnmounted(() => {
   if (loginPollingInterval.value) {
     clearInterval(loginPollingInterval.value)
   }
+  if (progressPollingInterval.value) {
+    clearInterval(progressPollingInterval.value)
+  }
 })
+
+// Progress bar seek handlers
+function handleProgressClick(event: MouseEvent) {
+  const bar = event.currentTarget as HTMLElement
+  const rect = bar.getBoundingClientRect()
+  const percent = (event.clientX - rect.left) / rect.width
+  const newPosition = Math.floor(percent * music.durationMs)
+  music.botSeek(newPosition)
+}
+
+function handleProgressMouseDown(event: MouseEvent) {
+  isDragging.value = true
+  handleProgressDrag(event)
+  window.addEventListener('mousemove', handleProgressDrag)
+  window.addEventListener('mouseup', handleProgressMouseUp)
+}
+
+function handleProgressDrag(event: MouseEvent) {
+  const bar = document.querySelector('.progress-bar') as HTMLElement
+  if (!bar) return
+  const rect = bar.getBoundingClientRect()
+  const percent = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width))
+  dragPosition.value = Math.floor(percent * music.durationMs)
+}
+
+function handleProgressMouseUp() {
+  window.removeEventListener('mousemove', handleProgressDrag)
+  window.removeEventListener('mouseup', handleProgressMouseUp)
+  if (isDragging.value) {
+    music.botSeek(dragPosition.value)
+    isDragging.value = false
+  }
+}
 
 // Watch for song URL changes to auto-play
 watch(() => music.currentSongUrl, (url) => {
@@ -77,7 +138,11 @@ function handleAudioEnded() {
 async function handleBotPlayPause() {
   if (music.isPlaying) {
     await music.botPause()
+  } else if (music.playbackState === 'paused') {
+    // Resume from paused state
+    await music.botResume()
   } else if (voice.currentVoiceChannel) {
+    // Start new playback
     const roomName = `voice_${voice.currentVoiceChannel.id}`
     await music.botPlay(roomName)
   }
@@ -136,22 +201,38 @@ async function handleBotPlayPause() {
       <!-- Now Playing -->
       <div v-if="music.currentSong" class="now-playing">
         <img :src="music.currentSong.cover" alt="Cover" class="album-cover" />
-        <div class="song-info">
-          <div class="song-name">{{ music.currentSong.name }}</div>
-          <div class="song-artist">{{ music.currentSong.artist }}</div>
+        <div class="song-details">
+          <div class="song-info">
+            <div class="song-name">{{ music.currentSong.name }}</div>
+            <div class="song-artist">{{ music.currentSong.artist }}</div>
+          </div>
+          <!-- Progress Bar -->
+          <div class="progress-container">
+            <span class="time-current">{{ formatTime(isDragging ? dragPosition : music.positionMs) }}</span>
+            <div 
+              class="progress-bar" 
+              @click="handleProgressClick"
+              @mousedown="handleProgressMouseDown"
+            >
+              <div class="progress-fill" :style="{ width: progressPercent + '%' }"></div>
+              <div class="progress-thumb" :style="{ left: progressPercent + '%' }"></div>
+            </div>
+            <span class="time-total">{{ formatTime(music.durationMs) }}</span>
+          </div>
         </div>
         <div class="playback-controls">
-          <button class="control-btn" @click="music.previous()" title="上一首"><SkipBack :size="18" /></button>
+          <button class="control-btn" @click="music.botSkip()" title="上一首"><SkipBack :size="18" /></button>
           <button 
             class="control-btn play-btn" 
             @click="handleBotPlayPause"
-            :disabled="!voice.isConnected"
-            :title="voice.isConnected ? '' : '请先加入语音频道'"
+            :disabled="!voice.isConnected && music.playbackState !== 'paused'"
+            :title="voice.isConnected || music.playbackState === 'paused' ? '' : '请先加入语音频道'"
           >
-            <Pause v-if="music.isPlaying" :size="22" />
+            <Loader2 v-if="music.playbackState === 'loading'" :size="22" class="spin" />
+            <Pause v-else-if="music.isPlaying" :size="22" />
             <Play v-else :size="22" />
           </button>
-          <button class="control-btn" @click="music.skip()" title="下一首"><SkipForward :size="18" /></button>
+          <button class="control-btn" @click="music.botSkip()" title="下一首"><SkipForward :size="18" /></button>
         </div>
       </div>
 
@@ -393,10 +474,18 @@ async function handleBotPlayPause() {
   height: 64px;
   border-radius: 8px;
   object-fit: cover;
+  flex-shrink: 0;
+}
+
+.song-details {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .song-info {
-  flex: 1;
   min-width: 0;
 }
 
@@ -414,6 +503,69 @@ async function handleBotPlayPause() {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Progress Bar */
+.progress-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.time-current,
+.time-total {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  min-width: 32px;
+  text-align: center;
+}
+
+.progress-bar {
+  flex: 1;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+  cursor: pointer;
+  position: relative;
+}
+
+.progress-bar:hover {
+  height: 6px;
+}
+
+.progress-bar:hover .progress-thumb {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+}
+
+.progress-fill {
+  height: 100%;
+  background: var(--color-primary, #6366f1);
+  border-radius: 2px;
+  transition: width 0.1s linear;
+}
+
+.progress-thumb {
+  position: absolute;
+  top: 50%;
+  width: 12px;
+  height: 12px;
+  background: #fff;
+  border-radius: 50%;
+  transform: translate(-50%, -50%) scale(0);
+  opacity: 0;
+  transition: opacity 0.15s, transform 0.15s;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+}
+
+/* Loading spinner */
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 .playback-controls {
