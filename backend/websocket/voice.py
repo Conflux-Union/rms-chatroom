@@ -29,9 +29,35 @@ QQ_NOTIFY_URL = "http://119.23.57.80:53000/send_group_msg"
 QQ_GROUP_ID = 457054386
 
 
-async def send_qq_group_notify(username: str, server_name: str, channel_name: str) -> None:
-    """Send notification to QQ group when user joins voice channel."""
-    message = f"[RMS ChatRoom] 玩家 {username} 加入了 {server_name}/{channel_name} 😋"
+async def check_room_has_real_users(room_name: str) -> bool:
+    """Check if room has real users (excluding MusicBot)."""
+    settings = get_settings()
+    livekit_http_url = settings.livekit_internal_host.replace("ws://", "http://").replace("wss://", "https://")
+    api = LiveKitAPI(
+        url=livekit_http_url,
+        api_key=settings.livekit_api_key,
+        api_secret=settings.livekit_api_secret,
+    )
+    try:
+        response = await api.room.list_participants(ListParticipantsRequest(room=room_name))
+        # Filter out MusicBot
+        real_users = [p for p in response.participants if p.identity != "MusicBot"]
+        return len(real_users) > 0
+    except Exception:
+        # Room doesn't exist or error, assume no users
+        return False
+    finally:
+        await api.aclose()
+
+
+async def send_qq_group_notify(username: str, server_name: str, channel_name: str, room_name: str) -> None:
+    """Send notification to QQ group when first user joins voice channel."""
+    # Only notify if no real users in room (MusicBot excluded)
+    has_users = await check_room_has_real_users(room_name)
+    if has_users:
+        return
+    
+    message = f"[RMS ChatRoom] 玩家 {username} 在 {server_name}/{channel_name} 开启了新的语音聊天 😋"
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
             await client.post(
@@ -150,9 +176,9 @@ async def get_voice_token(
     
     jwt_token = token.to_jwt()
     
-    # Send QQ group notification (fire and forget)
+    # Send QQ group notification (fire and forget, only if first real user)
     server_name = channel.server.name if channel.server else "未知服务器"
-    asyncio.create_task(send_qq_group_notify(username, server_name, channel.name))
+    asyncio.create_task(send_qq_group_notify(username, server_name, channel.name, room_name))
     
     return LiveKitTokenResponse(
         token=jwt_token,

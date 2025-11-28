@@ -301,6 +301,8 @@ export const useVoiceStore = defineStore('voice', () => {
           // Apply saved volume
           const savedVolume = userVolumes.value.get(participant.identity) ?? 100
           audioElement.volume = Math.min(savedVolume / 100, 1)
+          // Store reference for volume control
+          participantAudioMap.set(participant.identity, { audioElement } as ParticipantAudio)
           // Apply output device
           if (selectedAudioOutput.value) {
             const el = audioElement as HTMLAudioElement & { setSinkId?: (id: string) => Promise<void> }
@@ -312,8 +314,12 @@ export const useVoiceStore = defineStore('voice', () => {
         }
       })
 
-      room.value.on(RoomEvent.TrackUnsubscribed, (track) => {
+      room.value.on(RoomEvent.TrackUnsubscribed, (track, _pub, participant) => {
         track.detach().forEach((el) => el.remove())
+        // Remove from participant audio map
+        if (participant instanceof RemoteParticipant) {
+          participantAudioMap.delete(participant.identity)
+        }
       })
 
       await room.value.connect(url, token)
@@ -411,9 +417,9 @@ export const useVoiceStore = defineStore('voice', () => {
     }
 
     // Apply volume directly to audio element (max 100%)
-    const audioEl = document.querySelector(`audio[data-participant-id="${participantId}"]`) as HTMLAudioElement | null
-    if (audioEl) {
-      audioEl.volume = Math.min(clampedVolume / 100, 1)
+    const participantAudio = participantAudioMap.get(participantId)
+    if (participantAudio?.audioElement) {
+      participantAudio.audioElement.volume = Math.min(clampedVolume / 100, 1)
     }
 
     userVolumes.value.set(participantId, clampedVolume)
