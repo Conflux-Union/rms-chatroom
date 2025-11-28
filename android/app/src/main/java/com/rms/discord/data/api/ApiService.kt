@@ -59,6 +59,108 @@ interface ApiService {
         @Path("token") token: String,
         @Body body: GuestJoinBody
     ): VoiceTokenResponse
+
+    // Music - Login
+    @GET("api/music/login/check")
+    suspend fun checkMusicLogin(
+        @Header("Authorization") token: String
+    ): MusicLoginCheckResponse
+
+    @GET("api/music/login/qrcode")
+    suspend fun getMusicQRCode(): MusicQRCodeResponse
+
+    @GET("api/music/login/status")
+    suspend fun checkMusicLoginStatus(): MusicLoginStatusResponse
+
+    @POST("api/music/login/logout")
+    suspend fun musicLogout(
+        @Header("Authorization") token: String
+    ): MusicSuccessResponse
+
+    // Music - Search
+    @POST("api/music/search")
+    suspend fun searchMusic(
+        @Header("Authorization") token: String,
+        @Body request: MusicSearchRequest
+    ): MusicSearchResponse
+
+    @GET("api/music/song/{mid}/url")
+    suspend fun getSongUrl(
+        @Header("Authorization") token: String,
+        @Path("mid") mid: String
+    ): MusicSongUrlResponse
+
+    // Music - Queue
+    @GET("api/music/queue")
+    suspend fun getMusicQueue(
+        @Header("Authorization") token: String
+    ): MusicQueueResponse
+
+    @POST("api/music/queue/add")
+    suspend fun addToMusicQueue(
+        @Header("Authorization") token: String,
+        @Body song: Song
+    ): MusicSuccessResponse
+
+    @DELETE("api/music/queue/{index}")
+    suspend fun removeFromMusicQueue(
+        @Header("Authorization") token: String,
+        @Path("index") index: Int
+    ): MusicSuccessResponse
+
+    @POST("api/music/queue/clear")
+    suspend fun clearMusicQueue(
+        @Header("Authorization") token: String
+    ): MusicSuccessResponse
+
+    // Music - Bot Control
+    @GET("api/music/bot/status")
+    suspend fun getMusicBotStatus(
+        @Header("Authorization") token: String
+    ): MusicBotStatusResponse
+
+    @POST("api/music/bot/start")
+    suspend fun startMusicBot(
+        @Header("Authorization") token: String,
+        @Body request: MusicBotStartRequest
+    ): MusicSuccessResponse
+
+    @POST("api/music/bot/stop")
+    suspend fun stopMusicBot(
+        @Header("Authorization") token: String
+    ): MusicSuccessResponse
+
+    @POST("api/music/bot/play")
+    suspend fun musicBotPlay(
+        @Header("Authorization") token: String,
+        @Body request: MusicBotStartRequest
+    ): MusicSuccessResponse
+
+    @POST("api/music/bot/pause")
+    suspend fun musicBotPause(
+        @Header("Authorization") token: String
+    ): MusicSuccessResponse
+
+    @POST("api/music/bot/resume")
+    suspend fun musicBotResume(
+        @Header("Authorization") token: String
+    ): MusicSuccessResponse
+
+    @POST("api/music/bot/skip")
+    suspend fun musicBotSkip(
+        @Header("Authorization") token: String
+    ): MusicSuccessResponse
+
+    @POST("api/music/bot/seek")
+    suspend fun musicBotSeek(
+        @Header("Authorization") token: String,
+        @Body request: MusicSeekRequest
+    ): MusicSuccessResponse
+
+    @GET("api/music/bot/progress")
+    suspend fun getMusicProgress(
+        @Header("Authorization") token: String
+    ): MusicProgressResponse
 }
 
 data class SendMessageBody(val content: String)

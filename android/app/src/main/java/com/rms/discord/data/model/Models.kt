@@ -111,3 +111,95 @@ sealed class WsMessage {
         val userId: Long
     ) : WsMessage()
 }
+
+// Music models
+data class Song(
+    val mid: String,
+    val name: String,
+    val artist: String,
+    val album: String,
+    val duration: Int,
+    val cover: String
+)
+
+data class QueueItem(
+    val song: Song,
+    @SerializedName("requested_by")
+    val requestedBy: String
+)
+
+data class MusicQueueResponse(
+    @SerializedName("is_playing")
+    val isPlaying: Boolean,
+    @SerializedName("current_song")
+    val currentSong: Song?,
+    @SerializedName("current_index")
+    val currentIndex: Int,
+    val queue: List<QueueItem>
+)
+
+data class MusicSearchResponse(
+    val songs: List<Song>
+)
+
+data class MusicBotStatusResponse(
+    val connected: Boolean,
+    val room: String?,
+    @SerializedName("is_playing")
+    val isPlaying: Boolean
+)
+
+data class MusicProgressResponse(
+    @SerializedName("position_ms")
+    val positionMs: Long,
+    @SerializedName("duration_ms")
+    val durationMs: Long,
+    val state: String,
+    @SerializedName("current_song")
+    val currentSong: Song?
+)
+
+data class MusicLoginCheckResponse(
+    @SerializedName("logged_in")
+    val loggedIn: Boolean
+)
+
+data class MusicQRCodeResponse(
+    val qrcode: String,
+    val type: String
+)
+
+data class MusicLoginStatusResponse(
+    val status: String,
+    @SerializedName("logged_in")
+    val loggedIn: Boolean = false
+)
+
+data class MusicSongUrlResponse(
+    val url: String,
+    val mid: String
+)
+
+data class MusicSearchRequest(
+    val keyword: String,
+    val num: Int = 20
+)
+
+data class MusicBotStartRequest(
+    @SerializedName("room_name")
+    val roomName: String
+)
+
+data class MusicSeekRequest(
+    @SerializedName("position_ms")
+    val positionMs: Long
+)
+
+data class MusicSuccessResponse(
+    val success: Boolean,
+    val position: Int? = null,
+    @SerializedName("current_index")
+    val currentIndex: Int? = null,
+    val playing: String? = null,
+    val message: String? = null
+)

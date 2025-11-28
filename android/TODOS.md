@@ -56,10 +56,14 @@ android/app/src/main/java/com/rms/discord/
 │   │   └── ChatScreen.kt         # 聊天界面
 │   ├── voice/
 │   │   ├── VoiceViewModel.kt     # 语音状态管理
-│   │   ├── VoiceScreen.kt        # 语音界面 (说话指示+权限请求)
+│   │   ├── VoiceScreen.kt        # 语音界面 (说话指示+权限请求+音乐FAB)
 │   │   ├── VoiceInviteViewModel.kt  # 语音邀请状态管理
 │   │   └── VoiceInviteScreen.kt  # 访客语音邀请界面
-│   └── music/                    # (待实现)
+│   └── music/
+│       ├── MusicViewModel.kt     # 音乐状态管理+API调用
+│       ├── MusicBottomSheet.kt   # 音乐面板 (播放信息+控制+队列)
+│       ├── MusicSearchDialog.kt  # 音乐搜索对话框
+│       └── MusicLoginDialog.kt   # QQ音乐登录对话框
 └── service/
     └── VoiceCallService.kt       # 语音通话前台服务 (通知控制+WakeLock)
 ```
@@ -151,20 +155,31 @@ android/app/src/main/java/com/rms/discord/
   - Deep Link处理 (rmsdiscord://voice-invite/{token})
   - 邀请确认界面 (用户名输入+加入)
 
-### 🔲 Phase 4: 音乐面板
+### ✅ Phase 4: 音乐面板 (已完成)
 
-- [ ] MusicViewModel
-  - 音乐播放状态
+- [x] MusicViewModel (ui/music/MusicViewModel.kt)
+  - QQ音乐登录状态管理
+  - 音乐搜索功能
   - 播放队列管理
-  - 播放控制 (播放/暂停/上一首/下一首)
-- [ ] MusicBottomSheet
-  - 当前播放信息
+  - 播放控制 (播放/暂停/跳过/进度条)
+  - 机器人状态管理
+- [x] MusicBottomSheet (ui/music/MusicBottomSheet.kt)
+  - 当前播放信息 (封面/歌名/歌手)
   - 播放控制按钮
-  - 进度条
+  - 进度条 (支持拖动跳转)
   - 播放队列列表
-- [ ] 音乐搜索/添加
+  - QQ VIP登录/机器人状态显示
+- [x] MusicSearchDialog (ui/music/MusicSearchDialog.kt)
   - 搜索界面
+  - 搜索结果列表
   - 添加到队列
+- [x] MusicLoginDialog (ui/music/MusicLoginDialog.kt)
+  - QQ音乐二维码登录
+  - 登录状态实时显示
+  - 二维码刷新
+- [x] 集成到VoiceScreen
+  - FAB打开音乐面板 (语音连接后显示)
+  - ModalBottomSheet展示音乐面板
 
 ### 🔲 Phase 5: 测试 + 优化 + 发布
 
@@ -225,9 +240,9 @@ app/build/outputs/apk/release/app-release.apk
 | `components/VoicePanel.vue` | `ui/voice/VoiceScreen.kt` | ✅ |
 | `views/VoiceInvite.vue` | `ui/voice/VoiceInviteScreen.kt` | ✅ |
 | `components/VoiceControls.vue` | 集成在 VoiceScreen | ✅ |
-| `components/MusicPanel.vue` | `ui/music/MusicBottomSheet.kt` | 🔲 |
+| `components/MusicPanel.vue` | `ui/music/MusicBottomSheet.kt` | ✅ |
 | `stores/auth.ts` | `data/repository/AuthRepository.kt` | ✅ |
 | `stores/chat.ts` | `data/repository/ChatRepository.kt` | ✅ |
 | `stores/voice.ts` | `data/repository/VoiceRepository.kt` + `data/livekit/LiveKitManager.kt` | ✅ |
-| `stores/music.ts` | `ui/music/MusicViewModel.kt` | 🔲 |
+| `stores/music.ts` | `ui/music/MusicViewModel.kt` | ✅ |
 | `composables/useWebSocket.ts` | `data/websocket/ChatWebSocket.kt` | ✅ |

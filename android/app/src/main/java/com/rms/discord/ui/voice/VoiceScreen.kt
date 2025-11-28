@@ -13,8 +13,10 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -38,18 +40,28 @@ import androidx.core.content.ContextCompat
 import com.rms.discord.R
 import com.rms.discord.data.livekit.ConnectionState
 import com.rms.discord.data.livekit.ParticipantInfo
+import com.rms.discord.ui.music.MusicBottomSheet
+import com.rms.discord.ui.music.MusicLoginDialog
+import com.rms.discord.ui.music.MusicSearchDialog
+import com.rms.discord.ui.music.MusicViewModel
 import com.rms.discord.ui.theme.*
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun VoiceScreen(
     channelId: Long,
     channelName: String = "",
-    viewModel: VoiceViewModel = hiltViewModel()
+    viewModel: VoiceViewModel = hiltViewModel(),
+    musicViewModel: MusicViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsState()
+    val musicState by musicViewModel.state.collectAsState()
     val context = LocalContext.current
     
     var showPermissionDeniedDialog by remember { mutableStateOf(false) }
+    var showMusicPanel by remember { mutableStateOf(false) }
+    var showSearchDialog by remember { mutableStateOf(false) }
+    var showLoginDialog by remember { mutableStateOf(false) }
     var hasAudioPermission by remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
@@ -67,6 +79,8 @@ fun VoiceScreen(
             showPermissionDeniedDialog = true
         }
     }
+
+    val voiceRoomName = remember(channelId) { "voice_$channelId" }
     
     // Permission denied dialog
     if (showPermissionDeniedDialog) {
@@ -78,6 +92,36 @@ fun VoiceScreen(
                 TextButton(onClick = { showPermissionDeniedDialog = false }) {
                     Text("确定")
                 }
+            }
+        )
+    }
+
+    // Music search dialog
+    if (showSearchDialog) {
+        MusicSearchDialog(
+            searchResults = musicState.searchResults,
+            isSearching = musicState.isSearching,
+            onSearch = { musicViewModel.search(it) },
+            onAddSong = { song ->
+                musicViewModel.addToQueue(song)
+                musicViewModel.clearSearchResults()
+            },
+            onDismiss = { 
+                showSearchDialog = false
+                musicViewModel.clearSearchResults()
+            }
+        )
+    }
+
+    // Music login dialog
+    if (showLoginDialog || musicState.qrCodeUrl != null) {
+        MusicLoginDialog(
+            qrCodeUrl = musicState.qrCodeUrl,
+            loginStatus = musicState.loginStatus,
+            onRefreshQRCode = { musicViewModel.getQRCode() },
+            onDismiss = {
+                showLoginDialog = false
+                musicViewModel.dismissQRCode()
             }
         )
     }
@@ -95,68 +139,118 @@ fun VoiceScreen(
         }
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        // Connection status banner
-        ConnectionStatusBanner(
-            connectionState = state.connectionState,
-            error = state.error,
-            onDismissError = { viewModel.clearError() }
-        )
+    // Music bottom sheet
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
-        // Voice users grid
-        if (state.participants.isNotEmpty()) {
-            LazyVerticalGrid(
-                columns = GridCells.Adaptive(minSize = 100.dp),
-                modifier = Modifier.weight(1f),
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-                contentPadding = PaddingValues(16.dp)
-            ) {
-                items(state.participants, key = { it.identity }) { participant ->
-                    VoiceUserItem(participant = participant)
-                }
-            }
-        } else {
-            Box(
-                modifier = Modifier.weight(1f),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(
-                        imageVector = Icons.Default.VolumeUp,
-                        contentDescription = null,
-                        modifier = Modifier.size(64.dp),
-                        tint = TextMuted
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text(
-                        text = if (state.isConnected) "等待其他人加入..." else "点击下方按钮加入语音",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = TextMuted,
-                        textAlign = TextAlign.Center
-                    )
-                }
-            }
+    if (showMusicPanel) {
+        ModalBottomSheet(
+            onDismissRequest = { showMusicPanel = false },
+            sheetState = sheetState,
+            containerColor = SurfaceDark,
+            dragHandle = { BottomSheetDefaults.DragHandle() }
+        ) {
+            MusicBottomSheet(
+                state = musicState,
+                voiceRoomName = voiceRoomName,
+                voiceConnected = state.isConnected,
+                onTogglePlayPause = { musicViewModel.togglePlayPause(voiceRoomName) },
+                onSkip = { musicViewModel.botSkip() },
+                onSeek = { musicViewModel.botSeek(it) },
+                onRemoveFromQueue = { musicViewModel.removeFromQueue(it) },
+                onClearQueue = { musicViewModel.clearQueue() },
+                onShowSearch = { showSearchDialog = true },
+                onLoginClick = { 
+                    showLoginDialog = true
+                    musicViewModel.getQRCode()
+                },
+                onLogoutClick = { musicViewModel.logout() },
+                onStopBot = { musicViewModel.stopBot() }
+            )
         }
+    }
 
-        // Voice controls
-        VoiceControls(
-            isConnected = state.isConnected,
-            isMuted = state.isMuted,
-            isDeafened = state.isDeafened,
-            isSpeakerOn = state.isSpeakerOn,
-            isLoading = state.isLoading,
-            onJoin = onJoinWithPermission,
-            onLeave = { viewModel.leaveVoice() },
-            onToggleMute = { viewModel.toggleMute() },
-            onToggleDeafen = { viewModel.toggleDeafen() },
-            onToggleSpeaker = { viewModel.toggleSpeaker() }
-        )
+    Scaffold(
+        floatingActionButton = {
+            // Music FAB - only show when connected to voice
+            if (state.isConnected) {
+                FloatingActionButton(
+                    onClick = { showMusicPanel = true },
+                    containerColor = DiscordBlurple
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.MusicNote,
+                        contentDescription = "音乐",
+                        tint = Color.White
+                    )
+                }
+            }
+        },
+        containerColor = Color.Transparent
+    ) { paddingValues ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+                .padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            // Connection status banner
+            ConnectionStatusBanner(
+                connectionState = state.connectionState,
+                error = state.error,
+                onDismissError = { viewModel.clearError() }
+            )
+
+            // Voice users grid
+            if (state.participants.isNotEmpty()) {
+                LazyVerticalGrid(
+                    columns = GridCells.Adaptive(minSize = 100.dp),
+                    modifier = Modifier.weight(1f),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                    contentPadding = PaddingValues(16.dp)
+                ) {
+                    items(state.participants, key = { it.identity }) { participant ->
+                        VoiceUserItem(participant = participant)
+                    }
+                }
+            } else {
+                Box(
+                    modifier = Modifier.weight(1f),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(
+                            imageVector = Icons.Default.VolumeUp,
+                            contentDescription = null,
+                            modifier = Modifier.size(64.dp),
+                            tint = TextMuted
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = if (state.isConnected) "等待其他人加入..." else "点击下方按钮加入语音",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = TextMuted,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+            }
+
+            // Voice controls
+            VoiceControls(
+                isConnected = state.isConnected,
+                isMuted = state.isMuted,
+                isDeafened = state.isDeafened,
+                isSpeakerOn = state.isSpeakerOn,
+                isLoading = state.isLoading,
+                onJoin = onJoinWithPermission,
+                onLeave = { viewModel.leaveVoice() },
+                onToggleMute = { viewModel.toggleMute() },
+                onToggleDeafen = { viewModel.toggleDeafen() },
+                onToggleSpeaker = { viewModel.toggleSpeaker() }
+            )
+        }
     }
 }
 
