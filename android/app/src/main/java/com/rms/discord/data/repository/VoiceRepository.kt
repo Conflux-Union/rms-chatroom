@@ -1,5 +1,6 @@
 package com.rms.discord.data.repository
 
+import android.util.Log
 import com.rms.discord.data.api.ApiService
 import com.rms.discord.data.api.JoinVoiceBody
 import com.rms.discord.data.api.LeaveVoiceBody
@@ -16,6 +17,10 @@ class VoiceRepository @Inject constructor(
     private val api: ApiService,
     private val authRepository: AuthRepository
 ) {
+    companion object {
+        private const val TAG = "VoiceRepository"
+    }
+
     private val _isConnected = MutableStateFlow(false)
     val isConnected: StateFlow<Boolean> = _isConnected.asStateFlow()
 
@@ -33,7 +38,8 @@ class VoiceRepository @Inject constructor(
 
     suspend fun joinVoice(channelId: Long): Result<VoiceTokenResponse> {
         return try {
-            val token = authRepository.getToken() ?: return Result.failure(Exception("No token"))
+            val token = authRepository.getToken()
+                ?: return Result.failure(AuthException("未登录，请先登录"))
             val response = api.joinVoice(
                 authRepository.getAuthHeader(token),
                 JoinVoiceBody(channelId)
@@ -42,32 +48,37 @@ class VoiceRepository @Inject constructor(
             _isConnected.value = true
             Result.success(response)
         } catch (e: Exception) {
-            Result.failure(e)
+            Log.e(TAG, "joinVoice failed", e)
+            Result.failure(e.toAuthException())
         }
     }
 
     suspend fun leaveVoice(): Result<Unit> {
         return try {
             val channelId = _currentChannelId.value ?: return Result.success(Unit)
-            val token = authRepository.getToken() ?: return Result.failure(Exception("No token"))
+            val token = authRepository.getToken()
+                ?: return Result.failure(AuthException("未登录，请先登录"))
             api.leaveVoice(authRepository.getAuthHeader(token), LeaveVoiceBody(channelId))
             _currentChannelId.value = null
             _isConnected.value = false
             _voiceUsers.value = emptyList()
             Result.success(Unit)
         } catch (e: Exception) {
-            Result.failure(e)
+            Log.e(TAG, "leaveVoice failed", e)
+            Result.failure(e.toAuthException())
         }
     }
 
     suspend fun fetchVoiceUsers(channelId: Long): Result<List<VoiceUser>> {
         return try {
-            val token = authRepository.getToken() ?: return Result.failure(Exception("No token"))
+            val token = authRepository.getToken()
+                ?: return Result.failure(AuthException("未登录，请先登录"))
             val users = api.getVoiceUsers(authRepository.getAuthHeader(token), channelId)
             _voiceUsers.value = users
             Result.success(users)
         } catch (e: Exception) {
-            Result.failure(e)
+            Log.e(TAG, "fetchVoiceUsers failed", e)
+            Result.failure(e.toAuthException())
         }
     }
 

@@ -1,5 +1,6 @@
 package com.rms.discord.data.repository
 
+import android.util.Log
 import com.rms.discord.data.api.ApiService
 import com.rms.discord.data.api.SendMessageBody
 import com.rms.discord.data.model.Channel
@@ -16,6 +17,10 @@ class ChatRepository @Inject constructor(
     private val api: ApiService,
     private val authRepository: AuthRepository
 ) {
+    companion object {
+        private const val TAG = "ChatRepository"
+    }
+
     private val _servers = MutableStateFlow<List<Server>>(emptyList())
     val servers: StateFlow<List<Server>> = _servers.asStateFlow()
 
@@ -30,23 +35,27 @@ class ChatRepository @Inject constructor(
 
     suspend fun fetchServers(): Result<List<Server>> {
         return try {
-            val token = authRepository.getToken() ?: return Result.failure(Exception("No token"))
+            val token = authRepository.getToken()
+                ?: return Result.failure(AuthException("未登录，请先登录"))
             val serverList = api.getServers(authRepository.getAuthHeader(token))
             _servers.value = serverList
             Result.success(serverList)
         } catch (e: Exception) {
-            Result.failure(e)
+            Log.e(TAG, "fetchServers failed", e)
+            Result.failure(e.toAuthException())
         }
     }
 
     suspend fun fetchServer(serverId: Long): Result<Server> {
         return try {
-            val token = authRepository.getToken() ?: return Result.failure(Exception("No token"))
+            val token = authRepository.getToken()
+                ?: return Result.failure(AuthException("未登录，请先登录"))
             val server = api.getServer(authRepository.getAuthHeader(token), serverId)
             _currentServer.value = server
             Result.success(server)
         } catch (e: Exception) {
-            Result.failure(e)
+            Log.e(TAG, "fetchServer failed", e)
+            Result.failure(e.toAuthException())
         }
     }
 
@@ -56,18 +65,21 @@ class ChatRepository @Inject constructor(
 
     suspend fun fetchMessages(channelId: Long): Result<List<Message>> {
         return try {
-            val token = authRepository.getToken() ?: return Result.failure(Exception("No token"))
+            val token = authRepository.getToken()
+                ?: return Result.failure(AuthException("未登录，请先登录"))
             val messageList = api.getMessages(authRepository.getAuthHeader(token), channelId)
             _messages.value = messageList
             Result.success(messageList)
         } catch (e: Exception) {
-            Result.failure(e)
+            Log.e(TAG, "fetchMessages failed", e)
+            Result.failure(e.toAuthException())
         }
     }
 
     suspend fun sendMessage(channelId: Long, content: String): Result<Message> {
         return try {
-            val token = authRepository.getToken() ?: return Result.failure(Exception("No token"))
+            val token = authRepository.getToken()
+                ?: return Result.failure(AuthException("未登录，请先登录"))
             val message = api.sendMessage(
                 authRepository.getAuthHeader(token),
                 channelId,
@@ -76,7 +88,8 @@ class ChatRepository @Inject constructor(
             _messages.value = _messages.value + message
             Result.success(message)
         } catch (e: Exception) {
-            Result.failure(e)
+            Log.e(TAG, "sendMessage failed", e)
+            Result.failure(e.toAuthException())
         }
     }
 

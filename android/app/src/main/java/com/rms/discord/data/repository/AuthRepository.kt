@@ -1,5 +1,6 @@
 package com.rms.discord.data.repository
 
+import android.util.Log
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
@@ -9,6 +10,10 @@ import com.rms.discord.data.model.User
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import retrofit2.HttpException
+import java.net.ConnectException
+import java.net.SocketTimeoutException
+import java.net.UnknownHostException
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -18,6 +23,7 @@ class AuthRepository @Inject constructor(
     private val dataStore: DataStore<Preferences>
 ) {
     companion object {
+        private const val TAG = "AuthRepository"
         private val TOKEN_KEY = stringPreferencesKey("auth_token")
     }
 
@@ -41,14 +47,32 @@ class AuthRepository @Inject constructor(
         }
     }
 
-    suspend fun verifyToken(token: String): User? {
+    suspend fun verifyToken(token: String): Result<User> {
         return try {
             val response = api.verifyToken("Bearer $token")
-            if (response.valid) response.user else null
+            if (response.success && response.user != null) {
+                Result.success(response.user)
+            } else {
+                Result.failure(AuthException("Token验证失败"))
+            }
         } catch (e: Exception) {
-            null
+            Log.e(TAG, "verifyToken failed", e)
+            Result.failure(e.toAuthException())
         }
     }
 
     fun getAuthHeader(token: String): String = "Bearer $token"
+}
+
+class AuthException(message: String) : Exception(message)
+
+fun Exception.toAuthException(): AuthException {
+    val message = when (this) {
+        is UnknownHostException -> "无法连接服务器，请检查网络"
+        is ConnectException -> "连接服务器失败，请稍后重试"
+        is SocketTimeoutException -> "连接超时，请检查网络"
+        is HttpException -> "服务器错误 (${code()}): ${message()}"
+        else -> "未知错误: ${this.message ?: this.javaClass.simpleName}"
+    }
+    return AuthException(message)
 }

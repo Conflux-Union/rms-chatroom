@@ -11,6 +11,7 @@ import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.*
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.navigation.compose.rememberNavController
@@ -46,12 +47,19 @@ class MainActivity : ComponentActivity() {
                 val navController = rememberNavController()
                 val authState by authViewModel.state.collectAsState()
 
-                // Determine start destination based on auth state
-                val startDestination = remember(authState.isAuthenticated, authState.isLoading) {
-                    when {
-                        authState.isLoading -> Screen.Login.route
-                        authState.isAuthenticated -> Screen.Main.route
-                        else -> Screen.Login.route
+                // Navigate when auth state changes
+                LaunchedEffect(authState.isAuthenticated, authState.isLoading) {
+                    if (!authState.isLoading) {
+                        val currentRoute = navController.currentDestination?.route
+                        if (authState.isAuthenticated && currentRoute == Screen.Login.route) {
+                            navController.navigate(Screen.Main.route) {
+                                popUpTo(Screen.Login.route) { inclusive = true }
+                            }
+                        } else if (!authState.isAuthenticated && currentRoute == Screen.Main.route) {
+                            navController.navigate(Screen.Login.route) {
+                                popUpTo(Screen.Main.route) { inclusive = true }
+                            }
+                        }
                     }
                 }
 
@@ -61,7 +69,7 @@ class MainActivity : ComponentActivity() {
                 ) {
                     NavGraph(
                         navController = navController,
-                        startDestination = startDestination,
+                        startDestination = Screen.Login.route,
                         onSsoLogin = { launchSsoLogin() }
                     )
                 }
@@ -110,8 +118,8 @@ class MainActivity : ComponentActivity() {
     private fun buildSsoUrl(): String {
         // SSO login URL with callback redirect
         // The SSO server should redirect to: rmsdiscord://callback?token=xxx
-        val redirectUri = "rmsdiscord://callback"
+        val redirectUrl = "rmsdiscord://callback"
         val baseUrl = BuildConfig.API_BASE_URL
-        return "$baseUrl/api/auth/login?redirect_uri=$redirectUri"
+        return "$baseUrl/api/auth/login?redirect_url=$redirectUrl"
     }
 }

@@ -7,8 +7,8 @@ import retrofit2.http.*
 interface ApiService {
 
     // Auth
-    @GET("api/auth/verify")
-    suspend fun verifyToken(@Header("Authorization") token: String): TokenVerifyResponse
+    @GET("api/auth/me")
+    suspend fun verifyToken(@Header("Authorization") token: String): AuthMeResponse
 
     // Servers
     @GET("api/servers")

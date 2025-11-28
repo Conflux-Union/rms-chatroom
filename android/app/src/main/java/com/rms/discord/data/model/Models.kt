@@ -63,6 +63,11 @@ data class TokenVerifyResponse(
     val user: User?
 )
 
+data class AuthMeResponse(
+    val success: Boolean,
+    val user: User?
+)
+
 data class VoiceTokenResponse(
     val token: String,
     val url: String

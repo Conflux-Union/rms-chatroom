@@ -32,16 +32,25 @@ class AuthViewModel @Inject constructor(
 
     private fun checkAuth() {
         viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = true)
+            _state.value = _state.value.copy(isLoading = true, error = null)
             val token = authRepository.getToken()
             if (token != null) {
-                val user = authRepository.verifyToken(token)
-                _state.value = if (user != null) {
-                    AuthState(isLoading = false, isAuthenticated = true, user = user)
-                } else {
-                    authRepository.clearToken()
-                    AuthState(isLoading = false, isAuthenticated = false)
-                }
+                authRepository.verifyToken(token)
+                    .onSuccess { user ->
+                        _state.value = AuthState(
+                            isLoading = false,
+                            isAuthenticated = true,
+                            user = user
+                        )
+                    }
+                    .onFailure { e ->
+                        authRepository.clearToken()
+                        _state.value = AuthState(
+                            isLoading = false,
+                            isAuthenticated = false,
+                            error = "自动登录失败: ${e.message}"
+                        )
+                    }
             } else {
                 _state.value = AuthState(isLoading = false, isAuthenticated = false)
             }
@@ -51,17 +60,22 @@ class AuthViewModel @Inject constructor(
     fun handleSsoCallback(token: String) {
         viewModelScope.launch {
             _state.value = _state.value.copy(isLoading = true, error = null)
-            val user = authRepository.verifyToken(token)
-            if (user != null) {
-                authRepository.saveToken(token)
-                _state.value = AuthState(isLoading = false, isAuthenticated = true, user = user)
-            } else {
-                _state.value = AuthState(
-                    isLoading = false,
-                    isAuthenticated = false,
-                    error = "认证失败，请重试"
-                )
-            }
+            authRepository.verifyToken(token)
+                .onSuccess { user ->
+                    authRepository.saveToken(token)
+                    _state.value = AuthState(
+                        isLoading = false,
+                        isAuthenticated = true,
+                        user = user
+                    )
+                }
+                .onFailure { e ->
+                    _state.value = AuthState(
+                        isLoading = false,
+                        isAuthenticated = false,
+                        error = "登录失败: ${e.message}"
+                    )
+                }
         }
     }
 
