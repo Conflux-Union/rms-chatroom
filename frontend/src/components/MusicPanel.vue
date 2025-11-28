@@ -20,6 +20,14 @@ const isDragging = ref(false)
 const dragPosition = ref(0)
 const musicWs = ref<WebSocket | null>(null)
 
+// Get current voice room name for music API calls
+const currentRoomName = computed(() => {
+  if (voice.currentVoiceChannel) {
+    return `voice_${voice.currentVoiceChannel.id}`
+  }
+  return ''
+})
+
 // Computed progress percentage
 const progressPercent = computed(() => {
   if (music.durationMs <= 0) return 0
@@ -60,9 +68,12 @@ function connectMusicWs() {
       if (msg.type === 'music_state' && msg.data) {
         // Update music store with real-time state
         music.updateProgress(msg.data)
-        // Also refresh queue to sync current index
+        // Also refresh queue to sync current index (use room_name from message or current)
         if (msg.data.current_index !== undefined) {
-          music.refreshQueue()
+          const roomName = msg.data.room_name || currentRoomName.value
+          if (roomName) {
+            music.refreshQueue(roomName)
+          }
         }
       }
     } catch (e) {
@@ -73,18 +84,28 @@ function connectMusicWs() {
 
 onMounted(async () => {
   await music.checkLoginStatus()
-  await music.refreshQueue()
-  await music.getBotStatus()
+  if (currentRoomName.value) {
+    await music.refreshQueue(currentRoomName.value)
+    await music.getBotStatus(currentRoomName.value)
+  }
   
   // Connect to music WebSocket
   connectMusicWs()
   
   // Poll progress every 1 second when playing
   progressPollingInterval.value = window.setInterval(async () => {
-    if (music.isPlaying) {
-      await music.getProgress()
+    if (music.isPlaying && currentRoomName.value) {
+      await music.getProgress(currentRoomName.value)
     }
   }, 1000)
+})
+
+// Refresh queue when voice channel changes
+watch(currentRoomName, async (newRoom) => {
+  if (newRoom) {
+    await music.refreshQueue(newRoom)
+    await music.getBotStatus(newRoom)
+  }
 })
 
 onUnmounted(() => {
@@ -102,11 +123,12 @@ onUnmounted(() => {
 
 // Progress bar seek handlers
 function handleProgressClick(event: MouseEvent) {
+  if (!currentRoomName.value) return
   const bar = event.currentTarget as HTMLElement
   const rect = bar.getBoundingClientRect()
   const percent = (event.clientX - rect.left) / rect.width
   const newPosition = Math.floor(percent * music.durationMs)
-  music.botSeek(newPosition)
+  music.botSeek(currentRoomName.value, newPosition)
 }
 
 function handleProgressMouseDown(event: MouseEvent) {
@@ -127,8 +149,8 @@ function handleProgressDrag(event: MouseEvent) {
 function handleProgressMouseUp() {
   window.removeEventListener('mousemove', handleProgressDrag)
   window.removeEventListener('mouseup', handleProgressMouseUp)
-  if (isDragging.value) {
-    music.botSeek(dragPosition.value)
+  if (isDragging.value && currentRoomName.value) {
+    music.botSeek(currentRoomName.value, dragPosition.value)
     isDragging.value = false
   }
 }
@@ -173,26 +195,54 @@ function handleSearch() {
 }
 
 async function handleAddToQueue(song: Song) {
-  await music.addToQueue(song)
+  if (!currentRoomName.value) return
+  await music.addToQueue(currentRoomName.value, song)
   showSearch.value = false
   searchInput.value = ''
   music.searchResults = []
 }
 
 function handleAudioEnded() {
-  music.skip()
+  if (currentRoomName.value) {
+    music.skip(currentRoomName.value)
+  }
 }
 
 async function handleBotPlayPause() {
+  if (!currentRoomName.value && music.playbackState !== 'paused') return
+  
   if (music.isPlaying) {
-    await music.botPause()
+    await music.botPause(currentRoomName.value)
   } else if (music.playbackState === 'paused') {
     // Resume from paused state
-    await music.botResume()
-  } else if (voice.currentVoiceChannel) {
+    await music.botResume(currentRoomName.value)
+  } else if (currentRoomName.value) {
     // Start new playback
-    const roomName = `voice_${voice.currentVoiceChannel.id}`
-    await music.botPlay(roomName)
+    await music.botPlay(currentRoomName.value)
+  }
+}
+
+async function handleClearQueue() {
+  if (currentRoomName.value) {
+    await music.clearQueue(currentRoomName.value)
+  }
+}
+
+async function handleRemoveFromQueue(index: number) {
+  if (currentRoomName.value) {
+    await music.removeFromQueue(currentRoomName.value, index)
+  }
+}
+
+async function handleBotSkip() {
+  if (currentRoomName.value) {
+    await music.botSkip(currentRoomName.value)
+  }
+}
+
+async function handleStopBot() {
+  if (currentRoomName.value) {
+    await music.stopBot(currentRoomName.value)
   }
 }
 </script>
@@ -205,7 +255,7 @@ async function handleBotPlayPause() {
       <span 
         v-if="music.botConnected" 
         class="bot-status connected"
-        @click="music.stopBot()"
+        @click="handleStopBot"
         title="机器人已连接 - 点击断开"
       >
         <Bot :size="14" /> 机器人
@@ -269,7 +319,7 @@ async function handleBotPlayPause() {
           </div>
         </div>
         <div class="playback-controls">
-          <button class="control-btn" @click="music.botSkip()" title="上一首"><SkipBack :size="18" /></button>
+          <!--<button class="control-btn" @click="handleBotSkip" title="上一首"><SkipBack :size="18" /></button>-->
           <button 
             class="control-btn play-btn" 
             @click="handleBotPlayPause"
@@ -280,7 +330,7 @@ async function handleBotPlayPause() {
             <Pause v-else-if="music.isPlaying" :size="22" />
             <Play v-else :size="22" />
           </button>
-          <button class="control-btn" @click="music.botSkip()" title="下一首"><SkipForward :size="18" /></button>
+          <button class="control-btn" @click="handleBotSkip" title="下一首"><SkipForward :size="18" /></button>
         </div>
       </div>
 
@@ -302,7 +352,7 @@ async function handleBotPlayPause() {
             <button 
               v-if="music.queue.length > 0" 
               class="icon-btn" 
-              @click="music.clearQueue()" 
+              @click="handleClearQueue" 
               title="清空队列"
             ><Trash2 :size="16" /></button>
           </div>
@@ -320,7 +370,7 @@ async function handleBotPlayPause() {
               <div class="queue-song-artist">{{ item.song.artist }}</div>
             </div>
             <span class="queue-duration">{{ music.formatDuration(item.song.duration) }}</span>
-            <button class="remove-btn" @click="music.removeFromQueue(index)"><X :size="14" /></button>
+            <button class="remove-btn" @click="handleRemoveFromQueue(index)"><X :size="14" /></button>
           </div>
           <div v-if="music.queue.length === 0" class="queue-empty">
             队列为空

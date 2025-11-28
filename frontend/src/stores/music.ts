@@ -145,47 +145,49 @@ export const useMusicStore = defineStore('music', () => {
   
   // --- Queue functions ---
   
-  async function addToQueue(song: Song) {
+  async function addToQueue(roomName: string, song: Song) {
     try {
       const res = await fetch(`${API_BASE}/api/music/queue/add`, {
         method: 'POST',
         headers: headers(),
-        body: JSON.stringify(song)
+        body: JSON.stringify({ room_name: roomName, song })
       })
       await res.json()
-      await refreshQueue()
+      await refreshQueue(roomName)
     } catch (e) {
       console.error('Failed to add to queue:', e)
     }
   }
   
-  async function removeFromQueue(index: number) {
+  async function removeFromQueue(roomName: string, index: number) {
     try {
-      await fetch(`${API_BASE}/api/music/queue/${index}`, {
+      await fetch(`${API_BASE}/api/music/queue/${roomName}/${index}`, {
         method: 'DELETE',
         headers: headers()
       })
-      await refreshQueue()
+      await refreshQueue(roomName)
     } catch (e) {
       console.error('Failed to remove from queue:', e)
     }
   }
   
-  async function clearQueue() {
+  async function clearQueue(roomName: string) {
     try {
       await fetch(`${API_BASE}/api/music/queue/clear`, {
         method: 'POST',
-        headers: headers()
+        headers: headers(),
+        body: JSON.stringify({ room_name: roomName })
       })
-      await refreshQueue()
+      await refreshQueue(roomName)
     } catch (e) {
       console.error('Failed to clear queue:', e)
     }
   }
   
-  async function refreshQueue() {
+  async function refreshQueue(roomName: string) {
+    if (!roomName) return
     try {
-      const res = await fetch(`${API_BASE}/api/music/queue`, {
+      const res = await fetch(`${API_BASE}/api/music/queue/${roomName}`, {
         headers: headers()
       })
       const data = await res.json()
@@ -213,11 +215,12 @@ export const useMusicStore = defineStore('music', () => {
     }
   }
   
-  async function play() {
+  async function play(roomName: string) {
     try {
       await fetch(`${API_BASE}/api/music/control/play`, {
         method: 'POST',
-        headers: headers()
+        headers: headers(),
+        body: JSON.stringify({ room_name: roomName })
       })
       isPlaying.value = true
       
@@ -230,11 +233,12 @@ export const useMusicStore = defineStore('music', () => {
     }
   }
   
-  async function pause() {
+  async function pause(roomName: string) {
     try {
       await fetch(`${API_BASE}/api/music/control/pause`, {
         method: 'POST',
-        headers: headers()
+        headers: headers(),
+        body: JSON.stringify({ room_name: roomName })
       })
       isPlaying.value = false
     } catch (e) {
@@ -242,13 +246,14 @@ export const useMusicStore = defineStore('music', () => {
     }
   }
   
-  async function skip() {
+  async function skip(roomName: string) {
     try {
       await fetch(`${API_BASE}/api/music/control/skip`, {
         method: 'POST',
-        headers: headers()
+        headers: headers(),
+        body: JSON.stringify({ room_name: roomName })
       })
-      await refreshQueue()
+      await refreshQueue(roomName)
       
       // Get new song URL
       if (currentSong.value) {
@@ -259,13 +264,14 @@ export const useMusicStore = defineStore('music', () => {
     }
   }
   
-  async function previous() {
+  async function previous(roomName: string) {
     try {
       await fetch(`${API_BASE}/api/music/control/previous`, {
         method: 'POST',
-        headers: headers()
+        headers: headers(),
+        body: JSON.stringify({ room_name: roomName })
       })
-      await refreshQueue()
+      await refreshQueue(roomName)
       
       // Get new song URL
       if (currentSong.value) {
@@ -303,11 +309,12 @@ export const useMusicStore = defineStore('music', () => {
     }
   }
   
-  async function stopBot() {
+  async function stopBot(roomName: string) {
     try {
       await fetch(`${API_BASE}/api/music/bot/stop`, {
         method: 'POST',
-        headers: headers()
+        headers: headers(),
+        body: JSON.stringify({ room_name: roomName })
       })
       botConnected.value = false
       botRoom.value = null
@@ -316,9 +323,10 @@ export const useMusicStore = defineStore('music', () => {
     }
   }
   
-  async function getBotStatus() {
+  async function getBotStatus(roomName: string) {
+    if (!roomName) return null
     try {
-      const res = await fetch(`${API_BASE}/api/music/bot/status`, {
+      const res = await fetch(`${API_BASE}/api/music/bot/status/${roomName}`, {
         headers: headers()
       })
       const data = await res.json()
@@ -352,11 +360,12 @@ export const useMusicStore = defineStore('music', () => {
     }
   }
   
-  async function botPause() {
+  async function botPause(roomName: string) {
     try {
       await fetch(`${API_BASE}/api/music/bot/pause`, {
         method: 'POST',
-        headers: headers()
+        headers: headers(),
+        body: JSON.stringify({ room_name: roomName })
       })
       isPlaying.value = false
       playbackState.value = 'paused'
@@ -365,11 +374,12 @@ export const useMusicStore = defineStore('music', () => {
     }
   }
   
-  async function botResume() {
+  async function botResume(roomName: string) {
     try {
       const res = await fetch(`${API_BASE}/api/music/bot/resume`, {
         method: 'POST',
-        headers: headers()
+        headers: headers(),
+        body: JSON.stringify({ room_name: roomName })
       })
       const data = await res.json()
       if (data.success) {
@@ -381,34 +391,36 @@ export const useMusicStore = defineStore('music', () => {
     }
   }
   
-  async function botSkip() {
+  async function botSkip(roomName: string) {
     try {
       const res = await fetch(`${API_BASE}/api/music/bot/skip`, {
         method: 'POST',
-        headers: headers()
+        headers: headers(),
+        body: JSON.stringify({ room_name: roomName })
       })
       await res.json()
-      await refreshQueue()
+      await refreshQueue(roomName)
     } catch (e) {
       console.error('Bot skip failed:', e)
     }
   }
   
-  async function botSeek(positionMs: number) {
+  async function botSeek(roomName: string, seekPositionMs: number) {
     try {
       await fetch(`${API_BASE}/api/music/bot/seek`, {
         method: 'POST',
         headers: headers(),
-        body: JSON.stringify({ position_ms: positionMs })
+        body: JSON.stringify({ room_name: roomName, position_ms: seekPositionMs })
       })
     } catch (e) {
       console.error('Bot seek failed:', e)
     }
   }
   
-  async function getProgress() {
+  async function getProgress(roomName: string) {
+    if (!roomName) return null
     try {
-      const res = await fetch(`${API_BASE}/api/music/bot/progress`, {
+      const res = await fetch(`${API_BASE}/api/music/bot/progress/${roomName}`, {
         headers: headers()
       })
       const data = await res.json()

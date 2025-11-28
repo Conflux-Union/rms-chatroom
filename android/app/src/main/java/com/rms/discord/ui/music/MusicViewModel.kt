@@ -3,7 +3,13 @@ package com.rms.discord.ui.music
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.rms.discord.data.api.ApiService
-import com.rms.discord.data.model.*
+import com.rms.discord.data.model.MusicBotStartRequest
+import com.rms.discord.data.model.MusicQueueAddRequest
+import com.rms.discord.data.model.MusicRoomRequest
+import com.rms.discord.data.model.MusicSearchRequest
+import com.rms.discord.data.model.MusicSeekRequest
+import com.rms.discord.data.model.QueueItem
+import com.rms.discord.data.model.Song
 import com.rms.discord.data.repository.AuthRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
@@ -37,6 +43,9 @@ data class MusicState(
     val botConnected: Boolean = false,
     val botRoom: String? = null,
     
+    // Current room for multi-channel support
+    val currentRoomName: String? = null,
+    
     // UI state
     val isLoading: Boolean = false,
     val error: String? = null
@@ -57,8 +66,15 @@ class MusicViewModel @Inject constructor(
     init {
         viewModelScope.launch {
             checkLoginStatus()
-            refreshQueue()
-            getBotStatus()
+        }
+    }
+    
+    // Set current room name when user joins a voice channel
+    fun setCurrentRoom(roomName: String?) {
+        _state.value = _state.value.copy(currentRoomName = roomName)
+        if (roomName != null) {
+            refreshQueue(roomName)
+            getBotStatus(roomName)
         }
     }
 
@@ -173,10 +189,11 @@ class MusicViewModel @Inject constructor(
     }
 
     // Queue functions
-    fun refreshQueue() {
+    fun refreshQueue(roomName: String? = _state.value.currentRoomName) {
+        if (roomName == null) return
         viewModelScope.launch {
             try {
-                val response = api.getMusicQueue(getAuthHeader())
+                val response = api.getMusicQueue(getAuthHeader(), roomName)
                 _state.value = _state.value.copy(
                     queue = response.queue,
                     currentIndex = response.currentIndex,
@@ -190,10 +207,11 @@ class MusicViewModel @Inject constructor(
     }
 
     fun addToQueue(song: Song) {
+        val roomName = _state.value.currentRoomName ?: return
         viewModelScope.launch {
             try {
-                api.addToMusicQueue(getAuthHeader(), song)
-                refreshQueue()
+                api.addToMusicQueue(getAuthHeader(), MusicQueueAddRequest(roomName, song))
+                refreshQueue(roomName)
             } catch (e: Exception) {
                 _state.value = _state.value.copy(error = "添加失败: ${e.message}")
             }
@@ -201,10 +219,11 @@ class MusicViewModel @Inject constructor(
     }
 
     fun removeFromQueue(index: Int) {
+        val roomName = _state.value.currentRoomName ?: return
         viewModelScope.launch {
             try {
-                api.removeFromMusicQueue(getAuthHeader(), index)
-                refreshQueue()
+                api.removeFromMusicQueue(getAuthHeader(), roomName, index)
+                refreshQueue(roomName)
             } catch (e: Exception) {
                 _state.value = _state.value.copy(error = "删除失败: ${e.message}")
             }
@@ -212,10 +231,11 @@ class MusicViewModel @Inject constructor(
     }
 
     fun clearQueue() {
+        val roomName = _state.value.currentRoomName ?: return
         viewModelScope.launch {
             try {
-                api.clearMusicQueue(getAuthHeader())
-                refreshQueue()
+                api.clearMusicQueue(getAuthHeader(), MusicRoomRequest(roomName))
+                refreshQueue(roomName)
             } catch (e: Exception) {
                 _state.value = _state.value.copy(error = "清空失败: ${e.message}")
             }
@@ -223,10 +243,11 @@ class MusicViewModel @Inject constructor(
     }
 
     // Bot control functions
-    fun getBotStatus() {
+    fun getBotStatus(roomName: String? = _state.value.currentRoomName) {
+        if (roomName == null) return
         viewModelScope.launch {
             try {
-                val response = api.getMusicBotStatus(getAuthHeader())
+                val response = api.getMusicBotStatus(getAuthHeader(), roomName)
                 _state.value = _state.value.copy(
                     botConnected = response.connected,
                     botRoom = response.room,
@@ -234,7 +255,7 @@ class MusicViewModel @Inject constructor(
                 )
                 
                 if (response.isPlaying) {
-                    startProgressPolling()
+                    startProgressPolling(roomName)
                 }
             } catch (e: Exception) {
                 // Ignore errors
@@ -245,7 +266,7 @@ class MusicViewModel @Inject constructor(
     fun botPlay(roomName: String) {
         viewModelScope.launch {
             try {
-                _state.value = _state.value.copy(playbackState = "loading")
+                _state.value = _state.value.copy(playbackState = "loading", currentRoomName = roomName)
                 val response = api.musicBotPlay(getAuthHeader(), MusicBotStartRequest(roomName))
                 if (response.success) {
                     _state.value = _state.value.copy(
@@ -254,8 +275,8 @@ class MusicViewModel @Inject constructor(
                         botRoom = roomName,
                         playbackState = "playing"
                     )
-                    startProgressPolling()
-                    refreshQueue()
+                    startProgressPolling(roomName)
+                    refreshQueue(roomName)
                 }
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
@@ -267,9 +288,10 @@ class MusicViewModel @Inject constructor(
     }
 
     fun botPause() {
+        val roomName = _state.value.currentRoomName ?: return
         viewModelScope.launch {
             try {
-                api.musicBotPause(getAuthHeader())
+                api.musicBotPause(getAuthHeader(), MusicRoomRequest(roomName))
                 _state.value = _state.value.copy(
                     isPlaying = false,
                     playbackState = "paused"
@@ -282,15 +304,16 @@ class MusicViewModel @Inject constructor(
     }
 
     fun botResume() {
+        val roomName = _state.value.currentRoomName ?: return
         viewModelScope.launch {
             try {
-                val response = api.musicBotResume(getAuthHeader())
+                val response = api.musicBotResume(getAuthHeader(), MusicRoomRequest(roomName))
                 if (response.success) {
                     _state.value = _state.value.copy(
                         isPlaying = true,
                         playbackState = "playing"
                     )
-                    startProgressPolling()
+                    startProgressPolling(roomName)
                 }
             } catch (e: Exception) {
                 _state.value = _state.value.copy(error = "恢复播放失败")
@@ -299,10 +322,11 @@ class MusicViewModel @Inject constructor(
     }
 
     fun botSkip() {
+        val roomName = _state.value.currentRoomName ?: return
         viewModelScope.launch {
             try {
-                api.musicBotSkip(getAuthHeader())
-                refreshQueue()
+                api.musicBotSkip(getAuthHeader(), MusicRoomRequest(roomName))
+                refreshQueue(roomName)
             } catch (e: Exception) {
                 _state.value = _state.value.copy(error = "跳过失败")
             }
@@ -310,9 +334,10 @@ class MusicViewModel @Inject constructor(
     }
 
     fun botSeek(positionMs: Long) {
+        val roomName = _state.value.currentRoomName ?: return
         viewModelScope.launch {
             try {
-                api.musicBotSeek(getAuthHeader(), MusicSeekRequest(positionMs))
+                api.musicBotSeek(getAuthHeader(), MusicSeekRequest(roomName, positionMs))
                 _state.value = _state.value.copy(positionMs = positionMs)
             } catch (e: Exception) {
                 // Ignore errors
@@ -321,9 +346,10 @@ class MusicViewModel @Inject constructor(
     }
 
     fun stopBot() {
+        val roomName = _state.value.currentRoomName ?: return
         viewModelScope.launch {
             try {
-                api.stopMusicBot(getAuthHeader())
+                api.stopMusicBot(getAuthHeader(), MusicRoomRequest(roomName))
                 _state.value = _state.value.copy(
                     botConnected = false,
                     botRoom = null,
@@ -337,13 +363,13 @@ class MusicViewModel @Inject constructor(
         }
     }
 
-    private fun startProgressPolling() {
+    private fun startProgressPolling(roomName: String) {
         progressPollingJob?.cancel()
         progressPollingJob = viewModelScope.launch {
             while (true) {
                 delay(1000)
                 try {
-                    val response = api.getMusicProgress(getAuthHeader())
+                    val response = api.getMusicProgress(getAuthHeader(), roomName)
                     _state.value = _state.value.copy(
                         positionMs = response.positionMs,
                         durationMs = response.durationMs,

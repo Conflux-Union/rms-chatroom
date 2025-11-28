@@ -190,7 +190,20 @@ data class MusicBotStartRequest(
     val roomName: String
 )
 
+data class MusicRoomRequest(
+    @SerializedName("room_name")
+    val roomName: String
+)
+
+data class MusicQueueAddRequest(
+    @SerializedName("room_name")
+    val roomName: String,
+    val song: Song
+)
+
 data class MusicSeekRequest(
+    @SerializedName("room_name")
+    val roomName: String,
     @SerializedName("position_ms")
     val positionMs: Long
 )

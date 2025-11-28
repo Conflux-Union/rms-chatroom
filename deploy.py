@@ -50,6 +50,7 @@ EXCLUDE_PATTERNS = {
     ".DS_Store",
     "Thumbs.db",
     "music-service",
+    "android",
 }
 
 

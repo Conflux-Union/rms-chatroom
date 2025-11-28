@@ -190,7 +190,13 @@ _room_states: dict[str, RoomMusicState] = {}
 - [x] `/bot/status/{room_name}` - 获取指定房间bot状态
 - [x] `/internal/song-ended` - 处理指定房间的歌曲结束
 
-**前端改造**
-- [ ] MusicPanel 组件绑定当前语音频道
-- [ ] 切换频道时切换音乐控制目标
-- [ ] 显示当前频道的队列和播放状态
+**前端改造** (已完成)
+- [x] MusicPanel 组件绑定当前语音频道 (`currentRoomName` computed)
+- [x] 切换频道时切换音乐控制目标 (`watch(currentRoomName)`)
+- [x] 所有音乐API调用传递 `roomName` 参数
+- [x] 修改 `music.ts` store 所有函数接受 `roomName`
+
+**安卓端改造** (已完成)
+- [x] `Models.kt` - 添加 `MusicRoomRequest`, `MusicQueueAddRequest` 请求模型
+- [x] `ApiService.kt` - 修改 API 端点接受 `roomName` 参数
+- [x] `MusicViewModel.kt` - 添加 `setCurrentRoom()` 函数，所有函数使用 `currentRoomName`
