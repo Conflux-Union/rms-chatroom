@@ -6,6 +6,9 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
+import android.util.Log
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -39,7 +42,12 @@ class MainActivity : ComponentActivity() {
 
     private val notificationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
-    ) { /* Permission result handled silently */ }
+    ) { granted ->
+        Log.d("MainActivity", "Notification permission granted: $granted")
+        if (!granted) {
+            Toast.makeText(this, "需要通知权限才能接收消息提醒", Toast.LENGTH_LONG).show()
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen().apply {
@@ -105,15 +113,58 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun requestNotificationPermission() {
+        Log.d("MainActivity", "Android SDK: ${Build.VERSION.SDK_INT}, TIRAMISU: ${Build.VERSION_CODES.TIRAMISU}")
+        
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (ContextCompat.checkSelfPermission(
-                    this,
-                    Manifest.permission.POST_NOTIFICATIONS
-                ) != PackageManager.PERMISSION_GRANTED
-            ) {
-                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            val permission = Manifest.permission.POST_NOTIFICATIONS
+            val isGranted = ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
+            val shouldShowRationale = shouldShowRequestPermissionRationale(permission)
+            
+            Log.d("MainActivity", "Permission granted: $isGranted, shouldShowRationale: $shouldShowRationale")
+            
+            when {
+                isGranted -> {
+                    Log.d("MainActivity", "Notification permission already granted")
+                }
+                shouldShowRationale -> {
+                    Log.d("MainActivity", "Showing permission request (rationale)")
+                    notificationPermissionLauncher.launch(permission)
+                }
+                else -> {
+                    Log.d("MainActivity", "Launching permission request")
+                    notificationPermissionLauncher.launch(permission)
+                }
             }
+        } else {
+            // Android < 13: check if notifications are enabled in system settings
+            Log.d("MainActivity", "Android < 13, checking notification enabled status")
+            checkNotificationEnabled()
         }
+    }
+    
+    private fun checkNotificationEnabled() {
+        val notificationManager = getSystemService(NOTIFICATION_SERVICE) as android.app.NotificationManager
+        val areNotificationsEnabled = notificationManager.areNotificationsEnabled()
+        Log.d("MainActivity", "Notifications enabled: $areNotificationsEnabled")
+        
+        if (!areNotificationsEnabled) {
+            showNotificationPermissionDialog()
+        }
+    }
+    
+    private fun showNotificationPermissionDialog() {
+        android.app.AlertDialog.Builder(this)
+            .setTitle("开启通知")
+            .setMessage("开启通知权限后，您可以及时收到新消息提醒，不错过重要信息。")
+            .setPositiveButton("去设置") { _, _ ->
+                val intent = Intent().apply {
+                    action = Settings.ACTION_APP_NOTIFICATION_SETTINGS
+                    putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
+                }
+                startActivity(intent)
+            }
+            .setNegativeButton("稍后再说", null)
+            .show()
     }
 
     private fun handleIntent(intent: Intent?) {

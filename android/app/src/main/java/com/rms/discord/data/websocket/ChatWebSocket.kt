@@ -7,12 +7,12 @@ import com.rms.discord.BuildConfig
 import com.rms.discord.data.model.Message
 import com.rms.discord.data.model.VoiceUser
 import kotlinx.coroutines.*
-import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.receiveAsFlow
 import okhttp3.*
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
@@ -48,8 +48,8 @@ class ChatWebSocket @Inject constructor(
     }
 
     private var webSocket: WebSocket? = null
-    private val eventChannel = Channel<WebSocketEvent>(Channel.BUFFERED)
-    val events: Flow<WebSocketEvent> = eventChannel.receiveAsFlow()
+    private val _events = MutableSharedFlow<WebSocketEvent>(replay = 0, extraBufferCapacity = 64)
+    val events: SharedFlow<WebSocketEvent> = _events.asSharedFlow()
 
     private val _connectionState = MutableStateFlow(ConnectionState.DISCONNECTED)
     val connectionState: StateFlow<ConnectionState> = _connectionState.asStateFlow()
@@ -96,7 +96,7 @@ class ChatWebSocket @Inject constructor(
                 Log.d(TAG, "WebSocket connected to channel $channelId")
                 _connectionState.value = ConnectionState.CONNECTED
                 reconnectAttempts = 0
-                eventChannel.trySend(WebSocketEvent.Connected(channelId))
+                _events.tryEmit(WebSocketEvent.Connected(channelId))
                 startHeartbeat()
             }
 
@@ -108,8 +108,8 @@ class ChatWebSocket @Inject constructor(
                 Log.e(TAG, "WebSocket failure: ${t.message}", t)
                 _connectionState.value = ConnectionState.DISCONNECTED
                 stopHeartbeat()
-                eventChannel.trySend(WebSocketEvent.Error(t.message ?: "WebSocket error"))
-                eventChannel.trySend(WebSocketEvent.Disconnected)
+                _events.tryEmit(WebSocketEvent.Error(t.message ?: "WebSocket error"))
+                _events.tryEmit(WebSocketEvent.Disconnected)
                 scheduleReconnect()
             }
 
@@ -117,7 +117,7 @@ class ChatWebSocket @Inject constructor(
                 Log.d(TAG, "WebSocket closed: code=$code, reason=$reason")
                 _connectionState.value = ConnectionState.DISCONNECTED
                 stopHeartbeat()
-                eventChannel.trySend(WebSocketEvent.Disconnected)
+                _events.tryEmit(WebSocketEvent.Disconnected)
 
                 // Only reconnect if it wasn't a normal close initiated by us
                 if (code != 1000) {
@@ -138,20 +138,28 @@ class ChatWebSocket @Inject constructor(
 
             when (type) {
                 "message" -> {
-                    val data = json.getAsJsonObject("data")
-                    val message = gson.fromJson(data, Message::class.java)
-                    eventChannel.trySend(WebSocketEvent.NewMessage(message))
+                    // Message fields are at root level, not nested in "data"
+                    val message = Message(
+                        id = json.get("id").asLong,
+                        channelId = json.get("channel_id")?.asLong ?: 0L,
+                        userId = json.get("user_id").asLong,
+                        username = json.get("username").asString,
+                        content = json.get("content").asString,
+                        createdAt = json.get("created_at").asString
+                    )
+                    Log.d(TAG, "Received message: ${message.id} from ${message.username}")
+                    _events.tryEmit(WebSocketEvent.NewMessage(message))
                 }
                 "user_joined" -> {
                     val user = gson.fromJson(json.getAsJsonObject("user"), VoiceUser::class.java)
-                    eventChannel.trySend(WebSocketEvent.UserJoined(user))
+                    _events.tryEmit(WebSocketEvent.UserJoined(user))
                 }
                 "user_left" -> {
                     val userId = json.get("user_id").asLong
-                    eventChannel.trySend(WebSocketEvent.UserLeft(userId))
+                    _events.tryEmit(WebSocketEvent.UserLeft(userId))
                 }
-                "pong" -> {
-                    Log.v(TAG, "Received pong")
+                "pong", "connected" -> {
+                    Log.v(TAG, "Received $type")
                 }
                 else -> {
                     Log.d(TAG, "Unknown message type: $type")
@@ -159,7 +167,7 @@ class ChatWebSocket @Inject constructor(
             }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to parse message: $text", e)
-            eventChannel.trySend(WebSocketEvent.Error("Failed to parse message: ${e.message}"))
+            _events.tryEmit(WebSocketEvent.Error("Failed to parse message: ${e.message}"))
         }
     }
 
@@ -203,7 +211,7 @@ class ChatWebSocket @Inject constructor(
         if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
             Log.w(TAG, "Max reconnect attempts reached ($MAX_RECONNECT_ATTEMPTS)")
             shouldReconnect = false
-            eventChannel.trySend(WebSocketEvent.Error("Max reconnect attempts reached"))
+            _events.tryEmit(WebSocketEvent.Error("Max reconnect attempts reached"))
             return
         }
 
@@ -259,7 +267,7 @@ class ChatWebSocket @Inject constructor(
         currentChannelId = null
 
         if (sendEvent) {
-            eventChannel.trySend(WebSocketEvent.Disconnected)
+            _events.tryEmit(WebSocketEvent.Disconnected)
         }
     }
 

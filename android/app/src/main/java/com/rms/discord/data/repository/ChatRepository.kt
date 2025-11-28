@@ -114,19 +114,25 @@ class ChatRepository @Inject constructor(
     }
 
     private fun showMessageNotificationIfNeeded(message: Message) {
+        Log.d(TAG, "showMessageNotificationIfNeeded: isAppInForeground=$isAppInForeground")
+        
         // Only show notification when app is in background
-        if (isAppInForeground) return
+        if (isAppInForeground) {
+            Log.d(TAG, "App in foreground, skipping notification")
+            return
+        }
 
-        val channel = _currentChannel.value ?: return
-        val server = _currentServer.value ?: return
+        val channel = _currentChannel.value
+        val server = _currentServer.value
+        
+        val channelName = channel?.name ?: "未知频道"
+        val serverName = server?.name ?: "RMS Discord"
 
-        // Don't notify for messages in current channel when viewing it
-        if (message.channelId != channel.id) return
-
+        Log.d(TAG, "Showing notification for message from ${message.username}")
         notificationHelper.showMessageNotification(
             message = message,
-            channelName = channel.name,
-            serverName = server.name
+            channelName = channelName,
+            serverName = serverName
         )
     }
 
