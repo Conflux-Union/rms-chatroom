@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">RMS Discord</string>
+    <string name="login_title">登录</string>
+    <string name="login_with_sso">使用 RMSSSO 登录</string>
+    <string name="logout">退出登录</string>
+    <string name="select_channel">选择一个频道开始聊天</string>
+    <string name="send_message">发送消息</string>
+    <string name="voice_channel">语音频道</string>
+    <string name="text_channel">文字频道</string>
+    <string name="join_voice">加入语音</string>
+    <string name="leave_voice">离开语音</string>
+    <string name="mute">静音</string>
+    <string name="unmute">取消静音</string>
+    <string name="deafen">关闭声音</string>
+    <string name="undeafen">开启声音</string>
+    <string name="music">音乐</string>
+    <string name="loading">加载中...</string>
+    <string name="error_network">网络错误，请重试</string>
+    <string name="error_auth">认证失败，请重新登录</string>
+</resources>
