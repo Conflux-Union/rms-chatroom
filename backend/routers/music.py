@@ -654,6 +654,12 @@ async def handle_song_ended(req: SongEndedRequest):
         return {"success": success, "current_index": state.current_index, "room_name": req.room_name}
     else:
         logger.info(f"Queue finished for room {req.room_name}, no more songs")
+        # Stop the bot and disconnect from room when queue is empty
+        try:
+            await _call_music_service("POST", "/stop", {"room_name": req.room_name})
+            logger.info(f"Bot stopped and left room: {req.room_name}")
+        except Exception as e:
+            logger.error(f"Failed to stop bot: {e}")
         # Broadcast stopped state
         asyncio.create_task(_broadcast_playback_state(req.room_name))
         return {"success": True, "message": "Queue finished", "room_name": req.room_name}

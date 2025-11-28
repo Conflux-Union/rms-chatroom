@@ -62,6 +62,10 @@ type Player struct {
 
 	ctx    context.Context
 	cancel context.CancelFunc
+
+	// Pause timeout: disconnect from room after 30s of pause
+	pauseTimer  *time.Timer
+	pauseCancel context.CancelFunc
 }
 
 type PlayerManager struct {
@@ -202,6 +206,9 @@ func (p *Player) Load(song *SongInfo) error {
 
 func (p *Player) Play() error {
 	p.mu.Lock()
+
+	// Cancel pause timeout timer if any
+	p.cancelPauseTimer()
 
 	if p.state == StatePlaying {
 		p.mu.Unlock()
@@ -433,6 +440,8 @@ func (p *Player) playbackLoop(song *SongInfo, startPosMs int64) {
 	room.LocalParticipant.UnpublishTrack(pub.SID())
 }
 
+const PauseTimeoutSeconds = 30
+
 func (p *Player) Pause() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -448,10 +457,49 @@ func (p *Player) Pause() {
 
 	p.state = StatePaused
 	log.Printf("Paused at %dms", p.positionMs)
+
+	// Start pause timeout timer - disconnect from room after 30s
+	p.cancelPauseTimer()
+	ctx, cancel := context.WithCancel(context.Background())
+	p.pauseCancel = cancel
+	p.pauseTimer = time.AfterFunc(PauseTimeoutSeconds*time.Second, func() {
+		p.mu.Lock()
+		if p.state != StatePaused {
+			p.mu.Unlock()
+			return
+		}
+		room := p.room
+		p.room = nil
+		p.track = nil
+		p.mu.Unlock()
+
+		if room != nil {
+			room.Disconnect()
+			log.Printf("Disconnected from room %s due to pause timeout", p.roomName)
+		}
+	})
+	go func() {
+		<-ctx.Done()
+		p.pauseTimer.Stop()
+	}()
+}
+
+func (p *Player) cancelPauseTimer() {
+	if p.pauseCancel != nil {
+		p.pauseCancel()
+		p.pauseCancel = nil
+	}
+	if p.pauseTimer != nil {
+		p.pauseTimer.Stop()
+		p.pauseTimer = nil
+	}
 }
 
 func (p *Player) Resume() {
 	p.mu.Lock()
+
+	// Cancel pause timeout timer
+	p.cancelPauseTimer()
 
 	if p.state != StatePaused {
 		log.Printf("Resume: not paused, state=%s", p.state)
@@ -475,7 +523,7 @@ func (p *Player) Resume() {
 	startPos := p.positionMs
 	p.mu.Unlock()
 
-	// Ensure room connection before resuming
+	// Ensure room connection before resuming (may need to reconnect after timeout)
 	if err := p.Connect(); err != nil {
 		log.Printf("Resume: failed to connect: %v", err)
 		p.mu.Lock()
@@ -511,6 +559,9 @@ func (p *Player) Seek(positionMs int64) {
 
 func (p *Player) Stop() {
 	p.mu.Lock()
+
+	// Cancel pause timeout timer
+	p.cancelPauseTimer()
 
 	if p.cancel != nil {
 		p.cancel()
