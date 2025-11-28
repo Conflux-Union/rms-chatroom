@@ -18,6 +18,12 @@ const routes = [
     name: 'Callback',
     component: () => import('./views/Callback.vue'),
   },
+  {
+    path: '/voice-invite/:token',
+    name: 'VoiceInvite',
+    component: () => import('./views/VoiceInvite.vue'),
+    meta: { requiresAuth: false },
+  },
 ]
 
 const router = createRouter({

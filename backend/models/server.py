@@ -73,3 +73,19 @@ class VoiceState(Base):
     joined_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     channel: Mapped["Channel"] = relationship("Channel", back_populates="voice_states")
+
+
+class VoiceInvite(Base):
+    """Single-use invite link for guest access to voice channels."""
+    __tablename__ = "voice_invites"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    channel_id: Mapped[int] = mapped_column(ForeignKey("channels.id", ondelete="CASCADE"), nullable=False)
+    token: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    created_by: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    used: Mapped[bool] = mapped_column(default=False)
+    used_by_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    channel: Mapped["Channel"] = relationship("Channel")

@@ -3,11 +3,20 @@ import { ref, computed, onMounted } from 'vue'
 import { useChatStore } from '../stores/chat'
 import { useVoiceStore } from '../stores/voice'
 import { useAuthStore } from '../stores/auth'
-import { Volume2, VolumeX, Mic, MicOff, Phone, AlertTriangle, Crown } from 'lucide-vue-next'
+import { Volume2, VolumeX, Mic, MicOff, Phone, AlertTriangle, Crown, Link, Copy, Check } from 'lucide-vue-next'
+
+const API_BASE = import.meta.env.VITE_API_BASE || ''
 
 const chat = useChatStore()
 const voice = useVoiceStore()
 const auth = useAuthStore()
+
+// Invite link state
+const showInviteDialog = ref(false)
+const inviteUrl = ref('')
+const inviteCopied = ref(false)
+const inviteLoading = ref(false)
+const inviteError = ref('')
 
 onMounted(() => {
   voice.enumerateDevices()
@@ -97,6 +106,67 @@ function closeVolumeWarning() {
   showVolumeWarning.value = false
   pendingVolumeParticipant.value = null
   pendingVolumeValue.value = 100
+}
+
+async function createInviteLink() {
+  if (!chat.currentChannel) return
+  
+  inviteLoading.value = true
+  inviteError.value = ''
+  inviteUrl.value = ''
+  inviteCopied.value = false
+  showInviteDialog.value = true
+
+  try {
+    const response = await fetch(
+      `${API_BASE}/api/voice/${chat.currentChannel.id}/invite`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${auth.token}`,
+        },
+      }
+    )
+
+    if (!response.ok) {
+      const err = await response.json()
+      throw new Error(err.detail || 'Failed to create invite')
+    }
+
+    const data = await response.json()
+    inviteUrl.value = data.invite_url
+  } catch (e) {
+    inviteError.value = e instanceof Error ? e.message : 'Failed to create invite'
+  } finally {
+    inviteLoading.value = false
+  }
+}
+
+async function copyInviteLink() {
+  if (!inviteUrl.value) return
+  try {
+    await navigator.clipboard.writeText(inviteUrl.value)
+    inviteCopied.value = true
+    setTimeout(() => { inviteCopied.value = false }, 2000)
+  } catch {
+    // Fallback for older browsers
+    const input = document.createElement('input')
+    input.value = inviteUrl.value
+    document.body.appendChild(input)
+    input.select()
+    document.execCommand('copy')
+    document.body.removeChild(input)
+    inviteCopied.value = true
+    setTimeout(() => { inviteCopied.value = false }, 2000)
+  }
+}
+
+function closeInviteDialog() {
+  showInviteDialog.value = false
+  inviteUrl.value = ''
+  inviteError.value = ''
+  inviteCopied.value = false
 }
 </script>
 
@@ -250,6 +320,14 @@ function closeVolumeWarning() {
             <Crown :size="20" />
           </button>
           <button
+            v-if="auth.isAdmin"
+            class="control-btn glow-effect invite-btn"
+            @click="createInviteLink"
+            title="创建邀请链接"
+          >
+            <Link :size="20" />
+          </button>
+          <button
             class="control-btn disconnect glow-effect"
             @click="voice.disconnect()"
             title="断开连接"
@@ -259,6 +337,40 @@ function closeVolumeWarning() {
         </div>
       </div>
     </div>
+
+    <!-- Invite Link Dialog -->
+    <Teleport to="body">
+      <div v-if="showInviteDialog" class="invite-overlay" @click.self="closeInviteDialog">
+        <div class="invite-dialog">
+          <Link class="invite-icon" :size="48" />
+          <h3 class="invite-title">邀请访客</h3>
+          
+          <div v-if="inviteLoading" class="invite-loading">
+            <div class="loading-spinner"></div>
+            <p>正在生成链接...</p>
+          </div>
+          
+          <div v-else-if="inviteError" class="invite-error">
+            <p>{{ inviteError }}</p>
+          </div>
+          
+          <div v-else-if="inviteUrl" class="invite-content">
+            <p class="invite-note">此链接仅可使用一次，访客离开后无法再次加入。</p>
+            <div class="invite-url-box">
+              <input type="text" class="invite-url-input" :value="inviteUrl" readonly />
+              <button class="invite-copy-btn" @click="copyInviteLink" :title="inviteCopied ? '已复制' : '复制链接'">
+                <Check v-if="inviteCopied" :size="18" />
+                <Copy v-else :size="18" />
+              </button>
+            </div>
+          </div>
+          
+          <div class="invite-actions">
+            <button class="invite-btn-close" @click="closeInviteDialog">关闭</button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
 
     <!-- Volume Warning Dialog -->
     <Teleport to="body">
@@ -740,6 +852,153 @@ function closeVolumeWarning() {
 
 .warning-btn.confirm:hover {
   filter: brightness(1.1);
+}
+
+/* Invite Button */
+.control-btn.invite-btn {
+  background: linear-gradient(135deg, #3b82f6, #2563eb);
+  border-color: #3b82f6;
+  color: white;
+}
+
+.control-btn.invite-btn:hover {
+  filter: brightness(1.1);
+}
+
+/* Invite Dialog Styles */
+.invite-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 9999;
+  backdrop-filter: blur(4px);
+}
+
+.invite-dialog {
+  background: var(--surface-glass-strong, rgba(30, 30, 40, 0.95));
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: var(--radius-lg, 16px);
+  padding: 24px;
+  max-width: 440px;
+  width: 90%;
+  text-align: center;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+}
+
+.invite-icon {
+  color: #3b82f6;
+  margin-bottom: 12px;
+}
+
+.invite-title {
+  color: var(--color-text-main);
+  font-size: 20px;
+  font-weight: 600;
+  margin: 0 0 16px 0;
+}
+
+.invite-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 20px 0;
+}
+
+.invite-loading .loading-spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid rgba(255, 255, 255, 0.2);
+  border-top-color: #3b82f6;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.invite-loading p {
+  color: var(--color-text-muted);
+  margin: 0;
+}
+
+.invite-error p {
+  color: var(--color-error, #ef4444);
+  margin: 0;
+}
+
+.invite-content {
+  text-align: left;
+}
+
+.invite-note {
+  color: var(--color-text-muted);
+  font-size: 13px;
+  margin: 0 0 12px 0;
+}
+
+.invite-url-box {
+  display: flex;
+  gap: 8px;
+}
+
+.invite-url-input {
+  flex: 1;
+  padding: 12px 14px;
+  font-size: 13px;
+  color: var(--color-text-main);
+  background: var(--surface-glass-input);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  font-family: monospace;
+}
+
+.invite-url-input:focus {
+  outline: none;
+}
+
+.invite-copy-btn {
+  padding: 12px 14px;
+  background: #3b82f6;
+  border: none;
+  border-radius: var(--radius-md);
+  color: white;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.invite-copy-btn:hover {
+  filter: brightness(1.1);
+}
+
+.invite-actions {
+  margin-top: 20px;
+}
+
+.invite-btn-close {
+  padding: 10px 24px;
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  border-radius: var(--radius-md);
+  color: var(--color-text-main);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.invite-btn-close:hover {
+  background: rgba(255, 255, 255, 0.2);
 }
 
 /* Mobile Responsive */

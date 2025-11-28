@@ -1,18 +1,46 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, status
+import asyncio
+import logging
+import uuid
+from datetime import datetime
+
+import httpx
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from livekit.api import (
     AccessToken, VideoGrants, LiveKitAPI, ListParticipantsRequest,
     RoomParticipantIdentity, MuteRoomTrackRequest
 )
 from pydantic import BaseModel
 from sqlalchemy import select
+from sqlalchemy.orm import joinedload
 
 from ..core.config import get_settings
 from ..core.database import get_db
-from ..models.server import Channel, ChannelType
+from ..models.server import Channel, ChannelType, VoiceInvite, Server
 from ..routers.deps import CurrentUser, AdminUser
 from sqlalchemy.ext.asyncio import AsyncSession
+
+
+logger = logging.getLogger(__name__)
+
+# QQ group notification config
+QQ_NOTIFY_URL = "http://119.23.57.80:53000/send_group_msg"
+QQ_GROUP_ID = 457054386
+
+
+async def send_qq_group_notify(username: str, server_name: str, channel_name: str) -> None:
+    """Send notification to QQ group when user joins voice channel."""
+    message = f"[RMS ChatRoom] 玩家 {username} 加入了 {server_name}/{channel_name} 😋"
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            await client.post(
+                QQ_NOTIFY_URL,
+                json={"group_id": QQ_GROUP_ID, "message": message},
+                headers={"Authorization": "Bearer rmstoken"}
+            )
+    except Exception as e:
+        logger.warning(f"Failed to send QQ group notification: {e}")
 
 
 router = APIRouter()
@@ -48,6 +76,28 @@ class HostModeResponse(BaseModel):
     host_name: str | None
 
 
+class InviteCreateResponse(BaseModel):
+    invite_url: str
+    token: str
+
+
+class InviteInfoResponse(BaseModel):
+    valid: bool
+    channel_name: str | None = None
+    server_name: str | None = None
+
+
+class GuestJoinRequest(BaseModel):
+    username: str
+
+
+class GuestJoinResponse(BaseModel):
+    token: str
+    url: str
+    room_name: str
+    channel_name: str
+
+
 @router.get("/api/voice/{channel_id}/token", response_model=LiveKitTokenResponse)
 async def get_voice_token(
     channel_id: int,
@@ -58,8 +108,12 @@ async def get_voice_token(
     Get LiveKit token for joining a voice channel.
     The room name is 'voice_{channel_id}'.
     """
-    # Verify channel exists and is voice type
-    result = await db.execute(select(Channel).where(Channel.id == channel_id))
+    # Verify channel exists and is voice type, load server relation
+    result = await db.execute(
+        select(Channel)
+        .options(joinedload(Channel.server))
+        .where(Channel.id == channel_id)
+    )
     channel = result.scalar_one_or_none()
     
     if not channel:
@@ -78,13 +132,14 @@ async def get_voice_token(
     room_name = f"voice_{channel_id}"
     
     # Create access token with grants
+    username = user.get("nickname") or user["username"]
     token = (
         AccessToken(
             api_key=settings.livekit_api_key,
             api_secret=settings.livekit_api_secret,
         )
         .with_identity(str(user["id"]))
-        .with_name(user.get("nickname") or user["username"])
+        .with_name(username)
         .with_grants(VideoGrants(
             room_join=True,
             room=room_name,
@@ -94,6 +149,10 @@ async def get_voice_token(
     )
     
     jwt_token = token.to_jwt()
+    
+    # Send QQ group notification (fire and forget)
+    server_name = channel.server.name if channel.server else "未知服务器"
+    asyncio.create_task(send_qq_group_notify(username, server_name, channel.name))
     
     return LiveKitTokenResponse(
         token=jwt_token,
@@ -349,3 +408,146 @@ async def set_host_mode(
             return HostModeResponse(enabled=False, host_id=None, host_name=None)
     finally:
         await api.aclose()
+
+
+# ============================================================================
+# Voice Invite APIs (Guest access without login)
+# ============================================================================
+
+@router.post("/api/voice/{channel_id}/invite", response_model=InviteCreateResponse)
+async def create_voice_invite(
+    channel_id: int,
+    request: Request,
+    user: AdminUser,
+    db: AsyncSession = Depends(get_db),
+):
+    """Create a single-use invite link for a voice channel (admin only)."""
+    result = await db.execute(select(Channel).where(Channel.id == channel_id))
+    channel = result.scalar_one_or_none()
+    
+    if not channel:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Channel not found")
+    
+    if channel.type != ChannelType.VOICE:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Not a voice channel")
+    
+    token = uuid.uuid4().hex
+    invite = VoiceInvite(
+        channel_id=channel_id,
+        token=token,
+        created_by=user["id"],
+    )
+    db.add(invite)
+    await db.flush()
+    
+    # Build invite URL based on request origin
+    base_url = str(request.base_url).rstrip("/")
+    # Frontend runs on different port in dev, use origin header if available
+    origin = request.headers.get("origin", base_url)
+    invite_url = f"{origin}/voice-invite/{token}"
+    
+    return InviteCreateResponse(invite_url=invite_url, token=token)
+
+
+@router.get("/api/voice/invite/{token}", response_model=InviteInfoResponse)
+async def get_voice_invite_info(
+    token: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Get invite info without authentication. Returns channel/server name if valid."""
+    result = await db.execute(
+        select(VoiceInvite)
+        .options(joinedload(VoiceInvite.channel))
+        .where(VoiceInvite.token == token)
+    )
+    invite = result.scalar_one_or_none()
+    
+    if not invite:
+        return InviteInfoResponse(valid=False)
+    
+    if invite.used:
+        return InviteInfoResponse(valid=False)
+    
+    # Get server name
+    server_result = await db.execute(
+        select(Server).where(Server.id == invite.channel.server_id)
+    )
+    server = server_result.scalar_one_or_none()
+    
+    return InviteInfoResponse(
+        valid=True,
+        channel_name=invite.channel.name,
+        server_name=server.name if server else None,
+    )
+
+
+@router.post("/api/voice/invite/{token}/join", response_model=GuestJoinResponse)
+async def join_voice_as_guest(
+    token: str,
+    payload: GuestJoinRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Join a voice channel as a guest using an invite token.
+    This endpoint does NOT require authentication.
+    The invite token becomes invalid after use.
+    """
+    if not payload.username or len(payload.username.strip()) < 1:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Username is required"
+        )
+    
+    username = payload.username.strip()[:50]  # Limit length
+    
+    result = await db.execute(
+        select(VoiceInvite)
+        .options(joinedload(VoiceInvite.channel))
+        .where(VoiceInvite.token == token)
+    )
+    invite = result.scalar_one_or_none()
+    
+    if not invite:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Invite not found"
+        )
+    
+    if invite.used:
+        raise HTTPException(
+            status_code=status.HTTP_410_GONE,
+            detail="This invite has already been used"
+        )
+    
+    # Mark invite as used
+    invite.used = True
+    invite.used_by_name = username
+    invite.used_at = datetime.utcnow()
+    await db.flush()
+    
+    # Generate LiveKit token for guest
+    settings = get_settings()
+    room_name = f"voice_{invite.channel_id}"
+    guest_identity = f"guest_{token[:8]}"
+    
+    lk_token = (
+        AccessToken(
+            api_key=settings.livekit_api_key,
+            api_secret=settings.livekit_api_secret,
+        )
+        .with_identity(guest_identity)
+        .with_name(f"[Guest] {username}")
+        .with_grants(VideoGrants(
+            room_join=True,
+            room=room_name,
+            can_publish=True,
+            can_subscribe=True,
+        ))
+    )
+    
+    return GuestJoinResponse(
+        token=lk_token.to_jwt(),
+        url=settings.livekit_host,
+        room_name=room_name,
+        channel_name=invite.channel.name,
+    )
