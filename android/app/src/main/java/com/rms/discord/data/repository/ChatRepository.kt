@@ -6,20 +6,30 @@ import com.rms.discord.data.api.SendMessageBody
 import com.rms.discord.data.model.Channel
 import com.rms.discord.data.model.Message
 import com.rms.discord.data.model.Server
+import com.rms.discord.data.websocket.ChatWebSocket
+import com.rms.discord.data.websocket.ConnectionState
+import com.rms.discord.data.websocket.WebSocketEvent
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
 class ChatRepository @Inject constructor(
     private val api: ApiService,
-    private val authRepository: AuthRepository
+    private val authRepository: AuthRepository,
+    private val webSocket: ChatWebSocket
 ) {
     companion object {
         private const val TAG = "ChatRepository"
     }
+
+    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     private val _servers = MutableStateFlow<List<Server>>(emptyList())
     val servers: StateFlow<List<Server>> = _servers.asStateFlow()
@@ -32,6 +42,42 @@ class ChatRepository @Inject constructor(
 
     private val _messages = MutableStateFlow<List<Message>>(emptyList())
     val messages: StateFlow<List<Message>> = _messages.asStateFlow()
+
+    // Expose WebSocket state
+    val connectionState: StateFlow<ConnectionState> = webSocket.connectionState
+    val webSocketEvents = webSocket.events
+
+    init {
+        observeWebSocketEvents()
+    }
+
+    private fun observeWebSocketEvents() {
+        scope.launch {
+            webSocket.events.collect { event ->
+                when (event) {
+                    is WebSocketEvent.NewMessage -> {
+                        Log.d(TAG, "Received new message: ${event.message.id}")
+                        addMessage(event.message)
+                    }
+                    is WebSocketEvent.Connected -> {
+                        Log.d(TAG, "WebSocket connected to channel ${event.channelId}")
+                    }
+                    is WebSocketEvent.Disconnected -> {
+                        Log.d(TAG, "WebSocket disconnected")
+                    }
+                    is WebSocketEvent.Error -> {
+                        Log.e(TAG, "WebSocket error: ${event.error}")
+                    }
+                    is WebSocketEvent.UserJoined -> {
+                        Log.d(TAG, "User joined: ${event.user.username}")
+                    }
+                    is WebSocketEvent.UserLeft -> {
+                        Log.d(TAG, "User left: ${event.userId}")
+                    }
+                }
+            }
+        }
+    }
 
     suspend fun fetchServers(): Result<List<Server>> {
         return try {
@@ -95,11 +141,36 @@ class ChatRepository @Inject constructor(
 
     fun addMessage(message: Message) {
         if (message.channelId == _currentChannel.value?.id) {
-            _messages.value = _messages.value + message
+            // Avoid duplicate messages
+            if (_messages.value.none { it.id == message.id }) {
+                _messages.value = _messages.value + message
+            }
         }
     }
 
     fun clearMessages() {
         _messages.value = emptyList()
     }
+
+    // WebSocket connection management
+    fun connectToChannel(channelId: Long) {
+        val token = authRepository.getTokenBlocking() ?: run {
+            Log.e(TAG, "Cannot connect to WebSocket: no token")
+            return
+        }
+        Log.d(TAG, "Connecting to channel $channelId")
+        webSocket.connect(token, channelId)
+    }
+
+    fun disconnectFromChannel() {
+        Log.d(TAG, "Disconnecting from channel")
+        webSocket.disconnect()
+    }
+
+    fun reconnectWebSocket() {
+        Log.d(TAG, "Reconnecting WebSocket")
+        webSocket.reconnect()
+    }
+
+    fun isWebSocketConnected(): Boolean = webSocket.isConnected()
 }

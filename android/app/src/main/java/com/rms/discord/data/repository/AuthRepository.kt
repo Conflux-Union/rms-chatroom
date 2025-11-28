@@ -10,6 +10,7 @@ import com.rms.discord.data.model.User
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.runBlocking
 import retrofit2.HttpException
 import java.net.ConnectException
 import java.net.SocketTimeoutException
@@ -33,6 +34,10 @@ class AuthRepository @Inject constructor(
 
     suspend fun getToken(): String? {
         return dataStore.data.first()[TOKEN_KEY]
+    }
+
+    fun getTokenBlocking(): String? = runBlocking {
+        getToken()
     }
 
     suspend fun saveToken(token: String) {

@@ -87,12 +87,12 @@ android/app/src/main/java/com/rms/discord/
 - [x] Navigation Compose 导航图
 - [x] Splash Screen配置
 
-### 🔲 Phase 2: 文字聊天 + WebSocket实时消息
+### 🔄 Phase 2: 文字聊天 + WebSocket实时消息
 
-- [ ] 完善 ChatWebSocket 连接管理
-  - 自动重连机制
-  - 心跳保活
-  - 连接状态监听
+- [x] 完善 ChatWebSocket 连接管理
+  - 自动重连机制 (指数退避, 最大10次尝试)
+  - 心跳保活 (30秒间隔ping)
+  - 连接状态监听 (ConnectionState Flow)
 - [ ] ChatScreen 功能完善
   - 消息加载状态
   - 下拉刷新历史消息
