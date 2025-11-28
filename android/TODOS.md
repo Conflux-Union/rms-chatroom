@@ -99,10 +99,12 @@ android/app/src/main/java/com/rms/discord/
   - 消息发送状态指示 (SendingState enum + 按钮状态)
   - 新消息自动滚动 (LaunchedEffect + animateScrollToItem)
   - WebSocket连接状态横幅 (ConnectionBanner)
-- [ ] 消息本地缓存 (Room)
-  - MessageEntity
-  - MessageDao
-  - 离线消息支持
+- [x] 消息本地缓存 (Room)
+  - MessageEntity (data/local/MessageEntity.kt)
+  - MessageDao (data/local/MessageDao.kt)
+  - AppDatabase (data/local/AppDatabase.kt)
+  - 离线消息支持 (先加载缓存, 网络失败时回退)
+  - 7天缓存自动清理
 - [ ] 消息通知
   - NotificationChannel配置
   - 新消息推送通知

@@ -3,6 +3,8 @@ package com.rms.discord.data.repository
 import android.util.Log
 import com.rms.discord.data.api.ApiService
 import com.rms.discord.data.api.SendMessageBody
+import com.rms.discord.data.local.MessageDao
+import com.rms.discord.data.local.MessageEntity
 import com.rms.discord.data.model.Channel
 import com.rms.discord.data.model.Message
 import com.rms.discord.data.model.Server
@@ -23,10 +25,12 @@ import javax.inject.Singleton
 class ChatRepository @Inject constructor(
     private val api: ApiService,
     private val authRepository: AuthRepository,
-    private val webSocket: ChatWebSocket
+    private val webSocket: ChatWebSocket,
+    private val messageDao: MessageDao
 ) {
     companion object {
         private const val TAG = "ChatRepository"
+        private const val CACHE_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000L // 7 days
     }
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
@@ -43,12 +47,12 @@ class ChatRepository @Inject constructor(
     private val _messages = MutableStateFlow<List<Message>>(emptyList())
     val messages: StateFlow<List<Message>> = _messages.asStateFlow()
 
-    // Expose WebSocket state
     val connectionState: StateFlow<ConnectionState> = webSocket.connectionState
     val webSocketEvents = webSocket.events
 
     init {
         observeWebSocketEvents()
+        cleanupOldCache()
     }
 
     private fun observeWebSocketEvents() {
@@ -58,6 +62,8 @@ class ChatRepository @Inject constructor(
                     is WebSocketEvent.NewMessage -> {
                         Log.d(TAG, "Received new message: ${event.message.id}")
                         addMessage(event.message)
+                        // Cache to database
+                        cacheMessage(event.message)
                     }
                     is WebSocketEvent.Connected -> {
                         Log.d(TAG, "WebSocket connected to channel ${event.channelId}")
@@ -75,6 +81,39 @@ class ChatRepository @Inject constructor(
                         Log.d(TAG, "User left: ${event.userId}")
                     }
                 }
+            }
+        }
+    }
+
+    private fun cleanupOldCache() {
+        scope.launch {
+            try {
+                val expiryTime = System.currentTimeMillis() - CACHE_EXPIRY_MS
+                messageDao.deleteOldMessages(expiryTime)
+                Log.d(TAG, "Cleaned up old cached messages")
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to cleanup old cache", e)
+            }
+        }
+    }
+
+    private fun cacheMessage(message: Message) {
+        scope.launch {
+            try {
+                messageDao.insertMessage(MessageEntity.fromMessage(message))
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to cache message", e)
+            }
+        }
+    }
+
+    private fun cacheMessages(messages: List<Message>) {
+        scope.launch {
+            try {
+                messageDao.insertMessages(messages.map { MessageEntity.fromMessage(it) })
+                Log.d(TAG, "Cached ${messages.size} messages")
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to cache messages", e)
             }
         }
     }
@@ -110,15 +149,38 @@ class ChatRepository @Inject constructor(
     }
 
     suspend fun fetchMessages(channelId: Long): Result<List<Message>> {
+        // First load from cache for instant display
+        loadCachedMessages(channelId)
+
         return try {
             val token = authRepository.getToken()
                 ?: return Result.failure(AuthException("未登录，请先登录"))
             val messageList = api.getMessages(authRepository.getAuthHeader(token), channelId)
             _messages.value = messageList
+            // Update cache
+            cacheMessages(messageList)
             Result.success(messageList)
         } catch (e: Exception) {
             Log.e(TAG, "fetchMessages failed", e)
-            Result.failure(e.toAuthException())
+            // If network fails, cached messages are already displayed
+            if (_messages.value.isEmpty()) {
+                Result.failure(e.toAuthException())
+            } else {
+                Log.d(TAG, "Using cached messages due to network error")
+                Result.success(_messages.value)
+            }
+        }
+    }
+
+    private suspend fun loadCachedMessages(channelId: Long) {
+        try {
+            val cached = messageDao.getMessagesByChannelOnce(channelId)
+            if (cached.isNotEmpty()) {
+                _messages.value = cached.map { it.toMessage() }
+                Log.d(TAG, "Loaded ${cached.size} cached messages")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to load cached messages", e)
         }
     }
 
@@ -132,6 +194,8 @@ class ChatRepository @Inject constructor(
                 SendMessageBody(content)
             )
             _messages.value = _messages.value + message
+            // Cache sent message
+            cacheMessage(message)
             Result.success(message)
         } catch (e: Exception) {
             Log.e(TAG, "sendMessage failed", e)
@@ -141,7 +205,6 @@ class ChatRepository @Inject constructor(
 
     fun addMessage(message: Message) {
         if (message.channelId == _currentChannel.value?.id) {
-            // Avoid duplicate messages
             if (_messages.value.none { it.id == message.id }) {
                 _messages.value = _messages.value + message
             }
@@ -152,7 +215,6 @@ class ChatRepository @Inject constructor(
         _messages.value = emptyList()
     }
 
-    // WebSocket connection management
     fun connectToChannel(channelId: Long) {
         val token = authRepository.getTokenBlocking() ?: run {
             Log.e(TAG, "Cannot connect to WebSocket: no token")
