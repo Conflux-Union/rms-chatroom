@@ -84,11 +84,11 @@ fun MusicSearchDialog(
                             onSearch = { onSearch(searchQuery) }
                         ),
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = DiscordBlurple,
+                            focusedBorderColor = TiColor,
                             unfocusedBorderColor = SurfaceLight,
                             focusedContainerColor = SurfaceLight,
                             unfocusedContainerColor = SurfaceLight,
-                            cursorColor = DiscordBlurple,
+                            cursorColor = TiColor,
                             focusedTextColor = TextPrimary,
                             unfocusedTextColor = TextPrimary
                         ),
@@ -103,7 +103,7 @@ fun MusicSearchDialog(
                         modifier = Modifier
                             .size(48.dp)
                             .clip(RoundedCornerShape(8.dp))
-                            .background(DiscordBlurple)
+                            .background(TiColor)
                     ) {
                         if (isSearching) {
                             CircularProgressIndicator(

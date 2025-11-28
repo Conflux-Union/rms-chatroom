@@ -18,7 +18,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.rms.discord.R
-import com.rms.discord.ui.theme.DiscordBlurple
+import com.rms.discord.ui.theme.TiColor
 import com.rms.discord.ui.theme.SurfaceDarker
 
 @Composable
@@ -42,7 +42,7 @@ fun LoginScreen(
                 brush = Brush.verticalGradient(
                     colors = listOf(
                         SurfaceDarker,
-                        DiscordBlurple.copy(alpha = 0.2f),
+                        TiColor.copy(alpha = 0.2f),
                         SurfaceDarker
                     )
                 )
@@ -87,7 +87,7 @@ fun LoginScreen(
                         .fillMaxWidth()
                         .height(56.dp),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = DiscordBlurple
+                        containerColor = TiColor
                     ),
                     shape = MaterialTheme.shapes.medium
                 ) {
@@ -112,7 +112,7 @@ fun LoginScreen(
             ) {
                 CircularProgressIndicator(
                     modifier = Modifier.size(48.dp),
-                    color = DiscordBlurple
+                    color = TiColor
                 )
             }
 

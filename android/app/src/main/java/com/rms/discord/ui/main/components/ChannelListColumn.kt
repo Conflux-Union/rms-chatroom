@@ -277,7 +277,7 @@ private fun VoiceUserItem(user: VoiceUser) {
             modifier = Modifier
                 .size(20.dp)
                 .clip(CircleShape)
-                .background(DiscordBlurple),
+                .background(TiColor),
             contentAlignment = Alignment.Center
         ) {
             Text(
@@ -344,7 +344,7 @@ private fun UserPanel(
                 modifier = Modifier
                     .size(32.dp)
                     .clip(RoundedCornerShape(16.dp))
-                    .background(DiscordBlurple),
+                    .background(TiColor),
                 contentAlignment = Alignment.Center
             ) {
                 Text(

@@ -80,7 +80,11 @@ fun ChatScreen(
         }
     }
 
-    Column(modifier = Modifier.fillMaxSize()) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .windowInsetsPadding(WindowInsets.ime.exclude(WindowInsets.navigationBars))
+    ) {
         // Connection status banner
         ConnectionBanner(
             connectionState = connectionState,
@@ -106,7 +110,7 @@ fun ChatScreen(
                         modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.Center
                     ) {
-                        CircularProgressIndicator(color = DiscordBlurple)
+                        CircularProgressIndicator(color = TiColor)
                     }
                 }
                 messages.isEmpty() -> {
@@ -256,7 +260,7 @@ private fun MessageItem(message: Message) {
             modifier = Modifier
                 .size(40.dp)
                 .clip(CircleShape)
-                .background(DiscordBlurple),
+                .background(TiColor),
             contentAlignment = Alignment.Center
         ) {
             Text(
@@ -336,7 +340,7 @@ private fun MessageInput(
                     focusedIndicatorColor = Color.Transparent,
                     unfocusedIndicatorColor = Color.Transparent,
                     disabledIndicatorColor = Color.Transparent,
-                    cursorColor = DiscordBlurple,
+                    cursorColor = TiColor,
                     focusedTextColor = TextPrimary,
                     unfocusedTextColor = TextPrimary,
                     disabledTextColor = TextMuted
@@ -360,7 +364,7 @@ private fun MessageInput(
                     modifier = Modifier
                         .size(40.dp)
                         .background(
-                            if (isConnected) DiscordBlurple else DiscordBlurple.copy(alpha = 0.5f),
+                            if (isConnected) TiColor else TiColor.copy(alpha = 0.5f),
                             CircleShape
                         )
                 ) {

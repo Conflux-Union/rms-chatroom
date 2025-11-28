@@ -175,7 +175,7 @@ fun VoiceScreen(
             if (state.isConnected) {
                 FloatingActionButton(
                     onClick = { showMusicPanel = true },
-                    containerColor = DiscordBlurple
+                    containerColor = TiColor
                 ) {
                     Icon(
                         imageVector = Icons.Default.MusicNote,
@@ -381,7 +381,7 @@ private fun VoiceUserItem(participant: ParticipantInfo) {
                 modifier = Modifier
                     .size(48.dp)
                     .clip(CircleShape)
-                    .background(DiscordBlurple),
+                    .background(TiColor),
                 contentAlignment = Alignment.Center
             ) {
                 Text(

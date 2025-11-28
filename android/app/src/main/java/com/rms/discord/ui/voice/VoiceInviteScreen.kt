@@ -130,7 +130,7 @@ fun VoiceInviteScreen(
                         modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.Center
                     ) {
-                        CircularProgressIndicator(color = DiscordBlurple)
+                        CircularProgressIndicator(color = TiColor)
                     }
                 }
                 !state.isValidInvite && state.inviteInfo != null -> {
@@ -196,7 +196,7 @@ private fun InvalidInviteContent(
             Spacer(modifier = Modifier.height(24.dp))
             Button(
                 onClick = onNavigateBack,
-                colors = ButtonDefaults.buttonColors(containerColor = DiscordBlurple)
+                colors = ButtonDefaults.buttonColors(containerColor = TiColor)
             ) {
                 Text("返回")
             }
@@ -307,10 +307,10 @@ private fun JoinFormContent(
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
             colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = DiscordBlurple,
+                focusedBorderColor = TiColor,
                 unfocusedBorderColor = TextMuted,
-                focusedLabelColor = DiscordBlurple,
-                cursorColor = DiscordBlurple
+                focusedLabelColor = TiColor,
+                cursorColor = TiColor
             ),
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
             keyboardActions = KeyboardActions(onDone = { onJoin() })
@@ -496,7 +496,7 @@ private fun GuestVoiceUserItem(participant: ParticipantInfo) {
                 modifier = Modifier
                     .size(48.dp)
                     .clip(CircleShape)
-                    .background(DiscordBlurple),
+                    .background(TiColor),
                 contentAlignment = Alignment.Center
             ) {
                 Text(

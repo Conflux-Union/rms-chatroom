@@ -91,7 +91,7 @@ fun MusicLoginDialog(
                         contentAlignment = Alignment.Center
                     ) {
                         CircularProgressIndicator(
-                            color = DiscordBlurple,
+                            color = TiColor,
                             modifier = Modifier.size(32.dp)
                         )
                     }
@@ -128,7 +128,7 @@ fun MusicLoginDialog(
                     Button(
                         onClick = onRefreshQRCode,
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = DiscordBlurple
+                            containerColor = TiColor
                         ),
                         shape = RoundedCornerShape(8.dp)
                     ) {

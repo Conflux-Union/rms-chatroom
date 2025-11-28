@@ -141,7 +141,7 @@ private fun MusicHeader(
                     modifier = Modifier
                         .clip(RoundedCornerShape(12.dp))
                         .clickable { onStopBot() },
-                    color = DiscordBlurple.copy(alpha = 0.2f)
+                    color = TiColor.copy(alpha = 0.2f)
                 ) {
                     Row(
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
@@ -150,14 +150,14 @@ private fun MusicHeader(
                         Icon(
                             imageVector = Icons.Default.SmartToy,
                             contentDescription = null,
-                            tint = DiscordBlurple,
+                            tint = TiColor,
                             modifier = Modifier.size(14.dp)
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
                             text = "机器人",
                             style = MaterialTheme.typography.labelSmall,
-                            color = DiscordBlurple
+                            color = TiColor
                         )
                     }
                 }
@@ -260,7 +260,7 @@ private fun NowPlayingSection(
                     modifier = Modifier
                         .size(48.dp)
                         .clip(CircleShape)
-                        .background(DiscordBlurple)
+                        .background(TiColor)
                 ) {
                     when (playbackState) {
                         "loading" -> CircularProgressIndicator(
@@ -341,8 +341,8 @@ private fun ProgressBar(
                 .fillMaxWidth()
                 .height(20.dp),
             colors = SliderDefaults.colors(
-                thumbColor = DiscordBlurple,
-                activeTrackColor = DiscordBlurple,
+                thumbColor = TiColor,
+                activeTrackColor = TiColor,
                 inactiveTrackColor = SurfaceDark
             )
         )
@@ -373,7 +373,7 @@ private fun EmptyPlayingState(onShowSearch: () -> Unit) {
         Button(
             onClick = onShowSearch,
             colors = ButtonDefaults.buttonColors(
-                containerColor = DiscordBlurple
+                containerColor = TiColor
             ),
             shape = RoundedCornerShape(8.dp)
         ) {
@@ -481,7 +481,7 @@ private fun QueueItemRow(
     onRemove: () -> Unit
 ) {
     val backgroundColor by animateColorAsState(
-        targetValue = if (isCurrent) DiscordBlurple.copy(alpha = 0.15f) else Color.Transparent,
+        targetValue = if (isCurrent) TiColor.copy(alpha = 0.15f) else Color.Transparent,
         animationSpec = tween(200),
         label = "queueItemBg"
     )

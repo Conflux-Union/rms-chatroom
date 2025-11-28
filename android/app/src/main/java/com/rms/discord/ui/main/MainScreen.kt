@@ -20,7 +20,7 @@ import com.rms.discord.ui.auth.AuthViewModel
 import com.rms.discord.ui.chat.ChatScreen
 import com.rms.discord.ui.main.components.ChannelListColumn
 import com.rms.discord.ui.main.components.ServerListColumn
-import com.rms.discord.ui.theme.DiscordBlurple
+import com.rms.discord.ui.theme.TiColor
 import com.rms.discord.ui.theme.SurfaceDark
 import com.rms.discord.ui.theme.SurfaceDarker
 import com.rms.discord.ui.voice.VoiceScreen
@@ -118,7 +118,7 @@ fun MainScreen(
                     mainState.isLoading -> {
                         CircularProgressIndicator(
                             modifier = Modifier.align(Alignment.Center),
-                            color = DiscordBlurple
+                            color = TiColor
                         )
                     }
 

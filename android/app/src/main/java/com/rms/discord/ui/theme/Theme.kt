@@ -17,9 +17,9 @@ import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 
 private val DarkColorScheme = darkColorScheme(
-    primary = DiscordBlurple,
+    primary = TiColor,
     onPrimary = Color.White,
-    primaryContainer = DiscordBlurple,
+    primaryContainer = TiColor,
     onPrimaryContainer = Color.White,
     secondary = PurpleGrey80,
     onSecondary = Color.Black,

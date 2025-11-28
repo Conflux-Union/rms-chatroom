@@ -14,6 +14,11 @@ val Pink40 = Color(0xFF7D5260)
 // Discord-like colors
 val DiscordBlurple = Color(0xFF5865F2)
 val DiscordGreen = Color(0xFF57F287)
+
+// RMS primary colors (Ti color - same as web theme)
+val TiColor = Color(0xFFFC7961)           // rgb(252, 121, 97)
+val TiColorHover = Color(0xFFD65645)      // rgb(214, 86, 69)
+val TiColorGradientEnd = Color(0xFFEB5C50) // rgb(235, 92, 80)
 val DiscordYellow = Color(0xFFFEE75C)
 val DiscordFuchsia = Color(0xFFEB459E)
 val DiscordRed = Color(0xFFED4245)

@@ -25,7 +25,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.rms.discord.data.model.Server
-import com.rms.discord.ui.theme.DiscordBlurple
+import com.rms.discord.ui.theme.TiColor
 import com.rms.discord.ui.theme.SurfaceDarker
 import com.rms.discord.ui.theme.SurfaceLight
 
@@ -72,7 +72,7 @@ private fun ServerItem(
     )
 
     val backgroundColor by animateColorAsState(
-        targetValue = if (isSelected) DiscordBlurple else SurfaceLight,
+        targetValue = if (isSelected) TiColor else SurfaceLight,
         animationSpec = tween(200),
         label = "backgroundColor"
     )
