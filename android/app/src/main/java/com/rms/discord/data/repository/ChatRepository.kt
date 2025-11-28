@@ -6,8 +6,10 @@ import com.rms.discord.data.api.SendMessageBody
 import com.rms.discord.data.local.MessageDao
 import com.rms.discord.data.local.MessageEntity
 import com.rms.discord.data.model.Channel
+import com.rms.discord.data.model.ChannelType
 import com.rms.discord.data.model.Message
 import com.rms.discord.data.model.Server
+import com.rms.discord.data.model.VoiceUser
 import com.rms.discord.data.websocket.ChatWebSocket
 import com.rms.discord.data.websocket.ConnectionState
 import com.rms.discord.data.websocket.WebSocketEvent
@@ -51,6 +53,10 @@ class ChatRepository @Inject constructor(
 
     private val _messages = MutableStateFlow<List<Message>>(emptyList())
     val messages: StateFlow<List<Message>> = _messages.asStateFlow()
+
+    // Voice channel users: Map<channelId, List<VoiceUser>>
+    private val _voiceChannelUsers = MutableStateFlow<Map<Long, List<VoiceUser>>>(emptyMap())
+    val voiceChannelUsers: StateFlow<Map<Long, List<VoiceUser>>> = _voiceChannelUsers.asStateFlow()
 
     val connectionState: StateFlow<ConnectionState> = webSocket.connectionState
     val webSocketEvents = webSocket.events
@@ -268,4 +274,34 @@ class ChatRepository @Inject constructor(
     }
 
     fun isWebSocketConnected(): Boolean = webSocket.isConnected()
+
+    suspend fun fetchVoiceChannelUsers(channelId: Long): Result<List<VoiceUser>> {
+        return try {
+            val token = authRepository.getToken()
+                ?: return Result.failure(AuthException("未登录，请先登录"))
+            val users = api.getVoiceUsers(authRepository.getAuthHeader(token), channelId)
+            _voiceChannelUsers.value = _voiceChannelUsers.value.toMutableMap().apply {
+                put(channelId, users)
+            }
+            Result.success(users)
+        } catch (e: Exception) {
+            Log.e(TAG, "fetchVoiceChannelUsers failed for channel $channelId", e)
+            _voiceChannelUsers.value = _voiceChannelUsers.value.toMutableMap().apply {
+                put(channelId, emptyList())
+            }
+            Result.failure(e.toAuthException())
+        }
+    }
+
+    suspend fun fetchAllVoiceChannelUsers() {
+        val server = _currentServer.value ?: return
+        val voiceChannels = server.channels?.filter { it.type == ChannelType.VOICE } ?: emptyList()
+        voiceChannels.forEach { channel ->
+            fetchVoiceChannelUsers(channel.id)
+        }
+    }
+
+    fun getVoiceChannelUsers(channelId: Long): List<VoiceUser> {
+        return _voiceChannelUsers.value[channelId] ?: emptyList()
+    }
 }

@@ -1,12 +1,16 @@
 package com.rms.discord.ui.main.components
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -20,9 +24,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.rms.discord.data.model.Channel
 import com.rms.discord.data.model.ChannelType
 import com.rms.discord.data.model.Server
+import com.rms.discord.data.model.VoiceUser
 import com.rms.discord.ui.theme.*
 
 @Composable
@@ -31,7 +37,8 @@ fun ChannelListColumn(
     currentChannelId: Long?,
     onChannelClick: (Channel) -> Unit,
     username: String,
-    onLogout: () -> Unit
+    onLogout: () -> Unit,
+    voiceChannelUsers: Map<Long, List<VoiceUser>> = emptyMap()
 ) {
     Column(
         modifier = Modifier
@@ -90,12 +97,16 @@ fun ChannelListColumn(
                     Spacer(modifier = Modifier.height(16.dp))
                     ChannelSectionHeader(title = "语音频道")
                 }
-                items(voiceChannels, key = { it.id }) { channel ->
-                    ChannelItem(
-                        channel = channel,
-                        isSelected = channel.id == currentChannelId,
-                        onClick = { onChannelClick(channel) }
-                    )
+                voiceChannels.forEach { channel ->
+                    val users = voiceChannelUsers[channel.id] ?: emptyList()
+                    item(key = "voice_${channel.id}") {
+                        VoiceChannelItem(
+                            channel = channel,
+                            isSelected = channel.id == currentChannelId,
+                            onClick = { onChannelClick(channel) },
+                            users = users
+                        )
+                    }
                 }
             }
         }
@@ -169,6 +180,147 @@ private fun ChannelItem(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
+    }
+}
+
+@Composable
+private fun VoiceChannelItem(
+    channel: Channel,
+    isSelected: Boolean,
+    onClick: () -> Unit,
+    users: List<VoiceUser>
+) {
+    val backgroundColor by animateColorAsState(
+        targetValue = if (isSelected) SurfaceLighter else Color.Transparent,
+        animationSpec = tween(150),
+        label = "channelBg"
+    )
+
+    val textColor by animateColorAsState(
+        targetValue = if (isSelected) ChannelActive else ChannelDefault,
+        animationSpec = tween(150),
+        label = "channelText"
+    )
+
+    Column {
+        // Channel row
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(4.dp))
+                .background(backgroundColor)
+                .clickable(onClick = onClick)
+                .padding(horizontal = 8.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = Icons.Default.VolumeUp,
+                contentDescription = null,
+                modifier = Modifier.size(20.dp),
+                tint = textColor
+            )
+
+            Spacer(modifier = Modifier.width(8.dp))
+
+            Text(
+                text = channel.name,
+                style = MaterialTheme.typography.bodyMedium,
+                color = textColor,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+
+            // User count badge
+            if (users.isNotEmpty()) {
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = SurfaceLighter
+                ) {
+                    Text(
+                        text = "${users.size}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = TextMuted,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
+            }
+        }
+
+        // Voice users list
+        AnimatedVisibility(
+            visible = users.isNotEmpty(),
+            enter = expandVertically(),
+            exit = shrinkVertically()
+        ) {
+            Column(
+                modifier = Modifier.padding(start = 28.dp)
+            ) {
+                users.forEach { user ->
+                    VoiceUserItem(user = user)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun VoiceUserItem(user: VoiceUser) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 2.dp, horizontal = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // Avatar
+        Box(
+            modifier = Modifier
+                .size(20.dp)
+                .clip(CircleShape)
+                .background(DiscordBlurple),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = user.name.take(1).uppercase(),
+                style = MaterialTheme.typography.labelSmall,
+                color = Color.White,
+                fontSize = 10.sp
+            )
+        }
+
+        // Host badge
+        if (user.isHost) {
+            Icon(
+                imageVector = Icons.Default.Star,
+                contentDescription = "主持人",
+                modifier = Modifier
+                    .padding(start = 2.dp)
+                    .size(10.dp),
+                tint = Color(0xFFF59E0B)
+            )
+        }
+
+        Spacer(modifier = Modifier.width(6.dp))
+
+        // Username
+        Text(
+            text = user.name,
+            style = MaterialTheme.typography.bodySmall,
+            color = TextMuted,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f)
+        )
+
+        // Muted indicator
+        if (user.isMuted) {
+            Icon(
+                imageVector = Icons.Default.MicOff,
+                contentDescription = "已静音",
+                modifier = Modifier.size(12.dp),
+                tint = VoiceMuted
+            )
+        }
     }
 }
 

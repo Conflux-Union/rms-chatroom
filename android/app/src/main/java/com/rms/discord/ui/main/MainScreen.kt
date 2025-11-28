@@ -35,6 +35,7 @@ fun MainScreen(
 ) {
     val mainState by mainViewModel.state.collectAsState()
     val authState by authViewModel.state.collectAsState()
+    val voiceChannelUsers by mainViewModel.voiceChannelUsers.collectAsState()
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     var showMusicPanel by remember { mutableStateOf(false) }
@@ -73,7 +74,8 @@ fun MainScreen(
                             scope.launch { drawerState.close() }
                         },
                         username = authState.user?.nickname ?: authState.user?.username ?: "",
-                        onLogout = { authViewModel.logout() }
+                        onLogout = { authViewModel.logout() },
+                        voiceChannelUsers = voiceChannelUsers
                     )
                 }
             }

@@ -6,13 +6,17 @@ import androidx.lifecycle.viewModelScope
 import com.rms.discord.data.model.Channel
 import com.rms.discord.data.model.ChannelType
 import com.rms.discord.data.model.Server
+import com.rms.discord.data.model.VoiceUser
 import com.rms.discord.data.repository.ChatRepository
 import com.rms.discord.data.websocket.ConnectionState
 import com.rms.discord.data.websocket.WebSocketEvent
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -38,6 +42,9 @@ class MainViewModel @Inject constructor(
 
     val messages = chatRepository.messages
     val connectionState: StateFlow<ConnectionState> = chatRepository.connectionState
+    val voiceChannelUsers: StateFlow<Map<Long, List<VoiceUser>>> = chatRepository.voiceChannelUsers
+
+    private var voiceUsersPollingJob: Job? = null
 
     init {
         loadServers()
@@ -70,6 +77,8 @@ class MainViewModel @Inject constructor(
             chatRepository.fetchServer(serverId)
                 .onSuccess { server ->
                     _state.value = _state.value.copy(currentServer = server)
+                    // Start polling voice channel users
+                    startVoiceUsersPolling()
                     // Auto-select first text channel
                     server.channels?.firstOrNull { it.type == ChannelType.TEXT }
                         ?.let { selectChannel(it) }
@@ -78,6 +87,21 @@ class MainViewModel @Inject constructor(
                     _state.value = _state.value.copy(error = e.message)
                 }
         }
+    }
+
+    private fun startVoiceUsersPolling() {
+        voiceUsersPollingJob?.cancel()
+        voiceUsersPollingJob = viewModelScope.launch {
+            while (isActive) {
+                chatRepository.fetchAllVoiceChannelUsers()
+                delay(5000) // Poll every 5 seconds
+            }
+        }
+    }
+
+    private fun stopVoiceUsersPolling() {
+        voiceUsersPollingJob?.cancel()
+        voiceUsersPollingJob = null
     }
 
     fun selectChannel(channel: Channel) {
@@ -159,6 +183,7 @@ class MainViewModel @Inject constructor(
 
     override fun onCleared() {
         super.onCleared()
+        stopVoiceUsersPolling()
         chatRepository.disconnectFromChannel()
     }
 }
