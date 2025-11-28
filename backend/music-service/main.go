@@ -3,25 +3,28 @@ package main
 import (
 	"context"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"os"
-	"os/exec"
 	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/livekit/protocol/auth"
+	"github.com/go-gst/go-glib/glib"
+	"github.com/go-gst/go-gst/gst"
+	"github.com/go-gst/go-gst/gst/app"
 	"github.com/livekit/protocol/livekit"
 	lksdk "github.com/livekit/server-sdk-go/v2"
 	"github.com/pion/webrtc/v3"
+	"github.com/pion/webrtc/v3/pkg/media"
 )
 
+// Constants matching Ingress exactly
 const (
 	SampleRate    = 48000
 	Channels      = 2
-	FrameDuration = 20 * time.Millisecond
+	OpusBitrate   = 256000
+	OpusFrameSize = 20
 )
 
 type PlayState string
@@ -38,24 +41,25 @@ type SongInfo struct {
 	Mid      string `json:"mid"`
 	Name     string `json:"name"`
 	Artist   string `json:"artist"`
-	Duration int    `json:"duration"` // seconds
+	Duration int    `json:"duration"`
 	URL      string `json:"url"`
 }
 
 type Player struct {
-	mu           sync.RWMutex
-	room         *lksdk.Room
-	roomName     string
-	state        PlayState
-	currentSong  *SongInfo
-	positionMs   int64
-	durationMs   int64
-	
-	ctx          context.Context
-	cancel       context.CancelFunc
-	seekCh       chan int64
-	
-	onFinished   func()
+	mu          sync.RWMutex
+	room        *lksdk.Room
+	track       *lksdk.LocalTrack
+	roomName    string
+	state       PlayState
+	currentSong *SongInfo
+	positionMs  int64
+	durationMs  int64
+
+	pipeline *gst.Pipeline
+	loop     *glib.MainLoop
+
+	ctx    context.Context
+	cancel context.CancelFunc
 }
 
 type PlayerManager struct {
@@ -82,17 +86,16 @@ func NewPlayerManager(config *Config) *PlayerManager {
 func (pm *PlayerManager) GetOrCreatePlayer(roomName string) (*Player, error) {
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
-	
+
 	if p, ok := pm.players[roomName]; ok {
 		return p, nil
 	}
-	
+
 	p := &Player{
 		roomName: roomName,
 		state:    StateIdle,
-		seekCh:   make(chan int64, 1),
 	}
-	
+
 	pm.players[roomName] = p
 	return p, nil
 }
@@ -100,56 +103,43 @@ func (pm *PlayerManager) GetOrCreatePlayer(roomName string) (*Player, error) {
 func (pm *PlayerManager) RemovePlayer(roomName string) {
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
-	
-	if p, ok := pm.players[roomName]; ok {
-		p.Stop()
-		delete(pm.players, roomName)
-	}
+	delete(pm.players, roomName)
 }
 
 func (p *Player) Connect() error {
 	p.mu.Lock()
-	defer p.mu.Unlock()
-	
 	if p.room != nil {
+		p.mu.Unlock()
 		return nil
 	}
-	
-	// Generate token
-	at := auth.NewAccessToken(manager.config.LiveKitAPIKey, manager.config.LiveKitSecret)
-	grant := &auth.VideoGrant{
-		RoomJoin: true,
-		Room:     p.roomName,
-	}
-	at.AddGrant(grant).
-		SetIdentity("MusicBot").
-		SetName("Music Bot").
-		SetKind(livekit.ParticipantInfo_INGRESS)
-	
-	token, err := at.ToJWT()
-	if err != nil {
-		return fmt.Errorf("failed to generate token: %w", err)
-	}
-	
-	// Connect to room
+	p.mu.Unlock()
+
 	cb := lksdk.NewRoomCallback()
 	cb.OnDisconnected = func() {
 		log.Printf("Disconnected from room %s", p.roomName)
 		p.mu.Lock()
 		p.room = nil
+		p.track = nil
 		p.mu.Unlock()
 	}
-	
+
 	room := lksdk.NewRoom(cb)
-	
-	err = room.JoinWithToken(manager.config.LiveKitURL, token, lksdk.WithAutoSubscribe(false))
+	err := room.Join(manager.config.LiveKitURL, lksdk.ConnectInfo{
+		APIKey:              manager.config.LiveKitAPIKey,
+		APISecret:           manager.config.LiveKitSecret,
+		RoomName:            p.roomName,
+		ParticipantIdentity: "music-bot",
+		ParticipantName:     "Music Bot",
+	}, lksdk.WithAutoSubscribe(false))
 	if err != nil {
 		return fmt.Errorf("failed to join room: %w", err)
 	}
-	
-	log.Printf("Connected to room %s", p.roomName)
+
+	p.mu.Lock()
 	p.room = room
-	
+	p.mu.Unlock()
+
+	log.Printf("Connected to room %s", p.roomName)
 	return nil
 }
 
@@ -160,117 +150,113 @@ func (p *Player) Load(song *SongInfo) error {
 	p.positionMs = 0
 	p.durationMs = int64(song.Duration) * 1000
 	p.mu.Unlock()
-	
-	if err := p.Connect(); err != nil {
-		return err
-	}
-	
-	return nil
+
+	return p.Connect()
 }
 
 func (p *Player) Play() error {
 	p.mu.Lock()
-	if p.currentSong == nil {
-		p.mu.Unlock()
-		return fmt.Errorf("no song loaded")
-	}
-	
+
 	if p.state == StatePlaying {
 		p.mu.Unlock()
 		return nil
 	}
-	
-	// Cancel previous playback
+
 	if p.cancel != nil {
 		p.cancel()
 	}
-	
+
 	p.ctx, p.cancel = context.WithCancel(context.Background())
 	p.state = StatePlaying
 	song := p.currentSong
 	startPos := p.positionMs
 	p.mu.Unlock()
-	
+
 	go p.playbackLoop(song, startPos)
 	return nil
 }
 
-// pipeReadCloser wraps a pipe to implement io.ReadCloser
-type pipeReadCloser struct {
-	io.Reader
-	cmd *exec.Cmd
-}
-
-func (p *pipeReadCloser) Close() error {
-	if p.cmd != nil && p.cmd.Process != nil {
-		p.cmd.Process.Kill()
-		p.cmd.Wait()
-	}
-	return nil
-}
-
+// playbackLoop - copied from Ingress implementation
 func (p *Player) playbackLoop(song *SongInfo, startPosMs int64) {
 	log.Printf("Starting playback: %s from %dms", song.Name, startPosMs)
-	
-	// Use ffmpeg to transcode to Ogg/Opus format
-	startSec := float64(startPosMs) / 1000.0
-	
-	cmd := exec.CommandContext(p.ctx, "ffmpeg",
-		"-ss", fmt.Sprintf("%.3f", startSec),
-		"-i", song.URL,
-		"-c:a", "libopus",
-		"-ar", fmt.Sprintf("%d", SampleRate),
-		"-ac", fmt.Sprintf("%d", Channels),
-		"-b:a", "128k",
-		"-compression_level", "10",
-		"-frame_duration", "20",
-		"-application", "audio",
-		"-vn",
-		"-f", "ogg",
-		"-",
-	)
-	
-	stdout, err := cmd.StdoutPipe()
+
+	// Build GStreamer pipeline exactly like Ingress
+	// uridecodebin -> audioconvert -> audioresample -> capsfilter -> opusenc -> appsink
+	pipeline, err := gst.NewPipeline("music-pipeline")
 	if err != nil {
-		log.Printf("Failed to get stdout: %v", err)
+		log.Printf("Failed to create pipeline: %v", err)
 		return
 	}
-	
-	if err := cmd.Start(); err != nil {
-		log.Printf("Failed to start ffmpeg: %v", err)
-		return
-	}
-	
-	// Wrap pipe as ReadCloser
-	reader := &pipeReadCloser{Reader: stdout, cmd: cmd}
-	defer reader.Close()
-	
-	// Create track with OGG/Opus reader - use MimeTypeOpus which reads from OGG container
-	track, err := lksdk.NewLocalReaderTrack(reader, webrtc.MimeTypeOpus,
-		lksdk.ReaderTrackWithOnWriteComplete(func() {
-			p.mu.Lock()
-			// Only mark as finished if we were playing (not paused/stopped)
-			if p.state != StatePlaying {
-				p.mu.Unlock()
-				return
-			}
-			log.Printf("Playback finished: %s", song.Name)
-			p.state = StateStopped
-			p.positionMs = p.durationMs
-			onFinished := p.onFinished
-			p.mu.Unlock()
-			
-			if onFinished != nil {
-				onFinished()
-			}
-		}),
-	)
+
+	// Create elements - exactly like Ingress output.go
+	uridecodebin, _ := gst.NewElement("uridecodebin")
+	uridecodebin.Set("uri", song.URL)
+
+	audioconvert, _ := gst.NewElement("audioconvert")
+	audioresample, _ := gst.NewElement("audioresample")
+
+	// Capsfilter - exactly like Ingress
+	capsfilter, _ := gst.NewElement("capsfilter")
+	caps := gst.NewCapsFromString(fmt.Sprintf(
+		"audio/x-raw,format=S16LE,layout=interleaved,rate=%d,channels=%d",
+		SampleRate, Channels,
+	))
+	capsfilter.Set("caps", caps)
+
+	// Opus encoder - optimized for music (not voice)
+	opusenc, _ := gst.NewElement("opusenc")
+	opusenc.Set("bitrate", OpusBitrate)
+	opusenc.Set("frame-size", OpusFrameSize)
+	opusenc.Set("audio-type", 2049)  // generic (music), not voice
+	opusenc.Set("dtx", false)        // disable DTX for music quality
+
+	// Appsink - exactly like Ingress
+	appsinkElem, _ := gst.NewElement("appsink")
+	appsink := app.SinkFromElement(appsinkElem)
+	appsink.SetProperty("emit-signals", true)
+	appsink.SetProperty("sync", true)
+
+	// Add all elements to pipeline
+	pipeline.AddMany(uridecodebin, audioconvert, audioresample, capsfilter, opusenc, appsinkElem)
+
+	// Link static elements
+	gst.ElementLinkMany(audioconvert, audioresample, capsfilter, opusenc, appsinkElem)
+
+	// Handle dynamic pad from uridecodebin
+	uridecodebin.Connect("pad-added", func(self *gst.Element, pad *gst.Pad) {
+		sinkPad := audioconvert.GetStaticPad("sink")
+		if sinkPad.IsLinked() {
+			return
+		}
+		padCaps := pad.GetCurrentCaps()
+		if padCaps == nil {
+			return
+		}
+		structure := padCaps.GetStructureAt(0)
+		if structure == nil {
+			return
+		}
+		name := structure.Name()
+		if len(name) >= 5 && name[:5] == "audio" {
+			pad.Link(sinkPad)
+		}
+	})
+
+	p.mu.Lock()
+	p.pipeline = pipeline
+	p.mu.Unlock()
+
+	// Create LocalSampleTrack - exactly like Ingress lksdk_output.go
+	track, err := lksdk.NewLocalSampleTrack(webrtc.RTPCodecCapability{
+		MimeType:  webrtc.MimeTypeOpus,
+		ClockRate: SampleRate,
+		Channels:  Channels,
+	})
 	if err != nil {
-		log.Printf("Failed to create reader track: %v", err)
+		log.Printf("Failed to create track: %v", err)
 		return
 	}
-	
-	// Publish track
+
 	p.mu.Lock()
 	if p.room == nil {
 		p.mu.Unlock()
@@ -278,119 +264,188 @@ func (p *Player) playbackLoop(song *SongInfo, startPosMs int64) {
 		return
 	}
 	room := p.room
+	p.track = track
 	p.mu.Unlock()
-	
+
+	// Publish track with music-optimized settings
 	pub, err := room.LocalParticipant.PublishTrack(track, &lksdk.TrackPublicationOptions{
-		Name:   "music",
-		Source: livekit.TrackSource_MICROPHONE,
+		Name:       "music",
+		Source:     livekit.TrackSource_MICROPHONE,
+		DisableDTX: true,  // critical for music quality
+		Stereo:     true,  // enable stereo
 	})
 	if err != nil {
 		log.Printf("Failed to publish track: %v", err)
 		return
 	}
 	log.Printf("Published track: %s", pub.SID())
-	
-	// Track progress using a ticker
-	currentPosMs := startPosMs
-	ticker := time.NewTicker(100 * time.Millisecond)
-	defer ticker.Stop()
-	
-	for {
-		select {
-		case <-p.ctx.Done():
-			room.LocalParticipant.UnpublishTrack(pub.SID())
-			return
-			
-		case newPos := <-p.seekCh:
-			// Stop current and restart from new position
-			room.LocalParticipant.UnpublishTrack(pub.SID())
-			p.mu.Lock()
-			p.positionMs = newPos
-			p.mu.Unlock()
-			go p.playbackLoop(song, newPos)
-			return
-			
-		case <-ticker.C:
-			// Update position estimate
-			currentPosMs += 100
-			if currentPosMs > p.durationMs {
-				currentPosMs = p.durationMs
+
+	// Handle samples from appsink - exactly like Ingress output.go handleSample
+	appsink.SetCallbacks(&app.SinkCallbacks{
+		EOSFunc: func(sink *app.Sink) {
+			log.Printf("EOS received")
+		},
+		NewSampleFunc: func(sink *app.Sink) gst.FlowReturn {
+			sample := sink.PullSample()
+			if sample == nil {
+				return gst.FlowEOS
 			}
+
+			buffer := sample.GetBuffer()
+			if buffer == nil {
+				return gst.FlowError
+			}
+
+			duration := time.Duration(buffer.Duration())
+
+			// WriteSample - exactly like Ingress
+			err := track.WriteSample(media.Sample{
+				Data:     buffer.Bytes(),
+				Duration: duration,
+			}, nil)
+			if err != nil {
+				log.Printf("WriteSample error: %v", err)
+			}
+
+			// Update position
 			p.mu.Lock()
-			p.positionMs = currentPosMs
+			p.positionMs += int64(duration / time.Millisecond)
+			if p.positionMs > p.durationMs {
+				p.positionMs = p.durationMs
+			}
 			p.mu.Unlock()
-		}
+
+			return gst.FlowOK
+		},
+	})
+
+	// Seek if needed
+	if startPosMs > 0 {
+		pipeline.SetState(gst.StatePaused)
+		pipeline.Bin.Element.GetState(gst.StateNull, gst.ClockTimeNone)
+		pipeline.Bin.Element.SeekSimple(int64(startPosMs)*int64(time.Millisecond), gst.FormatTime, gst.SeekFlagFlush|gst.SeekFlagKeyUnit)
 	}
+
+	// Start pipeline
+	pipeline.SetState(gst.StatePlaying)
+
+	// Main loop
+	loop := glib.NewMainLoop(glib.MainContextDefault(), false)
+	p.mu.Lock()
+	p.loop = loop
+	p.mu.Unlock()
+
+	bus := pipeline.GetPipelineBus()
+	bus.AddWatch(func(msg *gst.Message) bool {
+		switch msg.Type() {
+		case gst.MessageEOS:
+			log.Printf("Playback finished: %s", song.Name)
+			p.mu.Lock()
+			if p.state == StatePlaying {
+				p.state = StateStopped
+				p.positionMs = p.durationMs
+			}
+			p.mu.Unlock()
+			loop.Quit()
+			return false
+		case gst.MessageError:
+			err := msg.ParseError()
+			log.Printf("Pipeline error: %v", err)
+			loop.Quit()
+			return false
+		}
+		return true
+	})
+
+	go func() {
+		<-p.ctx.Done()
+		loop.Quit()
+	}()
+
+	loop.Run()
+
+	pipeline.SetState(gst.StateNull)
+	room.LocalParticipant.UnpublishTrack(pub.SID())
 }
 
 func (p *Player) Pause() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	
+
 	if p.state != StatePlaying {
 		return
 	}
-	
-	// Cancel current playback - position is already tracked
+
 	if p.cancel != nil {
 		p.cancel()
 		p.cancel = nil
 	}
-	
+
 	p.state = StatePaused
 	log.Printf("Paused at %dms", p.positionMs)
 }
 
 func (p *Player) Resume() {
 	p.mu.Lock()
-	
+
 	if p.state != StatePaused {
 		p.mu.Unlock()
 		return
 	}
-	
-	// Cancel any previous context
+
 	if p.cancel != nil {
 		p.cancel()
 	}
-	
+
 	p.ctx, p.cancel = context.WithCancel(context.Background())
 	p.state = StatePlaying
 	song := p.currentSong
 	startPos := p.positionMs
 	p.mu.Unlock()
-	
+
 	log.Printf("Resuming from %dms", startPos)
 	go p.playbackLoop(song, startPos)
 }
 
 func (p *Player) Seek(positionMs int64) {
-	p.mu.RLock()
-	state := p.state
-	p.mu.RUnlock()
-	
-	if state == StatePlaying || state == StatePaused {
-		select {
-		case p.seekCh <- positionMs:
-		default:
-		}
+	p.mu.Lock()
+	wasPlaying := p.state == StatePlaying
+	p.positionMs = positionMs
+
+	if p.cancel != nil {
+		p.cancel()
+	}
+
+	song := p.currentSong
+	p.mu.Unlock()
+
+	if wasPlaying && song != nil {
+		p.mu.Lock()
+		p.ctx, p.cancel = context.WithCancel(context.Background())
+		p.state = StatePlaying
+		p.mu.Unlock()
+		go p.playbackLoop(song, positionMs)
 	}
 }
 
 func (p *Player) Stop() {
 	p.mu.Lock()
-	
+
 	if p.cancel != nil {
 		p.cancel()
 		p.cancel = nil
 	}
-	
+
+	if p.loop != nil {
+		p.loop.Quit()
+	}
+
 	p.state = StateStopped
 	room := p.room
 	p.room = nil
+	p.track = nil
 	p.mu.Unlock()
-	
-	// Disconnect outside lock to avoid deadlock
+
 	if room != nil {
 		room.Disconnect()
 	}
@@ -402,120 +457,108 @@ func (p *Player) GetProgress() (positionMs int64, durationMs int64, state PlaySt
 	return p.positionMs, p.durationMs, p.state, p.currentSong
 }
 
-func (p *Player) SetOnFinished(fn func()) {
-	p.mu.Lock()
-	p.onFinished = fn
-	p.mu.Unlock()
-}
-
 // HTTP Handlers
-
 type PlayRequest struct {
-	RoomName string   `json:"room_name"`
-	Song     SongInfo `json:"song"`
-}
-
-type SeekRequest struct {
-	RoomName   string `json:"room_name"`
-	PositionMs int64  `json:"position_ms"`
+	RoomName string    `json:"room_name"`
+	Song     *SongInfo `json:"song"`
 }
 
 type RoomRequest struct {
-	RoomName string `json:"room_name"`
-}
-
-type ProgressResponse struct {
-	PositionMs int64     `json:"position_ms"`
-	DurationMs int64     `json:"duration_ms"`
-	State      PlayState `json:"state"`
-	Song       *SongInfo `json:"song,omitempty"`
+	RoomName   string `json:"room_name"`
+	PositionMs int64  `json:"position_ms,omitempty"`
 }
 
 func handlePlay(c *gin.Context) {
 	var req PlayRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := c.BindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	player, err := manager.GetOrCreatePlayer(req.RoomName)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	
-	if err := player.Load(&req.Song); err != nil {
+
+	if err := player.Load(req.Song); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	if err := player.Play(); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	c.JSON(http.StatusOK, gin.H{"success": true})
 }
 
 func handlePause(c *gin.Context) {
 	var req RoomRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := c.BindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	player, err := manager.GetOrCreatePlayer(req.RoomName)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	player.Pause()
 	c.JSON(http.StatusOK, gin.H{"success": true})
 }
 
 func handleResume(c *gin.Context) {
 	var req RoomRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := c.BindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	player, err := manager.GetOrCreatePlayer(req.RoomName)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	player.Resume()
 	c.JSON(http.StatusOK, gin.H{"success": true})
 }
 
 func handleSeek(c *gin.Context) {
-	var req SeekRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	var req RoomRequest
+	if err := c.BindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	player, err := manager.GetOrCreatePlayer(req.RoomName)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	player.Seek(req.PositionMs)
 	c.JSON(http.StatusOK, gin.H{"success": true})
 }
 
 func handleStop(c *gin.Context) {
 	var req RoomRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := c.BindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	
-	manager.RemovePlayer(req.RoomName)
+
+	player, err := manager.GetOrCreatePlayer(req.RoomName)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	player.Stop()
 	c.JSON(http.StatusOK, gin.H{"success": true})
 }
 
@@ -525,19 +568,19 @@ func handleProgress(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "room_name required"})
 		return
 	}
-	
+
 	player, err := manager.GetOrCreatePlayer(roomName)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	
-	posMs, durMs, state, song := player.GetProgress()
-	c.JSON(http.StatusOK, ProgressResponse{
-		PositionMs: posMs,
-		DurationMs: durMs,
-		State:      state,
-		Song:       song,
+
+	pos, dur, state, song := player.GetProgress()
+	c.JSON(http.StatusOK, gin.H{
+		"position_ms": pos,
+		"duration_ms": dur,
+		"state":       state,
+		"song":        song,
 	})
 }
 
@@ -546,18 +589,35 @@ func handleHealth(c *gin.Context) {
 }
 
 func main() {
-	// Load config from environment or config file
+	// Initialize GStreamer
+	gst.Init(nil)
+
 	config := &Config{
-		LiveKitURL:    getEnv("LIVEKIT_URL", "ws://127.0.0.1:7880"),
-		LiveKitAPIKey: getEnv("LIVEKIT_API_KEY", "rms_discord"),
-		LiveKitSecret: getEnv("LIVEKIT_API_SECRET", "rmsdiscordsecretkey123456"),
+		LiveKitURL:    os.Getenv("LIVEKIT_URL"),
+		LiveKitAPIKey: os.Getenv("LIVEKIT_API_KEY"),
+		LiveKitSecret: os.Getenv("LIVEKIT_API_SECRET"),
 	}
-	
+
+	if config.LiveKitURL == "" {
+		config.LiveKitURL = "ws://127.0.0.1:7880"
+	}
+	if config.LiveKitAPIKey == "" {
+		config.LiveKitAPIKey = "devkey"
+	}
+	if config.LiveKitSecret == "" {
+		config.LiveKitSecret = "secret"
+	}
+
 	manager = NewPlayerManager(config)
-	
+
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "9100"
+	}
+
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.Default()
-	
+
 	r.GET("/health", handleHealth)
 	r.POST("/play", handlePlay)
 	r.POST("/pause", handlePause)
@@ -565,18 +625,9 @@ func main() {
 	r.POST("/seek", handleSeek)
 	r.POST("/stop", handleStop)
 	r.GET("/progress", handleProgress)
-	
-	port := getEnv("PORT", "9100")
-	log.Printf("Music service starting on port %s", port)
-	
-	if err := r.Run(":" + port); err != nil {
-		log.Fatal(err)
-	}
-}
 
-func getEnv(key, defaultVal string) string {
-	if val := os.Getenv(key); val != "" {
-		return val
+	log.Printf("Music service starting on port %s", port)
+	if err := r.Run(":" + port); err != nil {
+		log.Fatalf("Failed to start server: %v", err)
 	}
-	return defaultVal
 }
