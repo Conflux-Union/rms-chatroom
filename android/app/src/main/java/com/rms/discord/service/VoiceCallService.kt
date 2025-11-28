@@ -132,7 +132,7 @@ class VoiceCallService : Service() {
         val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
         wakeLock = powerManager.newWakeLock(
             PowerManager.PARTIAL_WAKE_LOCK,
-            "RMSDiscord:VoiceCallWakeLock"
+            "RMSChatRoom:VoiceCallWakeLock"
         ).apply {
             acquire(10 * 60 * 60 * 1000L) // 10 hours max
         }
@@ -207,7 +207,7 @@ class VoiceCallService : Service() {
         val statusText = if (isMuted) "正在 $channelName 中通话 (已静音)" else "正在 $channelName 中通话"
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("RMS Discord")
+            .setContentTitle("RMS ChatRoom")
             .setContentText(statusText)
             .setSmallIcon(R.drawable.ic_notification)
             .setOngoing(true)

@@ -58,7 +58,7 @@ fun LoginScreen(
         ) {
             // App Logo/Title
             Text(
-                text = "RMS Discord",
+                text = "RMS ChatRoom",
                 style = MaterialTheme.typography.displaySmall,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onBackground

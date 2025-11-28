@@ -132,7 +132,7 @@ class ChatRepository @Inject constructor(
         val server = _currentServer.value
         
         val channelName = channel?.name ?: "未知频道"
-        val serverName = server?.name ?: "RMS Discord"
+        val serverName = server?.name ?: "RMS ChatRoom"
 
         Log.d(TAG, "Showing notification for message from ${message.username}")
         notificationHelper.showMessageNotification(
