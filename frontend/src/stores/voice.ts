@@ -9,6 +9,12 @@ const API_BASE = import.meta.env.VITE_API_BASE || ''
 const STORAGE_KEY_INPUT = 'rms-voice-input-device'
 const STORAGE_KEY_OUTPUT = 'rms-voice-output-device'
 
+// Detect iOS devices (iPad, iPhone, iPod, or iPad with desktop mode)
+function isIOS(): boolean {
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+}
+
 export interface VoiceParticipant {
   id: string
   name: string
@@ -25,8 +31,8 @@ export interface AudioDevice {
 
 interface ParticipantAudio {
   audioElement: HTMLAudioElement
-  gainNode: GainNode
-  sourceNode: MediaElementAudioSourceNode
+  gainNode?: GainNode
+  sourceNode?: MediaElementAudioSourceNode
 }
 
 export const useVoiceStore = defineStore('voice', () => {
@@ -298,11 +304,19 @@ export const useVoiceStore = defineStore('voice', () => {
           const audioElement = track.attach()
           audioElement.dataset.livekitAudio = 'true'
           audioElement.dataset.participantId = participant.identity
-          // Apply saved volume
+          
           const savedVolume = userVolumes.value.get(participant.identity) ?? 100
-          audioElement.volume = Math.min(savedVolume / 100, 1)
-          // Store reference for volume control
-          participantAudioMap.set(participant.identity, { audioElement } as ParticipantAudio)
+          
+          if (isIOS()) {
+            // iOS: only mute/unmute is supported (volume property is ignored)
+            audioElement.muted = savedVolume === 0
+          } else {
+            // Non-iOS: use native audioElement.volume
+            audioElement.volume = Math.min(savedVolume / 100, 1)
+          }
+          
+          participantAudioMap.set(participant.identity, { audioElement })
+          
           // Apply output device
           if (selectedAudioOutput.value) {
             const el = audioElement as HTMLAudioElement & { setSinkId?: (id: string) => Promise<void> }
@@ -315,11 +329,10 @@ export const useVoiceStore = defineStore('voice', () => {
       })
 
       room.value.on(RoomEvent.TrackUnsubscribed, (track, _pub, participant) => {
-        track.detach().forEach((el) => el.remove())
-        // Remove from participant audio map
         if (participant instanceof RemoteParticipant) {
           participantAudioMap.delete(participant.identity)
         }
+        track.detach().forEach((el) => el.remove())
       })
 
       await room.value.connect(url, token)
@@ -416,10 +429,16 @@ export const useVoiceStore = defineStore('voice', () => {
       volumeWarningAcknowledged.value.add(participantId)
     }
 
-    // Apply volume directly to audio element (max 100%)
+    // Apply volume
     const participantAudio = participantAudioMap.get(participantId)
     if (participantAudio?.audioElement) {
-      participantAudio.audioElement.volume = Math.min(clampedVolume / 100, 1)
+      if (isIOS()) {
+        // iOS: only mute/unmute is supported (volume property is ignored by iOS)
+        participantAudio.audioElement.muted = clampedVolume === 0
+      } else {
+        // Non-iOS: use native volume (max 100%)
+        participantAudio.audioElement.volume = Math.min(clampedVolume / 100, 1)
+      }
     }
 
     userVolumes.value.set(participantId, clampedVolume)

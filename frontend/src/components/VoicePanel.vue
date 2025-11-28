@@ -5,6 +5,10 @@ import { useVoiceStore } from '../stores/voice'
 import { useAuthStore } from '../stores/auth'
 import { Volume2, VolumeX, Mic, MicOff, Phone, AlertTriangle, Crown, Link, Copy, Check } from 'lucide-vue-next'
 
+// Detect iOS devices
+const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+  (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+
 const API_BASE = import.meta.env.VITE_API_BASE || ''
 
 const chat = useChatStore()
@@ -92,6 +96,16 @@ function handleVolumeChange(participantId: string, event: Event) {
     pendingVolumeValue.value = newVolume
     showVolumeWarning.value = true
   }
+}
+
+// iOS: toggle mute for a specific user
+function toggleUserMute(participantId: string) {
+  const participant = voice.participants.find(p => p.id === participantId)
+  if (!participant) return
+  
+  // Toggle between 0 (muted) and 100 (normal)
+  const newVolume = participant.volume === 0 ? 100 : 0
+  voice.setUserVolume(participantId, newVolume, true)
 }
 
 function confirmVolumeWarning() {
@@ -257,16 +271,32 @@ function closeInviteDialog() {
                 <Mic v-if="participant.isSpeaking" class="speaking-icon" :size="14" />
               </div>
               <div v-if="!participant.isLocal" class="volume-control">
-                <Volume2 class="volume-icon" :size="14" />
-                <input
-                  type="range"
-                  class="volume-slider"
-                  min="0"
-                  max="300"
-                  :value="participant.volume"
-                  @input="handleVolumeChange(participant.id, $event)"
-                />
-                <span class="volume-value">{{ participant.volume }}%</span>
+                <!-- iOS: show mute toggle (volume control not supported) -->
+                <template v-if="isIOS">
+                  <button 
+                    class="ios-mute-btn"
+                    :class="{ muted: participant.volume === 0 }"
+                    @click="toggleUserMute(participant.id)"
+                    :title="participant.volume === 0 ? '取消静音' : '静音'"
+                  >
+                    <VolumeX v-if="participant.volume === 0" :size="16" />
+                    <Volume2 v-else :size="16" />
+                  </button>
+                  <span class="ios-volume-hint">{{ participant.volume === 0 ? '已静音' : '正常' }}</span>
+                </template>
+                <!-- Non-iOS: show volume slider -->
+                <template v-else>
+                  <Volume2 class="volume-icon" :size="14" />
+                  <input
+                    type="range"
+                    class="volume-slider"
+                    min="0"
+                    max="300"
+                    :value="participant.volume"
+                    @input="handleVolumeChange(participant.id, $event)"
+                  />
+                  <span class="volume-value">{{ participant.volume }}%</span>
+                </template>
               </div>
             </div>
             <!-- Swipe action button -->
@@ -694,6 +724,35 @@ function closeInviteDialog() {
   color: var(--color-text-muted);
   min-width: 40px;
   text-align: right;
+}
+
+/* iOS mute button styles */
+.ios-mute-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--surface-glass);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.ios-mute-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.ios-mute-btn.muted {
+  background: var(--color-error, #ef4444);
+  border-color: var(--color-error, #ef4444);
+}
+
+.ios-volume-hint {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  margin-left: 8px;
 }
 
 .voice-controls {
