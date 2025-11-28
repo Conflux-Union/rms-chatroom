@@ -3,7 +3,10 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import dataclasses
+import json
 import logging
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -17,6 +20,9 @@ from .deps import get_current_user, CurrentUser
 
 # Go music service URL
 MUSIC_SERVICE_URL = "http://127.0.0.1:9100"
+
+# Credential persistence file
+CREDENTIAL_FILE = Path(__file__).parent.parent / "qq_credential.json"
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +38,36 @@ _current_room: str | None = None
 
 # WebSocket broadcast function (set by websocket module)
 _ws_broadcast: Any = None
+
+
+def _save_credential(cred: Credential | None) -> None:
+    """Save credential to file."""
+    try:
+        if cred is None:
+            CREDENTIAL_FILE.unlink(missing_ok=True)
+        else:
+            data = dataclasses.asdict(cred)
+            CREDENTIAL_FILE.write_text(json.dumps(data, ensure_ascii=False))
+        logger.info(f"Credential saved: {cred is not None}")
+    except Exception as e:
+        logger.error(f"Failed to save credential: {e}")
+
+
+def _load_credential() -> Credential | None:
+    """Load credential from file."""
+    try:
+        if CREDENTIAL_FILE.exists():
+            data = json.loads(CREDENTIAL_FILE.read_text())
+            cred = Credential(**data)
+            logger.info("Credential loaded from file")
+            return cred
+    except Exception as e:
+        logger.error(f"Failed to load credential: {e}")
+    return None
+
+
+# Load credential on module import
+_credential = _load_credential()
 
 
 def set_ws_broadcast(broadcast_func):
@@ -126,6 +162,7 @@ async def check_login_status():
         
         if status == QRCodeLoginEvents.DONE and cred:
             _credential = cred
+            _save_credential(cred)
             result["logged_in"] = True
             
         return result
@@ -153,6 +190,7 @@ async def logout():
     """Clear QQ Music credential."""
     global _credential
     _credential = None
+    _save_credential(None)
     return {"success": True}
 
 
@@ -253,8 +291,17 @@ async def get_queue(_user: CurrentUser):
     if _play_queue and 0 <= _current_index < len(_play_queue):
         current_song = _play_queue[_current_index]["song"]
     
+    # Get actual playing state from music service
+    is_playing = False
+    if _current_room:
+        try:
+            progress = await _call_music_service("GET", "/progress", {"room_name": _current_room})
+            is_playing = progress.get("state") == "playing"
+        except Exception:
+            pass
+    
     return {
-        "is_playing": _current_room is not None,
+        "is_playing": is_playing,
         "current_song": current_song,
         "current_index": _current_index,
         "queue": _play_queue

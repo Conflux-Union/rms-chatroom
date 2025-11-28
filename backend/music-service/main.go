@@ -162,15 +162,28 @@ func (p *Player) Play() error {
 		return nil
 	}
 
+	song := p.currentSong
+	if song == nil {
+		p.mu.Unlock()
+		return fmt.Errorf("no song loaded")
+	}
+
 	if p.cancel != nil {
 		p.cancel()
 	}
 
 	p.ctx, p.cancel = context.WithCancel(context.Background())
 	p.state = StatePlaying
-	song := p.currentSong
 	startPos := p.positionMs
 	p.mu.Unlock()
+
+	// Ensure room connection
+	if err := p.Connect(); err != nil {
+		p.mu.Lock()
+		p.state = StateIdle
+		p.mu.Unlock()
+		return fmt.Errorf("failed to connect: %w", err)
+	}
 
 	go p.playbackLoop(song, startPos)
 	return nil
@@ -389,6 +402,14 @@ func (p *Player) Resume() {
 	p.mu.Lock()
 
 	if p.state != StatePaused {
+		log.Printf("Resume: not paused, state=%s", p.state)
+		p.mu.Unlock()
+		return
+	}
+
+	song := p.currentSong
+	if song == nil {
+		log.Printf("Resume: no song loaded")
 		p.mu.Unlock()
 		return
 	}
@@ -399,9 +420,17 @@ func (p *Player) Resume() {
 
 	p.ctx, p.cancel = context.WithCancel(context.Background())
 	p.state = StatePlaying
-	song := p.currentSong
 	startPos := p.positionMs
 	p.mu.Unlock()
+
+	// Ensure room connection before resuming
+	if err := p.Connect(); err != nil {
+		log.Printf("Resume: failed to connect: %v", err)
+		p.mu.Lock()
+		p.state = StatePaused
+		p.mu.Unlock()
+		return
+	}
 
 	log.Printf("Resuming from %dms", startPos)
 	go p.playbackLoop(song, startPos)
