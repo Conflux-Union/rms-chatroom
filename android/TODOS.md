@@ -93,11 +93,12 @@ android/app/src/main/java/com/rms/discord/
   - 自动重连机制 (指数退避, 最大10次尝试)
   - 心跳保活 (30秒间隔ping)
   - 连接状态监听 (ConnectionState Flow)
-- [ ] ChatScreen 功能完善
-  - 消息加载状态
-  - 下拉刷新历史消息
-  - 消息发送状态指示
-  - 新消息自动滚动
+- [x] ChatScreen 功能完善
+  - 消息加载状态 (isLoading + CircularProgressIndicator)
+  - 下拉刷新历史消息 (PullToRefreshBox)
+  - 消息发送状态指示 (SendingState enum + 按钮状态)
+  - 新消息自动滚动 (LaunchedEffect + animateScrollToItem)
+  - WebSocket连接状态横幅 (ConnectionBanner)
 - [ ] 消息本地缓存 (Room)
   - MessageEntity
   - MessageDao

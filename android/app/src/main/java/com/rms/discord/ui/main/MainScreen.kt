@@ -15,6 +15,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.rms.discord.R
 import com.rms.discord.data.model.ChannelType
+import com.rms.discord.data.websocket.ConnectionState
 import com.rms.discord.ui.auth.AuthViewModel
 import com.rms.discord.ui.chat.ChatScreen
 import com.rms.discord.ui.main.components.ChannelListColumn
@@ -128,9 +129,14 @@ fun MainScreen(
                     }
 
                     mainState.currentChannel?.type == ChannelType.TEXT -> {
+                        val connectionState by mainViewModel.connectionState.collectAsState()
                         ChatScreen(
                             messages = mainViewModel.messages.collectAsState().value,
-                            onSendMessage = { mainViewModel.sendMessage(it) }
+                            isLoading = mainState.isMessagesLoading,
+                            connectionState = connectionState,
+                            onSendMessage = { mainViewModel.sendMessage(it) },
+                            onRefresh = { mainViewModel.refreshMessages() },
+                            onReconnect = { mainViewModel.reconnectWebSocket() }
                         )
                     }
 

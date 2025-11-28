@@ -16,7 +16,11 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.CloudOff
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -26,22 +30,40 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.rms.discord.R
 import com.rms.discord.data.model.Message
+import com.rms.discord.data.websocket.ConnectionState
 import com.rms.discord.ui.theme.*
+import kotlinx.coroutines.delay
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
+enum class SendingState {
+    IDLE,
+    SENDING,
+    SENT,
+    FAILED
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatScreen(
     messages: List<Message>,
-    onSendMessage: (String) -> Unit
+    isLoading: Boolean = false,
+    connectionState: ConnectionState = ConnectionState.CONNECTED,
+    onSendMessage: (String) -> Unit,
+    onRefresh: () -> Unit = {},
+    onReconnect: () -> Unit = {}
 ) {
     val listState = rememberLazyListState()
     var messageText by remember { mutableStateOf("") }
+    var sendingState by remember { mutableStateOf(SendingState.IDLE) }
     val keyboardController = LocalSoftwareKeyboardController.current
+    val pullRefreshState = rememberPullToRefreshState()
+    var isRefreshing by remember { mutableStateOf(false) }
 
     // Auto-scroll to bottom when new messages arrive
     LaunchedEffect(messages.size) {
@@ -50,19 +72,69 @@ fun ChatScreen(
         }
     }
 
+    // Reset sending state after success
+    LaunchedEffect(sendingState) {
+        if (sendingState == SendingState.SENT) {
+            delay(500)
+            sendingState = SendingState.IDLE
+        }
+    }
+
     Column(modifier = Modifier.fillMaxSize()) {
-        // Messages list
-        LazyColumn(
+        // Connection status banner
+        ConnectionBanner(
+            connectionState = connectionState,
+            onReconnect = onReconnect
+        )
+
+        // Messages list with pull-to-refresh
+        PullToRefreshBox(
+            isRefreshing = isRefreshing,
+            onRefresh = {
+                isRefreshing = true
+                onRefresh()
+                isRefreshing = false
+            },
+            state = pullRefreshState,
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp),
-            state = listState,
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-            contentPadding = PaddingValues(vertical = 16.dp)
         ) {
-            items(messages, key = { it.id }) { message ->
-                MessageItem(message = message)
+            when {
+                isLoading && messages.isEmpty() -> {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(color = DiscordBlurple)
+                    }
+                }
+                messages.isEmpty() -> {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "暂无消息\n发送第一条消息吧！",
+                            color = TextMuted,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+                else -> {
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 16.dp),
+                        state = listState,
+                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                        contentPadding = PaddingValues(vertical = 16.dp)
+                    ) {
+                        items(messages, key = { it.id }) { message ->
+                            MessageItem(message = message)
+                        }
+                    }
+                }
             }
         }
 
@@ -70,14 +142,106 @@ fun ChatScreen(
         MessageInput(
             value = messageText,
             onValueChange = { messageText = it },
+            sendingState = sendingState,
+            isConnected = connectionState == ConnectionState.CONNECTED,
             onSend = {
-                if (messageText.isNotBlank()) {
-                    onSendMessage(messageText.trim())
+                if (messageText.isNotBlank() && connectionState == ConnectionState.CONNECTED) {
+                    sendingState = SendingState.SENDING
+                    val content = messageText.trim()
                     messageText = ""
                     keyboardController?.hide()
+                    onSendMessage(content)
+                    sendingState = SendingState.SENT
                 }
             }
         )
+    }
+}
+
+@Composable
+private fun ConnectionBanner(
+    connectionState: ConnectionState,
+    onReconnect: () -> Unit
+) {
+    AnimatedVisibility(
+        visible = connectionState != ConnectionState.CONNECTED,
+        enter = slideInVertically() + fadeIn(),
+        exit = slideOutVertically() + fadeOut()
+    ) {
+        val (backgroundColor, text, showReconnect) = when (connectionState) {
+            ConnectionState.CONNECTING -> Triple(
+                DiscordYellow.copy(alpha = 0.9f),
+                "正在连接...",
+                false
+            )
+            ConnectionState.RECONNECTING -> Triple(
+                DiscordYellow.copy(alpha = 0.9f),
+                "正在重新连接...",
+                false
+            )
+            ConnectionState.DISCONNECTED -> Triple(
+                DiscordRed.copy(alpha = 0.9f),
+                "连接已断开",
+                true
+            )
+            else -> Triple(Color.Transparent, "", false)
+        }
+
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            color = backgroundColor
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (connectionState == ConnectionState.DISCONNECTED) {
+                        Icon(
+                            imageVector = Icons.Default.CloudOff,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    } else {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            strokeWidth = 2.dp,
+                            color = Color.White
+                        )
+                    }
+                    Text(
+                        text = text,
+                        color = Color.White,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+
+                if (showReconnect) {
+                    TextButton(
+                        onClick = onReconnect,
+                        colors = ButtonDefaults.textButtonColors(
+                            contentColor = Color.White
+                        )
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("重连", style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -139,6 +303,8 @@ private fun MessageItem(message: Message) {
 private fun MessageInput(
     value: String,
     onValueChange: (String) -> Unit,
+    sendingState: SendingState,
+    isConnected: Boolean,
     onSend: () -> Unit
 ) {
     Surface(
@@ -156,20 +322,24 @@ private fun MessageInput(
                 value = value,
                 onValueChange = onValueChange,
                 modifier = Modifier.weight(1f),
+                enabled = isConnected,
                 placeholder = {
                     Text(
-                        text = stringResource(R.string.send_message),
+                        text = if (isConnected) stringResource(R.string.send_message) else "连接断开，无法发送",
                         color = TextMuted
                     )
                 },
                 colors = TextFieldDefaults.colors(
                     focusedContainerColor = SurfaceLighter,
                     unfocusedContainerColor = SurfaceLighter,
+                    disabledContainerColor = SurfaceLighter.copy(alpha = 0.5f),
                     focusedIndicatorColor = Color.Transparent,
                     unfocusedIndicatorColor = Color.Transparent,
+                    disabledIndicatorColor = Color.Transparent,
                     cursorColor = DiscordBlurple,
                     focusedTextColor = TextPrimary,
-                    unfocusedTextColor = TextPrimary
+                    unfocusedTextColor = TextPrimary,
+                    disabledTextColor = TextMuted
                 ),
                 shape = RoundedCornerShape(8.dp),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
@@ -186,16 +356,31 @@ private fun MessageInput(
             ) {
                 IconButton(
                     onClick = onSend,
+                    enabled = isConnected && sendingState != SendingState.SENDING,
                     modifier = Modifier
                         .size(40.dp)
-                        .background(DiscordBlurple, CircleShape)
+                        .background(
+                            if (isConnected) DiscordBlurple else DiscordBlurple.copy(alpha = 0.5f),
+                            CircleShape
+                        )
                 ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.Send,
-                        contentDescription = "发送",
-                        tint = Color.White,
-                        modifier = Modifier.size(20.dp)
-                    )
+                    when (sendingState) {
+                        SendingState.SENDING -> {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                strokeWidth = 2.dp,
+                                color = Color.White
+                            )
+                        }
+                        else -> {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.Send,
+                                contentDescription = "发送",
+                                tint = Color.White,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
                 }
             }
         }

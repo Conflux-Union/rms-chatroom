@@ -1,11 +1,13 @@
 package com.rms.discord.ui.main
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.rms.discord.data.model.Channel
+import com.rms.discord.data.model.ChannelType
 import com.rms.discord.data.model.Server
 import com.rms.discord.data.repository.ChatRepository
-import com.rms.discord.data.websocket.ChatWebSocket
+import com.rms.discord.data.websocket.ConnectionState
 import com.rms.discord.data.websocket.WebSocketEvent
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -16,6 +18,7 @@ import javax.inject.Inject
 
 data class MainState(
     val isLoading: Boolean = true,
+    val isMessagesLoading: Boolean = false,
     val servers: List<Server> = emptyList(),
     val currentServer: Server? = null,
     val currentChannel: Channel? = null,
@@ -24,14 +27,17 @@ data class MainState(
 
 @HiltViewModel
 class MainViewModel @Inject constructor(
-    private val chatRepository: ChatRepository,
-    private val chatWebSocket: ChatWebSocket
+    private val chatRepository: ChatRepository
 ) : ViewModel() {
+    companion object {
+        private const val TAG = "MainViewModel"
+    }
 
     private val _state = MutableStateFlow(MainState())
     val state: StateFlow<MainState> = _state.asStateFlow()
 
     val messages = chatRepository.messages
+    val connectionState: StateFlow<ConnectionState> = chatRepository.connectionState
 
     init {
         loadServers()
@@ -65,7 +71,7 @@ class MainViewModel @Inject constructor(
                 .onSuccess { server ->
                     _state.value = _state.value.copy(currentServer = server)
                     // Auto-select first text channel
-                    server.channels?.firstOrNull { it.type == com.rms.discord.data.model.ChannelType.TEXT }
+                    server.channels?.firstOrNull { it.type == ChannelType.TEXT }
                         ?.let { selectChannel(it) }
                 }
                 .onFailure { e ->
@@ -75,25 +81,56 @@ class MainViewModel @Inject constructor(
     }
 
     fun selectChannel(channel: Channel) {
+        // Disconnect from previous channel
+        chatRepository.disconnectFromChannel()
+
         chatRepository.setCurrentChannel(channel)
         _state.value = _state.value.copy(currentChannel = channel)
 
         // Load messages for text channels
-        if (channel.type == com.rms.discord.data.model.ChannelType.TEXT) {
-            viewModelScope.launch {
-                chatRepository.fetchMessages(channel.id)
-            }
+        if (channel.type == ChannelType.TEXT) {
+            loadMessages(channel.id)
+            // Connect WebSocket for real-time messages
+            chatRepository.connectToChannel(channel.id)
         }
+    }
+
+    private fun loadMessages(channelId: Long) {
+        viewModelScope.launch {
+            _state.value = _state.value.copy(isMessagesLoading = true)
+            chatRepository.fetchMessages(channelId)
+                .onSuccess {
+                    _state.value = _state.value.copy(isMessagesLoading = false)
+                }
+                .onFailure { e ->
+                    _state.value = _state.value.copy(
+                        isMessagesLoading = false,
+                        error = e.message
+                    )
+                }
+        }
+    }
+
+    fun refreshMessages() {
+        val channelId = _state.value.currentChannel?.id ?: return
+        loadMessages(channelId)
     }
 
     private fun observeWebSocket() {
         viewModelScope.launch {
-            chatWebSocket.events.collect { event ->
+            chatRepository.webSocketEvents.collect { event ->
                 when (event) {
                     is WebSocketEvent.NewMessage -> {
-                        chatRepository.addMessage(event.message)
+                        Log.d(TAG, "New message received: ${event.message.id}")
+                    }
+                    is WebSocketEvent.Connected -> {
+                        Log.d(TAG, "WebSocket connected to channel ${event.channelId}")
+                    }
+                    is WebSocketEvent.Disconnected -> {
+                        Log.d(TAG, "WebSocket disconnected")
                     }
                     is WebSocketEvent.Error -> {
+                        Log.e(TAG, "WebSocket error: ${event.error}")
                         _state.value = _state.value.copy(error = event.error)
                     }
                     else -> { /* Handle other events */ }
@@ -106,7 +143,14 @@ class MainViewModel @Inject constructor(
         val channelId = _state.value.currentChannel?.id ?: return
         viewModelScope.launch {
             chatRepository.sendMessage(channelId, content)
+                .onFailure { e ->
+                    _state.value = _state.value.copy(error = "发送失败: ${e.message}")
+                }
         }
+    }
+
+    fun reconnectWebSocket() {
+        chatRepository.reconnectWebSocket()
     }
 
     fun clearError() {
@@ -115,6 +159,6 @@ class MainViewModel @Inject constructor(
 
     override fun onCleared() {
         super.onCleared()
-        chatWebSocket.disconnect()
+        chatRepository.disconnectFromChannel()
     }
 }
