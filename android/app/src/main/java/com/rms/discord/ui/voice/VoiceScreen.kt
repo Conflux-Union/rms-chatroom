@@ -1,9 +1,14 @@
 package com.rms.discord.ui.voice
 
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -24,19 +29,70 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
 import com.rms.discord.R
-import com.rms.discord.data.model.VoiceUser
+import com.rms.discord.data.livekit.ConnectionState
+import com.rms.discord.data.livekit.ParticipantInfo
 import com.rms.discord.ui.theme.*
 
 @Composable
 fun VoiceScreen(
     channelId: Long,
+    channelName: String = "",
     viewModel: VoiceViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsState()
+    val context = LocalContext.current
+    
+    var showPermissionDeniedDialog by remember { mutableStateOf(false) }
+    var hasAudioPermission by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
+                PackageManager.PERMISSION_GRANTED
+        )
+    }
+    
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        hasAudioPermission = granted
+        if (granted) {
+            viewModel.joinVoice()
+        } else {
+            showPermissionDeniedDialog = true
+        }
+    }
+    
+    // Permission denied dialog
+    if (showPermissionDeniedDialog) {
+        AlertDialog(
+            onDismissRequest = { showPermissionDeniedDialog = false },
+            title = { Text("需要麦克风权限") },
+            text = { Text("加入语音通话需要麦克风权限。请在系统设置中授予权限。") },
+            confirmButton = {
+                TextButton(onClick = { showPermissionDeniedDialog = false }) {
+                    Text("确定")
+                }
+            }
+        )
+    }
 
     LaunchedEffect(channelId) {
-        viewModel.setChannelId(channelId)
+        viewModel.setChannelId(channelId, channelName)
+    }
+    
+    // Request permission on join
+    val onJoinWithPermission: () -> Unit = {
+        if (hasAudioPermission) {
+            viewModel.joinVoice()
+        } else {
+            permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+        }
     }
 
     Column(
@@ -45,8 +101,15 @@ fun VoiceScreen(
             .padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
+        // Connection status banner
+        ConnectionStatusBanner(
+            connectionState = state.connectionState,
+            error = state.error,
+            onDismissError = { viewModel.clearError() }
+        )
+
         // Voice users grid
-        if (state.voiceUsers.isNotEmpty()) {
+        if (state.participants.isNotEmpty()) {
             LazyVerticalGrid(
                 columns = GridCells.Adaptive(minSize = 100.dp),
                 modifier = Modifier.weight(1f),
@@ -54,8 +117,8 @@ fun VoiceScreen(
                 verticalArrangement = Arrangement.spacedBy(16.dp),
                 contentPadding = PaddingValues(16.dp)
             ) {
-                items(state.voiceUsers, key = { it.id }) { user ->
-                    VoiceUserItem(user = user)
+                items(state.participants, key = { it.identity }) { participant ->
+                    VoiceUserItem(participant = participant)
                 }
             }
         } else {
@@ -86,26 +149,115 @@ fun VoiceScreen(
             isConnected = state.isConnected,
             isMuted = state.isMuted,
             isDeafened = state.isDeafened,
+            isSpeakerOn = state.isSpeakerOn,
             isLoading = state.isLoading,
-            onJoin = { viewModel.joinVoice() },
+            onJoin = onJoinWithPermission,
             onLeave = { viewModel.leaveVoice() },
             onToggleMute = { viewModel.toggleMute() },
-            onToggleDeafen = { viewModel.toggleDeafen() }
+            onToggleDeafen = { viewModel.toggleDeafen() },
+            onToggleSpeaker = { viewModel.toggleSpeaker() }
         )
     }
 }
 
 @Composable
-private fun VoiceUserItem(user: VoiceUser) {
+private fun ConnectionStatusBanner(
+    connectionState: ConnectionState,
+    error: String?,
+    onDismissError: () -> Unit
+) {
+    // Error banner
+    error?.let {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 8.dp),
+            color = DiscordRed.copy(alpha = 0.2f),
+            shape = RoundedCornerShape(8.dp)
+        ) {
+            Row(
+                modifier = Modifier.padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Error,
+                    contentDescription = null,
+                    tint = DiscordRed,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = DiscordRed,
+                    modifier = Modifier.weight(1f)
+                )
+                IconButton(onClick = onDismissError, modifier = Modifier.size(24.dp)) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "关闭",
+                        tint = DiscordRed,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
+        }
+    }
+
+    // Reconnecting banner
+    if (connectionState == ConnectionState.RECONNECTING) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 8.dp),
+            color = DiscordYellow.copy(alpha = 0.2f),
+            shape = RoundedCornerShape(8.dp)
+        ) {
+            Row(
+                modifier = Modifier.padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(16.dp),
+                    color = DiscordYellow,
+                    strokeWidth = 2.dp
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "正在重新连接...",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = DiscordYellow
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun VoiceUserItem(participant: ParticipantInfo) {
+    // Speaking animation
+    val infiniteTransition = rememberInfiniteTransition(label = "speaking")
+    val speakingScale by infiniteTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = 1.1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(300),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "speakingScale"
+    )
+
     val borderColor by animateColorAsState(
         targetValue = when {
-            user.deafened -> VoiceMuted
-            user.muted -> TextMuted
+            participant.isSpeaking -> VoiceSpeaking
+            participant.isMuted -> TextMuted
             else -> VoiceConnected
         },
         animationSpec = tween(200),
         label = "borderColor"
     )
+
+    val avatarScale = if (participant.isSpeaking) speakingScale else 1f
 
     Column(
         modifier = Modifier
@@ -115,12 +267,20 @@ private fun VoiceUserItem(user: VoiceUser) {
             .padding(12.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        // Avatar with status border
+        // Avatar with status border and speaking indicator
         Box(
             modifier = Modifier
                 .size(56.dp)
+                .scale(avatarScale)
                 .clip(CircleShape)
-                .background(borderColor.copy(alpha = 0.3f)),
+                .background(borderColor.copy(alpha = 0.3f))
+                .then(
+                    if (participant.isSpeaking) {
+                        Modifier.border(2.dp, VoiceSpeaking, CircleShape)
+                    } else {
+                        Modifier
+                    }
+                ),
             contentAlignment = Alignment.Center
         ) {
             Box(
@@ -131,7 +291,7 @@ private fun VoiceUserItem(user: VoiceUser) {
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = user.username.take(1).uppercase(),
+                    text = participant.name.take(1).uppercase(),
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
                     color = Color.White
@@ -143,7 +303,7 @@ private fun VoiceUserItem(user: VoiceUser) {
 
         // Username
         Text(
-            text = user.username,
+            text = participant.name,
             style = MaterialTheme.typography.labelMedium,
             color = TextPrimary,
             maxLines = 1,
@@ -151,25 +311,15 @@ private fun VoiceUserItem(user: VoiceUser) {
         )
 
         // Status icons
-        if (user.muted || user.deafened) {
+        if (participant.isMuted) {
             Spacer(modifier = Modifier.height(4.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                if (user.muted) {
-                    Icon(
-                        imageVector = Icons.Default.MicOff,
-                        contentDescription = "静音",
-                        modifier = Modifier.size(14.dp),
-                        tint = VoiceMuted
-                    )
-                }
-                if (user.deafened) {
-                    Icon(
-                        imageVector = Icons.Default.VolumeOff,
-                        contentDescription = "耳机关闭",
-                        modifier = Modifier.size(14.dp),
-                        tint = VoiceMuted
-                    )
-                }
+                Icon(
+                    imageVector = Icons.Default.MicOff,
+                    contentDescription = "静音",
+                    modifier = Modifier.size(14.dp),
+                    tint = VoiceMuted
+                )
             }
         }
     }
@@ -180,11 +330,13 @@ private fun VoiceControls(
     isConnected: Boolean,
     isMuted: Boolean,
     isDeafened: Boolean,
+    isSpeakerOn: Boolean,
     isLoading: Boolean,
     onJoin: () -> Unit,
     onLeave: () -> Unit,
     onToggleMute: () -> Unit,
-    onToggleDeafen: () -> Unit
+    onToggleDeafen: () -> Unit,
+    onToggleSpeaker: () -> Unit
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -215,6 +367,15 @@ private fun VoiceControls(
                     isActive = isDeafened,
                     activeColor = VoiceMuted,
                     onClick = onToggleDeafen
+                )
+
+                // Speaker toggle button
+                VoiceControlButton(
+                    icon = if (isSpeakerOn) Icons.Default.Speaker else Icons.Default.PhoneAndroid,
+                    label = if (isSpeakerOn) "扬声器" else "听筒",
+                    isActive = isSpeakerOn,
+                    activeColor = VoiceConnected,
+                    onClick = onToggleSpeaker
                 )
 
                 // Leave button

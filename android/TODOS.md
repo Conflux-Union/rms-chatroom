@@ -25,12 +25,14 @@ android/app/src/main/java/com/rms/discord/
 ├── di/
 │   └── AppModule.kt              # Hilt依赖注入模块
 ├── data/
-│   ├── model/Models.kt           # 数据模型 (User, Server, Channel, Message, VoiceUser)
+│   ├── model/Models.kt           # 数据模型 (User, Server, Channel, Message, VoiceUser, VoiceInviteInfo)
 │   ├── api/ApiService.kt         # Retrofit API接口
 │   ├── repository/
 │   │   ├── AuthRepository.kt     # 认证逻辑
 │   │   ├── ChatRepository.kt     # 聊天数据管理
-│   │   └── VoiceRepository.kt    # 语音状态管理
+│   │   └── VoiceRepository.kt    # 语音状态管理 + LiveKit集成
+│   ├── livekit/
+│   │   └── LiveKitManager.kt     # LiveKit Room连接管理
 │   └── websocket/
 │       └── ChatWebSocket.kt      # WebSocket客户端
 ├── ui/
@@ -53,11 +55,13 @@ android/app/src/main/java/com/rms/discord/
 │   ├── chat/
 │   │   └── ChatScreen.kt         # 聊天界面
 │   ├── voice/
-│   │   ├── VoiceViewModel.kt
-│   │   └── VoiceScreen.kt        # 语音界面
+│   │   ├── VoiceViewModel.kt     # 语音状态管理
+│   │   ├── VoiceScreen.kt        # 语音界面 (说话指示+权限请求)
+│   │   ├── VoiceInviteViewModel.kt  # 语音邀请状态管理
+│   │   └── VoiceInviteScreen.kt  # 访客语音邀请界面
 │   └── music/                    # (待实现)
 └── service/
-    └── VoiceCallService.kt       # 语音通话前台服务
+    └── VoiceCallService.kt       # 语音通话前台服务 (通知控制+WakeLock)
 ```
 
 ### 配置
@@ -111,30 +115,41 @@ android/app/src/main/java/com/rms/discord/
   - 通知权限请求 (Android 13+)
   - 前台时自动取消通知
 
-### 🔲 Phase 3: 语音通话 + LiveKit集成
+### ✅ Phase 3: 语音通话 + LiveKit集成 (已完成)
 
-- [ ] LiveKit SDK集成
-  - Room连接管理
+- [x] LiveKit SDK集成
+  - LiveKitManager (data/livekit/LiveKitManager.kt)
+  - Room连接管理 (connect/disconnect)
   - 音频轨道发布/订阅
-  - 连接状态监听
-- [ ] VoiceViewModel 完善
+  - 连接状态监听 (ConnectionState Flow)
+  - 参与者状态更新 (ParticipantInfo)
+- [x] API接口修正
+  - 修改ApiService匹配后端API
+  - 添加VoiceTokenResponse.roomName字段
+  - 添加VoiceInviteInfo模型
+  - 添加访客加入API
+- [x] VoiceViewModel 完善
   - 实际连接LiveKit Room
   - 音频静音/取消静音
   - 扬声器静音/取消静音
-- [ ] VoiceScreen 功能完善
-  - 用户说话状态指示 (音量动画)
-  - 连接质量指示
-  - 网络状态显示
-- [ ] VoiceCallService 完善
+  - 参与者列表管理
+- [x] VoiceScreen 功能完善
+  - 用户说话状态指示 (脉冲动画+边框)
+  - 连接状态横幅 (重连中/错误)
+  - 参与者网格显示
+- [x] VoiceCallService 完善
   - 前台服务通知
   - 通知控制按钮 (静音/挂断)
-  - WakeLock保持
-- [ ] 音频权限处理
+  - WakeLock保持 (10小时)
+  - 静音状态同步更新通知
+- [x] 音频权限处理
   - RECORD_AUDIO权限请求
-  - 权限拒绝提示
-- [ ] VoiceInviteScreen
-  - 语音邀请Deep Link处理
-  - 邀请确认界面
+  - 权限拒绝对话框提示
+- [x] VoiceInviteScreen
+  - VoiceInviteViewModel (邀请状态管理)
+  - VoiceInviteScreen (访客加入界面)
+  - Deep Link处理 (rmsdiscord://voice-invite/{token})
+  - 邀请确认界面 (用户名输入+加入)
 
 ### 🔲 Phase 4: 音乐面板
 
@@ -206,12 +221,13 @@ app/build/outputs/apk/release/app-release.apk
 | `views/Main.vue` | `ui/main/MainScreen.kt` | ✅ |
 | `components/ServerList.vue` | `ui/main/components/ServerListColumn.kt` | ✅ |
 | `components/ChannelList.vue` | `ui/main/components/ChannelListColumn.kt` | ✅ |
-| `components/ChatArea.vue` | `ui/chat/ChatScreen.kt` | ✅ 基础 |
-| `components/VoicePanel.vue` | `ui/voice/VoiceScreen.kt` | ✅ 基础 |
-| `components/VoiceControls.vue` | 集成在 VoiceScreen | ✅ 基础 |
+| `components/ChatArea.vue` | `ui/chat/ChatScreen.kt` | ✅ |
+| `components/VoicePanel.vue` | `ui/voice/VoiceScreen.kt` | ✅ |
+| `views/VoiceInvite.vue` | `ui/voice/VoiceInviteScreen.kt` | ✅ |
+| `components/VoiceControls.vue` | 集成在 VoiceScreen | ✅ |
 | `components/MusicPanel.vue` | `ui/music/MusicBottomSheet.kt` | 🔲 |
 | `stores/auth.ts` | `data/repository/AuthRepository.kt` | ✅ |
 | `stores/chat.ts` | `data/repository/ChatRepository.kt` | ✅ |
-| `stores/voice.ts` | `data/repository/VoiceRepository.kt` | ✅ 基础 |
+| `stores/voice.ts` | `data/repository/VoiceRepository.kt` + `data/livekit/LiveKitManager.kt` | ✅ |
 | `stores/music.ts` | `ui/music/MusicViewModel.kt` | 🔲 |
-| `composables/useWebSocket.ts` | `data/websocket/ChatWebSocket.kt` | ✅ 基础 |
+| `composables/useWebSocket.ts` | `data/websocket/ChatWebSocket.kt` | ✅ |

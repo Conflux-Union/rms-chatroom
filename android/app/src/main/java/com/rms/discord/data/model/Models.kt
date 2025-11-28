@@ -51,11 +51,20 @@ data class Message(
 )
 
 data class VoiceUser(
-    val id: Long,
-    val username: String,
-    val muted: Boolean,
-    val deafened: Boolean
-)
+    val id: String,
+    val name: String,
+    @SerializedName("is_muted")
+    val isMuted: Boolean,
+    @SerializedName("is_host")
+    val isHost: Boolean = false,
+    // Local state for speaking indicator
+    var isSpeaking: Boolean = false
+) {
+    // Backward compatibility
+    val username: String get() = name
+    val muted: Boolean get() = isMuted
+    val deafened: Boolean get() = false
+}
 
 // API Response wrappers
 data class TokenVerifyResponse(
@@ -70,7 +79,19 @@ data class AuthMeResponse(
 
 data class VoiceTokenResponse(
     val token: String,
-    val url: String
+    val url: String,
+    @SerializedName("room_name")
+    val roomName: String = "",
+    @SerializedName("channel_name")
+    val channelName: String? = null
+)
+
+data class VoiceInviteInfo(
+    val valid: Boolean,
+    @SerializedName("channel_name")
+    val channelName: String? = null,
+    @SerializedName("server_name")
+    val serverName: String? = null
 )
 
 // WebSocket message types

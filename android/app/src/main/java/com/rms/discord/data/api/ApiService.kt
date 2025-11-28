@@ -36,25 +36,30 @@ interface ApiService {
     ): Message
 
     // Voice
-    @POST("api/voice/join")
-    suspend fun joinVoice(
+    @GET("api/voice/{channelId}/token")
+    suspend fun getVoiceToken(
         @Header("Authorization") token: String,
-        @Body body: JoinVoiceBody
+        @Path("channelId") channelId: Long
     ): VoiceTokenResponse
 
-    @POST("api/voice/leave")
-    suspend fun leaveVoice(
-        @Header("Authorization") token: String,
-        @Body body: LeaveVoiceBody
-    )
-
-    @GET("api/voice/channel/{id}/users")
+    @GET("api/voice/{channelId}/users")
     suspend fun getVoiceUsers(
         @Header("Authorization") token: String,
-        @Path("id") channelId: Long
+        @Path("channelId") channelId: Long
     ): List<VoiceUser>
+
+    // Voice Invite (guest access)
+    @GET("api/voice/invite/{token}")
+    suspend fun getVoiceInviteInfo(
+        @Path("token") token: String
+    ): VoiceInviteInfo
+
+    @POST("api/voice/invite/{token}/join")
+    suspend fun joinVoiceAsGuest(
+        @Path("token") token: String,
+        @Body body: GuestJoinBody
+    ): VoiceTokenResponse
 }
 
 data class SendMessageBody(val content: String)
-data class JoinVoiceBody(@SerializedName("channel_id") val channelId: Long)
-data class LeaveVoiceBody(@SerializedName("channel_id") val channelId: Long)
+data class GuestJoinBody(val username: String)

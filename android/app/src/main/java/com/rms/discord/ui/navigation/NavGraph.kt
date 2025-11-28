@@ -13,6 +13,7 @@ import androidx.navigation.navArgument
 import androidx.navigation.navDeepLink
 import com.rms.discord.ui.auth.LoginScreen
 import com.rms.discord.ui.main.MainScreen
+import com.rms.discord.ui.voice.VoiceInviteScreen
 
 sealed class Screen(val route: String) {
     object Login : Screen("login")
@@ -85,8 +86,10 @@ fun NavGraph(
             )
         ) { backStackEntry ->
             val token = backStackEntry.arguments?.getString("token") ?: ""
-            // VoiceInviteScreen(token = token)
-            // TODO: Implement VoiceInviteScreen in Phase 3
+            VoiceInviteScreen(
+                inviteToken = token,
+                onNavigateBack = { navController.popBackStack() }
+            )
         }
     }
 }
