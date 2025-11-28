@@ -393,7 +393,9 @@ private fun MessageInput(
 
 private fun formatTimestamp(timestamp: String): String {
     return try {
-        val instant = Instant.parse(timestamp)
+        // Backend returns UTC time without 'Z' suffix, append it if missing
+        val normalizedTimestamp = if (timestamp.endsWith("Z")) timestamp else "${timestamp}Z"
+        val instant = Instant.parse(normalizedTimestamp)
         val formatter = DateTimeFormatter.ofPattern("HH:mm")
             .withZone(ZoneId.systemDefault())
         formatter.format(instant)

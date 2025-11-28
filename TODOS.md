@@ -141,3 +141,53 @@ source.queued_duration    # 队列中剩余音频时长
 - [GitHub Issue #258 - Publish audio from WAV file](https://github.com/livekit/python-sdks/issues/258)
 - [GitHub Issue #209 - capture_frame performance](https://github.com/livekit/python-sdks/issues/209)
 - [livekit/python-sdks examples](https://github.com/livekit/python-sdks/tree/main/examples)
+
+---
+
+## Multi-Channel Music Bot Support
+
+### Goal
+支持多个语音频道同时播放音乐，每个频道有独立的播放队列和控制。
+
+### Current Problem
+Python后端使用全局变量管理状态，只支持单频道：
+```python
+_play_queue: list = []      # 全局队列
+_current_index: int = 0     # 全局索引  
+_current_room: str = None   # 只有一个房间
+```
+
+### Completed (Go Service)
+- [x] 每个房间使用独立的 participant identity: `music-bot-{roomName}`
+- [x] 修复资源清理bug - OnDisconnected 和 Stop 方法正确清理 GStreamer pipeline
+
+### TODO (Python Backend)
+需要重构 `backend/routers/music.py`：
+
+**数据结构改造**
+- [ ] 创建 `RoomMusicState` 类存储每个房间的状态
+- [ ] 用 `dict[str, RoomMusicState]` 替代全局变量
+
+```python
+@dataclass
+class RoomMusicState:
+    room_name: str
+    play_queue: list[dict]
+    current_index: int
+    credential: Credential | None = None
+
+_room_states: dict[str, RoomMusicState] = {}
+```
+
+**API 改造**
+- [ ] 所有 API 接受 `room_name` 参数
+- [ ] `/queue/add` - 添加到指定房间队列
+- [ ] `/queue` - 获取指定房间队列
+- [ ] `/bot/play` - 在指定房间播放
+- [ ] `/bot/pause`, `/bot/resume`, `/bot/skip` - 控制指定房间
+- [ ] `/internal/song-ended` - 处理指定房间的歌曲结束
+
+**前端改造**
+- [ ] MusicPanel 组件绑定当前语音频道
+- [ ] 切换频道时切换音乐控制目标
+- [ ] 显示当前频道的队列和播放状态

@@ -152,6 +152,20 @@ func (p *Player) Connect() error {
 		p.mu.Lock()
 		p.room = nil
 		p.track = nil
+		// Cancel any running playback to clean up GStreamer resources
+		if p.cancel != nil {
+			p.cancel()
+			p.cancel = nil
+		}
+		if p.loop != nil {
+			p.loop.Quit()
+			p.loop = nil
+		}
+		if p.pipeline != nil {
+			p.pipeline.SetState(gst.StateNull)
+			p.pipeline = nil
+		}
+		p.state = StateStopped
 		p.mu.Unlock()
 	}
 
@@ -160,7 +174,7 @@ func (p *Player) Connect() error {
 		APIKey:              manager.config.LiveKitAPIKey,
 		APISecret:           manager.config.LiveKitSecret,
 		RoomName:            p.roomName,
-		ParticipantIdentity: "music-bot",
+		ParticipantIdentity: fmt.Sprintf("music-bot-%s", p.roomName),
 		ParticipantName:     "Music Bot",
 	}, lksdk.WithAutoSubscribe(false))
 	if err != nil {
@@ -505,6 +519,12 @@ func (p *Player) Stop() {
 
 	if p.loop != nil {
 		p.loop.Quit()
+		p.loop = nil
+	}
+
+	if p.pipeline != nil {
+		p.pipeline.SetState(gst.StateNull)
+		p.pipeline = nil
 	}
 
 	p.state = StateStopped

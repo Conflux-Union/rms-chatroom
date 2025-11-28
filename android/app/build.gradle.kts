@@ -10,6 +10,15 @@ android {
     namespace = "com.rms.discord"
     compileSdk = 35
 
+    signingConfigs {
+        create("release") {
+            storeFile = file("release.keystore")
+            storePassword = "rmsdiscord123"
+            keyAlias = "rms-discord"
+            keyPassword = "rmsdiscord123"
+        }
+    }
+
     defaultConfig {
         applicationId = "com.rms.discord"
         minSdk = 26
@@ -28,6 +37,7 @@ android {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
+            signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
