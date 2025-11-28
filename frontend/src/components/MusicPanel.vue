@@ -2,10 +2,14 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useMusicStore, type Song } from '../stores/music'
 import { useVoiceStore } from '../stores/voice'
+import { useAuthStore } from '../stores/auth'
 import { Music, Bot, SkipBack, Pause, Play, SkipForward, Plus, Trash2, X, Search, Loader2 } from 'lucide-vue-next'
 
 const music = useMusicStore()
 const voice = useVoiceStore()
+const auth = useAuthStore()
+
+const WS_BASE = import.meta.env.VITE_WS_BASE || 'ws://localhost:8000'
 
 const searchInput = ref('')
 const showSearch = ref(false)
@@ -14,6 +18,7 @@ const audioRef = ref<HTMLAudioElement | null>(null)
 const progressPollingInterval = ref<number | null>(null)
 const isDragging = ref(false)
 const dragPosition = ref(0)
+const musicWs = ref<WebSocket | null>(null)
 
 // Computed progress percentage
 const progressPercent = computed(() => {
@@ -30,10 +35,49 @@ function formatTime(ms: number): string {
   return `${mins}:${secs.toString().padStart(2, '0')}`
 }
 
+// Connect to music WebSocket for real-time state sync
+function connectMusicWs() {
+  if (!auth.token) return
+  
+  const url = `${WS_BASE}/ws/music?token=${auth.token}`
+  musicWs.value = new WebSocket(url)
+  
+  musicWs.value.onopen = () => {
+    console.log('Music WebSocket connected')
+  }
+  
+  musicWs.value.onclose = () => {
+    console.log('Music WebSocket disconnected')
+    // Reconnect after 3 seconds
+    setTimeout(() => {
+      if (auth.token) connectMusicWs()
+    }, 3000)
+  }
+  
+  musicWs.value.onmessage = (event) => {
+    try {
+      const msg = JSON.parse(event.data)
+      if (msg.type === 'music_state' && msg.data) {
+        // Update music store with real-time state
+        music.updateProgress(msg.data)
+        // Also refresh queue to sync current index
+        if (msg.data.current_index !== undefined) {
+          music.refreshQueue()
+        }
+      }
+    } catch (e) {
+      // Ignore parse errors
+    }
+  }
+}
+
 onMounted(async () => {
   await music.checkLoginStatus()
   await music.refreshQueue()
   await music.getBotStatus()
+  
+  // Connect to music WebSocket
+  connectMusicWs()
   
   // Poll progress every 1 second when playing
   progressPollingInterval.value = window.setInterval(async () => {
@@ -49,6 +93,10 @@ onUnmounted(() => {
   }
   if (progressPollingInterval.value) {
     clearInterval(progressPollingInterval.value)
+  }
+  if (musicWs.value) {
+    musicWs.value.close()
+    musicWs.value = null
   }
 })
 

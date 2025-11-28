@@ -12,7 +12,7 @@ from fastapi.responses import FileResponse
 from .core.config import get_settings
 from .core.database import init_db
 from .routers import auth, servers, channels, messages, system, music
-from .websocket import chat, voice
+from .websocket import chat, voice, music as music_ws
 
 
 settings = get_settings()
@@ -21,6 +21,8 @@ settings = get_settings()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
+    # Set up music broadcast function
+    music.set_ws_broadcast(music_ws.broadcast_music_state)
     yield
 
 
@@ -46,6 +48,7 @@ app.include_router(music.router)
 # WebSocket routes
 app.include_router(chat.router)
 app.include_router(voice.router)
+app.include_router(music_ws.router)
 
 
 # Health check

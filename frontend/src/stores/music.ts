@@ -426,13 +426,22 @@ export const useMusicStore = defineStore('music', () => {
   }
   
   // Called from WebSocket to update progress
-  function updateProgress(data: { position_ms: number; duration_ms: number; state: string; current_song?: Song }) {
+  function updateProgress(data: { 
+    position_ms: number; 
+    duration_ms: number; 
+    state: string; 
+    current_song?: Song;
+    current_index?: number;
+  }) {
     positionMs.value = data.position_ms
     durationMs.value = data.duration_ms
     playbackState.value = data.state
     isPlaying.value = data.state === 'playing'
     if (data.current_song) {
       currentSong.value = data.current_song
+    }
+    if (data.current_index !== undefined) {
+      currentIndex.value = data.current_index
     }
   }
   

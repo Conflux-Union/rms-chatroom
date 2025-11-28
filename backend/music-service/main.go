@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -72,6 +74,7 @@ type Config struct {
 	LiveKitURL    string
 	LiveKitAPIKey string
 	LiveKitSecret string
+	CallbackURL   string // Python backend callback URL
 }
 
 var manager *PlayerManager
@@ -104,6 +107,35 @@ func (pm *PlayerManager) RemovePlayer(roomName string) {
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
 	delete(pm.players, roomName)
+}
+
+// notifySongEnded calls Python backend when a song finishes playing
+func notifySongEnded(roomName string) {
+	if manager == nil || manager.config.CallbackURL == "" {
+		return
+	}
+
+	url := manager.config.CallbackURL + "/api/music/internal/song-ended"
+	payload := map[string]string{"room_name": roomName}
+	jsonData, err := json.Marshal(payload)
+	if err != nil {
+		log.Printf("Failed to marshal callback payload: %v", err)
+		return
+	}
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Post(url, "application/json", bytes.NewBuffer(jsonData))
+	if err != nil {
+		log.Printf("Failed to notify song ended: %v", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		log.Printf("Callback returned status: %d", resp.StatusCode)
+	} else {
+		log.Printf("Song ended callback sent for room: %s", roomName)
+	}
 }
 
 func (p *Player) Connect() error {
@@ -354,11 +386,17 @@ func (p *Player) playbackLoop(song *SongInfo, startPosMs int64) {
 		case gst.MessageEOS:
 			log.Printf("Playback finished: %s", song.Name)
 			p.mu.Lock()
-			if p.state == StatePlaying {
+			wasPlaying := p.state == StatePlaying
+			if wasPlaying {
 				p.state = StateStopped
 				p.positionMs = p.durationMs
 			}
+			roomName := p.roomName
 			p.mu.Unlock()
+			// Notify Python backend to play next song
+			if wasPlaying {
+				go notifySongEnded(roomName)
+			}
 			loop.Quit()
 			return false
 		case gst.MessageError:
@@ -625,6 +663,7 @@ func main() {
 		LiveKitURL:    os.Getenv("LIVEKIT_URL"),
 		LiveKitAPIKey: os.Getenv("LIVEKIT_API_KEY"),
 		LiveKitSecret: os.Getenv("LIVEKIT_API_SECRET"),
+		CallbackURL:   os.Getenv("CALLBACK_URL"),
 	}
 
 	if config.LiveKitURL == "" {
@@ -635,6 +674,9 @@ func main() {
 	}
 	if config.LiveKitSecret == "" {
 		config.LiveKitSecret = "secret"
+	}
+	if config.CallbackURL == "" {
+		config.CallbackURL = "http://127.0.0.1:8000"
 	}
 
 	manager = NewPlayerManager(config)
