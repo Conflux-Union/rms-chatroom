@@ -34,6 +34,12 @@
     <fields>;
     <init>(...);
 }
+# Keep API request/response body classes
+-keep class com.rms.discord.data.api.SendMessageBody { *; }
+-keep class com.rms.discord.data.api.GuestJoinBody { *; }
+# Keep LiveKit data classes
+-keep class com.rms.discord.data.livekit.ParticipantInfo { *; }
+-keep class com.rms.discord.data.livekit.ConnectionState { *; }
 -keep class * implements com.google.gson.TypeAdapterFactory
 -keep class * implements com.google.gson.JsonSerializer
 -keep class * implements com.google.gson.JsonDeserializer

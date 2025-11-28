@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,6 +12,7 @@ from ..core.database import get_db
 from ..models.server import Channel, ChannelType, Message
 from .deps import CurrentUser
 
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/channels/{channel_id}/messages", tags=["messages"])
 
@@ -60,11 +62,21 @@ async def get_messages(
     return list(reversed(messages))
 
 
+@router.post("/debug", status_code=status.HTTP_200_OK)
+async def debug_message(channel_id: int, request: Request):
+    """Debug endpoint to see raw request body."""
+    body = await request.body()
+    headers = dict(request.headers)
+    logger.info(f"DEBUG: channel_id={channel_id}, body={body!r}, headers={headers}")
+    return {"body": body.decode('utf-8', errors='replace'), "headers": headers}
+
+
 @router.post("", response_model=MessageResponse, status_code=status.HTTP_201_CREATED)
 async def create_message(
-    channel_id: int, payload: MessageCreate, user: CurrentUser, db: AsyncSession = Depends(get_db)
+    channel_id: int, payload: MessageCreate, user: CurrentUser, request: Request, db: AsyncSession = Depends(get_db)
 ):
     """Send a message to a text channel."""
+    logger.info(f"create_message: channel_id={channel_id}, content={payload.content!r}, user={user.get('username')}")
     # Verify channel exists and is text type
     channel_result = await db.execute(select(Channel).where(Channel.id == channel_id))
     channel = channel_result.scalar_one_or_none()

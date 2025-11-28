@@ -64,8 +64,7 @@ type Player struct {
 	cancel context.CancelFunc
 
 	// Pause timeout: disconnect from room after 30s of pause
-	pauseTimer  *time.Timer
-	pauseCancel context.CancelFunc
+	pauseTimer *time.Timer
 }
 
 type PlayerManager struct {
@@ -460,8 +459,6 @@ func (p *Player) Pause() {
 
 	// Start pause timeout timer - disconnect from room after 30s
 	p.cancelPauseTimer()
-	ctx, cancel := context.WithCancel(context.Background())
-	p.pauseCancel = cancel
 	p.pauseTimer = time.AfterFunc(PauseTimeoutSeconds*time.Second, func() {
 		p.mu.Lock()
 		if p.state != StatePaused {
@@ -471,6 +468,7 @@ func (p *Player) Pause() {
 		room := p.room
 		p.room = nil
 		p.track = nil
+		p.pauseTimer = nil
 		p.mu.Unlock()
 
 		if room != nil {
@@ -478,24 +476,16 @@ func (p *Player) Pause() {
 			log.Printf("Disconnected from room %s due to pause timeout", p.roomName)
 		}
 	})
-	go func() {
-		<-ctx.Done()
-		p.pauseTimer.Stop()
-	}()
 }
 
 func (p *Player) cancelPauseTimer() {
-	if p.pauseCancel != nil {
-		p.pauseCancel()
-		p.pauseCancel = nil
-	}
 	if p.pauseTimer != nil {
 		p.pauseTimer.Stop()
 		p.pauseTimer = nil
 	}
 }
 
-func (p *Player) Resume() {
+func (p *Player) Resume() error {
 	p.mu.Lock()
 
 	// Cancel pause timeout timer
@@ -504,14 +494,14 @@ func (p *Player) Resume() {
 	if p.state != StatePaused {
 		log.Printf("Resume: not paused, state=%s", p.state)
 		p.mu.Unlock()
-		return
+		return fmt.Errorf("not paused, state=%s", p.state)
 	}
 
 	song := p.currentSong
 	if song == nil {
 		log.Printf("Resume: no song loaded")
 		p.mu.Unlock()
-		return
+		return fmt.Errorf("no song loaded")
 	}
 
 	if p.cancel != nil {
@@ -529,11 +519,12 @@ func (p *Player) Resume() {
 		p.mu.Lock()
 		p.state = StatePaused
 		p.mu.Unlock()
-		return
+		return fmt.Errorf("failed to connect: %w", err)
 	}
 
 	log.Printf("Resuming from %dms", startPos)
 	go p.playbackLoop(song, startPos)
+	return nil
 }
 
 func (p *Player) Seek(positionMs int64) {
@@ -662,7 +653,10 @@ func handleResume(c *gin.Context) {
 		return
 	}
 
-	player.Resume()
+	if err := player.Resume(); err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "error": err.Error()})
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{"success": true})
 }
 

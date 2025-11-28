@@ -84,6 +84,11 @@ fun VoiceScreen(
 
     val voiceRoomName = remember(channelId) { "voice_$channelId" }
     
+    // Set current room for music queue
+    LaunchedEffect(voiceRoomName) {
+        musicViewModel.setCurrentRoom(voiceRoomName)
+    }
+    
     // Permission denied dialog
     if (showPermissionDeniedDialog) {
         AlertDialog(

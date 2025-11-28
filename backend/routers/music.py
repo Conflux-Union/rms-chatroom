@@ -528,13 +528,41 @@ async def bot_pause(req: QueueRequest, _user: CurrentUser):
 @router.post("/bot/resume")
 async def bot_resume(req: QueueRequest, _user: CurrentUser):
     """Resume the bot playback for a specific room."""
+    state = _get_room_state(req.room_name)
+    
+    # Check if there's a song to resume
+    if not state.play_queue or state.current_index >= len(state.play_queue):
+        return {"success": False, "message": "No song to resume", "room_name": req.room_name}
+    
     try:
-        await _call_music_service("POST", "/resume", {"room_name": req.room_name})
+        # Use longer timeout for resume since it may need to reconnect to LiveKit
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(
+                f"{MUSIC_SERVICE_URL}/resume",
+                json={"room_name": req.room_name}
+            )
+            if resp.status_code != 200:
+                logger.error(f"Resume failed: {resp.text}")
+                # If resume fails, try to play the current song fresh
+                success = await _play_current_song(req.room_name)
+                if success:
+                    asyncio.create_task(_broadcast_playback_state(req.room_name))
+                    return {"success": True, "is_playing": True, "room_name": req.room_name}
+                return {"success": False, "message": "Failed to resume", "room_name": req.room_name}
+        
         # Broadcast state change
         asyncio.create_task(_broadcast_playback_state(req.room_name))
         return {"success": True, "is_playing": True, "room_name": req.room_name}
-    except Exception:
-        pass
+    except Exception as e:
+        logger.error(f"Resume exception: {e}")
+        # Fallback: try to play current song fresh
+        try:
+            success = await _play_current_song(req.room_name)
+            if success:
+                asyncio.create_task(_broadcast_playback_state(req.room_name))
+                return {"success": True, "is_playing": True, "room_name": req.room_name}
+        except Exception as e2:
+            logger.error(f"Fallback play failed: {e2}")
     
     return {"success": False, "message": "No player", "room_name": req.room_name}
 

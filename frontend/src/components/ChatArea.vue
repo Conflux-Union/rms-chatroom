@@ -114,6 +114,8 @@ function formatTime(dateStr: string) {
   flex: 1;
   display: flex;
   flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .chat-header {
@@ -164,6 +166,7 @@ function formatTime(dateStr: string) {
 .message-content {
   flex: 1;
   min-width: 0;
+  overflow: hidden;
 }
 
 .message-header {
@@ -187,6 +190,8 @@ function formatTime(dateStr: string) {
   color: var(--color-text-main);
   line-height: 1.4;
   word-wrap: break-word;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .chat-input {

@@ -1,15 +1,19 @@
 from __future__ import annotations
 
+import logging
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 
 from .core.config import get_settings
+
+logger = logging.getLogger(__name__)
 from .core.database import init_db
 from .routers import auth, servers, channels, messages, system, music
 from .websocket import chat, voice, music as music_ws
@@ -27,6 +31,20 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="RMS ChatRoom", lifespan=lifespan)
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """Log validation errors with request body for debugging."""
+    body = await request.body()
+    logger.error(f"Validation error: {exc.errors()}")
+    logger.error(f"Request body: {body!r}")
+    logger.error(f"Request path: {request.url.path}")
+    return JSONResponse(
+        status_code=422,
+        content={"detail": exc.errors()},
+    )
+
 
 # CORS for development
 app.add_middleware(
