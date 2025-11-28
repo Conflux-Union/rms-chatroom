@@ -18,4 +18,10 @@
     <string name="loading">加载中...</string>
     <string name="error_network">网络错误，请重试</string>
     <string name="error_auth">认证失败，请重新登录</string>
+
+    <!-- Notification channels -->
+    <string name="notification_channel_messages">消息通知</string>
+    <string name="notification_channel_messages_desc">新消息提醒</string>
+    <string name="notification_channel_voice">语音通话</string>
+    <string name="notification_channel_voice_desc">语音通话状态</string>
 </resources>

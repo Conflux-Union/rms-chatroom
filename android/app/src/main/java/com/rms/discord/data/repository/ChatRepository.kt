@@ -11,6 +11,7 @@ import com.rms.discord.data.model.Server
 import com.rms.discord.data.websocket.ChatWebSocket
 import com.rms.discord.data.websocket.ConnectionState
 import com.rms.discord.data.websocket.WebSocketEvent
+import com.rms.discord.notification.NotificationHelper
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -26,12 +27,16 @@ class ChatRepository @Inject constructor(
     private val api: ApiService,
     private val authRepository: AuthRepository,
     private val webSocket: ChatWebSocket,
-    private val messageDao: MessageDao
+    private val messageDao: MessageDao,
+    private val notificationHelper: NotificationHelper
 ) {
     companion object {
         private const val TAG = "ChatRepository"
         private const val CACHE_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000L // 7 days
     }
+
+    // Track if app is in foreground (set by Activity)
+    var isAppInForeground: Boolean = true
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
@@ -62,8 +67,9 @@ class ChatRepository @Inject constructor(
                     is WebSocketEvent.NewMessage -> {
                         Log.d(TAG, "Received new message: ${event.message.id}")
                         addMessage(event.message)
-                        // Cache to database
                         cacheMessage(event.message)
+                        // Show notification if app is in background
+                        showMessageNotificationIfNeeded(event.message)
                     }
                     is WebSocketEvent.Connected -> {
                         Log.d(TAG, "WebSocket connected to channel ${event.channelId}")
@@ -105,6 +111,27 @@ class ChatRepository @Inject constructor(
                 Log.e(TAG, "Failed to cache message", e)
             }
         }
+    }
+
+    private fun showMessageNotificationIfNeeded(message: Message) {
+        // Only show notification when app is in background
+        if (isAppInForeground) return
+
+        val channel = _currentChannel.value ?: return
+        val server = _currentServer.value ?: return
+
+        // Don't notify for messages in current channel when viewing it
+        if (message.channelId != channel.id) return
+
+        notificationHelper.showMessageNotification(
+            message = message,
+            channelName = channel.name,
+            serverName = server.name
+        )
+    }
+
+    fun cancelNotifications() {
+        notificationHelper.cancelAllMessageNotifications()
     }
 
     private fun cacheMessages(messages: List<Message>) {

@@ -87,7 +87,7 @@ android/app/src/main/java/com/rms/discord/
 - [x] Navigation Compose 导航图
 - [x] Splash Screen配置
 
-### 🔄 Phase 2: 文字聊天 + WebSocket实时消息
+### ✅ Phase 2: 文字聊天 + WebSocket实时消息 (已完成)
 
 - [x] 完善 ChatWebSocket 连接管理
   - 自动重连机制 (指数退避, 最大10次尝试)
@@ -105,9 +105,11 @@ android/app/src/main/java/com/rms/discord/
   - AppDatabase (data/local/AppDatabase.kt)
   - 离线消息支持 (先加载缓存, 网络失败时回退)
   - 7天缓存自动清理
-- [ ] 消息通知
-  - NotificationChannel配置
-  - 新消息推送通知
+- [x] 消息通知
+  - NotificationChannel配置 (notification/NotificationHelper.kt)
+  - 新消息推送通知 (后台运行时触发)
+  - 通知权限请求 (Android 13+)
+  - 前台时自动取消通知
 
 ### 🔲 Phase 3: 语音通话 + LiveKit集成
 
