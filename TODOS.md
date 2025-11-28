@@ -161,31 +161,34 @@ _current_room: str = None   # 只有一个房间
 - [x] 每个房间使用独立的 participant identity: `music-bot-{roomName}`
 - [x] 修复资源清理bug - OnDisconnected 和 Stop 方法正确清理 GStreamer pipeline
 
-### TODO (Python Backend)
-需要重构 `backend/routers/music.py`：
+### DONE (Python Backend)
+已重构 `backend/routers/music.py`：
 
 **数据结构改造**
-- [ ] 创建 `RoomMusicState` 类存储每个房间的状态
-- [ ] 用 `dict[str, RoomMusicState]` 替代全局变量
+- [x] 创建 `RoomMusicState` 类存储每个房间的状态
+- [x] 用 `dict[str, RoomMusicState]` 替代全局变量
 
 ```python
-@dataclass
+@dataclasses.dataclass
 class RoomMusicState:
     room_name: str
-    play_queue: list[dict]
-    current_index: int
-    credential: Credential | None = None
+    play_queue: list[dict[str, Any]] = dataclasses.field(default_factory=list)
+    current_index: int = 0
 
 _room_states: dict[str, RoomMusicState] = {}
 ```
 
 **API 改造**
-- [ ] 所有 API 接受 `room_name` 参数
-- [ ] `/queue/add` - 添加到指定房间队列
-- [ ] `/queue` - 获取指定房间队列
-- [ ] `/bot/play` - 在指定房间播放
-- [ ] `/bot/pause`, `/bot/resume`, `/bot/skip` - 控制指定房间
-- [ ] `/internal/song-ended` - 处理指定房间的歌曲结束
+- [x] 所有 API 接受 `room_name` 参数
+- [x] `/queue/add` - 添加到指定房间队列 (POST body: `{room_name, song}`)
+- [x] `/queue/{room_name}` - 获取指定房间队列
+- [x] `/queue/{room_name}/{index}` - 删除指定房间队列中的歌曲
+- [x] `/bot/play` - 在指定房间播放 (POST body: `{room_name}`)
+- [x] `/bot/pause`, `/bot/resume`, `/bot/skip` - 控制指定房间 (POST body: `{room_name}`)
+- [x] `/bot/seek` - 跳转到指定位置 (POST body: `{room_name, position_ms}`)
+- [x] `/bot/progress/{room_name}` - 获取指定房间播放进度
+- [x] `/bot/status/{room_name}` - 获取指定房间bot状态
+- [x] `/internal/song-ended` - 处理指定房间的歌曲结束
 
 **前端改造**
 - [ ] MusicPanel 组件绑定当前语音频道

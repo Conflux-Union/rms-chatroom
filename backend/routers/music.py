@@ -29,48 +29,66 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/music", tags=["music"])
 
-# Global state for QQ Music credential and playback
+
+@dataclasses.dataclass
+class RoomMusicState:
+    """Per-room music playback state."""
+    room_name: str
+    play_queue: list[dict[str, Any]] = dataclasses.field(default_factory=list)
+    current_index: int = 0
+
+
+# Global state for QQ Music credential (shared across all rooms)
 _credential: Credential | None = None
 _current_qr: login.QR | None = None
-_play_queue: list[dict[str, Any]] = []
-_current_index: int = 0
-_current_room: str | None = None
+
+# Per-room music state: room_name -> RoomMusicState
+_room_states: dict[str, RoomMusicState] = {}
 
 # WebSocket broadcast function (set by websocket module)
 _ws_broadcast: Any = None
 
 
-async def _broadcast_playback_state() -> None:
-    """Broadcast current playback state to all connected clients."""
-    global _ws_broadcast, _current_room, _play_queue, _current_index
+def _get_room_state(room_name: str) -> RoomMusicState:
+    """Get or create room state for a given room."""
+    if room_name not in _room_states:
+        _room_states[room_name] = RoomMusicState(room_name=room_name)
+    return _room_states[room_name]
+
+
+async def _broadcast_playback_state(room_name: str) -> None:
+    """Broadcast current playback state to all connected clients for a specific room."""
+    global _ws_broadcast
     
     if not _ws_broadcast:
         return
     
     try:
+        state = _get_room_state(room_name)
+        
         # Get progress from Go service
         progress_data = {
+            "room_name": room_name,
             "position_ms": 0,
             "duration_ms": 0,
             "state": "idle",
             "current_song": None,
-            "current_index": _current_index,
-            "queue_length": len(_play_queue),
+            "current_index": state.current_index,
+            "queue_length": len(state.play_queue),
         }
         
-        if _current_room:
-            try:
-                progress = await _call_music_service("GET", "/progress", {"room_name": _current_room})
-                progress_data["position_ms"] = progress.get("position_ms", 0)
-                progress_data["duration_ms"] = progress.get("duration_ms", 0)
-                progress_data["state"] = progress.get("state", "idle")
-                progress_data["current_song"] = progress.get("song")
-            except Exception:
-                pass
+        try:
+            progress = await _call_music_service("GET", "/progress", {"room_name": room_name})
+            progress_data["position_ms"] = progress.get("position_ms", 0)
+            progress_data["duration_ms"] = progress.get("duration_ms", 0)
+            progress_data["state"] = progress.get("state", "idle")
+            progress_data["current_song"] = progress.get("song")
+        except Exception:
+            pass
         
         # If no song from Go service, use queue info
-        if not progress_data["current_song"] and _play_queue and 0 <= _current_index < len(_play_queue):
-            progress_data["current_song"] = _play_queue[_current_index]["song"]
+        if not progress_data["current_song"] and state.play_queue and 0 <= state.current_index < len(state.play_queue):
+            progress_data["current_song"] = state.play_queue[state.current_index]["song"]
         
         await _ws_broadcast("music_state", progress_data)
     except Exception as e:
@@ -149,6 +167,15 @@ class SongInfo(BaseModel):
 class QueueItem(BaseModel):
     song: SongInfo
     requested_by: str
+
+
+class QueueAddRequest(BaseModel):
+    room_name: str
+    song: SongInfo
+
+
+class QueueRequest(BaseModel):
+    room_name: str
 
 
 class PlaybackState(BaseModel):
@@ -289,139 +316,132 @@ async def get_song_url(mid: str, _user: CurrentUser):
 # --- Queue Management APIs ---
 
 @router.post("/queue/add")
-async def add_to_queue(song_info: SongInfo, user: CurrentUser):
-    """Add a song to the play queue."""
-    global _play_queue
+async def add_to_queue(req: QueueAddRequest, user: CurrentUser):
+    """Add a song to the play queue for a specific room."""
+    state = _get_room_state(req.room_name)
     
-    _play_queue.append({
-        "song": song_info.model_dump(),
+    state.play_queue.append({
+        "song": req.song.model_dump(),
         "requested_by": user.get("username", "Unknown")
     })
     
-    return {"success": True, "position": len(_play_queue)}
+    return {"success": True, "position": len(state.play_queue), "room_name": req.room_name}
 
 
-@router.delete("/queue/{index}")
-async def remove_from_queue(index: int, _user: CurrentUser):
-    """Remove a song from the queue."""
-    global _play_queue, _current_index
+@router.delete("/queue/{room_name}/{index}")
+async def remove_from_queue(room_name: str, index: int, _user: CurrentUser):
+    """Remove a song from the queue for a specific room."""
+    state = _get_room_state(room_name)
     
-    if index < 0 or index >= len(_play_queue):
+    if index < 0 or index >= len(state.play_queue):
         raise HTTPException(status_code=400, detail="Invalid index")
     
-    _play_queue.pop(index)
+    state.play_queue.pop(index)
     
-    if index < _current_index:
-        _current_index -= 1
-    elif index == _current_index and _current_index >= len(_play_queue):
-        _current_index = max(0, len(_play_queue) - 1)
+    if index < state.current_index:
+        state.current_index -= 1
+    elif index == state.current_index and state.current_index >= len(state.play_queue):
+        state.current_index = max(0, len(state.play_queue) - 1)
     
-    return {"success": True}
+    return {"success": True, "room_name": room_name}
 
 
-@router.get("/queue")
-async def get_queue(_user: CurrentUser):
-    """Get current play queue."""
-    global _play_queue, _current_index, _current_room
+@router.get("/queue/{room_name}")
+async def get_queue(room_name: str, _user: CurrentUser):
+    """Get current play queue for a specific room."""
+    state = _get_room_state(room_name)
     
     current_song = None
-    if _play_queue and 0 <= _current_index < len(_play_queue):
-        current_song = _play_queue[_current_index]["song"]
+    if state.play_queue and 0 <= state.current_index < len(state.play_queue):
+        current_song = state.play_queue[state.current_index]["song"]
     
     # Get actual playing state from music service
     is_playing = False
-    if _current_room:
-        try:
-            progress = await _call_music_service("GET", "/progress", {"room_name": _current_room})
-            is_playing = progress.get("state") == "playing"
-        except Exception:
-            pass
+    try:
+        progress = await _call_music_service("GET", "/progress", {"room_name": room_name})
+        is_playing = progress.get("state") == "playing"
+    except Exception:
+        pass
     
     return {
+        "room_name": room_name,
         "is_playing": is_playing,
         "current_song": current_song,
-        "current_index": _current_index,
-        "queue": _play_queue
+        "current_index": state.current_index,
+        "queue": state.play_queue
     }
 
 
 @router.post("/queue/clear")
-async def clear_queue(_user: CurrentUser):
-    """Clear the play queue."""
-    global _play_queue, _current_index, _current_room
+async def clear_queue(req: QueueRequest, _user: CurrentUser):
+    """Clear the play queue for a specific room."""
+    state = _get_room_state(req.room_name)
     
-    if _current_room:
-        try:
-            await _call_music_service("POST", "/stop", {"room_name": _current_room})
-        except Exception:
-            pass
+    try:
+        await _call_music_service("POST", "/stop", {"room_name": req.room_name})
+    except Exception:
+        pass
     
-    _play_queue = []
-    _current_index = 0
+    state.play_queue = []
+    state.current_index = 0
     
-    return {"success": True}
+    return {"success": True, "room_name": req.room_name}
 
 
 # --- Playback Control APIs ---
 
 @router.post("/control/play")
-async def play(_user: CurrentUser):
-    """Start/resume playback."""
-    global _current_room
-    if _current_room:
-        try:
-            await _call_music_service("POST", "/resume", {"room_name": _current_room})
-        except Exception:
-            pass
-    return {"success": True}
+async def play(req: QueueRequest, _user: CurrentUser):
+    """Start/resume playback for a specific room."""
+    try:
+        await _call_music_service("POST", "/resume", {"room_name": req.room_name})
+    except Exception:
+        pass
+    return {"success": True, "room_name": req.room_name}
 
 
 @router.post("/control/pause")
-async def pause(_user: CurrentUser):
-    """Pause playback."""
-    global _current_room
-    if _current_room:
-        try:
-            await _call_music_service("POST", "/pause", {"room_name": _current_room})
-        except Exception:
-            pass
-    return {"success": True, "is_playing": False}
+async def pause(req: QueueRequest, _user: CurrentUser):
+    """Pause playback for a specific room."""
+    try:
+        await _call_music_service("POST", "/pause", {"room_name": req.room_name})
+    except Exception:
+        pass
+    return {"success": True, "is_playing": False, "room_name": req.room_name}
 
 
 @router.post("/control/skip")
-async def skip(_user: CurrentUser):
-    """Skip to next song."""
-    global _current_index, _play_queue, _current_room
+async def skip(req: QueueRequest, _user: CurrentUser):
+    """Skip to next song for a specific room."""
+    state = _get_room_state(req.room_name)
     
-    if _current_room:
-        try:
-            await _call_music_service("POST", "/stop", {"room_name": _current_room})
-        except Exception:
-            pass
+    try:
+        await _call_music_service("POST", "/stop", {"room_name": req.room_name})
+    except Exception:
+        pass
     
-    if _current_index < len(_play_queue) - 1:
-        _current_index += 1
-        return {"success": True, "current_index": _current_index}
+    if state.current_index < len(state.play_queue) - 1:
+        state.current_index += 1
+        return {"success": True, "current_index": state.current_index, "room_name": req.room_name}
     
-    return {"success": False, "message": "No more songs in queue"}
+    return {"success": False, "message": "No more songs in queue", "room_name": req.room_name}
 
 
 @router.post("/control/previous")
-async def previous(_user: CurrentUser):
-    """Go to previous song."""
-    global _current_index, _current_room
+async def previous(req: QueueRequest, _user: CurrentUser):
+    """Go to previous song for a specific room."""
+    state = _get_room_state(req.room_name)
     
-    if _current_room:
-        try:
-            await _call_music_service("POST", "/stop", {"room_name": _current_room})
-        except Exception:
-            pass
+    try:
+        await _call_music_service("POST", "/stop", {"room_name": req.room_name})
+    except Exception:
+        pass
     
-    if _current_index > 0:
-        _current_index -= 1
-        return {"success": True, "current_index": _current_index}
+    if state.current_index > 0:
+        state.current_index -= 1
+        return {"success": True, "current_index": state.current_index, "room_name": req.room_name}
     
-    return {"success": False, "message": "Already at first song"}
+    return {"success": False, "message": "Already at first song", "room_name": req.room_name}
 
 
 # --- Bot Control APIs ---
@@ -430,14 +450,16 @@ class BotStartRequest(BaseModel):
     room_name: str
 
 
-async def _play_current_song() -> bool:
-    """Internal: load and play current song via Go service."""
-    global _play_queue, _current_index, _credential, _current_room
+async def _play_current_song(room_name: str) -> bool:
+    """Internal: load and play current song via Go service for a specific room."""
+    global _credential
     
-    if not _current_room or not _play_queue or _current_index >= len(_play_queue):
+    state = _get_room_state(room_name)
+    
+    if not state.play_queue or state.current_index >= len(state.play_queue):
         return False
     
-    current = _play_queue[_current_index]["song"]
+    current = state.play_queue[state.current_index]["song"]
     
     # Get song URL
     try:
@@ -455,7 +477,7 @@ async def _play_current_song() -> bool:
         
         # Call Go music service to play
         await _call_music_service("POST", "/play", {
-            "room_name": _current_room,
+            "room_name": room_name,
             "song": {
                 "mid": current["mid"],
                 "name": current["name"],
@@ -475,55 +497,43 @@ async def _play_current_song() -> bool:
 @router.post("/bot/start")
 async def start_bot(req: BotStartRequest, _user: CurrentUser):
     """Start music bot for a voice channel room."""
-    global _current_room
-    
-    try:
-        # Stop existing player if room changed
-        if _current_room and _current_room != req.room_name:
-            try:
-                await _call_music_service("POST", "/stop", {"room_name": _current_room})
-            except Exception:
-                pass
-        
-        _current_room = req.room_name
-        return {"success": True, "room": req.room_name}
-    except Exception as e:
-        logger.error(f"Failed to start bot: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to start bot: {e}")
+    # Ensure room state exists
+    _get_room_state(req.room_name)
+    return {"success": True, "room": req.room_name}
 
 
 @router.post("/bot/stop")
-async def stop_bot(_user: CurrentUser):
-    """Stop the music bot."""
-    global _current_room
+async def stop_bot(req: QueueRequest, _user: CurrentUser):
+    """Stop the music bot for a specific room."""
+    try:
+        await _call_music_service("POST", "/stop", {"room_name": req.room_name})
+    except Exception:
+        pass
     
-    if _current_room:
-        try:
-            await _call_music_service("POST", "/stop", {"room_name": _current_room})
-        except Exception:
-            pass
-        _current_room = None
+    # Optionally clean up room state
+    if req.room_name in _room_states:
+        del _room_states[req.room_name]
     
-    return {"success": True}
+    return {"success": True, "room_name": req.room_name}
 
 
-@router.get("/bot/status")
-async def get_bot_status(_user: CurrentUser):
-    """Get music bot status."""
-    global _current_room
-    
+@router.get("/bot/status/{room_name}")
+async def get_bot_status(room_name: str, _user: CurrentUser):
+    """Get music bot status for a specific room."""
     is_playing = False
-    if _current_room:
-        try:
-            progress = await _call_music_service("GET", "/progress", {"room_name": _current_room})
-            is_playing = progress.get("state") == "playing"
-        except Exception:
-            pass
+    try:
+        progress = await _call_music_service("GET", "/progress", {"room_name": room_name})
+        is_playing = progress.get("state") == "playing"
+    except Exception:
+        pass
+    
+    state = _room_states.get(room_name)
     
     return {
-        "connected": _current_room is not None,
-        "room": _current_room,
-        "is_playing": is_playing
+        "connected": state is not None,
+        "room": room_name,
+        "is_playing": is_playing,
+        "queue_length": len(state.play_queue) if state else 0
     }
 
 
@@ -531,29 +541,23 @@ class BotPlayRequest(BaseModel):
     room_name: str
 
 
-class SeekRequest(BaseModel):
-    position_ms: int
-
-
 @router.post("/bot/play")
 async def bot_play(req: BotPlayRequest, _user: CurrentUser):
-    """Start playing the current song through the bot."""
-    global _play_queue, _current_index, _current_room
+    """Start playing the current song through the bot for a specific room."""
+    state = _get_room_state(req.room_name)
     
-    _current_room = req.room_name
-    
-    if not _play_queue or _current_index >= len(_play_queue):
+    if not state.play_queue or state.current_index >= len(state.play_queue):
         raise HTTPException(status_code=400, detail="No song in queue")
     
-    current_song = _play_queue[_current_index]["song"]
+    current_song = state.play_queue[state.current_index]["song"]
     
     try:
-        success = await _play_current_song()
+        success = await _play_current_song(req.room_name)
         
         if success:
             # Broadcast state change
-            asyncio.create_task(_broadcast_playback_state())
-            return {"success": True, "playing": current_song["name"]}
+            asyncio.create_task(_broadcast_playback_state(req.room_name))
+            return {"success": True, "playing": current_song["name"], "room_name": req.room_name}
         else:
             raise HTTPException(status_code=500, detail="Failed to start playback")
         
@@ -565,95 +569,78 @@ async def bot_play(req: BotPlayRequest, _user: CurrentUser):
 
 
 @router.post("/bot/pause")
-async def bot_pause(_user: CurrentUser):
-    """Pause the bot playback."""
-    global _current_room
+async def bot_pause(req: QueueRequest, _user: CurrentUser):
+    """Pause the bot playback for a specific room."""
+    try:
+        await _call_music_service("POST", "/pause", {"room_name": req.room_name})
+        # Broadcast state change
+        asyncio.create_task(_broadcast_playback_state(req.room_name))
+    except Exception:
+        pass
     
-    if _current_room:
-        try:
-            await _call_music_service("POST", "/pause", {"room_name": _current_room})
-            # Broadcast state change
-            asyncio.create_task(_broadcast_playback_state())
-        except Exception:
-            pass
-    
-    return {"success": True}
+    return {"success": True, "room_name": req.room_name}
 
 
 @router.post("/bot/resume")
-async def bot_resume(_user: CurrentUser):
-    """Resume the bot playback."""
-    global _current_room
+async def bot_resume(req: QueueRequest, _user: CurrentUser):
+    """Resume the bot playback for a specific room."""
+    try:
+        await _call_music_service("POST", "/resume", {"room_name": req.room_name})
+        # Broadcast state change
+        asyncio.create_task(_broadcast_playback_state(req.room_name))
+        return {"success": True, "is_playing": True, "room_name": req.room_name}
+    except Exception:
+        pass
     
-    if _current_room:
-        try:
-            await _call_music_service("POST", "/resume", {"room_name": _current_room})
-            # Broadcast state change
-            asyncio.create_task(_broadcast_playback_state())
-            return {"success": True, "is_playing": True}
-        except Exception:
-            pass
-    
-    return {"success": False, "message": "No player"}
+    return {"success": False, "message": "No player", "room_name": req.room_name}
 
 
 @router.post("/bot/skip")
-async def bot_skip(_user: CurrentUser):
-    """Skip to next song on the bot."""
-    global _current_index, _play_queue, _current_room
+async def bot_skip(req: QueueRequest, _user: CurrentUser):
+    """Skip to next song on the bot for a specific room."""
+    state = _get_room_state(req.room_name)
     
-    if _current_room:
-        try:
-            await _call_music_service("POST", "/stop", {"room_name": _current_room})
-        except Exception:
-            pass
+    try:
+        await _call_music_service("POST", "/stop", {"room_name": req.room_name})
+    except Exception:
+        pass
     
-    if _current_index < len(_play_queue) - 1:
-        _current_index += 1
-        if _current_room:
-            success = await _play_current_song()
-            # Broadcast state change
-            asyncio.create_task(_broadcast_playback_state())
-            if success:
-                return {"success": True, "current_index": _current_index}
-        return {"success": True, "current_index": _current_index}
+    if state.current_index < len(state.play_queue) - 1:
+        state.current_index += 1
+        success = await _play_current_song(req.room_name)
+        # Broadcast state change
+        asyncio.create_task(_broadcast_playback_state(req.room_name))
+        if success:
+            return {"success": True, "current_index": state.current_index, "room_name": req.room_name}
+        return {"success": True, "current_index": state.current_index, "room_name": req.room_name}
     
     # Broadcast when queue ends
-    asyncio.create_task(_broadcast_playback_state())
-    return {"success": False, "message": "No more songs in queue"}
+    asyncio.create_task(_broadcast_playback_state(req.room_name))
+    return {"success": False, "message": "No more songs in queue", "room_name": req.room_name}
+
+
+class SeekRequestWithRoom(BaseModel):
+    room_name: str
+    position_ms: int
 
 
 @router.post("/bot/seek")
-async def bot_seek(req: SeekRequest, _user: CurrentUser):
-    """Seek to position in the current song."""
-    global _current_room
-    
-    if not _current_room:
-        raise HTTPException(status_code=400, detail="No player")
-    
+async def bot_seek(req: SeekRequestWithRoom, _user: CurrentUser):
+    """Seek to position in the current song for a specific room."""
     await _call_music_service("POST", "/seek", {
-        "room_name": _current_room,
+        "room_name": req.room_name,
         "position_ms": req.position_ms
     })
-    return {"success": True, "position_ms": req.position_ms}
+    return {"success": True, "position_ms": req.position_ms, "room_name": req.room_name}
 
 
-@router.get("/bot/progress")
-async def bot_progress(_user: CurrentUser):
-    """Get current playback progress."""
-    global _current_room
-    
-    if not _current_room:
-        return {
-            "position_ms": 0,
-            "duration_ms": 0,
-            "state": "idle",
-            "current_song": None,
-        }
-    
+@router.get("/bot/progress/{room_name}")
+async def bot_progress(room_name: str, _user: CurrentUser):
+    """Get current playback progress for a specific room."""
     try:
-        progress = await _call_music_service("GET", "/progress", {"room_name": _current_room})
+        progress = await _call_music_service("GET", "/progress", {"room_name": room_name})
         return {
+            "room_name": room_name,
             "position_ms": progress.get("position_ms", 0),
             "duration_ms": progress.get("duration_ms", 0),
             "state": progress.get("state", "idle"),
@@ -661,6 +648,7 @@ async def bot_progress(_user: CurrentUser):
         }
     except Exception:
         return {
+            "room_name": room_name,
             "position_ms": 0,
             "duration_ms": 0,
             "state": "idle",
@@ -678,31 +666,26 @@ class SongEndedRequest(BaseModel):
 async def handle_song_ended(req: SongEndedRequest):
     """
     Callback from Go music service when a song finishes playing.
-    Automatically plays the next song in queue.
+    Automatically plays the next song in queue for the specific room.
     """
-    global _current_index, _play_queue, _current_room
-    
     logger.info(f"Song ended callback received for room: {req.room_name}")
     
-    # Verify this is for the current room
-    if _current_room != req.room_name:
-        logger.warning(f"Room mismatch: expected {_current_room}, got {req.room_name}")
-        return {"success": False, "message": "Room mismatch"}
+    state = _get_room_state(req.room_name)
     
     # Check if there are more songs in queue
-    if _current_index < len(_play_queue) - 1:
-        _current_index += 1
-        logger.info(f"Playing next song, index: {_current_index}")
+    if state.current_index < len(state.play_queue) - 1:
+        state.current_index += 1
+        logger.info(f"Playing next song in room {req.room_name}, index: {state.current_index}")
         
         # Play next song
-        success = await _play_current_song()
+        success = await _play_current_song(req.room_name)
         
         # Broadcast state change to all clients
-        asyncio.create_task(_broadcast_playback_state())
+        asyncio.create_task(_broadcast_playback_state(req.room_name))
         
-        return {"success": success, "current_index": _current_index}
+        return {"success": success, "current_index": state.current_index, "room_name": req.room_name}
     else:
-        logger.info("Queue finished, no more songs")
+        logger.info(f"Queue finished for room {req.room_name}, no more songs")
         # Broadcast stopped state
-        asyncio.create_task(_broadcast_playback_state())
-        return {"success": True, "message": "Queue finished"}
+        asyncio.create_task(_broadcast_playback_state(req.room_name))
+        return {"success": True, "message": "Queue finished", "room_name": req.room_name}
