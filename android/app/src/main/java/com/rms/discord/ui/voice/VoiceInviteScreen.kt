@@ -22,6 +22,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.VolumeOff
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -105,7 +108,7 @@ fun VoiceInviteScreen(
                     title = { Text("语音邀请") },
                     navigationIcon = {
                         IconButton(onClick = onNavigateBack) {
-                            Icon(Icons.Default.ArrowBack, contentDescription = "返回")
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
@@ -229,7 +232,7 @@ private fun JoinFormContent(
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Icon(
-                        imageVector = Icons.Default.VolumeUp,
+                        imageVector = Icons.AutoMirrored.Filled.VolumeUp,
                         contentDescription = null,
                         modifier = Modifier.size(48.dp),
                         tint = VoiceConnected
@@ -385,7 +388,7 @@ private fun VoiceRoomContent(
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Icon(
-                        imageVector = Icons.Default.VolumeUp,
+                        imageVector = Icons.AutoMirrored.Filled.VolumeUp,
                         contentDescription = null,
                         modifier = Modifier.size(64.dp),
                         tint = TextMuted
@@ -424,7 +427,7 @@ private fun VoiceRoomContent(
 
                 // Deafen button
                 GuestVoiceControlButton(
-                    icon = if (state.isDeafened) Icons.Default.VolumeOff else Icons.Default.VolumeUp,
+                    icon = if (state.isDeafened) Icons.AutoMirrored.Filled.VolumeOff else Icons.AutoMirrored.Filled.VolumeUp,
                     label = if (state.isDeafened) stringResource(R.string.undeafen) else stringResource(R.string.deafen),
                     isActive = state.isDeafened,
                     activeColor = VoiceMuted,

@@ -13,6 +13,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Logout
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -165,7 +167,7 @@ private fun ChannelItem(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(
-            imageVector = if (channel.type == ChannelType.TEXT) Icons.Default.Tag else Icons.Default.VolumeUp,
+            imageVector = if (channel.type == ChannelType.TEXT) Icons.Default.Tag else Icons.AutoMirrored.Filled.VolumeUp,
             contentDescription = null,
             modifier = Modifier.size(20.dp),
             tint = textColor
@@ -214,7 +216,7 @@ private fun VoiceChannelItem(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
-                imageVector = Icons.Default.VolumeUp,
+                imageVector = Icons.AutoMirrored.Filled.VolumeUp,
                 contentDescription = null,
                 modifier = Modifier.size(20.dp),
                 tint = textColor
@@ -372,7 +374,7 @@ private fun UserPanel(
                 modifier = Modifier.size(32.dp)
             ) {
                 Icon(
-                    imageVector = Icons.Default.Logout,
+                    imageVector = Icons.AutoMirrored.Filled.Logout,
                     contentDescription = "退出登录",
                     tint = TextMuted,
                     modifier = Modifier.size(18.dp)

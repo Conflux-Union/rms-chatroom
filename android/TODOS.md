@@ -59,13 +59,24 @@ android/app/src/main/java/com/rms/discord/
 │   │   ├── VoiceScreen.kt        # 语音界面 (说话指示+权限请求+音乐FAB)
 │   │   ├── VoiceInviteViewModel.kt  # 语音邀请状态管理
 │   │   └── VoiceInviteScreen.kt  # 访客语音邀请界面
-│   └── music/
-│       ├── MusicViewModel.kt     # 音乐状态管理+API调用
-│       ├── MusicBottomSheet.kt   # 音乐面板 (播放信息+控制+队列)
-│       ├── MusicSearchDialog.kt  # 音乐搜索对话框
-│       └── MusicLoginDialog.kt   # QQ音乐登录对话框
+│   ├── music/
+│   │   ├── MusicViewModel.kt     # 音乐状态管理+API调用
+│   │   ├── MusicBottomSheet.kt   # 音乐面板 (播放信息+控制+队列)
+│   │   ├── MusicSearchDialog.kt  # 音乐搜索对话框
+│   │   └── MusicLoginDialog.kt   # QQ音乐登录对话框
+│   └── common/
+│       └── CommonComponents.kt   # 通用UI组件 (Loading/Error/Empty/Shimmer)
 └── service/
     └── VoiceCallService.kt       # 语音通话前台服务 (通知控制+WakeLock)
+
+# 测试目录
+app/src/test/java/com/rms/discord/
+├── AuthViewModelTest.kt          # AuthViewModel单元测试
+└── MainViewModelTest.kt          # MainViewModel单元测试
+
+app/src/androidTest/java/com/rms/discord/
+├── LoginScreenTest.kt            # LoginScreen UI测试
+└── CommonComponentsTest.kt       # 通用组件UI测试
 ```
 
 ### 配置
@@ -181,27 +192,31 @@ android/app/src/main/java/com/rms/discord/
   - FAB打开音乐面板 (语音连接后显示)
   - ModalBottomSheet展示音乐面板
 
-### 🔲 Phase 5: 测试 + 优化 + 发布
+### ✅ Phase 5: 测试 + 优化 + 发布 (已完成)
 
-- [ ] 代码优化
+- [x] 代码优化
   - 修复deprecation警告 (AutoMirrored icons)
-  - kotlinOptions迁移到compilerOptions
-- [ ] UI/UX优化
-  - 加载状态动画
-  - 错误处理和重试
-  - 空状态界面
-- [ ] 性能优化
-  - 图片加载优化
-  - 列表性能 (LazyColumn)
-  - 内存泄漏检查
-- [ ] 测试
-  - 单元测试 (ViewModel, Repository)
-  - UI测试 (Compose Testing)
-- [ ] 发布准备
-  - 签名配置
-  - ProGuard规则完善
-  - 版本号管理
-  - Release APK构建
+  - kotlinOptions迁移到kotlin.compilerOptions
+  - 移除废弃的Window API调用
+- [x] UI/UX优化
+  - 通用加载状态组件 (LoadingContent with pulse animation)
+  - 通用错误状态组件 (ErrorContent with retry)
+  - 通用空状态组件 (EmptyContent)
+  - 网络错误组件 (NetworkErrorContent)
+  - Shimmer骨架屏组件 (ShimmerBox)
+- [x] 性能优化
+  - Coil图片加载优化 (内存/磁盘缓存配置)
+  - LazyColumn已使用key参数优化
+  - ImageLoaderFactory全局配置
+- [x] 测试
+  - 单元测试 (AuthViewModelTest, MainViewModelTest)
+  - UI测试 (LoginScreenTest, CommonComponentsTest)
+  - 测试依赖配置 (JUnit, MockK, Turbine, Compose Testing)
+- [x] 发布准备
+  - 签名配置 (release.keystore)
+  - ProGuard规则完善 (Retrofit/OkHttp/Gson/LiveKit/Room/Hilt/Compose/Coroutines)
+  - 版本号: 1.0.0 (versionCode: 1)
+  - Release APK构建成功
 
 ---
 

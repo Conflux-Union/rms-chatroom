@@ -18,6 +18,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.VolumeOff
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -221,7 +223,7 @@ fun VoiceScreen(
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Icon(
-                            imageVector = Icons.Default.VolumeUp,
+                            imageVector = Icons.AutoMirrored.Filled.VolumeUp,
                             contentDescription = null,
                             modifier = Modifier.size(64.dp),
                             tint = TextMuted
@@ -456,7 +458,7 @@ private fun VoiceControls(
 
                 // Deafen button
                 VoiceControlButton(
-                    icon = if (isDeafened) Icons.Default.VolumeOff else Icons.Default.VolumeUp,
+                    icon = if (isDeafened) Icons.AutoMirrored.Filled.VolumeOff else Icons.AutoMirrored.Filled.VolumeUp,
                     label = if (isDeafened) stringResource(R.string.undeafen) else stringResource(R.string.deafen),
                     isActive = isDeafened,
                     activeColor = VoiceMuted,

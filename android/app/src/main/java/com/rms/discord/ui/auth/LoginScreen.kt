@@ -6,7 +6,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Login
+import androidx.compose.material.icons.automirrored.filled.Login
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -92,7 +92,7 @@ fun LoginScreen(
                     shape = MaterialTheme.shapes.medium
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Login,
+                        imageVector = Icons.AutoMirrored.Filled.Login,
                         contentDescription = null,
                         modifier = Modifier.size(24.dp)
                     )
