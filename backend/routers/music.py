@@ -388,62 +388,6 @@ async def clear_queue(req: QueueRequest, _user: CurrentUser):
     return {"success": True, "room_name": req.room_name}
 
 
-# --- Playback Control APIs ---
-
-@router.post("/control/play")
-async def play(req: QueueRequest, _user: CurrentUser):
-    """Start/resume playback for a specific room."""
-    try:
-        await _call_music_service("POST", "/resume", {"room_name": req.room_name})
-    except Exception:
-        pass
-    return {"success": True, "room_name": req.room_name}
-
-
-@router.post("/control/pause")
-async def pause(req: QueueRequest, _user: CurrentUser):
-    """Pause playback for a specific room."""
-    try:
-        await _call_music_service("POST", "/pause", {"room_name": req.room_name})
-    except Exception:
-        pass
-    return {"success": True, "is_playing": False, "room_name": req.room_name}
-
-
-@router.post("/control/skip")
-async def skip(req: QueueRequest, _user: CurrentUser):
-    """Skip to next song for a specific room."""
-    state = _get_room_state(req.room_name)
-    
-    try:
-        await _call_music_service("POST", "/stop", {"room_name": req.room_name})
-    except Exception:
-        pass
-    
-    if state.current_index < len(state.play_queue) - 1:
-        state.current_index += 1
-        return {"success": True, "current_index": state.current_index, "room_name": req.room_name}
-    
-    return {"success": False, "message": "No more songs in queue", "room_name": req.room_name}
-
-
-@router.post("/control/previous")
-async def previous(req: QueueRequest, _user: CurrentUser):
-    """Go to previous song for a specific room."""
-    state = _get_room_state(req.room_name)
-    
-    try:
-        await _call_music_service("POST", "/stop", {"room_name": req.room_name})
-    except Exception:
-        pass
-    
-    if state.current_index > 0:
-        state.current_index -= 1
-        return {"success": True, "current_index": state.current_index, "room_name": req.room_name}
-    
-    return {"success": False, "message": "Already at first song", "room_name": req.room_name}
-
-
 # --- Bot Control APIs ---
 
 class BotStartRequest(BaseModel):
@@ -617,6 +561,30 @@ async def bot_skip(req: QueueRequest, _user: CurrentUser):
     # Broadcast when queue ends
     asyncio.create_task(_broadcast_playback_state(req.room_name))
     return {"success": False, "message": "No more songs in queue", "room_name": req.room_name}
+
+
+@router.post("/bot/previous")
+async def bot_previous(req: QueueRequest, _user: CurrentUser):
+    """Go to previous song on the bot for a specific room."""
+    state = _get_room_state(req.room_name)
+    
+    try:
+        await _call_music_service("POST", "/stop", {"room_name": req.room_name})
+    except Exception:
+        pass
+    
+    if state.current_index > 0:
+        state.current_index -= 1
+        success = await _play_current_song(req.room_name)
+        # Broadcast state change
+        asyncio.create_task(_broadcast_playback_state(req.room_name))
+        if success:
+            return {"success": True, "current_index": state.current_index, "room_name": req.room_name}
+        return {"success": True, "current_index": state.current_index, "room_name": req.room_name}
+    
+    # Broadcast when at first song
+    asyncio.create_task(_broadcast_playback_state(req.room_name))
+    return {"success": False, "message": "Already at first song", "room_name": req.room_name}
 
 
 class SeekRequestWithRoom(BaseModel):

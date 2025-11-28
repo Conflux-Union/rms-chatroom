@@ -333,6 +333,18 @@ class MusicViewModel @Inject constructor(
         }
     }
 
+    fun botPrevious() {
+        val roomName = _state.value.currentRoomName ?: return
+        viewModelScope.launch {
+            try {
+                api.musicBotPrevious(getAuthHeader(), MusicRoomRequest(roomName))
+                refreshQueue(roomName)
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(error = "上一首失败")
+            }
+        }
+    }
+
     fun botSeek(positionMs: Long) {
         val roomName = _state.value.currentRoomName ?: return
         viewModelScope.launch {

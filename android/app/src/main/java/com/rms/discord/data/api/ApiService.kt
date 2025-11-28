@@ -159,6 +159,12 @@ interface ApiService {
         @Body request: MusicRoomRequest
     ): MusicSuccessResponse
 
+    @POST("api/music/bot/previous")
+    suspend fun musicBotPrevious(
+        @Header("Authorization") token: String,
+        @Body request: MusicRoomRequest
+    ): MusicSuccessResponse
+
     @POST("api/music/bot/seek")
     suspend fun musicBotSeek(
         @Header("Authorization") token: String,

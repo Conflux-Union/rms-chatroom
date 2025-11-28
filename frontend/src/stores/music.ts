@@ -200,7 +200,7 @@ export const useMusicStore = defineStore('music', () => {
     }
   }
   
-  // --- Playback control ---
+  // --- Utility functions ---
   
   async function getSongUrl(mid: string): Promise<string | null> {
     try {
@@ -212,73 +212,6 @@ export const useMusicStore = defineStore('music', () => {
     } catch (e) {
       console.error('Failed to get song URL:', e)
       return null
-    }
-  }
-  
-  async function play(roomName: string) {
-    try {
-      await fetch(`${API_BASE}/api/music/control/play`, {
-        method: 'POST',
-        headers: headers(),
-        body: JSON.stringify({ room_name: roomName })
-      })
-      isPlaying.value = true
-      
-      // Get current song URL if we have a current song
-      if (currentSong.value && !currentSongUrl.value) {
-        currentSongUrl.value = await getSongUrl(currentSong.value.mid)
-      }
-    } catch (e) {
-      console.error('Play failed:', e)
-    }
-  }
-  
-  async function pause(roomName: string) {
-    try {
-      await fetch(`${API_BASE}/api/music/control/pause`, {
-        method: 'POST',
-        headers: headers(),
-        body: JSON.stringify({ room_name: roomName })
-      })
-      isPlaying.value = false
-    } catch (e) {
-      console.error('Pause failed:', e)
-    }
-  }
-  
-  async function skip(roomName: string) {
-    try {
-      await fetch(`${API_BASE}/api/music/control/skip`, {
-        method: 'POST',
-        headers: headers(),
-        body: JSON.stringify({ room_name: roomName })
-      })
-      await refreshQueue(roomName)
-      
-      // Get new song URL
-      if (currentSong.value) {
-        currentSongUrl.value = await getSongUrl(currentSong.value.mid)
-      }
-    } catch (e) {
-      console.error('Skip failed:', e)
-    }
-  }
-  
-  async function previous(roomName: string) {
-    try {
-      await fetch(`${API_BASE}/api/music/control/previous`, {
-        method: 'POST',
-        headers: headers(),
-        body: JSON.stringify({ room_name: roomName })
-      })
-      await refreshQueue(roomName)
-      
-      // Get new song URL
-      if (currentSong.value) {
-        currentSongUrl.value = await getSongUrl(currentSong.value.mid)
-      }
-    } catch (e) {
-      console.error('Previous failed:', e)
     }
   }
   
@@ -405,6 +338,20 @@ export const useMusicStore = defineStore('music', () => {
     }
   }
   
+  async function botPrevious(roomName: string) {
+    try {
+      const res = await fetch(`${API_BASE}/api/music/bot/previous`, {
+        method: 'POST',
+        headers: headers(),
+        body: JSON.stringify({ room_name: roomName })
+      })
+      await res.json()
+      await refreshQueue(roomName)
+    } catch (e) {
+      console.error('Bot previous failed:', e)
+    }
+  }
+  
   async function botSeek(roomName: string, seekPositionMs: number) {
     try {
       await fetch(`${API_BASE}/api/music/bot/seek`, {
@@ -488,10 +435,6 @@ export const useMusicStore = defineStore('music', () => {
     playbackState,
     positionMs,
     durationMs,
-    play,
-    pause,
-    skip,
-    previous,
     getSongUrl,
     
     // Bot state
@@ -504,6 +447,7 @@ export const useMusicStore = defineStore('music', () => {
     botPause,
     botResume,
     botSkip,
+    botPrevious,
     botSeek,
     getProgress,
     updateProgress,

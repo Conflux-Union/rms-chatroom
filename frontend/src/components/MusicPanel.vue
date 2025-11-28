@@ -204,7 +204,7 @@ async function handleAddToQueue(song: Song) {
 
 function handleAudioEnded() {
   if (currentRoomName.value) {
-    music.skip(currentRoomName.value)
+    music.botSkip(currentRoomName.value)
   }
 }
 
@@ -237,6 +237,12 @@ async function handleRemoveFromQueue(index: number) {
 async function handleBotSkip() {
   if (currentRoomName.value) {
     await music.botSkip(currentRoomName.value)
+  }
+}
+
+async function handleBotPrevious() {
+  if (currentRoomName.value) {
+    await music.botPrevious(currentRoomName.value)
   }
 }
 
@@ -319,7 +325,7 @@ async function handleStopBot() {
           </div>
         </div>
         <div class="playback-controls">
-          <!--<button class="control-btn" @click="handleBotSkip" title="上一首"><SkipBack :size="18" /></button>-->
+          <button class="control-btn" @click="handleBotPrevious" title="上一首"><SkipBack :size="18" /></button>
           <button 
             class="control-btn play-btn" 
             @click="handleBotPlayPause"
