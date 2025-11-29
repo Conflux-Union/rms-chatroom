@@ -117,6 +117,9 @@ dependencies {
     // Splash screen
     implementation(libs.splashscreen)
 
+    // Colorful Sliders
+    implementation(libs.colorful.sliders)
+
     // Testing - Unit tests
     testImplementation(libs.junit)
     testImplementation(libs.coroutines.test)

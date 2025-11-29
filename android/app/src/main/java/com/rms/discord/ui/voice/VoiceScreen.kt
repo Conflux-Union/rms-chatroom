@@ -23,6 +23,9 @@ import androidx.compose.material.icons.automirrored.filled.VolumeOff
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import com.smarttoolfactory.slider.ColorfulSlider
+import com.smarttoolfactory.slider.MaterialSliderDefaults
+import com.smarttoolfactory.slider.SliderBrushColor
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -594,7 +597,7 @@ private fun ParticipantSettingsSheet(
         Spacer(modifier = Modifier.height(8.dp))
 
         // Slider
-        Slider(
+        ColorfulSlider(
             value = localVolume,
             onValueChange = { newVolume ->
                 localVolume = newVolume
@@ -603,10 +606,13 @@ private fun ParticipantSettingsSheet(
             valueRange = 0f..2f,
             steps = 19,
             modifier = Modifier.fillMaxWidth(),
-            colors = SliderDefaults.colors(
-                thumbColor = if (isBoost) DiscordYellow else VoiceConnected,
-                activeTrackColor = if (isBoost) DiscordYellow else VoiceConnected,
-                inactiveTrackColor = SurfaceDarker
+            thumbRadius = 10.dp,
+            trackHeight = 8.dp,
+            coerceThumbInTrack = true,
+            colors = MaterialSliderDefaults.materialColors(
+                thumbColor = SliderBrushColor(color = if (isBoost) DiscordYellow else VoiceConnected),
+                activeTrackColor = SliderBrushColor(color = if (isBoost) DiscordYellow else VoiceConnected),
+                inactiveTrackColor = SliderBrushColor(color = SurfaceDarker)
             )
         )
 

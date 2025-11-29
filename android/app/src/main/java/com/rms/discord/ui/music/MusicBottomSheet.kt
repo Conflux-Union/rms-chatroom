@@ -16,6 +16,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import com.smarttoolfactory.slider.ColorfulSlider
+import com.smarttoolfactory.slider.MaterialSliderDefaults
+import com.smarttoolfactory.slider.SliderBrushColor
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -327,7 +330,7 @@ private fun ProgressBar(
             )
         }
 
-        Slider(
+        ColorfulSlider(
             value = progress,
             onValueChange = { 
                 isDragging = true
@@ -337,13 +340,14 @@ private fun ProgressBar(
                 isDragging = false
                 onSeek((sliderPosition * durationMs).toLong())
             },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(20.dp),
-            colors = SliderDefaults.colors(
-                thumbColor = TiColor,
-                activeTrackColor = TiColor,
-                inactiveTrackColor = SurfaceDark
+            modifier = Modifier.fillMaxWidth(),
+            thumbRadius = 8.dp,
+            trackHeight = 6.dp,
+            coerceThumbInTrack = true,
+            colors = MaterialSliderDefaults.materialColors(
+                thumbColor = SliderBrushColor(color = TiColor),
+                activeTrackColor = SliderBrushColor(color = TiColor),
+                inactiveTrackColor = SliderBrushColor(color = SurfaceDark)
             )
         )
     }

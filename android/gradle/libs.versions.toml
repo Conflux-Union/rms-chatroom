@@ -17,6 +17,7 @@ ksp = "2.0.21-1.0.27"
 browser = "1.8.0"
 coil = "2.7.0"
 splashscreen = "1.0.1"
+colorfulSliders = "1.2.2"
 # Testing
 junit = "4.13.2"
 junitExt = "1.2.1"
@@ -68,6 +69,9 @@ coil-compose = { group = "io.coil-kt", name = "coil-compose", version.ref = "coi
 
 # Splash screen
 splashscreen = { group = "androidx.core", name = "core-splashscreen", version.ref = "splashscreen" }
+
+# Colorful Sliders
+colorful-sliders = { module = "com.github.SmartToolFactory:Compose-Colorful-Sliders", version.ref = "colorfulSliders" }
 
 # Testing
 junit = { group = "junit", name = "junit", version.ref = "junit" }
