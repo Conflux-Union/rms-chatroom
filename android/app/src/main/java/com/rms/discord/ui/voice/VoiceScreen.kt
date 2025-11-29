@@ -604,7 +604,6 @@ private fun ParticipantSettingsSheet(
                 onVolumeChange(newVolume)
             },
             valueRange = 0f..2f,
-            steps = 19,
             modifier = Modifier.fillMaxWidth(),
             thumbRadius = 10.dp,
             trackHeight = 8.dp,

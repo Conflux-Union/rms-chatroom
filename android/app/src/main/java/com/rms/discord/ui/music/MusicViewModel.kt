@@ -1,5 +1,6 @@
 package com.rms.discord.ui.music
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.rms.discord.data.api.ApiService
@@ -11,6 +12,8 @@ import com.rms.discord.data.model.MusicSeekRequest
 import com.rms.discord.data.model.QueueItem
 import com.rms.discord.data.model.Song
 import com.rms.discord.data.repository.AuthRepository
+import com.rms.discord.data.websocket.MusicWebSocket
+import com.rms.discord.data.websocket.MusicWebSocketEvent
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -54,18 +57,62 @@ data class MusicState(
 @HiltViewModel
 class MusicViewModel @Inject constructor(
     private val api: ApiService,
-    private val authRepository: AuthRepository
+    private val authRepository: AuthRepository,
+    private val musicWebSocket: MusicWebSocket
 ) : ViewModel() {
+
+    companion object {
+        private const val TAG = "MusicViewModel"
+    }
 
     private val _state = MutableStateFlow(MusicState())
     val state: StateFlow<MusicState> = _state.asStateFlow()
 
     private var progressPollingJob: Job? = null
     private var loginPollingJob: Job? = null
+    private var webSocketObserveJob: Job? = null
 
     init {
         viewModelScope.launch {
             checkLoginStatus()
+        }
+        observeMusicWebSocketEvents()
+    }
+
+    private fun observeMusicWebSocketEvents() {
+        webSocketObserveJob?.cancel()
+        webSocketObserveJob = viewModelScope.launch {
+            musicWebSocket.events.collect { event ->
+                when (event) {
+                    is MusicWebSocketEvent.MusicStateUpdate -> {
+                        val currentRoom = _state.value.currentRoomName
+                        if (currentRoom != null && event.roomName == currentRoom) {
+                            Log.d(TAG, "WebSocket state update: playing=${event.isPlaying}, song=${event.currentSong?.name}")
+                            _state.value = _state.value.copy(
+                                isPlaying = event.isPlaying,
+                                currentSong = event.currentSong,
+                                currentIndex = event.currentIndex,
+                                positionMs = event.positionMs,
+                                durationMs = event.durationMs,
+                                playbackState = event.state
+                            )
+                            // Refresh queue when state changes (e.g., song ended, skip)
+                            if (event.state == "idle" || event.currentIndex != _state.value.currentIndex) {
+                                refreshQueue(currentRoom)
+                            }
+                        }
+                    }
+                    is MusicWebSocketEvent.Connected -> {
+                        Log.d(TAG, "Music WebSocket connected")
+                    }
+                    is MusicWebSocketEvent.Disconnected -> {
+                        Log.d(TAG, "Music WebSocket disconnected")
+                    }
+                    is MusicWebSocketEvent.Error -> {
+                        Log.e(TAG, "Music WebSocket error: ${event.error}")
+                    }
+                }
+            }
         }
     }
     
@@ -75,6 +122,18 @@ class MusicViewModel @Inject constructor(
         if (roomName != null) {
             refreshQueue(roomName)
             getBotStatus(roomName)
+            connectMusicWebSocket()
+        } else {
+            musicWebSocket.disconnect()
+        }
+    }
+
+    private fun connectMusicWebSocket() {
+        viewModelScope.launch {
+            val token = authRepository.getToken()
+            if (token != null) {
+                musicWebSocket.connect(token)
+            }
         }
     }
 
@@ -423,5 +482,7 @@ class MusicViewModel @Inject constructor(
         super.onCleared()
         progressPollingJob?.cancel()
         loginPollingJob?.cancel()
+        webSocketObserveJob?.cancel()
+        musicWebSocket.disconnect()
     }
 }

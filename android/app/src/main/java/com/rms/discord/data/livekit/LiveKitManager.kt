@@ -10,14 +10,17 @@ import io.livekit.android.AudioOptions
 import io.livekit.android.AudioType
 import io.livekit.android.LiveKit
 import io.livekit.android.LiveKitOverrides
+import io.livekit.android.RoomOptions
 import io.livekit.android.audio.AudioProcessorOptions
 import io.livekit.android.audio.AudioSwitchHandler
 import io.livekit.android.events.RoomEvent
 import io.livekit.android.events.collect
 import io.livekit.android.room.Room
+import io.livekit.android.room.participant.AudioTrackPublishDefaults
 import io.livekit.android.room.participant.LocalParticipant
 import io.livekit.android.room.participant.Participant
 import io.livekit.android.room.participant.RemoteParticipant
+import io.livekit.android.room.track.LocalAudioTrackOptions
 import io.livekit.android.room.track.RemoteAudioTrack
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -134,8 +137,28 @@ class LiveKitManager @Inject constructor(
                 audioAttributes = musicAudioAttributes,
                 audioStreamType = AudioManager.STREAM_MUSIC
             )
+            // High quality stereo audio capture options (matching Web's musicHighQualityStereo)
+            val audioTrackCaptureDefaults = LocalAudioTrackOptions(
+                noiseSuppression = true,
+                echoCancellation = true,
+                autoGainControl = true
+            )
+
+            // High quality stereo audio publish options (256kbps like Web's musicHighQualityStereo)
+            val audioTrackPublishDefaults = AudioTrackPublishDefaults(
+                audioBitrate = 256000,  // 256kbps stereo high quality (same as Web's musicHighQualityStereo)
+                dtx = false,  // Disable DTX for music quality (continuous transmission)
+                red = true    // Enable redundant audio data for reliability
+            )
+
+            val roomOptions = RoomOptions(
+                audioTrackCaptureDefaults = audioTrackCaptureDefaults,
+                audioTrackPublishDefaults = audioTrackPublishDefaults
+            )
+
             val newRoom = LiveKit.create(
                 appContext = context,
+                options = roomOptions,
                 overrides = LiveKitOverrides(
                     audioOptions = AudioOptions(
                         audioOutputType = musicAudioType,
@@ -156,7 +179,7 @@ class LiveKitManager @Inject constructor(
             // Connect to room
             newRoom.connect(url, token)
 
-            // Publish local audio track
+            // Publish local audio track with high quality settings
             val localParticipant = newRoom.localParticipant
             localParticipant.setMicrophoneEnabled(true)
 
