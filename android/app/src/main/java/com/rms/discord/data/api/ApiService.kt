@@ -61,6 +61,34 @@ interface ApiService {
         @Body body: GuestJoinBody
     ): VoiceTokenResponse
 
+    // Voice Admin (requires admin permission)
+    @POST("api/voice/{channelId}/mute/{userId}")
+    suspend fun muteParticipant(
+        @Header("Authorization") token: String,
+        @Path("channelId") channelId: Long,
+        @Path("userId") userId: String,
+        @Body body: MuteParticipantRequest
+    ): MuteParticipantResponse
+
+    @GET("api/voice/{channelId}/host-mode")
+    suspend fun getHostMode(
+        @Header("Authorization") token: String,
+        @Path("channelId") channelId: Long
+    ): HostModeResponse
+
+    @POST("api/voice/{channelId}/host-mode")
+    suspend fun setHostMode(
+        @Header("Authorization") token: String,
+        @Path("channelId") channelId: Long,
+        @Body body: HostModeRequest
+    ): HostModeResponse
+
+    @POST("api/voice/{channelId}/invite")
+    suspend fun createVoiceInvite(
+        @Header("Authorization") token: String,
+        @Path("channelId") channelId: Long
+    ): InviteCreateResponse
+
     // Music - Login
     @GET("api/music/login/check")
     suspend fun checkMusicLogin(

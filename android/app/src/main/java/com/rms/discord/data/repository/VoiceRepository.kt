@@ -7,6 +7,10 @@ import com.rms.discord.data.livekit.AudioDeviceInfo
 import com.rms.discord.data.livekit.ConnectionState
 import com.rms.discord.data.livekit.LiveKitManager
 import com.rms.discord.data.livekit.ParticipantInfo
+import com.rms.discord.data.model.HostModeRequest
+import com.rms.discord.data.model.HostModeResponse
+import com.rms.discord.data.model.InviteCreateResponse
+import com.rms.discord.data.model.MuteParticipantRequest
 import com.rms.discord.data.model.VoiceInviteInfo
 import com.rms.discord.data.model.VoiceTokenResponse
 import com.rms.discord.data.model.VoiceUser
@@ -32,6 +36,16 @@ class VoiceRepository @Inject constructor(
 
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error.asStateFlow()
+
+    // Host mode state
+    private val _hostModeEnabled = MutableStateFlow(false)
+    val hostModeEnabled: StateFlow<Boolean> = _hostModeEnabled.asStateFlow()
+
+    private val _hostModeHostId = MutableStateFlow<String?>(null)
+    val hostModeHostId: StateFlow<String?> = _hostModeHostId.asStateFlow()
+
+    private val _hostModeHostName = MutableStateFlow<String?>(null)
+    val hostModeHostName: StateFlow<String?> = _hostModeHostName.asStateFlow()
 
     // Delegate to LiveKitManager
     val connectionState: StateFlow<ConnectionState> = liveKitManager.connectionState
@@ -110,6 +124,10 @@ class VoiceRepository @Inject constructor(
         liveKitManager.disconnect()
         _currentChannelId.value = null
         _error.value = null
+        // Clear host mode state
+        _hostModeEnabled.value = false
+        _hostModeHostId.value = null
+        _hostModeHostName.value = null
     }
 
     suspend fun fetchVoiceUsers(channelId: Long): Result<List<VoiceUser>> {
@@ -199,12 +217,76 @@ class VoiceRepository @Inject constructor(
         _error.value = null
     }
 
+    // Voice Admin APIs
+    suspend fun muteParticipant(channelId: Long, userId: String, muted: Boolean = true): Result<Boolean> {
+        return try {
+            val token = authRepository.getToken()
+                ?: return Result.failure(AuthException("Not logged in"))
+            val response = api.muteParticipant(
+                authRepository.getAuthHeader(token),
+                channelId,
+                userId,
+                MuteParticipantRequest(muted)
+            )
+            Result.success(response.success)
+        } catch (e: Exception) {
+            Log.e(TAG, "muteParticipant failed", e)
+            Result.failure(e.toAuthException())
+        }
+    }
+
+    suspend fun fetchHostMode(channelId: Long): Result<HostModeResponse> {
+        return try {
+            val token = authRepository.getToken()
+                ?: return Result.failure(AuthException("Not logged in"))
+            val response = api.getHostMode(authRepository.getAuthHeader(token), channelId)
+            _hostModeEnabled.value = response.enabled
+            _hostModeHostId.value = response.hostId
+            _hostModeHostName.value = response.hostName
+            Result.success(response)
+        } catch (e: Exception) {
+            Log.e(TAG, "fetchHostMode failed", e)
+            Result.failure(e.toAuthException())
+        }
+    }
+
+    suspend fun setHostMode(channelId: Long, enabled: Boolean): Result<HostModeResponse> {
+        return try {
+            val token = authRepository.getToken()
+                ?: return Result.failure(AuthException("Not logged in"))
+            val response = api.setHostMode(
+                authRepository.getAuthHeader(token),
+                channelId,
+                HostModeRequest(enabled)
+            )
+            _hostModeEnabled.value = response.enabled
+            _hostModeHostId.value = response.hostId
+            _hostModeHostName.value = response.hostName
+            Result.success(response)
+        } catch (e: Exception) {
+            Log.e(TAG, "setHostMode failed", e)
+            Result.failure(e.toAuthException())
+        }
+    }
+
+    suspend fun createVoiceInvite(channelId: Long): Result<InviteCreateResponse> {
+        return try {
+            val token = authRepository.getToken()
+                ?: return Result.failure(AuthException("Not logged in"))
+            val response = api.createVoiceInvite(authRepository.getAuthHeader(token), channelId)
+            Result.success(response)
+        } catch (e: Exception) {
+            Log.e(TAG, "createVoiceInvite failed", e)
+            Result.failure(e.toAuthException())
+        }
+    }
+
     private fun ParticipantInfo.toVoiceUser(): VoiceUser {
         return VoiceUser(
             id = identity,
             name = name,
             isMuted = isMuted,
-            isHost = false,
+            isHost = _hostModeHostId.value == identity,
             isSpeaking = isSpeaking
         )
     }

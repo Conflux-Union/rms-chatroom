@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.rms.discord.data.livekit.AudioDeviceInfo
 import com.rms.discord.data.livekit.ConnectionState
 import com.rms.discord.data.livekit.ParticipantInfo
+import com.rms.discord.data.repository.AuthRepository
 import com.rms.discord.data.repository.VoiceRepository
 import com.rms.discord.service.VoiceCallService
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -28,16 +29,29 @@ data class VoiceState(
     val participants: List<ParticipantInfo> = emptyList(),
     val availableDevices: List<AudioDeviceInfo> = emptyList(),
     val selectedDevice: AudioDeviceInfo? = null,
-    val error: String? = null
+    val error: String? = null,
+    // Admin features
+    val isAdmin: Boolean = false,
+    val userId: Long? = null,
+    val hostModeEnabled: Boolean = false,
+    val hostModeHostId: String? = null,
+    val hostModeHostName: String? = null,
+    // Invite state
+    val inviteUrl: String? = null,
+    val inviteLoading: Boolean = false,
+    val inviteError: String? = null
 ) {
     val isConnected: Boolean get() = connectionState == ConnectionState.CONNECTED
     val isReconnecting: Boolean get() = connectionState == ConnectionState.RECONNECTING
+    val isCurrentUserHost: Boolean get() = hostModeHostId == userId?.toString()
+    val hostButtonDisabled: Boolean get() = hostModeEnabled && !isCurrentUserHost
 }
 
 @HiltViewModel
 class VoiceViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val voiceRepository: VoiceRepository
+    private val voiceRepository: VoiceRepository,
+    private val authRepository: AuthRepository
 ) : ViewModel() {
 
     private val _channelId = MutableStateFlow<Long?>(null)
@@ -45,12 +59,32 @@ class VoiceViewModel @Inject constructor(
     private val _isLoading = MutableStateFlow(false)
     private var serviceStarted = false
 
+    // Admin state
+    private val _isAdmin = MutableStateFlow(false)
+    private val _userId = MutableStateFlow<Long?>(null)
+    private val _inviteUrl = MutableStateFlow<String?>(null)
+    private val _inviteLoading = MutableStateFlow(false)
+    private val _inviteError = MutableStateFlow<String?>(null)
+
     private val _state = MutableStateFlow(VoiceState())
     val state: StateFlow<VoiceState> = _state.asStateFlow()
 
     init {
         observeVoiceState()
         observeDeviceState()
+        observeHostModeState()
+        loadUserInfo()
+    }
+
+    private fun loadUserInfo() {
+        viewModelScope.launch {
+            val token = authRepository.getToken() ?: return@launch
+            val result = authRepository.verifyToken(token)
+            result.onSuccess { user ->
+                _isAdmin.value = user.permissionLevel >= 4
+                _userId.value = user.id
+            }
+        }
     }
 
     private fun observeVoiceState() {
@@ -78,7 +112,15 @@ class VoiceViewModel @Inject constructor(
                     isLoading = values[7] as Boolean,
                     error = values[8] as String?,
                     availableDevices = _state.value.availableDevices,
-                    selectedDevice = _state.value.selectedDevice
+                    selectedDevice = _state.value.selectedDevice,
+                    isAdmin = _isAdmin.value,
+                    userId = _userId.value,
+                    hostModeEnabled = _state.value.hostModeEnabled,
+                    hostModeHostId = _state.value.hostModeHostId,
+                    hostModeHostName = _state.value.hostModeHostName,
+                    inviteUrl = _inviteUrl.value,
+                    inviteLoading = _inviteLoading.value,
+                    inviteError = _inviteError.value
                 )
             }.collect { newState ->
                 // Start foreground service only on first successful connection
@@ -86,6 +128,8 @@ class VoiceViewModel @Inject constructor(
                 if (newState.connectionState == ConnectionState.CONNECTED && !serviceStarted) {
                     VoiceCallService.start(context, newState.channelName.ifEmpty { "语音通话" })
                     serviceStarted = true
+                    // Fetch host mode status on connect
+                    fetchHostMode()
                 }
                 // Stop service only when truly disconnected (not during reconnection)
                 if (newState.connectionState == ConnectionState.DISCONNECTED && serviceStarted) {
@@ -93,6 +137,24 @@ class VoiceViewModel @Inject constructor(
                     serviceStarted = false
                 }
                 _state.value = newState
+            }
+        }
+    }
+
+    private fun observeHostModeState() {
+        viewModelScope.launch {
+            combine(
+                voiceRepository.hostModeEnabled,
+                voiceRepository.hostModeHostId,
+                voiceRepository.hostModeHostName
+            ) { enabled, hostId, hostName ->
+                Triple(enabled, hostId, hostName)
+            }.collect { (enabled, hostId, hostName) ->
+                _state.value = _state.value.copy(
+                    hostModeEnabled = enabled,
+                    hostModeHostId = hostId,
+                    hostModeHostName = hostName
+                )
             }
         }
     }
@@ -170,6 +232,51 @@ class VoiceViewModel @Inject constructor(
 
     fun clearError() {
         voiceRepository.clearError()
+    }
+
+    // Admin functions
+    fun muteParticipant(userId: String, muted: Boolean = true) {
+        val channelId = _channelId.value ?: return
+        viewModelScope.launch {
+            voiceRepository.muteParticipant(channelId, userId, muted)
+        }
+    }
+
+    private fun fetchHostMode() {
+        val channelId = _channelId.value ?: return
+        viewModelScope.launch {
+            voiceRepository.fetchHostMode(channelId)
+        }
+    }
+
+    fun toggleHostMode() {
+        val channelId = _channelId.value ?: return
+        val newEnabled = !_state.value.hostModeEnabled
+        viewModelScope.launch {
+            voiceRepository.setHostMode(channelId, newEnabled)
+        }
+    }
+
+    fun createInvite() {
+        val channelId = _channelId.value ?: return
+        _inviteLoading.value = true
+        _inviteError.value = null
+        _inviteUrl.value = null
+        viewModelScope.launch {
+            val result = voiceRepository.createVoiceInvite(channelId)
+            result.onSuccess { response ->
+                _inviteUrl.value = response.inviteUrl
+            }.onFailure { error ->
+                _inviteError.value = error.message ?: "Failed to create invite"
+            }
+            _inviteLoading.value = false
+        }
+    }
+
+    fun clearInviteState() {
+        _inviteUrl.value = null
+        _inviteError.value = null
+        _inviteLoading.value = false
     }
 
     override fun onCleared() {

@@ -9,7 +9,9 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -73,6 +75,8 @@ fun VoiceScreen(
     var showLoginDialog by remember { mutableStateOf(false) }
     var showAudioDeviceSelector by remember { mutableStateOf(false) }
     var selectedParticipant by remember { mutableStateOf<ParticipantInfo?>(null) }
+    var showInviteDialog by remember { mutableStateOf(false) }
+    var participantToMute by remember { mutableStateOf<ParticipantInfo?>(null) }
     var hasAudioPermission by remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
@@ -219,12 +223,30 @@ fun VoiceScreen(
         ) {
             ParticipantSettingsSheet(
                 participant = participant,
+                isAdmin = state.isAdmin,
                 onVolumeChange = { volume ->
                     viewModel.setParticipantVolume(participant.identity, volume)
+                },
+                onMuteParticipant = {
+                    viewModel.muteParticipant(participant.identity, true)
+                    selectedParticipant = null
                 },
                 onDismiss = { selectedParticipant = null }
             )
         }
+    }
+
+    // Invite dialog
+    if (showInviteDialog) {
+        InviteDialog(
+            inviteUrl = state.inviteUrl,
+            isLoading = state.inviteLoading,
+            error = state.inviteError,
+            onDismiss = {
+                showInviteDialog = false
+                viewModel.clearInviteState()
+            }
+        )
     }
 
     Scaffold(
@@ -258,6 +280,11 @@ fun VoiceScreen(
                 error = state.error,
                 onDismissError = { viewModel.clearError() }
             )
+
+            // Host mode banner
+            if (state.hostModeEnabled && state.isConnected) {
+                HostModeBanner(hostName = state.hostModeHostName ?: "Unknown")
+            }
 
             // Voice users grid
             if (state.participants.isNotEmpty()) {
@@ -309,11 +336,20 @@ fun VoiceScreen(
                 isDeafened = state.isDeafened,
                 selectedDevice = state.selectedDevice,
                 isLoading = state.isLoading,
+                isAdmin = state.isAdmin,
+                hostModeEnabled = state.hostModeEnabled,
+                isCurrentUserHost = state.isCurrentUserHost,
+                hostButtonDisabled = state.hostButtonDisabled,
                 onJoin = onJoinWithPermission,
                 onLeave = { viewModel.leaveVoice() },
                 onToggleMute = { viewModel.toggleMute() },
                 onToggleDeafen = { viewModel.toggleDeafen() },
-                onOpenDeviceSelector = { showAudioDeviceSelector = true }
+                onOpenDeviceSelector = { showAudioDeviceSelector = true },
+                onToggleHostMode = { viewModel.toggleHostMode() },
+                onCreateInvite = {
+                    viewModel.createInvite()
+                    showInviteDialog = true
+                }
             )
         }
     }
@@ -500,9 +536,139 @@ private fun VoiceUserItem(
 }
 
 @Composable
+private fun HostModeBanner(hostName: String) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 8.dp),
+        color = DiscordYellow.copy(alpha = 0.2f),
+        shape = RoundedCornerShape(8.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
+        ) {
+            Icon(
+                imageVector = Icons.Default.Star,
+                contentDescription = null,
+                modifier = Modifier.size(16.dp),
+                tint = DiscordYellow
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = "$hostName 正在主持",
+                style = MaterialTheme.typography.bodySmall,
+                color = DiscordYellow,
+                fontWeight = FontWeight.Medium
+            )
+        }
+    }
+}
+
+@Composable
+private fun InviteDialog(
+    inviteUrl: String?,
+    isLoading: Boolean,
+    error: String?,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    var copied by remember { mutableStateOf(false) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = SurfaceDark,
+        icon = {
+            Icon(
+                imageVector = Icons.Default.Link,
+                contentDescription = null,
+                modifier = Modifier.size(48.dp),
+                tint = VoiceConnected
+            )
+        },
+        title = {
+            Text(
+                text = "邀请访客",
+                fontWeight = FontWeight.Bold,
+                color = TextPrimary
+            )
+        },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                when {
+                    isLoading -> {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(32.dp),
+                            color = VoiceConnected
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text("正在生成链接...", color = TextMuted)
+                    }
+                    error != null -> {
+                        Text(error, color = DiscordRed)
+                    }
+                    inviteUrl != null -> {
+                        Text(
+                            text = "此链接仅可使用一次，访客离开后无法再次加入。",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextMuted,
+                            textAlign = TextAlign.Center
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            color = SurfaceLight,
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = inviteUrl,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = TextPrimary,
+                                    modifier = Modifier.weight(1f),
+                                    maxLines = 2
+                                )
+                                IconButton(
+                                    onClick = {
+                                        val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                        val clip = android.content.ClipData.newPlainText("invite_url", inviteUrl)
+                                        clipboard.setPrimaryClip(clip)
+                                        copied = true
+                                    }
+                                ) {
+                                    Icon(
+                                        imageVector = if (copied) Icons.Default.Check else Icons.Default.ContentCopy,
+                                        contentDescription = if (copied) "已复制" else "复制",
+                                        tint = if (copied) VoiceConnected else TextMuted
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("关闭", color = TextPrimary)
+            }
+        }
+    )
+}
+
+@Composable
 private fun ParticipantSettingsSheet(
     participant: ParticipantInfo,
+    isAdmin: Boolean,
     onVolumeChange: (Float) -> Unit,
+    onMuteParticipant: () -> Unit,
     onDismiss: () -> Unit
 ) {
     var localVolume by remember(participant.identity) { mutableStateOf(participant.volume) }
@@ -562,6 +728,27 @@ private fun ParticipantSettingsSheet(
         }
 
         Spacer(modifier = Modifier.height(24.dp))
+
+        // Admin: Mute button
+        if (isAdmin) {
+            Button(
+                onClick = onMuteParticipant,
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = DiscordRed
+                ),
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.MicOff,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("静音麦克风")
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+        }
 
         // Volume section
         Text(
@@ -692,67 +879,117 @@ private fun VoiceControls(
     isDeafened: Boolean,
     selectedDevice: AudioDeviceInfo?,
     isLoading: Boolean,
+    isAdmin: Boolean,
+    hostModeEnabled: Boolean,
+    isCurrentUserHost: Boolean,
+    hostButtonDisabled: Boolean,
     onJoin: () -> Unit,
     onLeave: () -> Unit,
     onToggleMute: () -> Unit,
     onToggleDeafen: () -> Unit,
-    onOpenDeviceSelector: () -> Unit
+    onOpenDeviceSelector: () -> Unit,
+    onToggleHostMode: () -> Unit,
+    onCreateInvite: () -> Unit
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
         color = SurfaceDarker,
         shape = RoundedCornerShape(16.dp)
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            if (isConnected) {
-                // Mute button
-                VoiceControlButton(
-                    icon = if (isMuted) Icons.Default.MicOff else Icons.Default.Mic,
-                    label = if (isMuted) stringResource(R.string.unmute) else stringResource(R.string.mute),
-                    isActive = isMuted,
-                    activeColor = VoiceMuted,
-                    onClick = onToggleMute
-                )
+        if (isConnected) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
+            ) {
+                // Main controls row
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Mute button
+                    VoiceControlButton(
+                        icon = if (isMuted) Icons.Default.MicOff else Icons.Default.Mic,
+                        label = if (isMuted) stringResource(R.string.unmute) else stringResource(R.string.mute),
+                        isActive = isMuted,
+                        activeColor = VoiceMuted,
+                        onClick = onToggleMute
+                    )
 
-                // Deafen button
-                VoiceControlButton(
-                    icon = if (isDeafened) Icons.AutoMirrored.Filled.VolumeOff else Icons.AutoMirrored.Filled.VolumeUp,
-                    label = if (isDeafened) stringResource(R.string.undeafen) else stringResource(R.string.deafen),
-                    isActive = isDeafened,
-                    activeColor = VoiceMuted,
-                    onClick = onToggleDeafen
-                )
+                    // Deafen button
+                    VoiceControlButton(
+                        icon = if (isDeafened) Icons.AutoMirrored.Filled.VolumeOff else Icons.AutoMirrored.Filled.VolumeUp,
+                        label = if (isDeafened) stringResource(R.string.undeafen) else stringResource(R.string.deafen),
+                        isActive = isDeafened,
+                        activeColor = VoiceMuted,
+                        onClick = onToggleDeafen
+                    )
 
-                // Audio device selector button
-                VoiceControlButton(
-                    icon = when (selectedDevice?.type) {
-                        AudioDeviceType.SPEAKERPHONE -> Icons.Default.Speaker
-                        AudioDeviceType.EARPIECE -> Icons.Default.PhoneAndroid
-                        AudioDeviceType.WIRED_HEADSET -> Icons.Default.Headphones
-                        AudioDeviceType.BLUETOOTH -> Icons.Default.Bluetooth
-                        else -> Icons.Default.Speaker
-                    },
-                    label = selectedDevice?.name?.take(6) ?: "音频",
-                    isActive = true,
-                    activeColor = VoiceConnected,
-                    onClick = onOpenDeviceSelector
-                )
+                    // Audio device selector button
+                    VoiceControlButton(
+                        icon = when (selectedDevice?.type) {
+                            AudioDeviceType.SPEAKERPHONE -> Icons.Default.Speaker
+                            AudioDeviceType.EARPIECE -> Icons.Default.PhoneAndroid
+                            AudioDeviceType.WIRED_HEADSET -> Icons.Default.Headphones
+                            AudioDeviceType.BLUETOOTH -> Icons.Default.Bluetooth
+                            else -> Icons.Default.Speaker
+                        },
+                        label = selectedDevice?.name?.take(6) ?: "音频",
+                        isActive = true,
+                        activeColor = VoiceConnected,
+                        onClick = onOpenDeviceSelector
+                    )
 
-                // Leave button
-                VoiceControlButton(
-                    icon = Icons.Default.CallEnd,
-                    label = stringResource(R.string.leave_voice),
-                    isActive = true,
-                    activeColor = DiscordRed,
-                    onClick = onLeave
-                )
-            } else {
+                    // Leave button
+                    VoiceControlButton(
+                        icon = Icons.Default.CallEnd,
+                        label = stringResource(R.string.leave_voice),
+                        isActive = true,
+                        activeColor = DiscordRed,
+                        onClick = onLeave
+                    )
+                }
+
+                // Admin controls row
+                if (isAdmin) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceEvenly,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // Host mode button
+                        VoiceControlButton(
+                            icon = Icons.Default.Star,
+                            label = if (hostModeEnabled && isCurrentUserHost) "停止主持" 
+                                    else if (hostButtonDisabled) "主持中" 
+                                    else "主持模式",
+                            isActive = hostModeEnabled && isCurrentUserHost,
+                            activeColor = DiscordYellow,
+                            enabled = !hostButtonDisabled,
+                            onClick = onToggleHostMode
+                        )
+
+                        // Create invite button
+                        VoiceControlButton(
+                            icon = Icons.Default.Link,
+                            label = "邀请访客",
+                            isActive = true,
+                            activeColor = VoiceConnected,
+                            onClick = onCreateInvite
+                        )
+                    }
+                }
+            }
+        } else {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 // Join button
                 Button(
                     onClick = onJoin,
@@ -790,16 +1027,21 @@ private fun VoiceControlButton(
     label: String,
     isActive: Boolean,
     activeColor: Color,
+    enabled: Boolean = true,
     onClick: () -> Unit
 ) {
     val backgroundColor by animateColorAsState(
-        targetValue = if (isActive) activeColor else SurfaceLight,
+        targetValue = when {
+            !enabled -> SurfaceLight.copy(alpha = 0.5f)
+            isActive -> activeColor
+            else -> SurfaceLight
+        },
         animationSpec = tween(200),
         label = "controlBg"
     )
 
     val scale by animateFloatAsState(
-        targetValue = if (isActive) 1f else 0.95f,
+        targetValue = if (isActive && enabled) 1f else 0.95f,
         animationSpec = tween(100),
         label = "controlScale"
     )
@@ -809,6 +1051,7 @@ private fun VoiceControlButton(
     ) {
         IconButton(
             onClick = onClick,
+            enabled = enabled,
             modifier = Modifier
                 .size(56.dp)
                 .scale(scale)
@@ -819,7 +1062,7 @@ private fun VoiceControlButton(
                 imageVector = icon,
                 contentDescription = label,
                 modifier = Modifier.size(24.dp),
-                tint = Color.White
+                tint = if (enabled) Color.White else Color.White.copy(alpha = 0.5f)
             )
         }
 
@@ -828,7 +1071,7 @@ private fun VoiceControlButton(
         Text(
             text = label,
             style = MaterialTheme.typography.labelSmall,
-            color = TextMuted
+            color = if (enabled) TextMuted else TextMuted.copy(alpha = 0.5f)
         )
     }
 }

@@ -216,3 +216,31 @@ data class MusicSuccessResponse(
     val playing: String? = null,
     val message: String? = null
 )
+
+// Voice Admin models
+data class MuteParticipantRequest(
+    val muted: Boolean = true
+)
+
+data class MuteParticipantResponse(
+    val success: Boolean,
+    val muted: Boolean
+)
+
+data class HostModeRequest(
+    val enabled: Boolean
+)
+
+data class HostModeResponse(
+    val enabled: Boolean,
+    @SerializedName("host_id")
+    val hostId: String?,
+    @SerializedName("host_name")
+    val hostName: String?
+)
+
+data class InviteCreateResponse(
+    @SerializedName("invite_url")
+    val inviteUrl: String,
+    val token: String
+)
