@@ -9,6 +9,7 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -32,6 +33,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import android.Manifest
 import android.content.pm.PackageManager
@@ -67,6 +69,7 @@ fun VoiceScreen(
     var showSearchDialog by remember { mutableStateOf(false) }
     var showLoginDialog by remember { mutableStateOf(false) }
     var showAudioDeviceSelector by remember { mutableStateOf(false) }
+    var selectedParticipant by remember { mutableStateOf<ParticipantInfo?>(null) }
     var hasAudioPermission by remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
@@ -201,6 +204,26 @@ fun VoiceScreen(
         }
     }
 
+    // Participant settings bottom sheet
+    val participantSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
+
+    selectedParticipant?.let { participant ->
+        ModalBottomSheet(
+            onDismissRequest = { selectedParticipant = null },
+            sheetState = participantSheetState,
+            containerColor = SurfaceDark,
+            dragHandle = { BottomSheetDefaults.DragHandle() }
+        ) {
+            ParticipantSettingsSheet(
+                participant = participant,
+                onVolumeChange = { volume ->
+                    viewModel.setParticipantVolume(participant.identity, volume)
+                },
+                onDismiss = { selectedParticipant = null }
+            )
+        }
+    }
+
     Scaffold(
         floatingActionButton = {
             // Music FAB - only show when connected to voice
@@ -243,7 +266,14 @@ fun VoiceScreen(
                     contentPadding = PaddingValues(16.dp)
                 ) {
                     items(state.participants, key = { it.identity }) { participant ->
-                        VoiceUserItem(participant = participant)
+                        VoiceUserItem(
+                            participant = participant,
+                            onClick = {
+                                if (!participant.isLocal) {
+                                    selectedParticipant = participant
+                                }
+                            }
+                        )
                     }
                 }
             } else {
@@ -360,7 +390,10 @@ private fun ConnectionStatusBanner(
 }
 
 @Composable
-private fun VoiceUserItem(participant: ParticipantInfo) {
+private fun VoiceUserItem(
+    participant: ParticipantInfo,
+    onClick: () -> Unit
+) {
     // Speaking animation
     val infiniteTransition = rememberInfiniteTransition(label = "speaking")
     val speakingScale by infiniteTransition.animateFloat(
@@ -390,6 +423,7 @@ private fun VoiceUserItem(participant: ParticipantInfo) {
             .width(100.dp)
             .clip(RoundedCornerShape(8.dp))
             .background(SurfaceLight)
+            .clickable(enabled = !participant.isLocal, onClick = onClick)
             .padding(12.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
@@ -436,16 +470,211 @@ private fun VoiceUserItem(participant: ParticipantInfo) {
             textAlign = TextAlign.Center
         )
 
-        // Status icons
-        if (participant.isMuted) {
-            Spacer(modifier = Modifier.height(4.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        // Status icons and volume indicator
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (participant.isMuted) {
                 Icon(
                     imageVector = Icons.Default.MicOff,
                     contentDescription = "静音",
                     modifier = Modifier.size(14.dp),
                     tint = VoiceMuted
                 )
+            }
+            // Show volume indicator if not default
+            if (!participant.isLocal && participant.volume != 1.0f) {
+                Text(
+                    text = "${(participant.volume * 100).toInt()}%",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (participant.volume > 1.0f) DiscordYellow else TextMuted,
+                    fontSize = 10.sp
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ParticipantSettingsSheet(
+    participant: ParticipantInfo,
+    onVolumeChange: (Float) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var localVolume by remember(participant.identity) { mutableStateOf(participant.volume) }
+    val volumePercent = (localVolume * 100).toInt()
+    val isBoost = localVolume > 1.0f
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp)
+            .padding(bottom = 32.dp)
+    ) {
+        // Header with avatar and name
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(CircleShape)
+                    .background(TiColor),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = participant.name.take(1).uppercase(),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
+                )
+            }
+            Column {
+                Text(
+                    text = participant.name,
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = TextPrimary
+                )
+                if (participant.isMuted) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.MicOff,
+                            contentDescription = null,
+                            modifier = Modifier.size(14.dp),
+                            tint = VoiceMuted
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "已静音",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = VoiceMuted
+                        )
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        // Volume section
+        Text(
+            text = "用户音量",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Medium,
+            color = TextPrimary
+        )
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // Volume display
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = if (localVolume == 0f) Icons.AutoMirrored.Filled.VolumeOff 
+                              else Icons.AutoMirrored.Filled.VolumeUp,
+                contentDescription = null,
+                modifier = Modifier.size(24.dp),
+                tint = if (isBoost) DiscordYellow else TextMuted
+            )
+            Text(
+                text = "$volumePercent%",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                color = if (isBoost) DiscordYellow else TextPrimary
+            )
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // Slider
+        Slider(
+            value = localVolume,
+            onValueChange = { newVolume ->
+                localVolume = newVolume
+                onVolumeChange(newVolume)
+            },
+            valueRange = 0f..2f,
+            steps = 19,
+            modifier = Modifier.fillMaxWidth(),
+            colors = SliderDefaults.colors(
+                thumbColor = if (isBoost) DiscordYellow else VoiceConnected,
+                activeTrackColor = if (isBoost) DiscordYellow else VoiceConnected,
+                inactiveTrackColor = SurfaceDarker
+            )
+        )
+
+        // Labels
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = "0%",
+                style = MaterialTheme.typography.labelSmall,
+                color = TextMuted
+            )
+            Text(
+                text = "100%",
+                style = MaterialTheme.typography.labelSmall,
+                color = TextMuted
+            )
+            Text(
+                text = "200%",
+                style = MaterialTheme.typography.labelSmall,
+                color = DiscordYellow
+            )
+        }
+
+        // Boost warning
+        if (isBoost) {
+            Spacer(modifier = Modifier.height(12.dp))
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                color = DiscordYellow.copy(alpha = 0.15f),
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Row(
+                    modifier = Modifier.padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Warning,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                        tint = DiscordYellow
+                    )
+                    Text(
+                        text = "音量增益可能导致音频失真",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = DiscordYellow
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Reset button
+        if (localVolume != 1.0f) {
+            OutlinedButton(
+                onClick = {
+                    localVolume = 1.0f
+                    onVolumeChange(1.0f)
+                },
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    contentColor = TextPrimary
+                )
+            ) {
+                Text("重置为 100%")
             }
         }
     }

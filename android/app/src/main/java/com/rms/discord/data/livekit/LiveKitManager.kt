@@ -42,7 +42,9 @@ data class ParticipantInfo(
     val name: String,
     val isMuted: Boolean,
     val isSpeaking: Boolean,
-    val audioLevel: Float
+    val audioLevel: Float,
+    val volume: Float = 1.0f,  // 0.0-2.0, where 1.0=100%, 2.0=200%
+    val isLocal: Boolean = false
 )
 
 /**
@@ -98,6 +100,9 @@ class LiveKitManager @Inject constructor(
     val selectedDevice: StateFlow<AudioDeviceInfo?> = _selectedDevice.asStateFlow()
 
     private var audioHandler: AudioSwitchHandler? = null
+
+    // Per-participant volume storage (identity -> volume 0.0-2.0)
+    private val participantVolumes = mutableMapOf<String, Float>()
 
     suspend fun connect(url: String, token: String, roomName: String): Result<Unit> {
         if (_connectionState.value == ConnectionState.CONNECTED) {
@@ -187,6 +192,7 @@ class LiveKitManager @Inject constructor(
         _isSpeakerOn.value = true
         _availableDevices.value = emptyList()
         _selectedDevice.value = null
+        participantVolumes.clear()
 
         Log.d(TAG, "Disconnected from room")
     }
@@ -210,12 +216,15 @@ class LiveKitManager @Inject constructor(
         if (deafened) {
             setMuted(true)
         }
-        // Mute/unmute all remote audio tracks by setting volume
+        // Apply deafen state to all remote participants (respecting individual volume settings)
         room?.remoteParticipants?.values?.forEach { participant ->
-            participant.audioTrackPublications.forEach { (publication, track) ->
+            val identity = participant.identity?.value ?: return@forEach
+            val savedVolume = participantVolumes[identity] ?: 1.0f
+            val effectiveVolume = if (deafened) 0.0 else savedVolume.toDouble()
+            participant.audioTrackPublications.forEach { (_, track) ->
                 if (track is RemoteAudioTrack) {
                     try {
-                        track.setVolume(if (deafened) 0.0 else 1.0)
+                        track.setVolume(effectiveVolume)
                     } catch (_: Exception) {}
                 }
             }
@@ -234,6 +243,40 @@ class LiveKitManager @Inject constructor(
                     ?: devices.firstOrNull { it is AudioDevice.BluetoothHeadset }
             }
             targetDevice?.let { handler.selectDevice(it) }
+        }
+    }
+
+    /**
+     * Set volume for a specific participant (0.0-2.0, where 1.0=100%, 2.0=200%)
+     */
+    fun setParticipantVolume(identity: String, volume: Float) {
+        val clampedVolume = volume.coerceIn(0f, 2f)
+        participantVolumes[identity] = clampedVolume
+        applyVolumeToParticipant(identity, clampedVolume)
+        updateParticipants()
+        Log.d(TAG, "Set volume for $identity to ${(clampedVolume * 100).toInt()}%")
+    }
+
+    /**
+     * Get volume for a specific participant
+     */
+    fun getParticipantVolume(identity: String): Float {
+        return participantVolumes[identity] ?: 1.0f
+    }
+
+    private fun applyVolumeToParticipant(identity: String, volume: Float) {
+        // Apply volume to remote participant's audio track
+        val effectiveVolume = if (_isDeafened.value) 0.0 else volume.toDouble()
+        room?.remoteParticipants?.values?.find { it.identity?.value == identity }?.let { participant ->
+            participant.audioTrackPublications.forEach { (_, track) ->
+                if (track is RemoteAudioTrack) {
+                    try {
+                        track.setVolume(effectiveVolume)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Failed to set volume for $identity", e)
+                    }
+                }
+            }
         }
     }
 
@@ -348,12 +391,12 @@ class LiveKitManager @Inject constructor(
 
         // Add local participant
         currentRoom.localParticipant.let { local ->
-            list.add(participantToInfo(local))
+            list.add(participantToInfo(local, isLocal = true))
         }
 
         // Add remote participants
         currentRoom.remoteParticipants.values.forEach { remote ->
-            list.add(participantToInfo(remote))
+            list.add(participantToInfo(remote, isLocal = false))
         }
 
         _participants.value = list
@@ -366,19 +409,20 @@ class LiveKitManager @Inject constructor(
         }
     }
 
-    private fun participantToInfo(participant: Participant): ParticipantInfo {
-        // audioTrackPublications is List<Pair<TrackPublication, Track?>>
-        // Check if participant has audio track and its muted state
+    private fun participantToInfo(participant: Participant, isLocal: Boolean): ParticipantInfo {
+        val identity = participant.identity?.value ?: ""
         val audioPublication = participant.audioTrackPublications.firstOrNull()?.first
-        // Default to not muted if no track info yet (most users join with mic on)
         val isMuted = audioPublication?.muted ?: false
+        val volume = if (isLocal) 1.0f else (participantVolumes[identity] ?: 1.0f)
 
         return ParticipantInfo(
-            identity = participant.identity?.value ?: "",
-            name = participant.name ?: participant.identity?.value ?: "Unknown",
+            identity = identity,
+            name = participant.name ?: identity.ifEmpty { "Unknown" },
             isMuted = isMuted,
             isSpeaking = participant.isSpeaking,
-            audioLevel = participant.audioLevel
+            audioLevel = participant.audioLevel,
+            volume = volume,
+            isLocal = isLocal
         )
     }
 

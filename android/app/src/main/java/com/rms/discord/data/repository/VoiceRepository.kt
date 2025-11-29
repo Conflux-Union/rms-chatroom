@@ -144,6 +144,14 @@ class VoiceRepository @Inject constructor(
         liveKitManager.refreshAudioDevices()
     }
 
+    fun setParticipantVolume(identity: String, volume: Float) {
+        liveKitManager.setParticipantVolume(identity, volume)
+    }
+
+    fun getParticipantVolume(identity: String): Float {
+        return liveKitManager.getParticipantVolume(identity)
+    }
+
     // Voice Invite APIs
     suspend fun getVoiceInviteInfo(inviteToken: String): Result<VoiceInviteInfo> {
         return try {

@@ -157,6 +157,10 @@ class VoiceViewModel @Inject constructor(
         voiceRepository.refreshAudioDevices()
     }
 
+    fun setParticipantVolume(identity: String, volume: Float) {
+        voiceRepository.setParticipantVolume(identity, volume)
+    }
+
     fun clearError() {
         voiceRepository.clearError()
     }
