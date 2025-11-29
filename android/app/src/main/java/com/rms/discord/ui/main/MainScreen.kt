@@ -24,10 +24,12 @@ import com.rms.discord.ui.auth.AuthViewModel
 import com.rms.discord.ui.chat.ChatScreen
 import com.rms.discord.ui.main.components.ChannelListColumn
 import com.rms.discord.ui.main.components.ServerListColumn
+import com.rms.discord.ui.common.BatteryOptimizationDialog
 import com.rms.discord.ui.theme.TiColor
 import com.rms.discord.ui.theme.SurfaceDark
 import com.rms.discord.ui.theme.SurfaceDarker
 import com.rms.discord.ui.voice.VoiceScreen
+import com.rms.discord.util.BatteryOptimizationHelper
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -46,6 +48,23 @@ fun MainScreen(
     var showBugReportDialog by remember { mutableStateOf(false) }
     val clipboardManager = LocalClipboardManager.current
     val context = LocalContext.current
+
+    // Battery optimization preferences
+    val prefs = remember { context.getSharedPreferences("battery_optimization", 0) }
+    val neverShowBatteryDialog = remember { mutableStateOf(prefs.getBoolean("never_show", false)) }
+    val isXiaomiDevice = remember { BatteryOptimizationHelper.isXiaomiDevice() || BatteryOptimizationHelper.isMiuiOrHyperOS() }
+    val isIgnoringBatteryOptimization = remember { mutableStateOf(BatteryOptimizationHelper.isIgnoringBatteryOptimizations(context)) }
+    var showStartupBatteryDialog by remember { mutableStateOf(false) }
+
+    // Check battery optimization on startup (only for Xiaomi devices, only once per session)
+    LaunchedEffect(Unit) {
+        if ((isXiaomiDevice || !BatteryOptimizationHelper.isIgnoringBatteryOptimizations(context)) &&
+            !neverShowBatteryDialog.value &&
+            !isIgnoringBatteryOptimization.value
+        ) {
+            showStartupBatteryDialog = true
+        }
+    }
 
     // Register download receiver
     DisposableEffect(Unit) {
@@ -286,6 +305,43 @@ fun MainScreen(
                         Text("稍后再说")
                     }
                 }
+            }
+        )
+    }
+
+    // Battery Optimization Dialog - triggered by disconnect
+    if (mainState.showBatteryOptimizationDialog &&
+        !neverShowBatteryDialog.value &&
+        !isIgnoringBatteryOptimization.value
+    ) {
+        BatteryOptimizationDialog(
+            isXiaomiDevice = isXiaomiDevice,
+            onDismiss = { mainViewModel.dismissBatteryDialog() },
+            onOpenSettings = {
+                mainViewModel.dismissBatteryDialog()
+                BatteryOptimizationHelper.openBatterySettings(context)
+            },
+            onNeverShowAgain = {
+                neverShowBatteryDialog.value = true
+                prefs.edit().putBoolean("never_show", true).apply()
+                mainViewModel.setBatteryDialogNeverShow()
+            }
+        )
+    }
+
+    // Battery Optimization Dialog - triggered on startup
+    if (showStartupBatteryDialog) {
+        BatteryOptimizationDialog(
+            isXiaomiDevice = isXiaomiDevice,
+            onDismiss = { showStartupBatteryDialog = false },
+            onOpenSettings = {
+                showStartupBatteryDialog = false
+                BatteryOptimizationHelper.openBatterySettings(context)
+            },
+            onNeverShowAgain = {
+                showStartupBatteryDialog = false
+                neverShowBatteryDialog.value = true
+                prefs.edit().putBoolean("never_show", true).apply()
             }
         )
     }
