@@ -123,12 +123,9 @@ class VoiceViewModel @Inject constructor(
                     inviteError = _inviteError.value
                 )
             }.collect { newState ->
-                // Start foreground service only on first successful connection
-                // Keep service running during reconnection attempts
-                if (newState.connectionState == ConnectionState.CONNECTED && !serviceStarted) {
-                    VoiceCallService.start(context, newState.channelName.ifEmpty { "语音通话" })
-                    serviceStarted = true
-                    // Fetch host mode status on connect
+                // Fetch host mode status on first successful connection
+                if (newState.connectionState == ConnectionState.CONNECTED && 
+                    _state.value.connectionState != ConnectionState.CONNECTED) {
                     fetchHostMode()
                 }
                 // Stop service only when truly disconnected (not during reconnection)
@@ -188,7 +185,17 @@ class VoiceViewModel @Inject constructor(
         val channelId = _channelId.value ?: return
         viewModelScope.launch {
             _isLoading.value = true
-            voiceRepository.joinVoice(channelId)
+            // Start foreground service BEFORE connecting to ensure microphone works in background
+            // Android 12+ requires foreground service for background microphone access
+            val channelDisplayName = _channelName.value.ifEmpty { "语音通话" }
+            VoiceCallService.start(context, channelDisplayName)
+            serviceStarted = true
+            val result = voiceRepository.joinVoice(channelId)
+            // Stop service if connection failed
+            if (result.isFailure && serviceStarted) {
+                VoiceCallService.stop(context)
+                serviceStarted = false
+            }
             _isLoading.value = false
         }
     }

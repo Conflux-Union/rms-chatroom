@@ -9,6 +9,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
@@ -141,7 +142,18 @@ class VoiceCallService : Service() {
         channelName = intent?.getStringExtra("channel_name") ?: "语音通话"
 
         val notification = createNotification()
-        startForeground(NOTIFICATION_ID, notification)
+        // Android 10+ (Q): specify foreground service type for microphone access in background
+        // Android 12+ (S): strictly requires this for background microphone
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(
+                NOTIFICATION_ID,
+                notification,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE or
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
+            )
+        } else {
+            startForeground(NOTIFICATION_ID, notification)
+        }
 
         return START_STICKY
     }
