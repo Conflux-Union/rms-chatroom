@@ -272,11 +272,16 @@ class ChatWebSocket @Inject constructor(
     }
 
     fun reconnect() {
-        if (currentToken != null && currentChannelId != null) {
+        val token = currentToken
+        val channelId = currentChannelId
+        if (token != null && channelId != null) {
             Log.d(TAG, "Manual reconnect requested")
+            disconnect(sendEvent = false)
+            // Restore token and channelId after disconnect cleared them
+            currentToken = token
+            currentChannelId = channelId
             shouldReconnect = true
             reconnectAttempts = 0
-            disconnect(sendEvent = false)
             doConnect()
         } else {
             Log.w(TAG, "Cannot reconnect, no previous connection info")

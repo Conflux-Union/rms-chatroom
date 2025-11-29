@@ -43,7 +43,7 @@ class VoiceViewModel @Inject constructor(
     private val _channelId = MutableStateFlow<Long?>(null)
     private val _channelName = MutableStateFlow("")
     private val _isLoading = MutableStateFlow(false)
-    private var wasConnected = false
+    private var serviceStarted = false
 
     private val _state = MutableStateFlow(VoiceState())
     val state: StateFlow<VoiceState> = _state.asStateFlow()
@@ -81,13 +81,17 @@ class VoiceViewModel @Inject constructor(
                     selectedDevice = _state.value.selectedDevice
                 )
             }.collect { newState ->
-                // Start/stop foreground service based on connection state
-                if (newState.isConnected && !wasConnected) {
+                // Start foreground service only on first successful connection
+                // Keep service running during reconnection attempts
+                if (newState.connectionState == ConnectionState.CONNECTED && !serviceStarted) {
                     VoiceCallService.start(context, newState.channelName.ifEmpty { "语音通话" })
-                } else if (!newState.isConnected && wasConnected) {
-                    VoiceCallService.stop(context)
+                    serviceStarted = true
                 }
-                wasConnected = newState.isConnected
+                // Stop service only when truly disconnected (not during reconnection)
+                if (newState.connectionState == ConnectionState.DISCONNECTED && serviceStarted) {
+                    VoiceCallService.stop(context)
+                    serviceStarted = false
+                }
                 _state.value = newState
             }
         }
@@ -130,7 +134,10 @@ class VoiceViewModel @Inject constructor(
     fun leaveVoice() {
         _isLoading.value = true
         voiceRepository.leaveVoice()
-        VoiceCallService.stop(context)
+        if (serviceStarted) {
+            VoiceCallService.stop(context)
+            serviceStarted = false
+        }
         _isLoading.value = false
     }
 
@@ -168,9 +175,12 @@ class VoiceViewModel @Inject constructor(
     override fun onCleared() {
         super.onCleared()
         // Disconnect when ViewModel is cleared
-        if (_state.value.isConnected) {
+        if (_state.value.isConnected || serviceStarted) {
             voiceRepository.leaveVoice()
-            VoiceCallService.stop(context)
+            if (serviceStarted) {
+                VoiceCallService.stop(context)
+                serviceStarted = false
+            }
         }
     }
 }

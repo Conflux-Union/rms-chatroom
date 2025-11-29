@@ -44,10 +44,16 @@ class VoiceCallService : Service() {
             val intent = Intent(context, VoiceCallService::class.java).apply {
                 putExtra("channel_name", channelName)
             }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(intent)
-            } else {
-                context.startService(intent)
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    context.startForegroundService(intent)
+                } else {
+                    context.startService(intent)
+                }
+            } catch (e: Exception) {
+                // Android 12+ may throw ForegroundServiceStartNotAllowedException
+                // if app is in background. Service will be started when app returns to foreground.
+                android.util.Log.w("VoiceCallService", "Cannot start foreground service: ${e.message}")
             }
         }
 
