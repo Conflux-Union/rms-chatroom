@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -624,30 +625,43 @@ private fun InviteDialog(
                             color = SurfaceLight,
                             shape = RoundedCornerShape(8.dp)
                         ) {
-                            Row(
-                                modifier = Modifier.padding(12.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                            Column(
+                                modifier = Modifier.padding(12.dp)
                             ) {
-                                Text(
-                                    text = inviteUrl,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = TextPrimary,
-                                    modifier = Modifier.weight(1f),
-                                    maxLines = 2
-                                )
-                                IconButton(
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .horizontalScroll(rememberScrollState()),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = inviteUrl,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = TextPrimary,
+                                        maxLines = 1
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Button(
                                     onClick = {
                                         val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
                                         val clip = android.content.ClipData.newPlainText("invite_url", inviteUrl)
                                         clipboard.setPrimaryClip(clip)
                                         copied = true
-                                    }
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = if (copied) VoiceConnected else TiColor
+                                    ),
+                                    shape = RoundedCornerShape(8.dp)
                                 ) {
                                     Icon(
                                         imageVector = if (copied) Icons.Default.Check else Icons.Default.ContentCopy,
-                                        contentDescription = if (copied) "已复制" else "复制",
-                                        tint = if (copied) VoiceConnected else TextMuted
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp)
                                     )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(if (copied) "已复制" else "复制链接")
                                 }
                             }
                         }
@@ -897,90 +911,78 @@ private fun VoiceControls(
         shape = RoundedCornerShape(16.dp)
     ) {
         if (isConnected) {
-            Column(
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp)
+                    .horizontalScroll(rememberScrollState())
+                    .padding(16.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                // Main controls row
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceEvenly,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // Mute button
+                // Mute button
+                VoiceControlButton(
+                    icon = if (isMuted) Icons.Default.MicOff else Icons.Default.Mic,
+                    label = if (isMuted) stringResource(R.string.unmute) else stringResource(R.string.mute),
+                    isActive = isMuted,
+                    activeColor = VoiceMuted,
+                    onClick = onToggleMute
+                )
+
+                // Deafen button
+                VoiceControlButton(
+                    icon = if (isDeafened) Icons.AutoMirrored.Filled.VolumeOff else Icons.AutoMirrored.Filled.VolumeUp,
+                    label = if (isDeafened) stringResource(R.string.undeafen) else stringResource(R.string.deafen),
+                    isActive = isDeafened,
+                    activeColor = VoiceMuted,
+                    onClick = onToggleDeafen
+                )
+
+                // Audio device selector button
+                VoiceControlButton(
+                    icon = when (selectedDevice?.type) {
+                        AudioDeviceType.SPEAKERPHONE -> Icons.Default.Speaker
+                        AudioDeviceType.EARPIECE -> Icons.Default.PhoneAndroid
+                        AudioDeviceType.WIRED_HEADSET -> Icons.Default.Headphones
+                        AudioDeviceType.BLUETOOTH -> Icons.Default.Bluetooth
+                        else -> Icons.Default.Speaker
+                    },
+                    label = selectedDevice?.name?.take(6) ?: "音频",
+                    isActive = true,
+                    activeColor = VoiceConnected,
+                    onClick = onOpenDeviceSelector
+                )
+
+                // Admin: Host mode button
+                if (isAdmin) {
                     VoiceControlButton(
-                        icon = if (isMuted) Icons.Default.MicOff else Icons.Default.Mic,
-                        label = if (isMuted) stringResource(R.string.unmute) else stringResource(R.string.mute),
-                        isActive = isMuted,
-                        activeColor = VoiceMuted,
-                        onClick = onToggleMute
+                        icon = Icons.Default.Star,
+                        label = if (hostModeEnabled && isCurrentUserHost) "停止主持" 
+                                else if (hostButtonDisabled) "主持中" 
+                                else "主持模式",
+                        isActive = hostModeEnabled && isCurrentUserHost,
+                        activeColor = DiscordYellow,
+                        enabled = !hostButtonDisabled,
+                        onClick = onToggleHostMode
                     )
 
-                    // Deafen button
+                    // Admin: Create invite button
                     VoiceControlButton(
-                        icon = if (isDeafened) Icons.AutoMirrored.Filled.VolumeOff else Icons.AutoMirrored.Filled.VolumeUp,
-                        label = if (isDeafened) stringResource(R.string.undeafen) else stringResource(R.string.deafen),
-                        isActive = isDeafened,
-                        activeColor = VoiceMuted,
-                        onClick = onToggleDeafen
-                    )
-
-                    // Audio device selector button
-                    VoiceControlButton(
-                        icon = when (selectedDevice?.type) {
-                            AudioDeviceType.SPEAKERPHONE -> Icons.Default.Speaker
-                            AudioDeviceType.EARPIECE -> Icons.Default.PhoneAndroid
-                            AudioDeviceType.WIRED_HEADSET -> Icons.Default.Headphones
-                            AudioDeviceType.BLUETOOTH -> Icons.Default.Bluetooth
-                            else -> Icons.Default.Speaker
-                        },
-                        label = selectedDevice?.name?.take(6) ?: "音频",
+                        icon = Icons.Default.Link,
+                        label = "邀请访客",
                         isActive = true,
                         activeColor = VoiceConnected,
-                        onClick = onOpenDeviceSelector
-                    )
-
-                    // Leave button
-                    VoiceControlButton(
-                        icon = Icons.Default.CallEnd,
-                        label = stringResource(R.string.leave_voice),
-                        isActive = true,
-                        activeColor = DiscordRed,
-                        onClick = onLeave
+                        onClick = onCreateInvite
                     )
                 }
 
-                // Admin controls row
-                if (isAdmin) {
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceEvenly,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        // Host mode button
-                        VoiceControlButton(
-                            icon = Icons.Default.Star,
-                            label = if (hostModeEnabled && isCurrentUserHost) "停止主持" 
-                                    else if (hostButtonDisabled) "主持中" 
-                                    else "主持模式",
-                            isActive = hostModeEnabled && isCurrentUserHost,
-                            activeColor = DiscordYellow,
-                            enabled = !hostButtonDisabled,
-                            onClick = onToggleHostMode
-                        )
-
-                        // Create invite button
-                        VoiceControlButton(
-                            icon = Icons.Default.Link,
-                            label = "邀请访客",
-                            isActive = true,
-                            activeColor = VoiceConnected,
-                            onClick = onCreateInvite
-                        )
-                    }
-                }
+                // Leave button
+                VoiceControlButton(
+                    icon = Icons.Default.CallEnd,
+                    label = stringResource(R.string.leave_voice),
+                    isActive = true,
+                    activeColor = DiscordRed,
+                    onClick = onLeave
+                )
             }
         } else {
             Row(
