@@ -13,11 +13,15 @@ import androidx.navigation.navArgument
 import androidx.navigation.navDeepLink
 import com.rms.discord.ui.auth.LoginScreen
 import com.rms.discord.ui.main.MainScreen
+import com.rms.discord.ui.settings.OpenSourceLicensesScreen
+import com.rms.discord.ui.settings.SettingsScreen
 import com.rms.discord.ui.voice.VoiceInviteScreen
 
 sealed class Screen(val route: String) {
     object Login : Screen("login")
     object Main : Screen("main")
+    object Settings : Screen("settings")
+    object OpenSourceLicenses : Screen("open-source-licenses")
     object VoiceInvite : Screen("voice-invite/{token}") {
         fun createRoute(token: String) = "voice-invite/$token"
     }
@@ -74,7 +78,23 @@ fun NavGraph(
                     navController.navigate(Screen.Login.route) {
                         popUpTo(Screen.Main.route) { inclusive = true }
                     }
+                },
+                onNavigateToSettings = {
+                    navController.navigate(Screen.Settings.route)
                 }
+            )
+        }
+
+        composable(Screen.Settings.route) {
+            SettingsScreen(
+                onNavigateBack = { navController.popBackStack() },
+                onNavigateToLicenses = { navController.navigate(Screen.OpenSourceLicenses.route) }
+            )
+        }
+
+        composable(Screen.OpenSourceLicenses.route) {
+            OpenSourceLicensesScreen(
+                onNavigateBack = { navController.popBackStack() }
             )
         }
 

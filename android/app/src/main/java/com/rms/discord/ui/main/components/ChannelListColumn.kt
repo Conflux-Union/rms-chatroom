@@ -40,6 +40,7 @@ fun ChannelListColumn(
     onChannelClick: (Channel) -> Unit,
     username: String,
     onLogout: () -> Unit,
+    onSettings: () -> Unit = {},
     voiceChannelUsers: Map<Long, List<VoiceUser>> = emptyMap()
 ) {
     Column(
@@ -116,7 +117,8 @@ fun ChannelListColumn(
         // User panel at bottom
         UserPanel(
             username = username,
-            onLogout = onLogout
+            onLogout = onLogout,
+            onSettings = onSettings
         )
     }
 }
@@ -329,7 +331,8 @@ private fun VoiceUserItem(user: VoiceUser) {
 @Composable
 private fun UserPanel(
     username: String,
-    onLogout: () -> Unit
+    onLogout: () -> Unit,
+    onSettings: () -> Unit = {}
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -367,6 +370,19 @@ private fun UserPanel(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
+
+            // Settings button
+            IconButton(
+                onClick = onSettings,
+                modifier = Modifier.size(32.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Settings,
+                    contentDescription = "设置",
+                    tint = TextMuted,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
 
             // Logout button
             IconButton(

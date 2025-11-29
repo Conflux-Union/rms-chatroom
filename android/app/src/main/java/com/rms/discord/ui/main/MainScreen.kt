@@ -37,7 +37,8 @@ import kotlinx.coroutines.launch
 fun MainScreen(
     mainViewModel: MainViewModel = hiltViewModel(),
     authViewModel: AuthViewModel = hiltViewModel(),
-    onLogout: () -> Unit
+    onLogout: () -> Unit,
+    onNavigateToSettings: () -> Unit = {}
 ) {
     val mainState by mainViewModel.state.collectAsState()
     val authState by authViewModel.state.collectAsState()
@@ -52,16 +53,12 @@ fun MainScreen(
     // Battery optimization preferences
     val prefs = remember { context.getSharedPreferences("battery_optimization", 0) }
     val neverShowBatteryDialog = remember { mutableStateOf(prefs.getBoolean("never_show", false)) }
-    val isXiaomiDevice = remember { BatteryOptimizationHelper.isXiaomiDevice() || BatteryOptimizationHelper.isMiuiOrHyperOS() }
     val isIgnoringBatteryOptimization = remember { mutableStateOf(BatteryOptimizationHelper.isIgnoringBatteryOptimizations(context)) }
     var showStartupBatteryDialog by remember { mutableStateOf(false) }
 
-    // Check battery optimization on startup (only for Xiaomi devices, only once per session)
+    // Check battery optimization on startup
     LaunchedEffect(Unit) {
-        if ((isXiaomiDevice || !BatteryOptimizationHelper.isIgnoringBatteryOptimizations(context)) &&
-            !neverShowBatteryDialog.value &&
-            !isIgnoringBatteryOptimization.value
-        ) {
+        if (!neverShowBatteryDialog.value && !isIgnoringBatteryOptimization.value) {
             showStartupBatteryDialog = true
         }
     }
@@ -111,6 +108,10 @@ fun MainScreen(
                         },
                         username = authState.user?.nickname ?: authState.user?.username ?: "",
                         onLogout = { authViewModel.logout() },
+                        onSettings = {
+                            scope.launch { drawerState.close() }
+                            onNavigateToSettings()
+                        },
                         voiceChannelUsers = voiceChannelUsers
                     )
                 }
@@ -309,30 +310,9 @@ fun MainScreen(
         )
     }
 
-    // Battery Optimization Dialog - triggered by disconnect
-    if (mainState.showBatteryOptimizationDialog &&
-        !neverShowBatteryDialog.value &&
-        !isIgnoringBatteryOptimization.value
-    ) {
-        BatteryOptimizationDialog(
-            isXiaomiDevice = isXiaomiDevice,
-            onDismiss = { mainViewModel.dismissBatteryDialog() },
-            onOpenSettings = {
-                mainViewModel.dismissBatteryDialog()
-                BatteryOptimizationHelper.openBatterySettings(context)
-            },
-            onNeverShowAgain = {
-                neverShowBatteryDialog.value = true
-                prefs.edit().putBoolean("never_show", true).apply()
-                mainViewModel.setBatteryDialogNeverShow()
-            }
-        )
-    }
-
     // Battery Optimization Dialog - triggered on startup
     if (showStartupBatteryDialog) {
         BatteryOptimizationDialog(
-            isXiaomiDevice = isXiaomiDevice,
             onDismiss = { showStartupBatteryDialog = false },
             onOpenSettings = {
                 showStartupBatteryDialog = false

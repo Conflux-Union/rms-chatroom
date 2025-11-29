@@ -6,6 +6,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Inbox
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -260,11 +261,10 @@ fun ShimmerBox(
 }
 
 /**
- * Battery optimization guide dialog for Xiaomi/HyperOS devices
+ * Battery optimization guide dialog
  */
 @Composable
 fun BatteryOptimizationDialog(
-    isXiaomiDevice: Boolean,
     onDismiss: () -> Unit,
     onOpenSettings: () -> Unit,
     onNeverShowAgain: () -> Unit
@@ -273,33 +273,22 @@ fun BatteryOptimizationDialog(
         onDismissRequest = onDismiss,
         icon = {
             Icon(
-                imageVector = Icons.Default.WifiOff,
+                imageVector = Icons.Default.Warning,
                 contentDescription = null,
                 tint = DiscordYellow
             )
         },
         title = {
-            Text("网络连接不稳定")
+            Text("推荐关闭电池优化")
         },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
-                    text = if (isXiaomiDevice) {
-                        "检测到您使用的是小米/HyperOS设备，系统可能会限制后台应用的网络连接。"
-                    } else {
-                        "系统的电池优化功能可能会限制应用的后台网络连接。"
-                    },
+                    text = "系统的电池优化功能可能会限制应用的后台网络连接。",
                     style = MaterialTheme.typography.bodyMedium
                 )
                 Text(
-                    text = if (isXiaomiDevice) {
-                        "请在应用详情页中进行以下设置：\n" +
-                                "• 点击「省电策略」→ 选择「无限制」\n" +
-                                "• 点击「自启动」→ 开启\n" +
-                                "• 在最近任务中下拉本应用 → 点击锁定图标"
-                    } else {
-                        "请在弹出的页面中找到「电池优化」或「省电策略」，设为「不优化」或「无限制」"
-                    },
+                    text = "请在弹出的页面中找到「电池优化」或「省电策略」，设为「不优化」或「无限制」",
                     style = MaterialTheme.typography.bodySmall,
                     color = TextSecondary
                 )

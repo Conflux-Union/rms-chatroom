@@ -34,8 +34,7 @@ data class MainState(
     val bugReportId: String? = null,
     val updateInfo: AppUpdateResponse? = null,
     val isDownloading: Boolean = false,
-    val downloadComplete: Boolean = false,
-    val showBatteryOptimizationDialog: Boolean = false
+    val downloadComplete: Boolean = false
 )
 
 @HiltViewModel
@@ -46,9 +45,6 @@ class MainViewModel @Inject constructor(
 ) : ViewModel() {
     companion object {
         private const val TAG = "MainViewModel"
-        private const val PREF_NAME = "battery_optimization"
-        private const val KEY_NEVER_SHOW = "never_show_battery_dialog"
-        private const val KEY_DISCONNECT_COUNT = "disconnect_count"
     }
 
     private val _state = MutableStateFlow(MainState())
@@ -59,8 +55,6 @@ class MainViewModel @Inject constructor(
     val voiceChannelUsers: StateFlow<Map<Long, List<VoiceUser>>> = chatRepository.voiceChannelUsers
 
     private var voiceUsersPollingJob: Job? = null
-    private var disconnectCount = 0
-    private var wasConnected = false
 
     init {
         loadServers()
@@ -166,18 +160,9 @@ class MainViewModel @Inject constructor(
                     }
                     is WebSocketEvent.Connected -> {
                         Log.d(TAG, "WebSocket connected to channel ${event.channelId}")
-                        wasConnected = true
-                        disconnectCount = 0
                     }
                     is WebSocketEvent.Disconnected -> {
                         Log.d(TAG, "WebSocket disconnected")
-                        if (wasConnected) {
-                            disconnectCount++
-                            // Show battery optimization dialog after 2 disconnects
-                            if (disconnectCount >= 2) {
-                                checkAndShowBatteryDialog()
-                            }
-                        }
                     }
                     is WebSocketEvent.Error -> {
                         Log.e(TAG, "WebSocket error: ${event.error}")
@@ -187,20 +172,6 @@ class MainViewModel @Inject constructor(
                 }
             }
         }
-    }
-
-    private fun checkAndShowBatteryDialog() {
-        // Will be called from MainScreen with context to check preferences
-        _state.value = _state.value.copy(showBatteryOptimizationDialog = true)
-    }
-
-    fun dismissBatteryDialog() {
-        _state.value = _state.value.copy(showBatteryOptimizationDialog = false)
-    }
-
-    fun setBatteryDialogNeverShow() {
-        _state.value = _state.value.copy(showBatteryOptimizationDialog = false)
-        // Preference will be saved in MainScreen
     }
 
     fun sendMessage(content: String) {

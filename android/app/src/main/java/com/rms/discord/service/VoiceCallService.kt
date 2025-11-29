@@ -13,8 +13,12 @@ import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
 import androidx.core.app.NotificationCompat
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.ProcessLifecycleOwner
 import com.rms.discord.R
 import com.rms.discord.data.livekit.LiveKitManager
+import com.rms.discord.data.local.SettingsPreferences
 import com.rms.discord.ui.MainActivity
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
@@ -22,6 +26,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -65,10 +70,26 @@ class VoiceCallService : Service() {
     @Inject
     lateinit var liveKitManager: LiveKitManager
 
+    @Inject
+    lateinit var settingsPreferences: SettingsPreferences
+
     private var wakeLock: PowerManager.WakeLock? = null
     private var channelName: String = "语音通话"
     private var isMuted: Boolean = false
     private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+    private var isAppInForeground = true
+
+    private val lifecycleObserver = object : DefaultLifecycleObserver {
+        override fun onStart(owner: LifecycleOwner) {
+            isAppInForeground = true
+            FloatingWindowService.hide(this@VoiceCallService)
+        }
+
+        override fun onStop(owner: LifecycleOwner) {
+            isAppInForeground = false
+            showFloatingWindowIfEnabled()
+        }
+    }
 
     private val actionReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -111,6 +132,9 @@ class VoiceCallService : Service() {
                 updateNotification()
             }
         }
+
+        // Register lifecycle observer for floating window
+        ProcessLifecycleOwner.get().lifecycle.addObserver(lifecycleObserver)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -131,6 +155,11 @@ class VoiceCallService : Service() {
         try {
             unregisterReceiver(actionReceiver)
         } catch (_: Exception) {}
+        
+        // Remove lifecycle observer and stop floating window
+        ProcessLifecycleOwner.get().lifecycle.removeObserver(lifecycleObserver)
+        FloatingWindowService.stop(this)
+        
         stopForeground(STOP_FOREGROUND_REMOVE)
     }
 
@@ -223,5 +252,14 @@ class VoiceCallService : Service() {
             .addAction(muteAction)
             .addAction(hangUpAction)
             .build()
+    }
+
+    private fun showFloatingWindowIfEnabled() {
+        serviceScope.launch {
+            val enabled = settingsPreferences.floatingWindowEnabled.first()
+            if (enabled && FloatingWindowService.canDrawOverlays(this@VoiceCallService)) {
+                FloatingWindowService.show(this@VoiceCallService)
+            }
+        }
     }
 }
