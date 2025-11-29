@@ -40,6 +40,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import com.rms.discord.R
+import com.rms.discord.data.livekit.AudioDeviceInfo
+import com.rms.discord.data.livekit.AudioDeviceType
 import com.rms.discord.data.livekit.ConnectionState
 import com.rms.discord.data.livekit.ParticipantInfo
 import com.rms.discord.ui.music.MusicBottomSheet
@@ -64,6 +66,7 @@ fun VoiceScreen(
     var showMusicPanel by remember { mutableStateOf(false) }
     var showSearchDialog by remember { mutableStateOf(false) }
     var showLoginDialog by remember { mutableStateOf(false) }
+    var showAudioDeviceSelector by remember { mutableStateOf(false) }
     var hasAudioPermission by remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
@@ -143,6 +146,28 @@ fun VoiceScreen(
             viewModel.joinVoice()
         } else {
             permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+        }
+    }
+
+    // Audio device selector bottom sheet
+    val deviceSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
+
+    if (showAudioDeviceSelector) {
+        ModalBottomSheet(
+            onDismissRequest = { showAudioDeviceSelector = false },
+            sheetState = deviceSheetState,
+            containerColor = SurfaceDark,
+            dragHandle = { BottomSheetDefaults.DragHandle() }
+        ) {
+            AudioDeviceSelectorSheet(
+                availableDevices = state.availableDevices,
+                selectedDevice = state.selectedDevice,
+                onSelectDevice = { device ->
+                    viewModel.selectAudioDevice(device.id)
+                    showAudioDeviceSelector = false
+                },
+                onDismiss = { showAudioDeviceSelector = false }
+            )
         }
     }
 
@@ -249,13 +274,13 @@ fun VoiceScreen(
                 isConnected = state.isConnected,
                 isMuted = state.isMuted,
                 isDeafened = state.isDeafened,
-                isSpeakerOn = state.isSpeakerOn,
+                selectedDevice = state.selectedDevice,
                 isLoading = state.isLoading,
                 onJoin = onJoinWithPermission,
                 onLeave = { viewModel.leaveVoice() },
                 onToggleMute = { viewModel.toggleMute() },
                 onToggleDeafen = { viewModel.toggleDeafen() },
-                onToggleSpeaker = { viewModel.toggleSpeaker() }
+                onOpenDeviceSelector = { showAudioDeviceSelector = true }
             )
         }
     }
@@ -431,13 +456,13 @@ private fun VoiceControls(
     isConnected: Boolean,
     isMuted: Boolean,
     isDeafened: Boolean,
-    isSpeakerOn: Boolean,
+    selectedDevice: AudioDeviceInfo?,
     isLoading: Boolean,
     onJoin: () -> Unit,
     onLeave: () -> Unit,
     onToggleMute: () -> Unit,
     onToggleDeafen: () -> Unit,
-    onToggleSpeaker: () -> Unit
+    onOpenDeviceSelector: () -> Unit
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -470,13 +495,19 @@ private fun VoiceControls(
                     onClick = onToggleDeafen
                 )
 
-                // Speaker toggle button
+                // Audio device selector button
                 VoiceControlButton(
-                    icon = if (isSpeakerOn) Icons.Default.Speaker else Icons.Default.PhoneAndroid,
-                    label = if (isSpeakerOn) "扬声器" else "听筒",
-                    isActive = isSpeakerOn,
+                    icon = when (selectedDevice?.type) {
+                        AudioDeviceType.SPEAKERPHONE -> Icons.Default.Speaker
+                        AudioDeviceType.EARPIECE -> Icons.Default.PhoneAndroid
+                        AudioDeviceType.WIRED_HEADSET -> Icons.Default.Headphones
+                        AudioDeviceType.BLUETOOTH -> Icons.Default.Bluetooth
+                        else -> Icons.Default.Speaker
+                    },
+                    label = selectedDevice?.name?.take(6) ?: "音频",
+                    isActive = true,
                     activeColor = VoiceConnected,
-                    onClick = onToggleSpeaker
+                    onClick = onOpenDeviceSelector
                 )
 
                 // Leave button
@@ -565,5 +596,110 @@ private fun VoiceControlButton(
             style = MaterialTheme.typography.labelSmall,
             color = TextMuted
         )
+    }
+}
+
+@Composable
+private fun AudioDeviceSelectorSheet(
+    availableDevices: List<AudioDeviceInfo>,
+    selectedDevice: AudioDeviceInfo?,
+    onSelectDevice: (AudioDeviceInfo) -> Unit,
+    onDismiss: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp)
+            .padding(bottom = 32.dp)
+    ) {
+        Text(
+            text = "选择音频设备",
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold,
+            color = TextPrimary,
+            modifier = Modifier.padding(bottom = 16.dp)
+        )
+
+        if (availableDevices.isEmpty()) {
+            Text(
+                text = "没有可用的音频设备",
+                style = MaterialTheme.typography.bodyMedium,
+                color = TextMuted,
+                modifier = Modifier.padding(vertical = 24.dp)
+            )
+        } else {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                availableDevices.forEach { device ->
+                    AudioDeviceItem(
+                        device = device,
+                        isSelected = device.id == selectedDevice?.id,
+                        onClick = { onSelectDevice(device) }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AudioDeviceItem(
+    device: AudioDeviceInfo,
+    isSelected: Boolean,
+    onClick: () -> Unit
+) {
+    val backgroundColor by animateColorAsState(
+        targetValue = if (isSelected) TiColor.copy(alpha = 0.2f) else SurfaceLight,
+        animationSpec = tween(200),
+        label = "deviceItemBg"
+    )
+
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp)),
+        color = backgroundColor,
+        onClick = onClick
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            // Device icon
+            Icon(
+                imageVector = when (device.type) {
+                    AudioDeviceType.SPEAKERPHONE -> Icons.Default.Speaker
+                    AudioDeviceType.EARPIECE -> Icons.Default.PhoneAndroid
+                    AudioDeviceType.WIRED_HEADSET -> Icons.Default.Headphones
+                    AudioDeviceType.BLUETOOTH -> Icons.Default.Bluetooth
+                },
+                contentDescription = null,
+                modifier = Modifier.size(24.dp),
+                tint = if (isSelected) TiColor else TextMuted
+            )
+
+            // Device name
+            Text(
+                text = device.name,
+                style = MaterialTheme.typography.bodyLarge,
+                color = if (isSelected) TiColor else TextPrimary,
+                modifier = Modifier.weight(1f)
+            )
+
+            // Selected indicator
+            if (isSelected) {
+                Icon(
+                    imageVector = Icons.Default.Check,
+                    contentDescription = "已选择",
+                    modifier = Modifier.size(24.dp),
+                    tint = TiColor
+                )
+            }
+        }
     }
 }

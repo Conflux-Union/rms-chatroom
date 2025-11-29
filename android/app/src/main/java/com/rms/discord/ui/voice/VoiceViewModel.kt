@@ -3,6 +3,7 @@ package com.rms.discord.ui.voice
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.rms.discord.data.livekit.AudioDeviceInfo
 import com.rms.discord.data.livekit.ConnectionState
 import com.rms.discord.data.livekit.ParticipantInfo
 import com.rms.discord.data.repository.VoiceRepository
@@ -25,6 +26,8 @@ data class VoiceState(
     val isDeafened: Boolean = false,
     val isSpeakerOn: Boolean = true,
     val participants: List<ParticipantInfo> = emptyList(),
+    val availableDevices: List<AudioDeviceInfo> = emptyList(),
+    val selectedDevice: AudioDeviceInfo? = null,
     val error: String? = null
 ) {
     val isConnected: Boolean get() = connectionState == ConnectionState.CONNECTED
@@ -47,6 +50,7 @@ class VoiceViewModel @Inject constructor(
 
     init {
         observeVoiceState()
+        observeDeviceState()
     }
 
     private fun observeVoiceState() {
@@ -72,7 +76,9 @@ class VoiceViewModel @Inject constructor(
                     isSpeakerOn = values[5] as Boolean,
                     participants = values[6] as List<ParticipantInfo>,
                     isLoading = values[7] as Boolean,
-                    error = values[8] as String?
+                    error = values[8] as String?,
+                    availableDevices = _state.value.availableDevices,
+                    selectedDevice = _state.value.selectedDevice
                 )
             }.collect { newState ->
                 // Start/stop foreground service based on connection state
@@ -83,6 +89,22 @@ class VoiceViewModel @Inject constructor(
                 }
                 wasConnected = newState.isConnected
                 _state.value = newState
+            }
+        }
+    }
+
+    private fun observeDeviceState() {
+        viewModelScope.launch {
+            combine(
+                voiceRepository.availableDevices,
+                voiceRepository.selectedDevice
+            ) { devices, selected ->
+                Pair(devices, selected)
+            }.collect { (devices, selected) ->
+                _state.value = _state.value.copy(
+                    availableDevices = devices,
+                    selectedDevice = selected
+                )
             }
         }
     }
@@ -125,6 +147,14 @@ class VoiceViewModel @Inject constructor(
     fun toggleSpeaker() {
         val newSpeakerOn = !_state.value.isSpeakerOn
         voiceRepository.setSpeakerOn(newSpeakerOn)
+    }
+
+    fun selectAudioDevice(deviceId: String) {
+        voiceRepository.selectAudioDevice(deviceId)
+    }
+
+    fun refreshAudioDevices() {
+        voiceRepository.refreshAudioDevices()
     }
 
     fun clearError() {

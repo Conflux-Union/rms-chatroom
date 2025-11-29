@@ -37,6 +37,8 @@
 # Keep API request/response body classes
 -keep class com.rms.discord.data.api.SendMessageBody { *; }
 -keep class com.rms.discord.data.api.GuestJoinBody { *; }
+-keep class com.rms.discord.data.api.BugReportResponse { *; }
+-keep class com.rms.discord.data.api.AppUpdateResponse { *; }
 # Keep LiveKit data classes
 -keep class com.rms.discord.data.livekit.ParticipantInfo { *; }
 -keep class com.rms.discord.data.livekit.ConnectionState { *; }

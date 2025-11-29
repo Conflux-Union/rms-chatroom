@@ -2,6 +2,7 @@ package com.rms.discord.data.api
 
 import com.google.gson.annotations.SerializedName
 import com.rms.discord.data.model.*
+import okhttp3.MultipartBody
 import retrofit2.http.*
 
 interface ApiService {
@@ -176,7 +177,37 @@ interface ApiService {
         @Header("Authorization") token: String,
         @Path("roomName") roomName: String
     ): MusicProgressResponse
+
+    // Bug Report
+    @Multipart
+    @POST("api/bug/report")
+    suspend fun submitBugReport(
+        @Part file: MultipartBody.Part
+    ): BugReportResponse
+
+    // App Update
+    @GET("api/app/android/checkupdate")
+    suspend fun checkUpdate(): AppUpdateResponse
 }
 
 data class SendMessageBody(val content: String)
 data class GuestJoinBody(val username: String)
+
+// Bug Report
+data class BugReportResponse(
+    @SerializedName("report_id")
+    val reportId: String
+)
+
+// App Update
+data class AppUpdateResponse(
+    @SerializedName("version_code")
+    val versionCode: Int,
+    @SerializedName("version_name")
+    val versionName: String,
+    val changelog: String,
+    @SerializedName("force_update")
+    val forceUpdate: Boolean,
+    @SerializedName("download_url")
+    val downloadUrl: String
+)

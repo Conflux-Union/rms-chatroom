@@ -1,0 +1,6 @@
+{
+    "version_code": 2,
+    "version_name": "1.0.1",
+    "changelog": "更新了bug反馈功能和检查更新自动下载功能",
+    "force_update": false
+}

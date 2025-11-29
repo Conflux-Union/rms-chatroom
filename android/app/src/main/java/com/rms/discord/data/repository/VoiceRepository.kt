@@ -3,6 +3,7 @@ package com.rms.discord.data.repository
 import android.util.Log
 import com.rms.discord.data.api.ApiService
 import com.rms.discord.data.api.GuestJoinBody
+import com.rms.discord.data.livekit.AudioDeviceInfo
 import com.rms.discord.data.livekit.ConnectionState
 import com.rms.discord.data.livekit.LiveKitManager
 import com.rms.discord.data.livekit.ParticipantInfo
@@ -52,6 +53,8 @@ class VoiceRepository @Inject constructor(
     val isDeafened: StateFlow<Boolean> = liveKitManager.isDeafened
     val isSpeakerOn: StateFlow<Boolean> = liveKitManager.isSpeakerOn
     val participants: StateFlow<List<ParticipantInfo>> = liveKitManager.participants
+    val availableDevices: StateFlow<List<AudioDeviceInfo>> = liveKitManager.availableDevices
+    val selectedDevice: StateFlow<AudioDeviceInfo?> = liveKitManager.selectedDevice
 
     // Convert ParticipantInfo to VoiceUser for backward compatibility
     val voiceUsers: StateFlow<List<VoiceUser>> get() = object : StateFlow<List<VoiceUser>> {
@@ -131,6 +134,14 @@ class VoiceRepository @Inject constructor(
 
     fun setSpeakerOn(speakerOn: Boolean) {
         liveKitManager.setSpeakerOn(speakerOn)
+    }
+
+    fun selectAudioDevice(deviceId: String) {
+        liveKitManager.selectAudioDevice(deviceId)
+    }
+
+    fun refreshAudioDevices() {
+        liveKitManager.refreshAudioDevices()
     }
 
     // Voice Invite APIs

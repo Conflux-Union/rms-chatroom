@@ -1,12 +1,16 @@
 package com.rms.discord.data.livekit
 
 import android.content.Context
+import android.media.AudioAttributes
+import android.media.AudioManager
 import android.util.Log
 import com.twilio.audioswitch.AudioDevice
 import dagger.hilt.android.qualifiers.ApplicationContext
 import io.livekit.android.AudioOptions
+import io.livekit.android.AudioType
 import io.livekit.android.LiveKit
 import io.livekit.android.LiveKitOverrides
+import io.livekit.android.audio.AudioProcessorOptions
 import io.livekit.android.audio.AudioSwitchHandler
 import io.livekit.android.events.RoomEvent
 import io.livekit.android.events.collect
@@ -41,6 +45,23 @@ data class ParticipantInfo(
     val audioLevel: Float
 )
 
+/**
+ * Represents an audio device for UI display
+ */
+data class AudioDeviceInfo(
+    val id: String,
+    val name: String,
+    val type: AudioDeviceType,
+    val isSelected: Boolean
+)
+
+enum class AudioDeviceType {
+    SPEAKERPHONE,
+    EARPIECE,
+    WIRED_HEADSET,
+    BLUETOOTH
+}
+
 @Singleton
 class LiveKitManager @Inject constructor(
     @ApplicationContext private val context: Context
@@ -70,6 +91,12 @@ class LiveKitManager @Inject constructor(
     private val _currentRoomName = MutableStateFlow<String?>(null)
     val currentRoomName: StateFlow<String?> = _currentRoomName.asStateFlow()
 
+    private val _availableDevices = MutableStateFlow<List<AudioDeviceInfo>>(emptyList())
+    val availableDevices: StateFlow<List<AudioDeviceInfo>> = _availableDevices.asStateFlow()
+
+    private val _selectedDevice = MutableStateFlow<AudioDeviceInfo?>(null)
+    val selectedDevice: StateFlow<AudioDeviceInfo?> = _selectedDevice.asStateFlow()
+
     private var audioHandler: AudioSwitchHandler? = null
 
     suspend fun connect(url: String, token: String, roomName: String): Result<Unit> {
@@ -91,11 +118,26 @@ class LiveKitManager @Inject constructor(
             )
             audioHandler = handler
 
-            // Create room with audio handler
+            // Create room with custom audio type for best music quality
+            // Use MODE_NORMAL + CONTENT_TYPE_MUSIC + USAGE_MEDIA to match browser behavior
+            val musicAudioAttributes = AudioAttributes.Builder()
+                .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                .setUsage(AudioAttributes.USAGE_MEDIA)
+                .build()
+            val musicAudioType = AudioType.CustomAudioType(
+                audioMode = AudioManager.MODE_NORMAL,
+                audioAttributes = musicAudioAttributes,
+                audioStreamType = AudioManager.STREAM_MUSIC
+            )
             val newRoom = LiveKit.create(
                 appContext = context,
                 overrides = LiveKitOverrides(
-                    audioOptions = AudioOptions(audioHandler = handler)
+                    audioOptions = AudioOptions(
+                        audioOutputType = musicAudioType,
+                        audioProcessorOptions = AudioProcessorOptions(
+                            renderPreBypass = true
+                        )
+                    )
                 )
             )
             room = newRoom
@@ -114,6 +156,10 @@ class LiveKitManager @Inject constructor(
             localParticipant.setMicrophoneEnabled(true)
 
             _connectionState.value = ConnectionState.CONNECTED
+            
+            // Update available audio devices after connection
+            refreshAudioDevices()
+            
             Log.d(TAG, "Connected to room: $roomName")
             Result.success(Unit)
         } catch (e: Exception) {
@@ -139,6 +185,8 @@ class LiveKitManager @Inject constructor(
         _isMuted.value = false
         _isDeafened.value = false
         _isSpeakerOn.value = true
+        _availableDevices.value = emptyList()
+        _selectedDevice.value = null
 
         Log.d(TAG, "Disconnected from room")
     }
@@ -186,6 +234,69 @@ class LiveKitManager @Inject constructor(
                     ?: devices.firstOrNull { it is AudioDevice.BluetoothHeadset }
             }
             targetDevice?.let { handler.selectDevice(it) }
+        }
+    }
+
+    /**
+     * Select a specific audio device by its ID
+     */
+    fun selectAudioDevice(deviceId: String) {
+        audioHandler?.let { handler ->
+            val device = handler.availableAudioDevices.find { 
+                getDeviceId(it) == deviceId 
+            }
+            device?.let { 
+                handler.selectDevice(it)
+                Log.d(TAG, "Selected audio device: ${it.name}")
+                // Refresh device list after selection
+                refreshAudioDevices()
+            }
+        }
+    }
+
+    /**
+     * Refresh available audio devices list
+     */
+    fun refreshAudioDevices() {
+        audioHandler?.let { handler ->
+            updateAvailableDevices(handler.availableAudioDevices, handler.selectedAudioDevice)
+        }
+    }
+
+    private fun updateAvailableDevices(devices: List<AudioDevice>, selected: AudioDevice?) {
+        val deviceInfoList = devices.map { device ->
+            val type = when (device) {
+                is AudioDevice.Speakerphone -> AudioDeviceType.SPEAKERPHONE
+                is AudioDevice.Earpiece -> AudioDeviceType.EARPIECE
+                is AudioDevice.WiredHeadset -> AudioDeviceType.WIRED_HEADSET
+                is AudioDevice.BluetoothHeadset -> AudioDeviceType.BLUETOOTH
+                else -> AudioDeviceType.SPEAKERPHONE
+            }
+            AudioDeviceInfo(
+                id = getDeviceId(device),
+                name = device.name,
+                type = type,
+                isSelected = device == selected
+            )
+        }
+        _availableDevices.value = deviceInfoList
+        _selectedDevice.value = deviceInfoList.find { it.isSelected }
+
+        // Update speaker state based on selected device
+        selected?.let { sel ->
+            _isSpeakerOn.value = sel is AudioDevice.Speakerphone
+        }
+
+        Log.d(TAG, "Audio devices updated: ${deviceInfoList.size} devices, selected: ${selected?.name}")
+    }
+
+    private fun getDeviceId(device: AudioDevice): String {
+        return when (device) {
+            is AudioDevice.Speakerphone -> "speakerphone"
+            is AudioDevice.Earpiece -> "earpiece"
+            is AudioDevice.WiredHeadset -> "wired_headset"
+            is AudioDevice.BluetoothHeadset -> "bluetooth_${device.name}"
+            else -> device.name
         }
     }
 

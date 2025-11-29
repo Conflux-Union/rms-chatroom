@@ -7,7 +7,10 @@ import com.rms.discord.data.model.Channel
 import com.rms.discord.data.model.ChannelType
 import com.rms.discord.data.model.Server
 import com.rms.discord.data.model.VoiceUser
+import com.rms.discord.data.api.AppUpdateResponse
+import com.rms.discord.data.repository.BugReportRepository
 import com.rms.discord.data.repository.ChatRepository
+import com.rms.discord.data.repository.UpdateRepository
 import com.rms.discord.data.websocket.ConnectionState
 import com.rms.discord.data.websocket.WebSocketEvent
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -26,12 +29,19 @@ data class MainState(
     val servers: List<Server> = emptyList(),
     val currentServer: Server? = null,
     val currentChannel: Channel? = null,
-    val error: String? = null
+    val error: String? = null,
+    val bugReportSubmitting: Boolean = false,
+    val bugReportId: String? = null,
+    val updateInfo: AppUpdateResponse? = null,
+    val isDownloading: Boolean = false,
+    val downloadComplete: Boolean = false
 )
 
 @HiltViewModel
 class MainViewModel @Inject constructor(
-    private val chatRepository: ChatRepository
+    private val chatRepository: ChatRepository,
+    private val bugReportRepository: BugReportRepository,
+    private val updateRepository: UpdateRepository
 ) : ViewModel() {
     companion object {
         private const val TAG = "MainViewModel"
@@ -49,6 +59,7 @@ class MainViewModel @Inject constructor(
     init {
         loadServers()
         observeWebSocket()
+        checkForUpdate()
     }
 
     private fun loadServers() {
@@ -180,6 +191,60 @@ class MainViewModel @Inject constructor(
     fun clearError() {
         _state.value = _state.value.copy(error = null)
     }
+
+    fun submitBugReport() {
+        viewModelScope.launch {
+            _state.value = _state.value.copy(bugReportSubmitting = true)
+            bugReportRepository.submitBugReport()
+                .onSuccess { reportId ->
+                    _state.value = _state.value.copy(
+                        bugReportSubmitting = false,
+                        bugReportId = reportId
+                    )
+                }
+                .onFailure { e ->
+                    _state.value = _state.value.copy(
+                        bugReportSubmitting = false,
+                        error = "上报失败: ${e.message}"
+                    )
+                }
+        }
+    }
+
+    fun clearBugReportId() {
+        _state.value = _state.value.copy(bugReportId = null)
+    }
+
+    private fun checkForUpdate() {
+        viewModelScope.launch {
+            updateRepository.checkUpdate()
+                .onSuccess { updateInfo ->
+                    _state.value = _state.value.copy(updateInfo = updateInfo)
+                }
+        }
+    }
+
+    fun dismissUpdate() {
+        _state.value = _state.value.copy(updateInfo = null)
+    }
+
+    fun downloadUpdate() {
+        val downloadUrl = _state.value.updateInfo?.downloadUrl ?: return
+        _state.value = _state.value.copy(isDownloading = true)
+        updateRepository.downloadUpdate(downloadUrl)
+    }
+
+    fun onDownloadComplete(success: Boolean) {
+        _state.value = _state.value.copy(
+            isDownloading = false,
+            downloadComplete = success
+        )
+        if (success) {
+            updateRepository.installApk()
+        }
+    }
+
+    fun getUpdateRepository(): UpdateRepository = updateRepository
 
     override fun onCleared() {
         super.onCleared()
