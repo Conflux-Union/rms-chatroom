@@ -142,8 +142,8 @@ class VoiceCallService : Service() {
         channelName = intent?.getStringExtra("channel_name") ?: "语音通话"
 
         val notification = createNotification()
-        // Android 10+ (Q): specify foreground service type for microphone access in background
-        // Android 12+ (S): strictly requires this for background microphone
+        // Use MICROPHONE type to maintain background microphone access
+        // Service is started after connection success, so RECORD_AUDIO permission is already granted
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             startForeground(
                 NOTIFICATION_ID,
