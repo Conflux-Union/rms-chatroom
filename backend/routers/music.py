@@ -416,7 +416,7 @@ async def check_all_login_status():
     netease_logged_in = False
     try:
         result = ncm_login.GetCurrentLoginStatus()
-        profile = result.get("data", {}).get("profile")
+        profile = result.get("profile")
         netease_logged_in = profile is not None
     except Exception:
         pass
