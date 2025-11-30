@@ -4,6 +4,8 @@ import { useAuthStore } from './auth'
 
 const API_BASE = import.meta.env.VITE_API_BASE || ''
 
+export type MusicPlatform = 'qq' | 'netease' | 'all'
+
 export interface Song {
   mid: string
   name: string
@@ -11,6 +13,12 @@ export interface Song {
   album: string
   duration: number
   cover: string
+  platform: 'qq' | 'netease'
+}
+
+export interface PlatformLoginStatus {
+  qq: { logged_in: boolean }
+  netease: { logged_in: boolean }
 }
 
 export interface QueueItem {
@@ -21,12 +29,18 @@ export interface QueueItem {
 export const useMusicStore = defineStore('music', () => {
   const auth = useAuthStore()
   
-  // Login state
-  const isLoggedIn = ref(false)
+  // Login state (per platform)
+  const platformLoginStatus = ref<PlatformLoginStatus>({
+    qq: { logged_in: false },
+    netease: { logged_in: false }
+  })
+  const isLoggedIn = ref(false)  // Legacy: true if any platform logged in
   const qrCodeUrl = ref<string | null>(null)
   const loginStatus = ref<string>('idle')
+  const loginPlatform = ref<'qq' | 'netease'>('qq')  // Current login platform
   
   // Search state
+  const searchPlatform = ref<MusicPlatform>('all')
   const searchQuery = ref('')
   const searchResults = ref<Song[]>([])
   const isSearching = ref(false)
@@ -54,24 +68,45 @@ export const useMusicStore = defineStore('music', () => {
 
   // --- Login functions ---
   
-  async function checkLoginStatus() {
+  async function checkAllLoginStatus() {
     try {
-      const res = await fetch(`${API_BASE}/api/music/login/check`, {
+      const res = await fetch(`${API_BASE}/api/music/login/check/all`, {
+        headers: headers()
+      })
+      const data = await res.json() as PlatformLoginStatus
+      platformLoginStatus.value = data
+      isLoggedIn.value = data.qq.logged_in || data.netease.logged_in
+      return data
+    } catch {
+      platformLoginStatus.value = { qq: { logged_in: false }, netease: { logged_in: false } }
+      isLoggedIn.value = false
+      return platformLoginStatus.value
+    }
+  }
+  
+  async function checkLoginStatus(platform: 'qq' | 'netease' = 'qq') {
+    try {
+      const res = await fetch(`${API_BASE}/api/music/login/check?platform=${platform}`, {
         headers: headers()
       })
       const data = await res.json()
-      isLoggedIn.value = data.logged_in
+      if (platform === 'qq') {
+        platformLoginStatus.value.qq.logged_in = data.logged_in
+      } else {
+        platformLoginStatus.value.netease.logged_in = data.logged_in
+      }
+      isLoggedIn.value = platformLoginStatus.value.qq.logged_in || platformLoginStatus.value.netease.logged_in
       return data.logged_in
     } catch {
-      isLoggedIn.value = false
       return false
     }
   }
   
-  async function getQRCode() {
+  async function getQRCode(platform: 'qq' | 'netease' = 'qq') {
     try {
       loginStatus.value = 'loading'
-      const res = await fetch(`${API_BASE}/api/music/login/qrcode`)
+      loginPlatform.value = platform
+      const res = await fetch(`${API_BASE}/api/music/login/qrcode?platform=${platform}`)
       const data = await res.json()
       qrCodeUrl.value = data.qrcode
       loginStatus.value = 'waiting'
@@ -85,11 +120,16 @@ export const useMusicStore = defineStore('music', () => {
   
   async function pollLoginStatus(): Promise<boolean> {
     try {
-      const res = await fetch(`${API_BASE}/api/music/login/status`)
+      const res = await fetch(`${API_BASE}/api/music/login/status?platform=${loginPlatform.value}`)
       const data = await res.json()
       loginStatus.value = data.status
       
       if (data.status === 'success') {
+        if (loginPlatform.value === 'qq') {
+          platformLoginStatus.value.qq.logged_in = true
+        } else {
+          platformLoginStatus.value.netease.logged_in = true
+        }
         isLoggedIn.value = true
         qrCodeUrl.value = null
         return true
@@ -106,13 +146,18 @@ export const useMusicStore = defineStore('music', () => {
     }
   }
   
-  async function logout() {
+  async function logout(platform: 'qq' | 'netease' = 'qq') {
     try {
-      await fetch(`${API_BASE}/api/music/login/logout`, {
+      await fetch(`${API_BASE}/api/music/login/logout?platform=${platform}`, {
         method: 'POST',
         headers: headers()
       })
-      isLoggedIn.value = false
+      if (platform === 'qq') {
+        platformLoginStatus.value.qq.logged_in = false
+      } else {
+        platformLoginStatus.value.netease.logged_in = false
+      }
+      isLoggedIn.value = platformLoginStatus.value.qq.logged_in || platformLoginStatus.value.netease.logged_in
     } catch (e) {
       console.error('Logout failed:', e)
     }
@@ -120,7 +165,7 @@ export const useMusicStore = defineStore('music', () => {
   
   // --- Search functions ---
   
-  async function search(keyword: string) {
+  async function search(keyword: string, platform: MusicPlatform = searchPlatform.value) {
     if (!keyword.trim()) {
       searchResults.value = []
       return
@@ -131,7 +176,7 @@ export const useMusicStore = defineStore('music', () => {
       const res = await fetch(`${API_BASE}/api/music/search`, {
         method: 'POST',
         headers: headers(),
-        body: JSON.stringify({ keyword, num: 20 })
+        body: JSON.stringify({ keyword, num: 20, platform })
       })
       const data = await res.json()
       searchResults.value = data.songs || []
@@ -202,9 +247,9 @@ export const useMusicStore = defineStore('music', () => {
   
   // --- Utility functions ---
   
-  async function getSongUrl(mid: string): Promise<string | null> {
+  async function getSongUrl(mid: string, platform: 'qq' | 'netease' = 'qq'): Promise<string | null> {
     try {
-      const res = await fetch(`${API_BASE}/api/music/song/${mid}/url`, {
+      const res = await fetch(`${API_BASE}/api/music/song/${mid}/url?platform=${platform}`, {
         headers: headers()
       })
       const data = await res.json()
@@ -407,8 +452,11 @@ export const useMusicStore = defineStore('music', () => {
   return {
     // Login state
     isLoggedIn,
+    platformLoginStatus,
+    loginPlatform,
     qrCodeUrl,
     loginStatus,
+    checkAllLoginStatus,
     checkLoginStatus,
     getQRCode,
     pollLoginStatus,
@@ -417,6 +465,7 @@ export const useMusicStore = defineStore('music', () => {
     // Search state
     searchQuery,
     searchResults,
+    searchPlatform,
     isSearching,
     search,
     

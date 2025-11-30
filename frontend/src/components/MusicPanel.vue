@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
-import { useMusicStore, type Song } from '../stores/music'
+import { useMusicStore, type Song, type MusicPlatform } from '../stores/music'
 import { useVoiceStore } from '../stores/voice'
 import { useAuthStore } from '../stores/auth'
 import { Music, Bot, SkipBack, Pause, Play, SkipForward, Plus, Trash2, X, Search, Loader2 } from 'lucide-vue-next'
@@ -13,6 +13,7 @@ const WS_BASE = import.meta.env.VITE_WS_BASE || 'ws://localhost:8000'
 
 const searchInput = ref('')
 const showSearch = ref(false)
+const showLoginSelect = ref(false)
 const loginPollingInterval = ref<number | null>(null)
 const audioRef = ref<HTMLAudioElement | null>(null)
 const progressPollingInterval = ref<number | null>(null)
@@ -83,7 +84,7 @@ function connectMusicWs() {
 }
 
 onMounted(async () => {
-  await music.checkLoginStatus()
+  await music.checkAllLoginStatus()
   if (currentRoomName.value) {
     await music.refreshQueue(currentRoomName.value)
     await music.getBotStatus(currentRoomName.value)
@@ -175,8 +176,9 @@ watch(() => music.isPlaying, (playing) => {
   }
 })
 
-async function startLogin() {
-  await music.getQRCode()
+async function startLogin(platform: 'qq' | 'netease' = 'qq') {
+  showLoginSelect.value = false
+  await music.getQRCode(platform)
   
   // Start polling for login status
   loginPollingInterval.value = window.setInterval(async () => {
@@ -267,27 +269,58 @@ async function handleStopBot() {
         <Bot :size="14" /> 机器人
       </span>
       <span 
-        v-if="music.isLoggedIn" 
-        class="login-status logged-in"
-        @click="music.logout()"
-        title="点击退出登录"
+        v-if="music.platformLoginStatus.qq.logged_in" 
+        class="login-status logged-in qq"
+        @click="music.logout('qq')"
+        title="QQ音乐已登录 - 点击退出"
       >
-        QQ VIP
+        QQ
       </span>
       <span 
-        v-else 
+        v-if="music.platformLoginStatus.netease.logged_in" 
+        class="login-status logged-in netease"
+        @click="music.logout('netease')"
+        title="网易云已登录 - 点击退出"
+      >
+        网易云
+      </span>
+      <span 
+        v-if="!music.platformLoginStatus.qq.logged_in || !music.platformLoginStatus.netease.logged_in"
         class="login-status"
-        @click="startLogin"
+        @click="showLoginSelect = true"
       >
         登录
       </span>
     </div>
 
     <div class="music-content">
+      <!-- Login Platform Select Dialog -->
+      <div v-if="showLoginSelect" class="qr-login-overlay" @click.self="showLoginSelect = false">
+        <div class="qr-login-dialog">
+          <h3>选择登录平台</h3>
+          <div class="platform-select">
+            <button 
+              v-if="!music.platformLoginStatus.qq.logged_in"
+              class="platform-btn qq" 
+              @click="startLogin('qq')"
+            >
+              QQ 音乐
+            </button>
+            <button 
+              v-if="!music.platformLoginStatus.netease.logged_in"
+              class="platform-btn netease" 
+              @click="startLogin('netease')"
+            >
+              网易云音乐
+            </button>
+          </div>
+        </div>
+      </div>
+
       <!-- QR Code Login Dialog -->
       <div v-if="music.qrCodeUrl" class="qr-login-overlay" @click.self="music.qrCodeUrl = null">
         <div class="qr-login-dialog">
-          <h3>扫码登录 QQ 音乐</h3>
+          <h3>扫码登录 {{ music.loginPlatform === 'qq' ? 'QQ 音乐' : '网易云音乐' }}</h3>
           <img :src="music.qrCodeUrl" alt="QR Code" class="qr-code" />
           <p class="login-hint">
             {{ music.loginStatus === 'waiting' ? '等待扫码...' :
@@ -296,7 +329,7 @@ async function handleStopBot() {
                music.loginStatus === 'refused' ? '登录被拒绝' :
                '加载中...' }}
           </p>
-          <button v-if="music.loginStatus === 'expired'" class="refresh-btn" @click="startLogin">
+          <button v-if="music.loginStatus === 'expired'" class="refresh-btn" @click="startLogin(music.loginPlatform)">
             刷新二维码
           </button>
         </div>
@@ -397,6 +430,11 @@ async function handleStopBot() {
                 @keyup.enter="handleSearch"
                 autofocus
               />
+              <select v-model="music.searchPlatform" class="platform-selector">
+                <option value="all">全部</option>
+                <option value="qq">QQ音乐</option>
+                <option value="netease">网易云</option>
+              </select>
               <button class="search-btn" @click="handleSearch" :disabled="music.isSearching">
                 <span v-if="music.isSearching">...</span>
                 <Search v-else :size="18" />
@@ -405,13 +443,18 @@ async function handleStopBot() {
             <div class="search-results">
               <div 
                 v-for="song in music.searchResults" 
-                :key="song.mid"
+                :key="`${song.platform}-${song.mid}`"
                 class="search-item"
                 @click="handleAddToQueue(song)"
               >
                 <img :src="song.cover" alt="Cover" class="search-cover" />
                 <div class="search-info">
-                  <div class="search-song-name">{{ song.name }}</div>
+                  <div class="search-song-name">
+                    {{ song.name }}
+                    <span class="platform-tag" :class="song.platform">
+                      {{ song.platform === 'qq' ? 'QQ' : '网易云' }}
+                    </span>
+                  </div>
                   <div class="search-song-artist">{{ song.artist }} · {{ song.album }}</div>
                 </div>
                 <span class="search-duration">{{ music.formatDuration(song.duration) }}</span>
@@ -479,8 +522,15 @@ async function handleStopBot() {
 }
 
 .login-status.logged-in {
-  background: linear-gradient(135deg, #10b981, #059669);
   color: #fff;
+}
+
+.login-status.logged-in.qq {
+  background: linear-gradient(135deg, #10b981, #059669);
+}
+
+.login-status.logged-in.netease {
+  background: linear-gradient(135deg, #e60026, #c20020);
 }
 
 .bot-status {
@@ -559,6 +609,75 @@ async function handleStopBot() {
   border: none;
   border-radius: 8px;
   cursor: pointer;
+}
+
+.platform-select {
+  display: flex;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.platform-btn {
+  flex: 1;
+  padding: 16px 24px;
+  border: none;
+  border-radius: 12px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  color: #fff;
+}
+
+.platform-btn.qq {
+  background: linear-gradient(135deg, #10b981, #059669);
+}
+
+.platform-btn.qq:hover {
+  transform: scale(1.05);
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
+}
+
+.platform-btn.netease {
+  background: linear-gradient(135deg, #e60026, #c20020);
+}
+
+.platform-btn.netease:hover {
+  transform: scale(1.05);
+  box-shadow: 0 4px 12px rgba(230, 0, 38, 0.4);
+}
+
+.platform-tag {
+  display: inline-block;
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-left: 6px;
+  vertical-align: middle;
+  color: #fff;
+}
+
+.platform-tag.qq {
+  background: #10b981;
+}
+
+.platform-tag.netease {
+  background: #e60026;
+}
+
+.platform-selector {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  padding: 8px 12px;
+  color: var(--color-text-main);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.platform-selector:focus {
+  outline: none;
+  border-color: var(--color-primary);
 }
 
 /* Now Playing */
