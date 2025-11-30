@@ -49,7 +49,8 @@ fun MusicBottomSheet(
     onClearQueue: () -> Unit,
     onShowSearch: () -> Unit,
     onLoginClick: () -> Unit,
-    onLogoutClick: () -> Unit,
+    onQQLogoutClick: () -> Unit,
+    onNeteaseLogoutClick: () -> Unit,
     onStopBot: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -60,10 +61,12 @@ fun MusicBottomSheet(
     ) {
         // Header
         MusicHeader(
-            isLoggedIn = state.isLoggedIn,
+            qqLoggedIn = state.qqLoggedIn,
+            neteaseLoggedIn = state.neteaseLoggedIn,
             botConnected = state.botConnected,
             onLoginClick = onLoginClick,
-            onLogoutClick = onLogoutClick,
+            onQQLogoutClick = onQQLogoutClick,
+            onNeteaseLogoutClick = onNeteaseLogoutClick,
             onStopBot = onStopBot
         )
 
@@ -106,10 +109,12 @@ fun MusicBottomSheet(
 
 @Composable
 private fun MusicHeader(
-    isLoggedIn: Boolean,
+    qqLoggedIn: Boolean,
+    neteaseLoggedIn: Boolean,
     botConnected: Boolean,
     onLoginClick: () -> Unit,
-    onLogoutClick: () -> Unit,
+    onQQLogoutClick: () -> Unit,
+    onNeteaseLogoutClick: () -> Unit,
     onStopBot: () -> Unit
 ) {
     Surface(
@@ -167,20 +172,57 @@ private fun MusicHeader(
                 Spacer(modifier = Modifier.width(8.dp))
             }
 
-            // Login status badge
-            Surface(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(12.dp))
-                    .clickable { if (isLoggedIn) onLogoutClick() else onLoginClick() },
-                color = if (isLoggedIn) VoiceConnected.copy(alpha = 0.2f) 
-                        else SurfaceLight
-            ) {
-                Text(
-                    text = if (isLoggedIn) "QQ VIP" else "登录",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = if (isLoggedIn) VoiceConnected else TextMuted,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
-                )
+            // QQ Login status badge
+            if (qqLoggedIn) {
+                Surface(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable { onQQLogoutClick() },
+                    color = VoiceConnected.copy(alpha = 0.2f)
+                ) {
+                    Text(
+                        text = "QQ",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = VoiceConnected,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(4.dp))
+            }
+
+            // NetEase Login status badge
+            if (neteaseLoggedIn) {
+                Surface(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable { onNeteaseLogoutClick() },
+                    color = Color(0xFFE60026).copy(alpha = 0.2f)
+                ) {
+                    Text(
+                        text = "网易云",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color(0xFFE60026),
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(4.dp))
+            }
+
+            // Login button (show if not all platforms logged in)
+            if (!qqLoggedIn || !neteaseLoggedIn) {
+                Surface(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable { onLoginClick() },
+                    color = SurfaceLight
+                ) {
+                    Text(
+                        text = "登录",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = TextMuted,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                    )
+                }
             }
         }
     }

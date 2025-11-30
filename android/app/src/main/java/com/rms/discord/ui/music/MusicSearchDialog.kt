@@ -35,12 +35,15 @@ import com.rms.discord.ui.theme.*
 fun MusicSearchDialog(
     searchResults: List<Song>,
     isSearching: Boolean,
+    searchPlatform: String,
+    onSearchPlatformChange: (String) -> Unit,
     onSearch: (String) -> Unit,
     onAddSong: (Song) -> Unit,
     onDismiss: () -> Unit
 ) {
     var searchQuery by remember { mutableStateOf("") }
     val focusRequester = remember { FocusRequester() }
+    val platformOptions = listOf("all" to "全部", "qq" to "QQ音乐", "netease" to "网易云")
 
     LaunchedEffect(Unit) {
         focusRequester.requestFocus()
@@ -118,6 +121,28 @@ fun MusicSearchDialog(
                                 tint = Color.White
                             )
                         }
+                    }
+                }
+
+                // Platform selector
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    platformOptions.forEach { (value, label) ->
+                        FilterChip(
+                            selected = searchPlatform == value,
+                            onClick = { onSearchPlatformChange(value) },
+                            label = { Text(label, style = MaterialTheme.typography.labelSmall) },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = TiColor,
+                                selectedLabelColor = Color.White,
+                                containerColor = SurfaceLight,
+                                labelColor = TextMuted
+                            )
+                        )
                     }
                 }
 
@@ -201,13 +226,29 @@ private fun SearchResultItem(
 
         // Song info
         Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = song.name,
-                style = MaterialTheme.typography.bodyMedium,
-                color = TextPrimary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = song.name,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextPrimary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                // Platform tag
+                Surface(
+                    shape = RoundedCornerShape(4.dp),
+                    color = if (song.platform == "qq") Color(0xFF10B981) else Color(0xFFE60026)
+                ) {
+                    Text(
+                        text = if (song.platform == "qq") "QQ" else "网易云",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.White,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
+            }
             Text(
                 text = "${song.artist} · ${song.album}",
                 style = MaterialTheme.typography.bodySmall,

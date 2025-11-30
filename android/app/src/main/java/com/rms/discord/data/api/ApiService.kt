@@ -92,18 +92,29 @@ interface ApiService {
     // Music - Login
     @GET("api/music/login/check")
     suspend fun checkMusicLogin(
-        @Header("Authorization") token: String
+        @Header("Authorization") token: String,
+        @Query("platform") platform: String = "qq"
     ): MusicLoginCheckResponse
 
+    @GET("api/music/login/check/all")
+    suspend fun checkAllMusicLogin(
+        @Header("Authorization") token: String
+    ): AllPlatformLoginStatus
+
     @GET("api/music/login/qrcode")
-    suspend fun getMusicQRCode(): MusicQRCodeResponse
+    suspend fun getMusicQRCode(
+        @Query("platform") platform: String = "qq"
+    ): MusicQRCodeResponse
 
     @GET("api/music/login/status")
-    suspend fun checkMusicLoginStatus(): MusicLoginStatusResponse
+    suspend fun checkMusicLoginStatus(
+        @Query("platform") platform: String = "qq"
+    ): MusicLoginStatusResponse
 
     @POST("api/music/login/logout")
     suspend fun musicLogout(
-        @Header("Authorization") token: String
+        @Header("Authorization") token: String,
+        @Query("platform") platform: String = "qq"
     ): MusicSuccessResponse
 
     // Music - Search
@@ -116,7 +127,8 @@ interface ApiService {
     @GET("api/music/song/{mid}/url")
     suspend fun getSongUrl(
         @Header("Authorization") token: String,
-        @Path("mid") mid: String
+        @Path("mid") mid: String,
+        @Query("platform") platform: String = "qq"
     ): MusicSongUrlResponse
 
     // Music - Queue (per room)

@@ -23,9 +23,12 @@ import com.rms.discord.ui.theme.*
 fun MusicLoginDialog(
     qrCodeUrl: String?,
     loginStatus: String,
+    loginPlatform: String = "qq",
     onRefreshQRCode: () -> Unit,
     onDismiss: () -> Unit
 ) {
+    val platformName = if (loginPlatform == "qq") "QQ 音乐" else "网易云音乐"
+    
     Dialog(onDismissRequest = onDismiss) {
         Surface(
             shape = RoundedCornerShape(16.dp),
@@ -38,7 +41,7 @@ fun MusicLoginDialog(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
-                    text = "扫码登录 QQ 音乐",
+                    text = "扫码登录 $platformName",
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
                     color = TextPrimary

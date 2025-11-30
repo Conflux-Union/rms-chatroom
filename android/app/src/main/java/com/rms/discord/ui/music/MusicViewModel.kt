@@ -24,12 +24,16 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 data class MusicState(
-    // Login state
-    val isLoggedIn: Boolean = false,
+    // Login state (per platform)
+    val qqLoggedIn: Boolean = false,
+    val neteaseLoggedIn: Boolean = false,
+    val isLoggedIn: Boolean = false,  // True if any platform is logged in
     val qrCodeUrl: String? = null,
     val loginStatus: String = "idle",
+    val loginPlatform: String = "qq",  // Current login platform
     
     // Search state
+    val searchPlatform: String = "all",  // "all", "qq", or "netease"
     val searchResults: List<Song> = emptyList(),
     val isSearching: Boolean = false,
     
@@ -143,27 +147,39 @@ class MusicViewModel @Inject constructor(
     }
 
     // Login functions
-    fun checkLoginStatus() {
+    fun checkAllLoginStatus() {
         viewModelScope.launch {
             try {
-                val response = api.checkMusicLogin(getAuthHeader())
-                _state.value = _state.value.copy(isLoggedIn = response.loggedIn)
+                val response = api.checkAllMusicLogin(getAuthHeader())
+                _state.value = _state.value.copy(
+                    qqLoggedIn = response.qq.loggedIn,
+                    neteaseLoggedIn = response.netease.loggedIn,
+                    isLoggedIn = response.qq.loggedIn || response.netease.loggedIn
+                )
             } catch (e: Exception) {
-                _state.value = _state.value.copy(isLoggedIn = false)
+                _state.value = _state.value.copy(
+                    qqLoggedIn = false,
+                    neteaseLoggedIn = false,
+                    isLoggedIn = false
+                )
             }
         }
     }
 
-    fun getQRCode() {
+    fun checkLoginStatus() {
+        checkAllLoginStatus()
+    }
+
+    fun getQRCode(platform: String = "qq") {
         viewModelScope.launch {
             try {
-                _state.value = _state.value.copy(loginStatus = "loading")
-                val response = api.getMusicQRCode()
+                _state.value = _state.value.copy(loginStatus = "loading", loginPlatform = platform)
+                val response = api.getMusicQRCode(platform)
                 _state.value = _state.value.copy(
                     qrCodeUrl = response.qrcode,
                     loginStatus = "waiting"
                 )
-                startLoginPolling()
+                startLoginPolling(platform)
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     loginStatus = "error",
@@ -173,21 +189,23 @@ class MusicViewModel @Inject constructor(
         }
     }
 
-    private fun startLoginPolling() {
+    private fun startLoginPolling(platform: String) {
         loginPollingJob?.cancel()
         loginPollingJob = viewModelScope.launch {
             while (true) {
                 delay(2000)
                 try {
-                    val response = api.checkMusicLoginStatus()
+                    val response = api.checkMusicLoginStatus(platform)
                     _state.value = _state.value.copy(loginStatus = response.status)
                     
                     when (response.status) {
                         "success" -> {
-                            _state.value = _state.value.copy(
-                                isLoggedIn = true,
-                                qrCodeUrl = null
-                            )
+                            val newState = if (platform == "qq") {
+                                _state.value.copy(qqLoggedIn = true, isLoggedIn = true, qrCodeUrl = null)
+                            } else {
+                                _state.value.copy(neteaseLoggedIn = true, isLoggedIn = true, qrCodeUrl = null)
+                            }
+                            _state.value = newState
                             break
                         }
                         "expired", "refused" -> {
@@ -202,11 +220,22 @@ class MusicViewModel @Inject constructor(
         }
     }
 
-    fun logout() {
+    fun logout(platform: String = "qq") {
         viewModelScope.launch {
             try {
-                api.musicLogout(getAuthHeader())
-                _state.value = _state.value.copy(isLoggedIn = false)
+                api.musicLogout(getAuthHeader(), platform)
+                val newState = if (platform == "qq") {
+                    _state.value.copy(
+                        qqLoggedIn = false,
+                        isLoggedIn = _state.value.neteaseLoggedIn
+                    )
+                } else {
+                    _state.value.copy(
+                        neteaseLoggedIn = false,
+                        isLoggedIn = _state.value.qqLoggedIn
+                    )
+                }
+                _state.value = newState
             } catch (e: Exception) {
                 _state.value = _state.value.copy(error = "退出登录失败")
             }
@@ -219,7 +248,11 @@ class MusicViewModel @Inject constructor(
     }
 
     // Search functions
-    fun search(keyword: String) {
+    fun setSearchPlatform(platform: String) {
+        _state.value = _state.value.copy(searchPlatform = platform)
+    }
+
+    fun search(keyword: String, platform: String = _state.value.searchPlatform) {
         if (keyword.isBlank()) {
             _state.value = _state.value.copy(searchResults = emptyList())
             return
@@ -228,7 +261,7 @@ class MusicViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 _state.value = _state.value.copy(isSearching = true)
-                val response = api.searchMusic(getAuthHeader(), MusicSearchRequest(keyword))
+                val response = api.searchMusic(getAuthHeader(), MusicSearchRequest(keyword, platform = platform))
                 _state.value = _state.value.copy(
                     searchResults = response.songs,
                     isSearching = false

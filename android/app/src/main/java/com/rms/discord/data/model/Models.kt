@@ -119,7 +119,8 @@ data class Song(
     val artist: String,
     val album: String,
     val duration: Int,
-    val cover: String
+    val cover: String,
+    val platform: String = "qq"  // "qq" or "netease"
 )
 
 data class QueueItem(
@@ -161,18 +162,30 @@ data class MusicProgressResponse(
 
 data class MusicLoginCheckResponse(
     @SerializedName("logged_in")
+    val loggedIn: Boolean,
+    val platform: String = "qq"
+)
+
+data class PlatformLoginItem(
+    @SerializedName("logged_in")
     val loggedIn: Boolean
+)
+
+data class AllPlatformLoginStatus(
+    val qq: PlatformLoginItem,
+    val netease: PlatformLoginItem
 )
 
 data class MusicQRCodeResponse(
     val qrcode: String,
-    val type: String
+    val platform: String = "qq"
 )
 
 data class MusicLoginStatusResponse(
     val status: String,
     @SerializedName("logged_in")
-    val loggedIn: Boolean = false
+    val loggedIn: Boolean = false,
+    val platform: String = "qq"
 )
 
 data class MusicSongUrlResponse(
@@ -182,7 +195,8 @@ data class MusicSongUrlResponse(
 
 data class MusicSearchRequest(
     val keyword: String,
-    val num: Int = 20
+    val num: Int = 20,
+    val platform: String = "all"  // "all", "qq", or "netease"
 )
 
 data class MusicBotStartRequest(
