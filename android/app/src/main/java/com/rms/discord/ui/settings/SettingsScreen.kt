@@ -116,7 +116,7 @@ fun SettingsScreen(
             SettingsItem(
                 icon = Icons.Default.Info,
                 title = "版本",
-                subtitle = "v${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})"
+                subtitle = BuildConfig.VERSION_NAME
             )
 
             // Copyright
