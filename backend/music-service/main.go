@@ -241,21 +241,60 @@ func (p *Player) Play() error {
 	return nil
 }
 
-// playbackLoop - copied from Ingress implementation
+// cleanupPlayback handles resource cleanup on error or completion
+func (p *Player) cleanupPlayback(pipeline *gst.Pipeline, room *lksdk.Room, pubSID string) {
+	if pipeline != nil {
+		pipeline.SetState(gst.StateNull)
+	}
+	if room != nil && pubSID != "" {
+		room.LocalParticipant.UnpublishTrack(pubSID)
+	}
+	p.mu.Lock()
+	p.pipeline = nil
+	p.loop = nil
+	p.mu.Unlock()
+}
+
+// playbackLoop - copied from Ingress implementation with timeout protection
 func (p *Player) playbackLoop(song *SongInfo, startPosMs int64) {
 	log.Printf("Starting playback: %s from %dms", song.Name, startPosMs)
+
+	// Overall timeout: song duration + 60 seconds buffer for loading
+	maxDuration := time.Duration(song.Duration)*time.Second + 60*time.Second
+	if maxDuration < 2*time.Minute {
+		maxDuration = 2 * time.Minute
+	}
+	overallTimeout := time.AfterFunc(maxDuration, func() {
+		log.Printf("Playback timeout for %s, forcing cleanup", song.Name)
+		p.mu.Lock()
+		if p.cancel != nil {
+			p.cancel()
+		}
+		if p.loop != nil {
+			p.loop.Quit()
+		}
+		p.state = StateStopped
+		p.mu.Unlock()
+	})
+	defer overallTimeout.Stop()
 
 	// Build GStreamer pipeline exactly like Ingress
 	// uridecodebin -> audioconvert -> audioresample -> capsfilter -> opusenc -> appsink
 	pipeline, err := gst.NewPipeline("music-pipeline")
 	if err != nil {
 		log.Printf("Failed to create pipeline: %v", err)
+		p.mu.Lock()
+		p.state = StateIdle
+		p.mu.Unlock()
 		return
 	}
 
 	// Create elements - exactly like Ingress output.go
 	uridecodebin, _ := gst.NewElement("uridecodebin")
 	uridecodebin.Set("uri", song.URL)
+	// Set buffer size and timeout for network streams
+	uridecodebin.Set("buffer-size", 2*1024*1024) // 2MB buffer
+	uridecodebin.Set("download", true)           // Enable download buffering
 
 	audioconvert, _ := gst.NewElement("audioconvert")
 	audioresample, _ := gst.NewElement("audioresample")
@@ -319,6 +358,10 @@ func (p *Player) playbackLoop(song *SongInfo, startPosMs int64) {
 	})
 	if err != nil {
 		log.Printf("Failed to create track: %v", err)
+		p.cleanupPlayback(pipeline, nil, "")
+		p.mu.Lock()
+		p.state = StateIdle
+		p.mu.Unlock()
 		return
 	}
 
@@ -326,6 +369,10 @@ func (p *Player) playbackLoop(song *SongInfo, startPosMs int64) {
 	if p.room == nil {
 		p.mu.Unlock()
 		log.Printf("Room not connected")
+		p.cleanupPlayback(pipeline, nil, "")
+		p.mu.Lock()
+		p.state = StateIdle
+		p.mu.Unlock()
 		return
 	}
 	room := p.room
@@ -341,9 +388,14 @@ func (p *Player) playbackLoop(song *SongInfo, startPosMs int64) {
 	})
 	if err != nil {
 		log.Printf("Failed to publish track: %v", err)
+		p.cleanupPlayback(pipeline, nil, "")
+		p.mu.Lock()
+		p.state = StateIdle
+		p.mu.Unlock()
 		return
 	}
 	log.Printf("Published track: %s", pub.SID())
+	pubSID := pub.SID()
 
 	// Handle samples from appsink - exactly like Ingress output.go handleSample
 	appsink.SetCallbacks(&app.SinkCallbacks{
@@ -391,7 +443,22 @@ func (p *Player) playbackLoop(song *SongInfo, startPosMs int64) {
 		pipeline.Bin.Element.SeekSimple(int64(startPosMs)*int64(time.Millisecond), gst.FormatTime, gst.SeekFlagFlush|gst.SeekFlagKeyUnit)
 	}
 
-	// Start pipeline
+	// Start pipeline with loading timeout
+	loadingTimeout := time.AfterFunc(30*time.Second, func() {
+		log.Printf("Loading timeout for %s", song.Name)
+		p.mu.Lock()
+		if p.state == StateLoading || p.state == StatePlaying {
+			if p.cancel != nil {
+				p.cancel()
+			}
+			if p.loop != nil {
+				p.loop.Quit()
+			}
+			p.state = StateStopped
+		}
+		p.mu.Unlock()
+	})
+
 	pipeline.SetState(gst.StatePlaying)
 
 	// Main loop
@@ -403,6 +470,12 @@ func (p *Player) playbackLoop(song *SongInfo, startPosMs int64) {
 	bus := pipeline.GetPipelineBus()
 	bus.AddWatch(func(msg *gst.Message) bool {
 		switch msg.Type() {
+		case gst.MessageStateChanged:
+			// Cancel loading timeout once we start playing
+			_, newState := msg.ParseStateChanged()
+			if newState == gst.StatePlaying {
+				loadingTimeout.Stop()
+			}
 		case gst.MessageEOS:
 			log.Printf("Playback finished: %s", song.Name)
 			p.mu.Lock()
@@ -422,6 +495,9 @@ func (p *Player) playbackLoop(song *SongInfo, startPosMs int64) {
 		case gst.MessageError:
 			err := msg.ParseError()
 			log.Printf("Pipeline error: %v", err)
+			p.mu.Lock()
+			p.state = StateStopped
+			p.mu.Unlock()
 			loop.Quit()
 			return false
 		}
@@ -435,8 +511,9 @@ func (p *Player) playbackLoop(song *SongInfo, startPosMs int64) {
 
 	loop.Run()
 
-	pipeline.SetState(gst.StateNull)
-	room.LocalParticipant.UnpublishTrack(pub.SID())
+	// Cleanup
+	loadingTimeout.Stop()
+	p.cleanupPlayback(pipeline, room, pubSID)
 }
 
 const PauseTimeoutSeconds = 30

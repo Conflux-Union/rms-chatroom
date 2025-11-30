@@ -1,6 +1,6 @@
 {
-    "version_code": 5,
-    "version_name": "1.0.3-fix",
-    "changelog": "- 修复了点击重连无效的bug \n - 新增关闭电池优化引导以防止系统结束后台进程 \n - 新增了语音通话悬浮窗 \n - 新增了管理员控制项 \n - 修复了安卓后台说话没声音的问题",
+    "version_code": 6,
+    "version_name": "1.0.4",
+    "changelog": "- 更新了悬浮窗添加开关麦克风/挂断 \n -修复后台无法语音bug",
     "force_update": false
 }

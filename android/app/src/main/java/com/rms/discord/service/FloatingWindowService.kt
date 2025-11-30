@@ -86,6 +86,7 @@ class FloatingWindowService : Service() {
         super.onCreate()
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
         observeParticipants()
+        observeMuteState()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -109,6 +110,16 @@ class FloatingWindowService : Service() {
             liveKitManager.participants.collectLatest { participants ->
                 if (isViewAttached) {
                     updateFloatingContent(participants)
+                }
+            }
+        }
+    }
+
+    private fun observeMuteState() {
+        serviceScope.launch {
+            liveKitManager.isMuted.collectLatest { isMuted ->
+                if (isViewAttached) {
+                    updateMuteButton(isMuted)
                 }
             }
         }
@@ -154,8 +165,11 @@ class FloatingWindowService : Service() {
             y = 200
         }
 
-        // Setup drag functionality
-        floatingView?.setOnTouchListener(object : View.OnTouchListener {
+        // Setup drag functionality on title area only to allow button clicks
+        val titleView = floatingView?.findViewById<TextView>(R.id.floating_title)
+        val containerView = floatingView?.findViewById<LinearLayout>(R.id.speaking_users_container)
+        
+        val dragTouchListener = object : View.OnTouchListener {
             override fun onTouch(v: View, event: MotionEvent): Boolean {
                 when (event.action) {
                     MotionEvent.ACTION_DOWN -> {
@@ -174,15 +188,47 @@ class FloatingWindowService : Service() {
                 }
                 return false
             }
-        })
+        }
+        
+        titleView?.setOnTouchListener(dragTouchListener)
+        containerView?.setOnTouchListener(dragTouchListener)
+
+        // Setup button click listeners
+        setupButtonListeners()
 
         try {
             windowManager?.addView(floatingView, params)
             isViewAttached = true
             updateFloatingContent(liveKitManager.participants.value)
+            updateMuteButton(liveKitManager.isMuted.value)
         } catch (e: Exception) {
             android.util.Log.e(TAG, "Failed to add floating view", e)
         }
+    }
+
+    private fun setupButtonListeners() {
+        val view = floatingView ?: return
+        
+        val muteBtn = view.findViewById<TextView>(R.id.btn_mute)
+        val hangupBtn = view.findViewById<TextView>(R.id.btn_hangup)
+
+        // Mute button click handler
+        muteBtn?.setOnClickListener {
+            val currentMuted = liveKitManager.isMuted.value
+            liveKitManager.setMuted(!currentMuted)
+        }
+
+        // Hangup button click handler
+        hangupBtn?.setOnClickListener {
+            liveKitManager.disconnect()
+            VoiceCallService.stop(this)
+        }
+    }
+
+    private fun updateMuteButton(isMuted: Boolean) {
+        val view = floatingView ?: return
+        val muteBtn = view.findViewById<TextView>(R.id.btn_mute) ?: return
+        muteBtn.text = if (isMuted) "取消静音" else "静音"
     }
 
     private fun removeFloatingView() {

@@ -688,7 +688,8 @@ async def _play_current_song(room_name: str) -> bool:
         return True
         
     except Exception as e:
-        logger.error(f"Failed to play song: {e}")
+        import traceback
+        logger.error(f"Failed to play song: {e}\n{traceback.format_exc()}")
         return False
 
 
