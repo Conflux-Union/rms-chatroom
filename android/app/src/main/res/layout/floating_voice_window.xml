@@ -31,31 +31,27 @@
         android:layout_marginTop="8dp"
         android:gravity="center">
 
-        <TextView
+        <ImageView
             android:id="@+id/btn_mute"
-            android:layout_width="0dp"
-            android:layout_height="32dp"
-            android:layout_weight="1"
-            android:layout_marginEnd="4dp"
-            android:background="@drawable/floating_button_background"
-            android:text="静音"
-            android:textColor="#FFFFFF"
-            android:textSize="12sp"
-            android:gravity="center"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:layout_marginEnd="12dp"
+            android:background="@drawable/floating_icon_button_background"
+            android:src="@drawable/ic_mic"
+            android:padding="8dp"
+            android:contentDescription="静音"
             android:clickable="true"
             android:focusable="true" />
 
-        <TextView
+        <ImageView
             android:id="@+id/btn_hangup"
-            android:layout_width="0dp"
-            android:layout_height="32dp"
-            android:layout_weight="1"
-            android:layout_marginStart="4dp"
-            android:background="@drawable/floating_button_hangup_background"
-            android:text="挂断"
-            android:textColor="#FFFFFF"
-            android:textSize="12sp"
-            android:gravity="center"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:layout_marginStart="12dp"
+            android:background="@drawable/floating_icon_button_hangup_background"
+            android:src="@drawable/ic_call_end"
+            android:padding="8dp"
+            android:contentDescription="挂断"
             android:clickable="true"
             android:focusable="true" />
 

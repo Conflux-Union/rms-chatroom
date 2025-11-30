@@ -12,6 +12,7 @@ import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import com.rms.discord.R
@@ -209,8 +210,8 @@ class FloatingWindowService : Service() {
     private fun setupButtonListeners() {
         val view = floatingView ?: return
         
-        val muteBtn = view.findViewById<TextView>(R.id.btn_mute)
-        val hangupBtn = view.findViewById<TextView>(R.id.btn_hangup)
+        val muteBtn = view.findViewById<ImageView>(R.id.btn_mute)
+        val hangupBtn = view.findViewById<ImageView>(R.id.btn_hangup)
 
         // Mute button click handler
         muteBtn?.setOnClickListener {
@@ -227,8 +228,8 @@ class FloatingWindowService : Service() {
 
     private fun updateMuteButton(isMuted: Boolean) {
         val view = floatingView ?: return
-        val muteBtn = view.findViewById<TextView>(R.id.btn_mute) ?: return
-        muteBtn.text = if (isMuted) "取消静音" else "静音"
+        val muteBtn = view.findViewById<ImageView>(R.id.btn_mute) ?: return
+        muteBtn.setImageResource(if (isMuted) R.drawable.ic_mic_off else R.drawable.ic_mic)
     }
 
     private fun removeFloatingView() {
