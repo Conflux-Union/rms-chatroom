@@ -137,10 +137,18 @@ def _load_netease_credential() -> None:
     try:
         if NETEASE_CREDENTIAL_FILE.exists():
             from pyncm import apis as ncm_apis
-            cookies = json.loads(NETEASE_CREDENTIAL_FILE.read_text())
-            if cookies:
+            data = json.loads(NETEASE_CREDENTIAL_FILE.read_text())
+            if data:
                 session = ncm_apis.GetCurrentSession()
-                session.cookies.update(cookies)
+                # Support both list format (new) and dict format (legacy)
+                if isinstance(data, list):
+                    for c in data:
+                        session.cookies.set(
+                            c["name"], c["value"],
+                            domain=c.get("domain", ""), path=c.get("path", "/")
+                        )
+                else:
+                    session.cookies.update(data)
                 logger.info("NetEase session loaded from file")
     except Exception as e:
         logger.error(f"Failed to load NetEase credential: {e}")
@@ -265,7 +273,7 @@ def _generate_netease_qrcode() -> dict:
     import io
     from pyncm.apis import login as ncm_login
     
-    result = ncm_login.GetQrcodeUnikey()
+    result = ncm_login.LoginQrcodeUnikey()
     if result.get("code") != 200:
         raise HTTPException(status_code=500, detail="Failed to get NetEase QR code key")
     
@@ -317,7 +325,7 @@ def _check_netease_login_status() -> dict:
     if not _netease_unikey:
         raise HTTPException(status_code=400, detail="No NetEase QR code generated")
     
-    result = ncm_login.GetQrcodeStatus(_netease_unikey)
+    result = ncm_login.LoginQrcodeCheck(_netease_unikey)
     code = result.get("code")
     
     # Status codes: 800=expired, 801=waiting, 802=scanned, 803=success
@@ -326,14 +334,17 @@ def _check_netease_login_status() -> dict:
     response = {"status": status, "platform": "netease"}
     
     if code == 803:
-        # Save session cookies
+        # Save session cookies (use list to handle duplicate cookie names)
         try:
             from pyncm import apis as ncm_apis
             session = ncm_apis.GetCurrentSession()
-            cookies = dict(session.cookies)
-            if cookies:
+            cookies_list = [
+                {"name": c.name, "value": c.value, "domain": c.domain, "path": c.path}
+                for c in session.cookies
+            ]
+            if cookies_list:
                 cred_file = Path(__file__).parent.parent / "netease_credential.json"
-                cred_file.write_text(json.dumps(cookies, ensure_ascii=False))
+                cred_file.write_text(json.dumps(cookies_list, ensure_ascii=False))
         except Exception as e:
             logger.warning(f"Failed to save NetEase session: {e}")
         response["logged_in"] = True
@@ -404,7 +415,7 @@ async def check_all_login_status():
     # Check NetEase
     netease_logged_in = False
     try:
-        result = ncm_login.GetLoginStatus()
+        result = ncm_login.GetCurrentLoginStatus()
         profile = result.get("data", {}).get("profile")
         netease_logged_in = profile is not None
     except Exception:

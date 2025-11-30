@@ -51,6 +51,7 @@ EXCLUDE_PATTERNS = {
     "Thumbs.db",
     "music-service",
     "android",
+    "debug",
 }
 
 
