@@ -6,6 +6,7 @@ import base64
 import dataclasses
 import json
 import logging
+import time as time_module
 from pathlib import Path
 from typing import Any
 
@@ -125,6 +126,47 @@ def _load_credential() -> Credential | None:
 _credential = _load_credential()
 
 
+def _is_credential_valid_locally() -> bool:
+    """Check if credential is valid using local timestamp (no network request)."""
+    if not _credential:
+        return False
+    extra = _credential.extra_fields
+    if "musickeyCreateTime" in extra:
+        create_time = extra["musickeyCreateTime"]
+        expires_in = extra.get("keyExpiresIn", 259200)
+        return time_module.time() < create_time + expires_in
+    return True  # Assume valid if cannot determine
+
+
+async def _ensure_credential_valid() -> Credential | None:
+    """Ensure credential is valid, auto-refresh if expired."""
+    global _credential
+    if not _credential:
+        return None
+    
+    try:
+        if await _credential.is_expired():
+            logger.info("Credential expired, attempting refresh...")
+            if await _credential.can_refresh():
+                success = await _credential.refresh()
+                if success:
+                    _save_credential(_credential)
+                    logger.info("Credential refreshed successfully")
+                    return _credential
+            # Refresh failed
+            logger.warning("Refresh failed, need re-login")
+            _credential = None
+            _save_credential(None)
+            return None
+    except Exception as e:
+        logger.warning(f"Credential check failed: {e}")
+        # Use local timestamp check when network fails
+        if _is_credential_valid_locally():
+            return _credential
+    
+    return _credential
+
+
 def set_ws_broadcast(broadcast_func):
     """Set WebSocket broadcast function for progress updates."""
     global _ws_broadcast
@@ -242,11 +284,8 @@ async def check_logged_in():
     if not _credential:
         return {"logged_in": False}
     
-    try:
-        expired = await login.check_expired(_credential)
-        return {"logged_in": not expired}
-    except Exception:
-        return {"logged_in": False}
+    cred = await _ensure_credential_valid()
+    return {"logged_in": cred is not None}
 
 
 @router.post("/login/logout")
@@ -290,12 +329,12 @@ async def search_songs(req: SearchRequest, _user: CurrentUser):
 @router.get("/song/{mid}/url")
 async def get_song_url(mid: str, _user: CurrentUser):
     """Get playable URL for a song."""
-    global _credential
+    cred = await _ensure_credential_valid()
     
     try:
         # Try to get high quality with credential, fallback to MP3_128
-        file_type = song.SongFileType.MP3_320 if _credential else song.SongFileType.MP3_128
-        urls = await song.get_song_urls([mid], file_type=file_type, credential=_credential)
+        file_type = song.SongFileType.MP3_320 if cred else song.SongFileType.MP3_128
+        urls = await song.get_song_urls([mid], file_type=file_type, credential=cred)
         
         url = urls.get(mid, "")
         if not url:
@@ -396,7 +435,7 @@ class BotStartRequest(BaseModel):
 
 async def _play_current_song(room_name: str) -> bool:
     """Internal: load and play current song via Go service for a specific room."""
-    global _credential
+    cred = await _ensure_credential_valid()
     
     state = _get_room_state(room_name)
     
@@ -407,8 +446,8 @@ async def _play_current_song(room_name: str) -> bool:
     
     # Get song URL
     try:
-        file_type = song.SongFileType.MP3_320 if _credential else song.SongFileType.MP3_128
-        urls = await song.get_song_urls([current["mid"]], file_type=file_type, credential=_credential)
+        file_type = song.SongFileType.MP3_320 if cred else song.SongFileType.MP3_128
+        urls = await song.get_song_urls([current["mid"]], file_type=file_type, credential=cred)
         url = urls.get(current["mid"], "")
         
         if not url:
