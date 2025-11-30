@@ -122,6 +122,8 @@ fun VoiceScreen(
         MusicSearchDialog(
             searchResults = musicState.searchResults,
             isSearching = musicState.isSearching,
+            searchPlatform = musicState.searchPlatform,
+            onSearchPlatformChange = { musicViewModel.setSearchPlatform(it) },
             onSearch = { musicViewModel.search(it) },
             onAddSong = { song ->
                 musicViewModel.addToQueue(song)
@@ -206,7 +208,8 @@ fun VoiceScreen(
                     showLoginDialog = true
                     musicViewModel.getQRCode()
                 },
-                onLogoutClick = { musicViewModel.logout() },
+                onQQLogoutClick = { musicViewModel.logout("qq") },
+                onNeteaseLogoutClick = { musicViewModel.logout("netease") },
                 onStopBot = { musicViewModel.stopBot() }
             )
         }
