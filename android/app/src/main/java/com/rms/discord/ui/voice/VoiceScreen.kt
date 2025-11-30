@@ -56,6 +56,7 @@ import com.rms.discord.ui.music.MusicBottomSheet
 import com.rms.discord.ui.music.MusicLoginDialog
 import com.rms.discord.ui.music.MusicSearchDialog
 import com.rms.discord.ui.music.MusicViewModel
+import com.rms.discord.ui.music.PlatformSelectDialog
 import com.rms.discord.ui.theme.*
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -74,6 +75,8 @@ fun VoiceScreen(
     var showMusicPanel by remember { mutableStateOf(false) }
     var showSearchDialog by remember { mutableStateOf(false) }
     var showLoginDialog by remember { mutableStateOf(false) }
+    var showPlatformSelectDialog by remember { mutableStateOf(false) }
+    var selectedLoginPlatform by remember { mutableStateOf("qq") }
     var showAudioDeviceSelector by remember { mutableStateOf(false) }
     var selectedParticipant by remember { mutableStateOf<ParticipantInfo?>(null) }
     var showInviteDialog by remember { mutableStateOf(false) }
@@ -136,12 +139,28 @@ fun VoiceScreen(
         )
     }
 
+    // Platform select dialog
+    if (showPlatformSelectDialog) {
+        PlatformSelectDialog(
+            qqLoggedIn = musicState.qqLoggedIn,
+            neteaseLoggedIn = musicState.neteaseLoggedIn,
+            onSelectPlatform = { platform ->
+                selectedLoginPlatform = platform
+                showPlatformSelectDialog = false
+                showLoginDialog = true
+                musicViewModel.getQRCode(platform)
+            },
+            onDismiss = { showPlatformSelectDialog = false }
+        )
+    }
+
     // Music login dialog
     if (showLoginDialog || musicState.qrCodeUrl != null) {
         MusicLoginDialog(
             qrCodeUrl = musicState.qrCodeUrl,
             loginStatus = musicState.loginStatus,
-            onRefreshQRCode = { musicViewModel.getQRCode() },
+            loginPlatform = selectedLoginPlatform,
+            onRefreshQRCode = { musicViewModel.getQRCode(selectedLoginPlatform) },
             onDismiss = {
                 showLoginDialog = false
                 musicViewModel.dismissQRCode()
@@ -204,9 +223,29 @@ fun VoiceScreen(
                 onRemoveFromQueue = { musicViewModel.removeFromQueue(it) },
                 onClearQueue = { musicViewModel.clearQueue() },
                 onShowSearch = { showSearchDialog = true },
-                onLoginClick = { 
-                    showLoginDialog = true
-                    musicViewModel.getQRCode()
+                onLoginClick = {
+                    // Check which platforms need login
+                    val qqNeedsLogin = !musicState.qqLoggedIn
+                    val neteaseNeedsLogin = !musicState.neteaseLoggedIn
+                    
+                    when {
+                        qqNeedsLogin && neteaseNeedsLogin -> {
+                            // Both need login, show platform select dialog
+                            showPlatformSelectDialog = true
+                        }
+                        qqNeedsLogin -> {
+                            // Only QQ needs login
+                            selectedLoginPlatform = "qq"
+                            showLoginDialog = true
+                            musicViewModel.getQRCode("qq")
+                        }
+                        neteaseNeedsLogin -> {
+                            // Only NetEase needs login
+                            selectedLoginPlatform = "netease"
+                            showLoginDialog = true
+                            musicViewModel.getQRCode("netease")
+                        }
+                    }
                 },
                 onQQLogoutClick = { musicViewModel.logout("qq") },
                 onNeteaseLogoutClick = { musicViewModel.logout("netease") },
