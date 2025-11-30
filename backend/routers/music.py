@@ -17,6 +17,9 @@ from pydantic import BaseModel
 from qqmusic_api import search, song, login
 from qqmusic_api.login import QRLoginType, QRCodeLoginEvents, Credential
 
+from pyncm.apis import track as ncm_track
+from pyncm.apis import cloudsearch as ncm_search
+
 from .deps import get_current_user, CurrentUser
 
 # Go music service URL
@@ -125,6 +128,26 @@ def _load_credential() -> Credential | None:
 # Load credential on module import
 _credential = _load_credential()
 
+# Load NetEase credential on module import
+NETEASE_CREDENTIAL_FILE = Path(__file__).parent.parent / "netease_credential.json"
+
+
+def _load_netease_credential() -> None:
+    """Load NetEase session cookies from file."""
+    try:
+        if NETEASE_CREDENTIAL_FILE.exists():
+            from pyncm import apis as ncm_apis
+            cookies = json.loads(NETEASE_CREDENTIAL_FILE.read_text())
+            if cookies:
+                session = ncm_apis.GetCurrentSession()
+                session.cookies.update(cookies)
+                logger.info("NetEase session loaded from file")
+    except Exception as e:
+        logger.error(f"Failed to load NetEase credential: {e}")
+
+
+_load_netease_credential()
+
 
 def _is_credential_valid_locally() -> bool:
     """Check if credential is valid using local timestamp (no network request)."""
@@ -195,6 +218,7 @@ async def _call_music_service(method: str, endpoint: str, json_data: dict | None
 class SearchRequest(BaseModel):
     keyword: str
     num: int = 20
+    platform: str = "all"  # "all" | "qq" | "netease"
 
 
 class SongInfo(BaseModel):
@@ -204,6 +228,7 @@ class SongInfo(BaseModel):
     album: str
     duration: int
     cover: str
+    platform: str = "qq"  # "qq" | "netease"
 
 
 class QueueItem(BaseModel):
@@ -229,26 +254,103 @@ class PlaybackState(BaseModel):
 
 # --- Login APIs ---
 
+# NetEase QR code state
+_netease_unikey: str | None = None
+
+
+def _generate_netease_qrcode() -> dict:
+    """Generate NetEase login QR code."""
+    global _netease_unikey
+    import qrcode
+    import io
+    from pyncm.apis import login as ncm_login
+    
+    result = ncm_login.GetQrcodeUnikey()
+    if result.get("code") != 200:
+        raise HTTPException(status_code=500, detail="Failed to get NetEase QR code key")
+    
+    _netease_unikey = result.get("unikey")
+    qr_url = f"https://music.163.com/login?codekey={_netease_unikey}"
+    
+    qr = qrcode.QRCode(version=1, box_size=10, border=2)
+    qr.add_data(qr_url)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="black", back_color="white")
+    
+    buffer = io.BytesIO()
+    img.save(buffer, format="PNG")
+    qr_base64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
+    
+    return {
+        "qrcode": f"data:image/png;base64,{qr_base64}",
+        "platform": "netease"
+    }
+
+
 @router.get("/login/qrcode")
-async def get_login_qrcode():
-    """Generate QQ login QR code."""
+async def get_login_qrcode(platform: str = "qq"):
+    """Generate login QR code. Supports platform: 'qq' or 'netease'."""
     global _current_qr
+    
+    if platform == "netease":
+        return _generate_netease_qrcode()
+    
+    # QQ Music (default)
     try:
         _current_qr = await login.get_qrcode(QRLoginType.WX)
         qr_base64 = base64.b64encode(_current_qr.data).decode('utf-8')
         return {
             "qrcode": f"data:{_current_qr.mimetype};base64,{qr_base64}",
-            "type": "wechat"
+            "platform": "qq"
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get QR code: {e}")
 
 
+def _check_netease_login_status() -> dict:
+    """Check NetEase QR code login status."""
+    global _netease_unikey
+    from pyncm.apis import login as ncm_login
+    from pathlib import Path
+    import json
+    
+    if not _netease_unikey:
+        raise HTTPException(status_code=400, detail="No NetEase QR code generated")
+    
+    result = ncm_login.GetQrcodeStatus(_netease_unikey)
+    code = result.get("code")
+    
+    # Status codes: 800=expired, 801=waiting, 802=scanned, 803=success
+    status_map = {800: "expired", 801: "waiting", 802: "scanned", 803: "success"}
+    status = status_map.get(code, "unknown")
+    response = {"status": status, "platform": "netease"}
+    
+    if code == 803:
+        # Save session cookies
+        try:
+            from pyncm import apis as ncm_apis
+            session = ncm_apis.GetCurrentSession()
+            cookies = dict(session.cookies)
+            if cookies:
+                cred_file = Path(__file__).parent.parent / "netease_credential.json"
+                cred_file.write_text(json.dumps(cookies, ensure_ascii=False))
+        except Exception as e:
+            logger.warning(f"Failed to save NetEase session: {e}")
+        response["logged_in"] = True
+        _netease_unikey = None
+    
+    return response
+
+
 @router.get("/login/status")
-async def check_login_status():
-    """Check QR code login status."""
+async def check_login_status(platform: str = "qq"):
+    """Check QR code login status. Supports platform: 'qq' or 'netease'."""
     global _credential, _current_qr
     
+    if platform == "netease":
+        return _check_netease_login_status()
+    
+    # QQ Music (default)
     if not _current_qr:
         raise HTTPException(status_code=400, detail="No QR code generated")
     
@@ -264,7 +366,7 @@ async def check_login_status():
             QRCodeLoginEvents.OTHER: "unknown",
         }
         
-        result = {"status": status_map.get(status, "unknown")}
+        result = {"status": status_map.get(status, "unknown"), "platform": "qq"}
         
         if status == QRCodeLoginEvents.DONE and cred:
             _credential = cred
@@ -282,10 +384,36 @@ async def check_logged_in():
     global _credential
     
     if not _credential:
-        return {"logged_in": False}
+        return {"logged_in": False, "platform": "qq"}
     
     cred = await _ensure_credential_valid()
-    return {"logged_in": cred is not None}
+    return {"logged_in": cred is not None, "platform": "qq"}
+
+
+@router.get("/login/check/all")
+async def check_all_login_status():
+    """Check login status for all music platforms."""
+    from pyncm.apis import login as ncm_login
+    
+    # Check QQ Music
+    qq_logged_in = False
+    if _credential:
+        cred = await _ensure_credential_valid()
+        qq_logged_in = cred is not None
+    
+    # Check NetEase
+    netease_logged_in = False
+    try:
+        result = ncm_login.GetLoginStatus()
+        profile = result.get("data", {}).get("profile")
+        netease_logged_in = profile is not None
+    except Exception:
+        pass
+    
+    return {
+        "qq": {"logged_in": qq_logged_in},
+        "netease": {"logged_in": netease_logged_in}
+    }
 
 
 @router.post("/login/logout")
@@ -299,53 +427,97 @@ async def logout():
 
 # --- Search APIs ---
 
+async def _search_qq(keyword: str, num: int) -> list[dict]:
+    """Search songs on QQ Music."""
+    results = await search.search_by_type(keyword=keyword, num=num)
+    song_list = results if isinstance(results, list) else results.get("list", [])
+    
+    songs = []
+    for item in song_list:
+        singer_names = [s.get("name", "") for s in item.get("singer", [])]
+        album_info = item.get("album", {}) or {}
+        songs.append({
+            "mid": item.get("mid", ""),
+            "name": item.get("name", ""),
+            "artist": ", ".join(singer_names),
+            "album": album_info.get("name", ""),
+            "duration": item.get("interval", 0),
+            "cover": f"https://y.qq.com/music/photo_new/T002R300x300M000{album_info.get('mid', '')}.jpg",
+            "platform": "qq"
+        })
+    return songs
+
+
+def _search_netease(keyword: str, num: int) -> list[dict]:
+    """Search songs on NetEase Cloud Music."""
+    result = ncm_search.GetSearchResult(keyword, stype=1, limit=num)
+    if result.get("code") != 200:
+        return []
+    
+    song_list = result.get("result", {}).get("songs", [])
+    songs = []
+    for item in song_list:
+        artist_names = [a.get("name", "") for a in item.get("ar", [])]
+        album_info = item.get("al", {}) or {}
+        songs.append({
+            "mid": str(item.get("id", "")),
+            "name": item.get("name", ""),
+            "artist": ", ".join(artist_names),
+            "album": album_info.get("name", ""),
+            "duration": item.get("dt", 0) // 1000,
+            "cover": album_info.get("picUrl", ""),
+            "platform": "netease"
+        })
+    return songs
+
+
 @router.post("/search")
 async def search_songs(req: SearchRequest, _user: CurrentUser):
-    """Search for songs on QQ Music."""
+    """Search for songs. Supports platform: 'all', 'qq', or 'netease'."""
+    songs = []
+    errors = []
+    
     try:
-        results = await search.search_by_type(keyword=req.keyword, num=req.num)
+        if req.platform in ("all", "qq"):
+            try:
+                qq_songs = await _search_qq(req.keyword, req.num)
+                songs.extend(qq_songs)
+            except Exception as e:
+                logger.warning(f"QQ Music search failed: {e}")
+                errors.append(f"qq: {e}")
         
-        # results is a list directly
-        song_list = results if isinstance(results, list) else results.get("list", [])
+        if req.platform in ("all", "netease"):
+            try:
+                netease_songs = _search_netease(req.keyword, req.num)
+                songs.extend(netease_songs)
+            except Exception as e:
+                logger.warning(f"NetEase search failed: {e}")
+                errors.append(f"netease: {e}")
         
-        songs = []
-        for item in song_list:
-            singer_names = [s.get("name", "") for s in item.get("singer", [])]
-            album_info = item.get("album", {}) or {}
-            songs.append({
-                "mid": item.get("mid", ""),
-                "name": item.get("name", ""),
-                "artist": ", ".join(singer_names),
-                "album": album_info.get("name", ""),
-                "duration": item.get("interval", 0),
-                "cover": f"https://y.qq.com/music/photo_new/T002R300x300M000{album_info.get('mid', '')}.jpg"
-            })
+        if not songs and errors:
+            raise HTTPException(status_code=500, detail=f"Search failed: {'; '.join(errors)}")
         
         return {"songs": songs}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Search failed: {e}")
 
 
 @router.get("/song/{mid}/url")
-async def get_song_url(mid: str, _user: CurrentUser):
-    """Get playable URL for a song."""
-    cred = await _ensure_credential_valid()
-    
+async def get_song_url(mid: str, platform: str = "qq", _user: CurrentUser = None):
+    """Get playable URL for a song. Supports platform: 'qq' or 'netease'."""
     try:
-        # Try to get high quality with credential, fallback to MP3_128
-        file_type = song.SongFileType.MP3_320 if cred else song.SongFileType.MP3_128
-        urls = await song.get_song_urls([mid], file_type=file_type, credential=cred)
-        
-        url = urls.get(mid, "")
-        if not url:
-            # Fallback to lower quality
-            urls = await song.get_song_urls([mid], file_type=song.SongFileType.MP3_128)
-            url = urls.get(mid, "")
+        if platform == "netease":
+            url = _get_netease_song_url(mid)
+        else:
+            cred = await _ensure_credential_valid()
+            url = await _get_qq_song_url(mid, cred)
         
         if not url:
             raise HTTPException(status_code=404, detail="Song URL not available")
         
-        return {"url": url, "mid": mid}
+        return {"url": url, "mid": mid, "platform": platform}
     except HTTPException:
         raise
     except Exception as e:
@@ -433,6 +605,40 @@ class BotStartRequest(BaseModel):
     room_name: str
 
 
+async def _get_qq_song_url(mid: str, cred: Credential | None) -> str | None:
+    """Get song URL from QQ Music."""
+    file_type = song.SongFileType.MP3_320 if cred else song.SongFileType.MP3_128
+    urls = await song.get_song_urls([mid], file_type=file_type, credential=cred)
+    url = urls.get(mid, "")
+    
+    if not url:
+        urls = await song.get_song_urls([mid], file_type=song.SongFileType.MP3_128)
+        url = urls.get(mid, "")
+    
+    return url if url else None
+
+
+def _get_netease_song_url(song_id: str) -> str | None:
+    """Get song URL from NetEase Cloud Music."""
+    try:
+        result = ncm_track.GetTrackAudio([int(song_id)], bitrate=320000)
+        if result.get("code") == 200:
+            data_list = result.get("data", [])
+            if data_list and data_list[0].get("url"):
+                return data_list[0]["url"]
+        
+        # Fallback to lower quality
+        result = ncm_track.GetTrackAudio([int(song_id)], bitrate=128000)
+        if result.get("code") == 200:
+            data_list = result.get("data", [])
+            if data_list and data_list[0].get("url"):
+                return data_list[0]["url"]
+    except Exception as e:
+        logger.error(f"Failed to get NetEase song URL: {e}")
+    
+    return None
+
+
 async def _play_current_song(room_name: str) -> bool:
     """Internal: load and play current song via Go service for a specific room."""
     cred = await _ensure_credential_valid()
@@ -443,19 +649,17 @@ async def _play_current_song(room_name: str) -> bool:
         return False
     
     current = state.play_queue[state.current_index]["song"]
+    platform = current.get("platform", "qq")
     
-    # Get song URL
+    # Get song URL based on platform
     try:
-        file_type = song.SongFileType.MP3_320 if cred else song.SongFileType.MP3_128
-        urls = await song.get_song_urls([current["mid"]], file_type=file_type, credential=cred)
-        url = urls.get(current["mid"], "")
+        if platform == "netease":
+            url = _get_netease_song_url(current["mid"])
+        else:
+            url = await _get_qq_song_url(current["mid"], cred)
         
         if not url:
-            urls = await song.get_song_urls([current["mid"]], file_type=song.SongFileType.MP3_128)
-            url = urls.get(current["mid"], "")
-        
-        if not url:
-            logger.error(f"Song URL not available: {current['name']}")
+            logger.error(f"Song URL not available: {current['name']} (platform: {platform})")
             return False
         
         # Call Go music service to play

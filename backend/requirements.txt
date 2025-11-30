@@ -10,4 +10,6 @@ websockets>=12.0
 livekit-api>=1.0.0
 livekit>=1.0.0
 qqmusic-api-python>=0.3.0
+pyncm>=1.8.0
+qrcode[pil]>=8.0
 av>=16.0.0
