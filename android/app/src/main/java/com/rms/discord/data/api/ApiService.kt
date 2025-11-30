@@ -49,6 +49,11 @@ interface ApiService {
         @Path("channelId") channelId: Long
     ): List<VoiceUser>
 
+    @GET("api/voice/user/all")
+    suspend fun getAllVoiceUsers(
+        @Header("Authorization") token: String
+    ): AllVoiceUsersResponse
+
     // Voice Invite (guest access)
     @GET("api/voice/invite/{token}")
     suspend fun getVoiceInviteInfo(

@@ -258,3 +258,7 @@ data class InviteCreateResponse(
     val inviteUrl: String,
     val token: String
 )
+
+data class AllVoiceUsersResponse(
+    val users: Map<Long, List<VoiceUser>>
+)

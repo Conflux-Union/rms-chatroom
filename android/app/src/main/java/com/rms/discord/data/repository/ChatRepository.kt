@@ -295,9 +295,26 @@ class ChatRepository @Inject constructor(
 
     suspend fun fetchAllVoiceChannelUsers() {
         val server = _currentServer.value ?: return
-        val voiceChannels = server.channels?.filter { it.type == ChannelType.VOICE } ?: emptyList()
-        voiceChannels.forEach { channel ->
-            fetchVoiceChannelUsers(channel.id)
+        try {
+            val token = authRepository.getToken() ?: return
+            val response = api.getAllVoiceUsers(authRepository.getAuthHeader(token))
+            val newMap = mutableMapOf<Long, List<VoiceUser>>()
+            response.users.forEach { (channelId, users) ->
+                newMap[channelId] = users
+            }
+            // Set empty list for voice channels not in response
+            val voiceChannels = server.channels?.filter { it.type == ChannelType.VOICE } ?: emptyList()
+            voiceChannels.forEach { channel ->
+                if (!newMap.containsKey(channel.id)) {
+                    newMap[channel.id] = emptyList()
+                }
+            }
+            _voiceChannelUsers.value = newMap
+        } catch (e: Exception) {
+            Log.e(TAG, "fetchAllVoiceChannelUsers failed", e)
+            // Fallback: clear all voice channel users
+            val voiceChannels = server.channels?.filter { it.type == ChannelType.VOICE } ?: emptyList()
+            _voiceChannelUsers.value = voiceChannels.associate { it.id to emptyList() }
         }
     }
 

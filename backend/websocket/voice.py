@@ -595,6 +595,80 @@ class AllVoiceChannelsResponse(BaseModel):
     total_users: int
 
 
+class AllVoiceUsersResponse(BaseModel):
+    """Response model for /api/voice/user/all - optimized for frontend polling."""
+    users: dict[int, list[VoiceChannelUser]]  # channel_id -> users
+
+
+@router.get("/api/voice/user/all", response_model=AllVoiceUsersResponse)
+async def get_all_voice_users(
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Get all users in all voice channels in a single request.
+    Returns a dict mapping channel_id to list of users.
+    Reduces polling overhead compared to per-channel requests.
+    """
+    result = await db.execute(
+        select(Channel).where(Channel.type == ChannelType.VOICE)
+    )
+    channels = result.scalars().all()
+    
+    settings = get_settings()
+    livekit_http_url = settings.livekit_internal_host.replace("ws://", "http://").replace("wss://", "https://")
+    api = LiveKitAPI(
+        url=livekit_http_url,
+        api_key=settings.livekit_api_key,
+        api_secret=settings.livekit_api_secret,
+    )
+    
+    users_by_channel: dict[int, list[VoiceChannelUser]] = {}
+    
+    try:
+        for channel in channels:
+            room_name = f"voice_{channel.id}"
+            try:
+                response = await api.room.list_participants(ListParticipantsRequest(room=room_name))
+                host_id = _host_mode_state.get(room_name)
+                
+                # Check if host is still in room
+                if host_id:
+                    participant_ids = {p.identity for p in response.participants}
+                    if host_id not in participant_ids:
+                        _host_mode_state.pop(room_name, None)
+                        host_id = None
+                
+                channel_users: list[VoiceChannelUser] = []
+                for p in response.participants:
+                    is_muted = True
+                    for track in p.tracks:
+                        if track.source == 2:  # MICROPHONE
+                            is_muted = track.muted
+                            break
+                    
+                    # Host mode enforcement
+                    if host_id and p.identity != host_id and not is_muted:
+                        await _mute_participant_mic(api, room_name, p.identity, True)
+                        is_muted = True
+                    
+                    channel_users.append(VoiceChannelUser(
+                        id=p.identity,
+                        name=p.name or p.identity,
+                        is_muted=is_muted,
+                        is_host=(host_id == p.identity),
+                    ))
+                
+                if channel_users:
+                    users_by_channel[channel.id] = channel_users
+            except Exception:
+                # Room doesn't exist (no participants)
+                pass
+    finally:
+        await api.aclose()
+    
+    return AllVoiceUsersResponse(users=users_by_channel)
+
+
 @router.get("/api/qqbot/get_voice_channel_people", response_model=AllVoiceChannelsResponse)
 async def get_all_voice_channel_people(
     db: AsyncSession = Depends(get_db),

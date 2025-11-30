@@ -154,7 +154,6 @@ export const useChatStore = defineStore('chat', () => {
         `${API_BASE}/api/voice/${channelId}/users`,
         { headers: getAuthHeaders() }
       )
-      // Create new Map to trigger reactivity
       const newMap = new Map(voiceChannelUsers.value)
       newMap.set(channelId, resp.data)
       voiceChannelUsers.value = newMap
@@ -167,8 +166,32 @@ export const useChatStore = defineStore('chat', () => {
 
   async function fetchAllVoiceChannelUsers() {
     if (!currentServer.value?.channels) return
-    const voiceChannels = currentServer.value.channels.filter(c => c.type === 'voice')
-    await Promise.all(voiceChannels.map(c => fetchVoiceChannelUsers(c.id)))
+    try {
+      const resp = await axios.get<{ users: Record<string, VoiceChannelUser[]> }>(
+        `${API_BASE}/api/voice/user/all`,
+        { headers: getAuthHeaders() }
+      )
+      const newMap = new Map<number, VoiceChannelUser[]>()
+      for (const [channelId, users] of Object.entries(resp.data.users)) {
+        newMap.set(Number(channelId), users)
+      }
+      // Set empty array for voice channels not in response
+      const voiceChannels = currentServer.value.channels.filter(c => c.type === 'voice')
+      for (const ch of voiceChannels) {
+        if (!newMap.has(ch.id)) {
+          newMap.set(ch.id, [])
+        }
+      }
+      voiceChannelUsers.value = newMap
+    } catch {
+      // Fallback: clear all voice channel users
+      const newMap = new Map<number, VoiceChannelUser[]>()
+      const voiceChannels = currentServer.value.channels.filter(c => c.type === 'voice')
+      for (const ch of voiceChannels) {
+        newMap.set(ch.id, [])
+      }
+      voiceChannelUsers.value = newMap
+    }
   }
 
   function getVoiceChannelUsers(channelId: number): VoiceChannelUser[] {
