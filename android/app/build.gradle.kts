@@ -6,6 +6,45 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
+// Git utilities for version info
+fun String.runCommand(): String {
+    return try {
+        val parts = this.split(" ")
+        val process = ProcessBuilder(parts)
+            .directory(rootDir)
+            .redirectErrorStream(true)
+            .start()
+        process.inputStream.bufferedReader().readText().trim()
+    } catch (e: Exception) {
+        ""
+    }
+}
+
+val appVersionCode = 5
+val appVersionName = "1.0.3"
+val commitHash = "git rev-parse --short=8 HEAD".runCommand().ifEmpty { "unknown" }
+val fullVersionName = "v${appVersionName}(${appVersionCode})(commit:${commitHash})"
+
+// Task to check git working tree is clean
+tasks.register("checkGitClean") {
+    doLast {
+        val status = "git status --porcelain".runCommand()
+        if (status.isNotEmpty()) {
+            throw GradleException(
+                "Git working tree is not clean. Please commit or stash your changes before building.\n" +
+                "Run 'git status' to see uncommitted changes.\n\n" +
+                "Uncommitted changes:\n$status"
+            )
+        }
+        println("Git working tree is clean.")
+    }
+}
+
+// Make assemble tasks depend on checkGitClean
+tasks.matching { it.name.startsWith("assemble") }.configureEach {
+    dependsOn("checkGitClean")
+}
+
 android {
     namespace = "com.rms.discord"
     compileSdk = 35
@@ -23,8 +62,8 @@ android {
         applicationId = "com.rms.discord"
         minSdk = 26
         targetSdk = 35
-        versionCode = 5
-        versionName = "1.0.3-fix"
+        versionCode = appVersionCode
+        versionName = fullVersionName
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
