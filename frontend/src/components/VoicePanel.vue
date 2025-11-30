@@ -426,6 +426,8 @@ function closeInviteDialog() {
   flex: 1;
   display: flex;
   flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .voice-header {
@@ -466,6 +468,8 @@ function closeInviteDialog() {
   justify-content: flex-start;
   align-items: center;
   padding: 24px;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .device-selection {

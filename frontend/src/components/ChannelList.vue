@@ -216,6 +216,8 @@ async function deleteChannel() {
   display: flex;
   flex-direction: column;
   border-right: 1px dashed rgba(128, 128, 128, 0.4);
+  min-height: 0;
+  overflow: hidden;
 }
 
 .server-header {

@@ -441,6 +441,7 @@ async function handleStopBot() {
   display: flex;
   flex-direction: column;
   max-height: 100%;
+  min-height: 0;
   overflow: hidden;
 }
 
@@ -506,6 +507,7 @@ async function handleStopBot() {
   display: flex;
   flex-direction: column;
   padding: 16px;
+  min-height: 0;
   overflow: hidden;
 }
 
