@@ -21,10 +21,13 @@ import io.livekit.android.room.participant.AudioTrackPublishDefaults
 import io.livekit.android.room.participant.LocalParticipant
 import io.livekit.android.room.participant.Participant
 import io.livekit.android.room.participant.RemoteParticipant
+import io.livekit.android.room.participant.VideoTrackPublishDefaults
 import io.livekit.android.room.track.LocalAudioTrackOptions
+import io.livekit.android.room.track.LocalVideoTrackOptions
 import io.livekit.android.room.track.RemoteAudioTrack
 import io.livekit.android.room.track.RemoteVideoTrack
 import io.livekit.android.room.track.Track
+import io.livekit.android.room.track.ScreenSharePresets
 import io.livekit.android.room.track.screencapture.ScreenCaptureParams
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -174,9 +177,20 @@ class LiveKitManager @Inject constructor(
                 red = true    // Enable redundant audio data for reliability
             )
 
+            // High quality screen share options (1080p @ 30fps, 4Mbps)
+            val screenShareCaptureDefaults = LocalVideoTrackOptions(
+                captureParams = ScreenSharePresets.H1080_FPS30.capture
+            )
+            val screenSharePublishDefaults = VideoTrackPublishDefaults(
+                videoEncoding = ScreenSharePresets.H1080_FPS30.encoding,
+                simulcast = false  // Disable simulcast for screen share to maintain quality
+            )
+
             val roomOptions = RoomOptions(
                 audioTrackCaptureDefaults = audioTrackCaptureDefaults,
-                audioTrackPublishDefaults = audioTrackPublishDefaults
+                audioTrackPublishDefaults = audioTrackPublishDefaults,
+                screenShareTrackCaptureDefaults = screenShareCaptureDefaults,
+                screenShareTrackPublishDefaults = screenSharePublishDefaults
             )
 
             val newRoom = LiveKit.create(

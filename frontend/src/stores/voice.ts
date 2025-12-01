@@ -8,7 +8,7 @@ import {
   AudioPresets,
   RemoteTrackPublication,
   LocalTrackPublication,
-  VideoPresets,
+  ScreenSharePresets,
 } from 'livekit-client'
 import type { Channel } from '../types'
 import { useAuthStore } from './auth'
@@ -630,10 +630,12 @@ export const useVoiceStore = defineStore('voice', () => {
         isScreenSharing.value = false
         localScreenShareTrack.value = null
       } else {
-        // Start screen sharing with high quality settings
+        // Start screen sharing with high quality settings (1080p @ 30fps, 4Mbps)
         await room.value.localParticipant.setScreenShareEnabled(true, {
-          resolution: VideoPresets.h1080.resolution,
+          resolution: ScreenSharePresets.h1080fps30.resolution,
           contentHint: 'detail',
+        }, {
+          videoEncoding: ScreenSharePresets.h1080fps30.encoding,
         })
         isScreenSharing.value = true
         // Find the screen share track publication
