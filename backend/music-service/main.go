@@ -308,6 +308,10 @@ func (p *Player) playbackLoop(song *SongInfo, startPosMs int64) {
 	))
 	capsfilter.Set("caps", caps)
 
+	// Volume control - reduce default volume
+	volume, _ := gst.NewElement("volume")
+	volume.Set("volume", DefaultVolume)
+
 	// Opus encoder - optimized for music (not voice)
 	opusenc, _ := gst.NewElement("opusenc")
 	opusenc.Set("bitrate", OpusBitrate)
@@ -322,10 +326,10 @@ func (p *Player) playbackLoop(song *SongInfo, startPosMs int64) {
 	appsink.SetProperty("sync", true)
 
 	// Add all elements to pipeline
-	pipeline.AddMany(uridecodebin, audioconvert, audioresample, capsfilter, opusenc, appsinkElem)
+	pipeline.AddMany(uridecodebin, audioconvert, audioresample, capsfilter, volume, opusenc, appsinkElem)
 
 	// Link static elements
-	gst.ElementLinkMany(audioconvert, audioresample, capsfilter, opusenc, appsinkElem)
+	gst.ElementLinkMany(audioconvert, audioresample, capsfilter, volume, opusenc, appsinkElem)
 
 	// Handle dynamic pad from uridecodebin
 	uridecodebin.Connect("pad-added", func(self *gst.Element, pad *gst.Pad) {
