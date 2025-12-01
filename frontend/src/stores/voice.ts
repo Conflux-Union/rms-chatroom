@@ -383,6 +383,21 @@ export const useVoiceStore = defineStore('voice', () => {
       currentVoiceChannel.value = channel
       updateParticipants()
 
+      // Check existing remote participants for screen shares (for late joiners)
+      room.value.remoteParticipants.forEach((participant) => {
+        participant.trackPublications.forEach((pub) => {
+          if (pub.source === Track.Source.ScreenShare && pub.track) {
+            const newMap = new Map(remoteScreenShares.value)
+            newMap.set(participant.identity, {
+              participantId: participant.identity,
+              participantName: participant.name || participant.identity,
+              track: pub as RemoteTrackPublication,
+            })
+            remoteScreenShares.value = newMap
+          }
+        })
+      })
+
       // Fetch host mode status after joining
       await fetchHostModeStatus()
 
