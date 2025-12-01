@@ -356,14 +356,16 @@ export const useVoiceStore = defineStore('voice', () => {
             if (isIOS()) {
               // iOS: Control the volume of each user with Web Audio API
               const ctx = ensureAudioContext()
+
+              audioElement.volume = 1.0
+              audioElement.muted = false
+
               const sourceNode = ctx.createMediaElementSource(audioElement)
               const gainNode = ctx.createGain()
+
               const initialGain = Math.max(0, Math.min(3, savedVolume / 100))
               gainNode.gain.value = initialGain
               sourceNode.connect(gainNode).connect(ctx.destination)
-
-              audioElement.volume = 1.0
-              audioElement.muted = true
 
               participantAudioMap.set(participant.identity, {
                 audioElement,
