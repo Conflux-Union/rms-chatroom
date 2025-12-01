@@ -28,6 +28,7 @@ import io.livekit.android.room.track.RemoteAudioTrack
 import io.livekit.android.room.track.RemoteVideoTrack
 import io.livekit.android.room.track.Track
 import io.livekit.android.room.track.ScreenSharePresets
+import io.livekit.android.room.track.VideoEncoding
 import io.livekit.android.room.track.screencapture.ScreenCaptureParams
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -177,13 +178,14 @@ class LiveKitManager @Inject constructor(
                 red = true    // Enable redundant audio data for reliability
             )
 
-            // High quality screen share options (1080p @ 30fps, 4Mbps)
+            // High quality screen share with AV1 codec (high compression, 1080p @ 30fps, 1.5Mbps)
             val screenShareCaptureDefaults = LocalVideoTrackOptions(
                 captureParams = ScreenSharePresets.H1080_FPS30.capture
             )
             val screenSharePublishDefaults = VideoTrackPublishDefaults(
-                videoEncoding = ScreenSharePresets.H1080_FPS30.encoding,
-                simulcast = false  // Disable simulcast for screen share to maintain quality
+                videoEncoding = VideoEncoding(maxBitrate = 1_500_000, maxFps = 30),
+                videoCodec = "av1",
+                simulcast = false  // Disable simulcast for screen share
             )
 
             val roomOptions = RoomOptions(
