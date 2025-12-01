@@ -103,6 +103,13 @@ interface ApiService {
         @Body body: MuteParticipantRequest
     ): MuteParticipantResponse
 
+    @POST("api/voice/{channelId}/kick/{userId}")
+    suspend fun kickParticipant(
+        @Header("Authorization") token: String,
+        @Path("channelId") channelId: Long,
+        @Path("userId") userId: String
+    ): KickParticipantResponse
+
     @GET("api/voice/{channelId}/host-mode")
     suspend fun getHostMode(
         @Header("Authorization") token: String,

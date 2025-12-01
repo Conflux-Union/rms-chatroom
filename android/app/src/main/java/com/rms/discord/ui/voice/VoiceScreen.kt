@@ -274,6 +274,10 @@ fun VoiceScreen(
                     viewModel.muteParticipant(participant.identity, true)
                     selectedParticipant = null
                 },
+                onKickParticipant = {
+                    viewModel.kickParticipant(participant.identity)
+                    selectedParticipant = null
+                },
                 onDismiss = { selectedParticipant = null }
             )
         }
@@ -725,6 +729,7 @@ private fun ParticipantSettingsSheet(
     isAdmin: Boolean,
     onVolumeChange: (Float) -> Unit,
     onMuteParticipant: () -> Unit,
+    onKickParticipant: () -> Unit,
     onDismiss: () -> Unit
 ) {
     var localVolume by remember(participant.identity) { mutableStateOf(participant.volume) }
@@ -802,6 +807,23 @@ private fun ParticipantSettingsSheet(
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text("静音麦克风")
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            Button(
+                onClick = onKickParticipant,
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = DiscordRed.copy(alpha = 0.8f)
+                ),
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.PersonRemove,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("踢出频道")
             }
             Spacer(modifier = Modifier.height(16.dp))
         }

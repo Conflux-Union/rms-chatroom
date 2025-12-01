@@ -235,6 +235,22 @@ class VoiceRepository @Inject constructor(
         }
     }
 
+    suspend fun kickParticipant(channelId: Long, userId: String): Result<Boolean> {
+        return try {
+            val token = authRepository.getToken()
+                ?: return Result.failure(AuthException("Not logged in"))
+            val response = api.kickParticipant(
+                authRepository.getAuthHeader(token),
+                channelId,
+                userId
+            )
+            Result.success(response.success)
+        } catch (e: Exception) {
+            Log.e(TAG, "kickParticipant failed", e)
+            Result.failure(e.toAuthException())
+        }
+    }
+
     suspend fun fetchHostMode(channelId: Long): Result<HostModeResponse> {
         return try {
             val token = authRepository.getToken()

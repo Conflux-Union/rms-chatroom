@@ -241,6 +241,13 @@ class VoiceViewModel @Inject constructor(
         }
     }
 
+    fun kickParticipant(userId: String) {
+        val channelId = _channelId.value ?: return
+        viewModelScope.launch {
+            voiceRepository.kickParticipant(channelId, userId)
+        }
+    }
+
     private fun fetchHostMode() {
         val channelId = _channelId.value ?: return
         viewModelScope.launch {

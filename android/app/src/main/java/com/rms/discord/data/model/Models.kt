@@ -241,6 +241,10 @@ data class MuteParticipantResponse(
     val muted: Boolean
 )
 
+data class KickParticipantResponse(
+    val success: Boolean
+)
+
 data class HostModeRequest(
     val enabled: Boolean
 )
