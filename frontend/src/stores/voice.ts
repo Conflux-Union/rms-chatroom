@@ -361,8 +361,9 @@ export const useVoiceStore = defineStore('voice', () => {
               const initialGain = Math.max(0, Math.min(3, savedVolume / 100))
               gainNode.gain.value = initialGain
               sourceNode.connect(gainNode).connect(ctx.destination)
-              audioElement.volume = 1
-              audioElement.muted = false
+              
+              audioElement.volume = 0
+              audioElement.muted = true
 
               participantAudioMap.set(participant.identity, {
                 audioElement,
