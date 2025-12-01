@@ -170,6 +170,7 @@ async def get_voice_token(
             room_join=True,
             room=room_name,
             can_publish=True,
+            can_publish_sources=["camera", "microphone", "screen_share", "screen_share_audio"],
             can_subscribe=True,
         ))
     )
@@ -603,6 +604,7 @@ async def join_voice_as_guest(
             room_join=True,
             room=room_name,
             can_publish=True,
+            can_publish_sources=["camera", "microphone", "screen_share", "screen_share_audio"],
             can_subscribe=True,
         ))
     )

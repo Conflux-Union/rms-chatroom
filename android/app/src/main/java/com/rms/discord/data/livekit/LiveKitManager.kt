@@ -1,6 +1,7 @@
 package com.rms.discord.data.livekit
 
 import android.content.Context
+import android.content.Intent
 import android.media.AudioAttributes
 import android.media.AudioManager
 import android.util.Log
@@ -22,6 +23,8 @@ import io.livekit.android.room.participant.Participant
 import io.livekit.android.room.participant.RemoteParticipant
 import io.livekit.android.room.track.LocalAudioTrackOptions
 import io.livekit.android.room.track.RemoteAudioTrack
+import io.livekit.android.room.track.RemoteVideoTrack
+import io.livekit.android.room.track.Track
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -67,6 +70,15 @@ enum class AudioDeviceType {
     BLUETOOTH
 }
 
+/**
+ * Represents a remote screen share for UI display
+ */
+data class ScreenShareInfo(
+    val participantId: String,
+    val participantName: String,
+    val videoTrack: RemoteVideoTrack
+)
+
 @Singleton
 class LiveKitManager @Inject constructor(
     @ApplicationContext private val context: Context
@@ -106,6 +118,16 @@ class LiveKitManager @Inject constructor(
 
     // Per-participant volume storage (identity -> volume 0.0-2.0)
     private val participantVolumes = mutableMapOf<String, Float>()
+
+    // Screen share state
+    private val _isScreenSharing = MutableStateFlow(false)
+    val isScreenSharing: StateFlow<Boolean> = _isScreenSharing.asStateFlow()
+
+    private val _remoteScreenShares = MutableStateFlow<Map<String, ScreenShareInfo>>(emptyMap())
+    val remoteScreenShares: StateFlow<Map<String, ScreenShareInfo>> = _remoteScreenShares.asStateFlow()
+
+    // MediaProjection permission data (stored after user grants permission)
+    private var mediaProjectionPermissionData: Intent? = null
 
     suspend fun connect(url: String, token: String, roomName: String): Result<Unit> {
         if (_connectionState.value == ConnectionState.CONNECTED) {
@@ -216,6 +238,9 @@ class LiveKitManager @Inject constructor(
         _availableDevices.value = emptyList()
         _selectedDevice.value = null
         participantVolumes.clear()
+        _isScreenSharing.value = false
+        _remoteScreenShares.value = emptyMap()
+        mediaProjectionPermissionData = null
 
         Log.d(TAG, "Disconnected from room")
     }
@@ -393,6 +418,32 @@ class LiveKitManager @Inject constructor(
                 }
                 is RoomEvent.TrackSubscribed -> {
                     updateParticipants()
+                    // Check for remote screen share
+                    val track = event.track
+                    val participant = event.participant
+                    if (track is RemoteVideoTrack && 
+                        event.publication.source == Track.Source.SCREEN_SHARE &&
+                        participant is RemoteParticipant) {
+                        val identity = participant.identity?.value ?: return@collect
+                        val name = participant.name ?: identity
+                        val newMap = _remoteScreenShares.value.toMutableMap()
+                        newMap[identity] = ScreenShareInfo(identity, name, track)
+                        _remoteScreenShares.value = newMap
+                        Log.d(TAG, "Remote screen share started: $name")
+                    }
+                }
+                is RoomEvent.TrackUnsubscribed -> {
+                    // Check for remote screen share removal
+                    val publication = event.publication
+                    val participant = event.participant
+                    if (publication.source == Track.Source.SCREEN_SHARE && 
+                        participant is RemoteParticipant) {
+                        val identity = participant.identity?.value ?: return@collect
+                        val newMap = _remoteScreenShares.value.toMutableMap()
+                        newMap.remove(identity)
+                        _remoteScreenShares.value = newMap
+                        Log.d(TAG, "Remote screen share stopped: $identity")
+                    }
                 }
                 is RoomEvent.TrackMuted -> {
                     updateParticipants()
@@ -450,4 +501,45 @@ class LiveKitManager @Inject constructor(
     }
 
     fun isConnected(): Boolean = _connectionState.value == ConnectionState.CONNECTED
+
+    /**
+     * Store MediaProjection permission data for screen sharing.
+     * Call this after user grants MediaProjection permission.
+     */
+    fun setMediaProjectionPermissionData(data: Intent?) {
+        mediaProjectionPermissionData = data
+    }
+
+    /**
+     * Enable or disable screen sharing.
+     * Requires MediaProjection permission data to be set first via setMediaProjectionPermissionData().
+     */
+    suspend fun setScreenShareEnabled(enabled: Boolean): Result<Unit> {
+        val currentRoom = room ?: return Result.failure(IllegalStateException("Not connected to room"))
+        
+        return try {
+            if (enabled) {
+                val permissionData = mediaProjectionPermissionData
+                    ?: return Result.failure(IllegalStateException("MediaProjection permission not granted"))
+                
+                currentRoom.localParticipant.setScreenShareEnabled(true, permissionData)
+                _isScreenSharing.value = true
+                Log.d(TAG, "Screen sharing enabled")
+            } else {
+                currentRoom.localParticipant.setScreenShareEnabled(false)
+                _isScreenSharing.value = false
+                Log.d(TAG, "Screen sharing disabled")
+            }
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to toggle screen share", e)
+            _isScreenSharing.value = false
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Check if MediaProjection permission is available.
+     */
+    fun hasMediaProjectionPermission(): Boolean = mediaProjectionPermissionData != null
 }

@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import { useVoiceStore } from '../stores/voice'
 import { useAuthStore } from '../stores/auth'
-import { Volume2, VolumeX, Mic, MicOff, Phone, Crown } from 'lucide-vue-next'
+import { Volume2, VolumeX, Mic, MicOff, Phone, Crown, Monitor, MonitorOff } from 'lucide-vue-next'
 
 const voice = useVoiceStore()
 const auth = useAuthStore()
@@ -60,6 +60,15 @@ const hostButtonDisabled = computed(() =>
         :title="hostButtonDisabled ? '其他用户正在主持' : (voice.hostModeEnabled ? '关闭主持人模式' : '开启主持人模式')"
       >
         <Crown :size="16" />
+      </button>
+      <button
+        class="control-btn"
+        :class="{ 'screen-share-active': voice.isScreenSharing }"
+        @click="voice.toggleScreenShare()"
+        :title="voice.isScreenSharing ? '停止共享屏幕' : '共享屏幕'"
+      >
+        <MonitorOff v-if="voice.isScreenSharing" :size="16" />
+        <Monitor v-else :size="16" />
       </button>
       <button
         class="control-btn disconnect"
@@ -178,6 +187,16 @@ const hostButtonDisabled = computed(() =>
 .control-btn.host-mode-disabled:hover {
   transform: none;
   background: var(--surface-glass);
+}
+
+.control-btn.screen-share-active {
+  background: linear-gradient(135deg, #10b981, #059669);
+  border-color: #10b981;
+  color: white;
+}
+
+.control-btn.screen-share-active:hover {
+  filter: brightness(1.1);
 }
 
 .host-mode-banner {

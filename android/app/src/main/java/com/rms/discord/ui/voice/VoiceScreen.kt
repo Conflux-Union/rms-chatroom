@@ -387,6 +387,7 @@ fun VoiceScreen(
                 hostModeEnabled = state.hostModeEnabled,
                 isCurrentUserHost = state.isCurrentUserHost,
                 hostButtonDisabled = state.hostButtonDisabled,
+                isScreenSharing = state.isScreenSharing,
                 onJoin = onJoinWithPermission,
                 onLeave = { viewModel.leaveVoice() },
                 onToggleMute = { viewModel.toggleMute() },
@@ -396,7 +397,8 @@ fun VoiceScreen(
                 onCreateInvite = {
                     viewModel.createInvite()
                     showInviteDialog = true
-                }
+                },
+                onToggleScreenShare = { viewModel.toggleScreenShare() }
             )
         }
     }
@@ -961,13 +963,15 @@ private fun VoiceControls(
     hostModeEnabled: Boolean,
     isCurrentUserHost: Boolean,
     hostButtonDisabled: Boolean,
+    isScreenSharing: Boolean,
     onJoin: () -> Unit,
     onLeave: () -> Unit,
     onToggleMute: () -> Unit,
     onToggleDeafen: () -> Unit,
     onOpenDeviceSelector: () -> Unit,
     onToggleHostMode: () -> Unit,
-    onCreateInvite: () -> Unit
+    onCreateInvite: () -> Unit,
+    onToggleScreenShare: () -> Unit
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -1038,6 +1042,15 @@ private fun VoiceControls(
                         onClick = onCreateInvite
                     )
                 }
+
+                // Screen share button
+                VoiceControlButton(
+                    icon = if (isScreenSharing) Icons.Default.DesktopAccessDisabled else Icons.Default.DesktopWindows,
+                    label = if (isScreenSharing) "停止共享" else "共享屏幕",
+                    isActive = isScreenSharing,
+                    activeColor = VoiceConnected,
+                    onClick = onToggleScreenShare
+                )
 
                 // Leave button
                 VoiceControlButton(

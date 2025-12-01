@@ -3,9 +3,11 @@ package com.rms.discord.ui.voice
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import android.content.Intent
 import com.rms.discord.data.livekit.AudioDeviceInfo
 import com.rms.discord.data.livekit.ConnectionState
 import com.rms.discord.data.livekit.ParticipantInfo
+import com.rms.discord.data.livekit.ScreenShareInfo
 import com.rms.discord.data.repository.AuthRepository
 import com.rms.discord.data.repository.VoiceRepository
 import com.rms.discord.service.VoiceCallService
@@ -39,7 +41,10 @@ data class VoiceState(
     // Invite state
     val inviteUrl: String? = null,
     val inviteLoading: Boolean = false,
-    val inviteError: String? = null
+    val inviteError: String? = null,
+    // Screen share state
+    val isScreenSharing: Boolean = false,
+    val remoteScreenShares: Map<String, ScreenShareInfo> = emptyMap()
 ) {
     val isConnected: Boolean get() = connectionState == ConnectionState.CONNECTED
     val isReconnecting: Boolean get() = connectionState == ConnectionState.RECONNECTING
@@ -73,6 +78,7 @@ class VoiceViewModel @Inject constructor(
         observeVoiceState()
         observeDeviceState()
         observeHostModeState()
+        observeScreenShareState()
         loadUserInfo()
     }
 
@@ -169,6 +175,22 @@ class VoiceViewModel @Inject constructor(
                 _state.value = _state.value.copy(
                     availableDevices = devices,
                     selectedDevice = selected
+                )
+            }
+        }
+    }
+
+    private fun observeScreenShareState() {
+        viewModelScope.launch {
+            combine(
+                voiceRepository.isScreenSharing,
+                voiceRepository.remoteScreenShares
+            ) { isSharing, remoteShares ->
+                Pair(isSharing, remoteShares)
+            }.collect { (isSharing, remoteShares) ->
+                _state.value = _state.value.copy(
+                    isScreenSharing = isSharing,
+                    remoteScreenShares = remoteShares
                 )
             }
         }
@@ -283,6 +305,25 @@ class VoiceViewModel @Inject constructor(
         _inviteUrl.value = null
         _inviteError.value = null
         _inviteLoading.value = false
+    }
+
+    // Screen share functions
+    fun setMediaProjectionPermissionData(data: Intent?) {
+        voiceRepository.setMediaProjectionPermissionData(data)
+    }
+
+    fun toggleScreenShare() {
+        viewModelScope.launch {
+            if (_state.value.isScreenSharing) {
+                voiceRepository.setScreenShareEnabled(false)
+            } else {
+                voiceRepository.setScreenShareEnabled(true)
+            }
+        }
+    }
+
+    fun hasMediaProjectionPermission(): Boolean {
+        return voiceRepository.hasMediaProjectionPermission()
     }
 
     override fun onCleared() {

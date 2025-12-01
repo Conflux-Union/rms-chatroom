@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useChatStore } from '../stores/chat'
 import { useVoiceStore } from '../stores/voice'
 import { useAuthStore } from '../stores/auth'
-import { Volume2, VolumeX, Mic, MicOff, Phone, AlertTriangle, Crown, Link, Copy, Check, UserX } from 'lucide-vue-next'
+import { Volume2, VolumeX, Mic, MicOff, Phone, AlertTriangle, Crown, Link, Copy, Check, UserX, Monitor, MonitorOff } from 'lucide-vue-next'
 
 // Detect iOS devices
 const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
@@ -47,6 +47,34 @@ const touchCurrentX = ref(0)
 // Desktop context menu state
 const contextMenu = ref<{ show: boolean; x: number; y: number; participantId: string }>({
   show: false, x: 0, y: 0, participantId: ''
+})
+
+// Screen share state
+const screenShareExpanded = ref(true)
+const screenShareContainer = ref<HTMLElement | null>(null)
+const localScreenShareContainer = ref<HTMLElement | null>(null)
+
+// Computed: first remote screen share (show one at a time)
+const activeRemoteScreenShare = computed(() => {
+  const shares = voice.remoteScreenShares
+  if (shares.size === 0) return null
+  return shares.values().next().value
+})
+
+// Watch for remote screen share changes and attach video
+watch(activeRemoteScreenShare, async (newShare) => {
+  await nextTick()
+  if (newShare && screenShareContainer.value) {
+    voice.attachScreenShare(newShare.participantId, screenShareContainer.value)
+  }
+})
+
+// Watch for local screen share changes
+watch(() => voice.isScreenSharing, async (sharing) => {
+  await nextTick()
+  if (sharing && localScreenShareContainer.value) {
+    voice.attachLocalScreenShare(localScreenShareContainer.value)
+  }
 })
 
 function handleTouchStart(event: TouchEvent, _participantId: string) {
@@ -400,12 +428,49 @@ function closeInviteDialog() {
             <Link :size="20" />
           </button>
           <button
+            class="control-btn glow-effect"
+            :class="{ 'screen-share-active': voice.isScreenSharing }"
+            @click="voice.toggleScreenShare()"
+            :title="voice.isScreenSharing ? '停止共享屏幕' : '共享屏幕'"
+          >
+            <MonitorOff v-if="voice.isScreenSharing" :size="20" />
+            <Monitor v-else :size="20" />
+          </button>
+          <button
             class="control-btn disconnect glow-effect"
             @click="voice.disconnect()"
             title="断开连接"
           >
             <Phone :size="20" />
           </button>
+        </div>
+
+        <!-- Screen Share Display -->
+        <div v-if="activeRemoteScreenShare || voice.isScreenSharing" class="screen-share-section">
+          <div class="screen-share-header" @click="screenShareExpanded = !screenShareExpanded">
+            <Monitor :size="16" />
+            <span v-if="activeRemoteScreenShare">
+              {{ activeRemoteScreenShare.participantName }} 正在共享屏幕
+            </span>
+            <span v-else>你正在共享屏幕</span>
+            <button class="screen-share-toggle">
+              {{ screenShareExpanded ? '收起' : '展开' }}
+            </button>
+          </div>
+          <div v-show="screenShareExpanded" class="screen-share-video">
+            <div
+              v-if="activeRemoteScreenShare"
+              ref="screenShareContainer"
+              class="video-container"
+            ></div>
+            <div
+              v-else-if="voice.isScreenSharing"
+              ref="localScreenShareContainer"
+              class="video-container local-preview"
+            >
+              <div class="local-preview-label">预览</div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -999,6 +1064,88 @@ function closeInviteDialog() {
 
 .control-btn.invite-btn:hover {
   filter: brightness(1.1);
+}
+
+/* Screen Share Button */
+.control-btn.screen-share-active {
+  background: linear-gradient(135deg, #10b981, #059669);
+  border-color: #10b981;
+  color: white;
+}
+
+.control-btn.screen-share-active:hover {
+  filter: brightness(1.1);
+}
+
+/* Screen Share Section */
+.screen-share-section {
+  margin-top: 16px;
+  background: var(--surface-glass);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-radius: var(--radius-lg);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  overflow: hidden;
+}
+
+.screen-share-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  background: rgba(16, 185, 129, 0.1);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  cursor: pointer;
+  font-size: 14px;
+  color: #10b981;
+}
+
+.screen-share-header:hover {
+  background: rgba(16, 185, 129, 0.15);
+}
+
+.screen-share-toggle {
+  margin-left: auto;
+  padding: 4px 8px;
+  font-size: 12px;
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.screen-share-toggle:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.screen-share-video {
+  padding: 8px;
+}
+
+.video-container {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: #000;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  position: relative;
+}
+
+.video-container.local-preview {
+  opacity: 0.8;
+}
+
+.local-preview-label {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  padding: 4px 8px;
+  background: rgba(0, 0, 0, 0.6);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  color: #fff;
+  z-index: 1;
 }
 
 /* Invite Dialog Styles */

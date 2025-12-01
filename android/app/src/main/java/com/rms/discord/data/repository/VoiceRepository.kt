@@ -3,10 +3,12 @@ package com.rms.discord.data.repository
 import android.util.Log
 import com.rms.discord.data.api.ApiService
 import com.rms.discord.data.api.GuestJoinBody
+import android.content.Intent
 import com.rms.discord.data.livekit.AudioDeviceInfo
 import com.rms.discord.data.livekit.ConnectionState
 import com.rms.discord.data.livekit.LiveKitManager
 import com.rms.discord.data.livekit.ParticipantInfo
+import com.rms.discord.data.livekit.ScreenShareInfo
 import com.rms.discord.data.model.HostModeRequest
 import com.rms.discord.data.model.HostModeResponse
 import com.rms.discord.data.model.InviteCreateResponse
@@ -69,6 +71,10 @@ class VoiceRepository @Inject constructor(
     val participants: StateFlow<List<ParticipantInfo>> = liveKitManager.participants
     val availableDevices: StateFlow<List<AudioDeviceInfo>> = liveKitManager.availableDevices
     val selectedDevice: StateFlow<AudioDeviceInfo?> = liveKitManager.selectedDevice
+    
+    // Screen share state
+    val isScreenSharing: StateFlow<Boolean> = liveKitManager.isScreenSharing
+    val remoteScreenShares: StateFlow<Map<String, ScreenShareInfo>> = liveKitManager.remoteScreenShares
 
     // Convert ParticipantInfo to VoiceUser for backward compatibility
     val voiceUsers: StateFlow<List<VoiceUser>> get() = object : StateFlow<List<VoiceUser>> {
@@ -295,6 +301,19 @@ class VoiceRepository @Inject constructor(
             Log.e(TAG, "createVoiceInvite failed", e)
             Result.failure(e.toAuthException())
         }
+    }
+
+    // Screen share functions
+    fun setMediaProjectionPermissionData(data: Intent?) {
+        liveKitManager.setMediaProjectionPermissionData(data)
+    }
+
+    suspend fun setScreenShareEnabled(enabled: Boolean): Result<Unit> {
+        return liveKitManager.setScreenShareEnabled(enabled)
+    }
+
+    fun hasMediaProjectionPermission(): Boolean {
+        return liveKitManager.hasMediaProjectionPermission()
     }
 
     private fun ParticipantInfo.toVoiceUser(): VoiceUser {
