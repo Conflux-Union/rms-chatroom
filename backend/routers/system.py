@@ -13,6 +13,7 @@ from typing import Any
 from fastapi import APIRouter, File, HTTPException, Query, UploadFile, status
 
 from ..core.config import get_settings, RUNTIME_ROOT
+from ..version import VERSION_NAME, VERSION_CODE, COMMIT_HASH
 
 
 router = APIRouter(prefix="/api/system", tags=["system"])
@@ -287,4 +288,12 @@ async def system_health() -> dict[str, Any]:
         "status": "ok",
         "frontend_built": frontend_dist.exists(),
         "backup_count": len(list(BACKUP_DIR.glob("backup_*"))) if BACKUP_DIR.exists() else 0,
+    }
+
+
+@router.get("/version")
+async def get_version() -> dict[str, str]:
+    """Get application version info."""
+    return {
+        "version": f"v{VERSION_NAME}({VERSION_CODE})(commit:{COMMIT_HASH})",
     }
