@@ -263,6 +263,18 @@ export const useVoiceStore = defineStore('voice', () => {
   async function joinVoice(channel: Channel): Promise<boolean> {
     if (isConnecting.value || isConnected.value) return false
 
+    // ★ iOS 上先把 AudioContext 拉起来
+    if (isIOS()) {
+      const ctx = ensureAudioContext()
+      if (ctx.state === 'suspended') {
+        try {
+          await ctx.resume()
+        } catch (e) {
+          console.warn('Failed to resume AudioContext', e)
+        }
+      }
+    }
+
     isConnecting.value = true
     error.value = null
 
@@ -349,7 +361,7 @@ export const useVoiceStore = defineStore('voice', () => {
               const initialGain = Math.max(0, Math.min(3, savedVolume / 100))
               gainNode.gain.value = initialGain
               sourceNode.connect(gainNode).connect(ctx.destination)
-              audioElement.volume = 0
+              audioElement.volume = 1
               audioElement.muted = false
 
               participantAudioMap.set(participant.identity, {
@@ -532,6 +544,7 @@ export const useVoiceStore = defineStore('voice', () => {
         if (participantAudio.gainNode) {
           const gain = Math.max(0, Math.min(3, clampedVolume / 100))
           participantAudio.gainNode.gain.value = gain
+          console.log(`Set iOS volume for ${participantId} to ${clampedVolume}% (gain: ${gain})`)
         }
       } else {
         // Non-iOS: use native volume (max 100%)
