@@ -398,6 +398,8 @@ class LiveKitManager @Inject constructor(
                 is RoomEvent.Connected -> {
                     _connectionState.value = ConnectionState.CONNECTED
                     updateParticipants()
+                    // Check existing remote screen shares (for late joiners)
+                    checkExistingScreenShares()
                 }
                 is RoomEvent.Disconnected -> {
                     _connectionState.value = ConnectionState.DISCONNECTED
@@ -460,6 +462,28 @@ class LiveKitManager @Inject constructor(
                 else -> {}
             }
         }
+    }
+
+    /**
+     * Check for existing screen shares from remote participants.
+     * Called after joining to catch screen shares that started before we joined.
+     */
+    private fun checkExistingScreenShares() {
+        val currentRoom = room ?: return
+        val newMap = _remoteScreenShares.value.toMutableMap()
+        
+        currentRoom.remoteParticipants.values.forEach { participant ->
+            participant.videoTrackPublications.forEach { (publication, track) ->
+                if (publication.source == Track.Source.SCREEN_SHARE && track is RemoteVideoTrack) {
+                    val identity = participant.identity?.value ?: return@forEach
+                    val name = participant.name ?: identity
+                    newMap[identity] = ScreenShareInfo(identity, name, track)
+                    Log.d(TAG, "Found existing screen share from: $name")
+                }
+            }
+        }
+        
+        _remoteScreenShares.value = newMap
     }
 
     private fun updateParticipants() {
