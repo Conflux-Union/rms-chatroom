@@ -103,6 +103,13 @@ interface ApiService {
         @Body body: MuteParticipantRequest
     ): MuteParticipantResponse
 
+    @POST("api/voice/{channelId}/kick/{userId}")
+    suspend fun kickParticipant(
+        @Header("Authorization") token: String,
+        @Path("channelId") channelId: Long,
+        @Path("userId") userId: String
+    ): KickParticipantResponse
+
     @GET("api/voice/{channelId}/host-mode")
     suspend fun getHostMode(
         @Header("Authorization") token: String,
@@ -121,6 +128,25 @@ interface ApiService {
         @Header("Authorization") token: String,
         @Path("channelId") channelId: Long
     ): InviteCreateResponse
+
+    // Screen share lock APIs
+    @GET("api/voice/{channelId}/screen-share-status")
+    suspend fun getScreenShareStatus(
+        @Header("Authorization") token: String,
+        @Path("channelId") channelId: Long
+    ): ScreenShareStatusResponse
+
+    @POST("api/voice/{channelId}/screen-share/lock")
+    suspend fun lockScreenShare(
+        @Header("Authorization") token: String,
+        @Path("channelId") channelId: Long
+    ): ScreenShareLockResponse
+
+    @POST("api/voice/{channelId}/screen-share/unlock")
+    suspend fun unlockScreenShare(
+        @Header("Authorization") token: String,
+        @Path("channelId") channelId: Long
+    ): ScreenShareLockResponse
 
     // Music - Login
     @GET("api/music/login/check")

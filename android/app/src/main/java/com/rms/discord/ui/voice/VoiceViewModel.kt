@@ -3,9 +3,11 @@ package com.rms.discord.ui.voice
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import android.content.Intent
 import com.rms.discord.data.livekit.AudioDeviceInfo
 import com.rms.discord.data.livekit.ConnectionState
 import com.rms.discord.data.livekit.ParticipantInfo
+import com.rms.discord.data.livekit.ScreenShareInfo
 import com.rms.discord.data.repository.AuthRepository
 import com.rms.discord.data.repository.VoiceRepository
 import com.rms.discord.service.VoiceCallService
@@ -39,12 +41,20 @@ data class VoiceState(
     // Invite state
     val inviteUrl: String? = null,
     val inviteLoading: Boolean = false,
-    val inviteError: String? = null
+    val inviteError: String? = null,
+    // Screen share state
+    val isScreenSharing: Boolean = false,
+    val remoteScreenShares: Map<String, ScreenShareInfo> = emptyMap(),
+    val screenShareLocked: Boolean = false,
+    val screenSharerId: String? = null,
+    val screenSharerName: String? = null
 ) {
     val isConnected: Boolean get() = connectionState == ConnectionState.CONNECTED
     val isReconnecting: Boolean get() = connectionState == ConnectionState.RECONNECTING
     val isCurrentUserHost: Boolean get() = hostModeHostId == userId?.toString()
     val hostButtonDisabled: Boolean get() = hostModeEnabled && !isCurrentUserHost
+    val isCurrentUserScreenSharer: Boolean get() = screenSharerId == userId?.toString()
+    val screenShareButtonDisabled: Boolean get() = screenShareLocked && !isCurrentUserScreenSharer && !isScreenSharing
 }
 
 @HiltViewModel
@@ -73,6 +83,7 @@ class VoiceViewModel @Inject constructor(
         observeVoiceState()
         observeDeviceState()
         observeHostModeState()
+        observeScreenShareState()
         loadUserInfo()
     }
 
@@ -120,7 +131,9 @@ class VoiceViewModel @Inject constructor(
                     hostModeHostName = _state.value.hostModeHostName,
                     inviteUrl = _inviteUrl.value,
                     inviteLoading = _inviteLoading.value,
-                    inviteError = _inviteError.value
+                    inviteError = _inviteError.value,
+                    isScreenSharing = _state.value.isScreenSharing,
+                    remoteScreenShares = _state.value.remoteScreenShares
                 )
             }.collect { newState ->
                 // Start foreground service on first successful connection
@@ -129,6 +142,7 @@ class VoiceViewModel @Inject constructor(
                     VoiceCallService.start(context, newState.channelName.ifEmpty { "语音通话" })
                     serviceStarted = true
                     fetchHostMode()
+                    fetchScreenShareStatus()
                 }
                 // Stop service only when truly disconnected (not during reconnection)
                 if (newState.connectionState == ConnectionState.DISCONNECTED && serviceStarted) {
@@ -173,6 +187,43 @@ class VoiceViewModel @Inject constructor(
             }
         }
     }
+
+    private fun observeScreenShareState() {
+        viewModelScope.launch {
+            combine(
+                voiceRepository.isScreenSharing,
+                voiceRepository.remoteScreenShares,
+                voiceRepository.screenShareLocked,
+                voiceRepository.screenSharerId,
+                voiceRepository.screenSharerName
+            ) { values ->
+                @Suppress("UNCHECKED_CAST")
+                VoiceScreenShareUpdate(
+                    isSharing = values[0] as Boolean,
+                    remoteShares = values[1] as Map<String, ScreenShareInfo>,
+                    locked = values[2] as Boolean,
+                    sharerId = values[3] as String?,
+                    sharerName = values[4] as String?
+                )
+            }.collect { update ->
+                _state.value = _state.value.copy(
+                    isScreenSharing = update.isSharing,
+                    remoteScreenShares = update.remoteShares,
+                    screenShareLocked = update.locked,
+                    screenSharerId = update.sharerId,
+                    screenSharerName = update.sharerName
+                )
+            }
+        }
+    }
+    
+    private data class VoiceScreenShareUpdate(
+        val isSharing: Boolean,
+        val remoteShares: Map<String, ScreenShareInfo>,
+        val locked: Boolean,
+        val sharerId: String?,
+        val sharerName: String?
+    )
 
     fun setChannelId(channelId: Long, channelName: String = "") {
         _channelId.value = channelId
@@ -241,10 +292,24 @@ class VoiceViewModel @Inject constructor(
         }
     }
 
+    fun kickParticipant(userId: String) {
+        val channelId = _channelId.value ?: return
+        viewModelScope.launch {
+            voiceRepository.kickParticipant(channelId, userId)
+        }
+    }
+
     private fun fetchHostMode() {
         val channelId = _channelId.value ?: return
         viewModelScope.launch {
             voiceRepository.fetchHostMode(channelId)
+        }
+    }
+    
+    private fun fetchScreenShareStatus() {
+        val channelId = _channelId.value ?: return
+        viewModelScope.launch {
+            voiceRepository.fetchScreenShareStatus(channelId)
         }
     }
 
@@ -276,6 +341,25 @@ class VoiceViewModel @Inject constructor(
         _inviteUrl.value = null
         _inviteError.value = null
         _inviteLoading.value = false
+    }
+
+    // Screen share functions
+    fun setMediaProjectionPermissionData(data: Intent?) {
+        voiceRepository.setMediaProjectionPermissionData(data)
+    }
+
+    fun toggleScreenShare() {
+        viewModelScope.launch {
+            if (_state.value.isScreenSharing) {
+                voiceRepository.setScreenShareEnabled(false)
+            } else {
+                voiceRepository.setScreenShareEnabled(true)
+            }
+        }
+    }
+
+    fun hasMediaProjectionPermission(): Boolean {
+        return voiceRepository.hasMediaProjectionPermission()
     }
 
     override fun onCleared() {

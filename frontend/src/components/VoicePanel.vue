@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useChatStore } from '../stores/chat'
 import { useVoiceStore } from '../stores/voice'
 import { useAuthStore } from '../stores/auth'
-import { Volume2, VolumeX, Mic, MicOff, Phone, AlertTriangle, Crown, Link, Copy, Check } from 'lucide-vue-next'
+import { Volume2, VolumeX, Mic, MicOff, Phone, AlertTriangle, Crown, Link, Copy, Check, UserX, Monitor, MonitorOff } from 'lucide-vue-next'
 
 // Detect iOS devices
 const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
@@ -44,6 +44,39 @@ const swipedUserId = ref<string | null>(null)
 const touchStartX = ref(0)
 const touchCurrentX = ref(0)
 
+// Desktop context menu state
+const contextMenu = ref<{ show: boolean; x: number; y: number; participantId: string }>({
+  show: false, x: 0, y: 0, participantId: ''
+})
+
+// Screen share state
+const screenShareExpanded = ref(true)
+const screenShareContainer = ref<HTMLElement | null>(null)
+const localScreenShareContainer = ref<HTMLElement | null>(null)
+
+// Computed: first remote screen share (show one at a time)
+const activeRemoteScreenShare = computed(() => {
+  const shares = voice.remoteScreenShares
+  if (shares.size === 0) return null
+  return shares.values().next().value
+})
+
+// Watch for remote screen share changes and attach video
+watch(activeRemoteScreenShare, async (newShare) => {
+  await nextTick()
+  if (newShare && screenShareContainer.value) {
+    voice.attachScreenShare(newShare.participantId, screenShareContainer.value)
+  }
+})
+
+// Watch for local screen share changes
+watch(() => voice.isScreenSharing, async (sharing) => {
+  await nextTick()
+  if (sharing && localScreenShareContainer.value) {
+    voice.attachLocalScreenShare(localScreenShareContainer.value)
+  }
+})
+
 function handleTouchStart(event: TouchEvent, _participantId: string) {
   const touch = event.touches[0]
   if (touch) {
@@ -73,6 +106,34 @@ function handleTouchEnd() {
 async function muteParticipant(participantId: string) {
   await voice.muteParticipant(participantId, true)
   swipedUserId.value = null
+}
+
+async function kickParticipant(participantId: string) {
+  await voice.kickParticipant(participantId)
+  swipedUserId.value = null
+  hideContextMenu()
+}
+
+function showContextMenu(event: MouseEvent, participantId: string) {
+  event.preventDefault()
+  event.stopPropagation()
+  contextMenu.value = { show: true, x: event.clientX, y: event.clientY, participantId }
+}
+
+function hideContextMenu() {
+  contextMenu.value = { show: false, x: 0, y: 0, participantId: '' }
+}
+
+async function contextMuteParticipant() {
+  if (!contextMenu.value.participantId) return
+  await voice.muteParticipant(contextMenu.value.participantId, true)
+  hideContextMenu()
+}
+
+async function contextKickParticipant() {
+  if (!contextMenu.value.participantId) return
+  await voice.kickParticipant(contextMenu.value.participantId)
+  hideContextMenu()
 }
 
 async function joinVoice() {
@@ -192,7 +253,7 @@ function closeInviteDialog() {
 </script>
 
 <template>
-  <div class="voice-panel">
+  <div class="voice-panel" @click="hideContextMenu">
     <div class="voice-header">
       <Volume2 class="channel-icon" :size="20" />
       <span class="channel-name">{{ chat.currentChannel?.name }}</span>
@@ -265,6 +326,7 @@ function closeInviteDialog() {
               @touchstart="!participant.isLocal && auth.isAdmin ? handleTouchStart($event, participant.id) : null"
               @touchmove="!participant.isLocal && auth.isAdmin ? handleTouchMove($event, participant.id) : null"
               @touchend="handleTouchEnd"
+              @contextmenu="!participant.isLocal && auth.isAdmin ? showContextMenu($event, participant.id) : null"
             >
               <div class="user-info">
                 <div class="user-avatar">
@@ -316,15 +378,23 @@ function closeInviteDialog() {
                 </template>
               </div>
             </div>
-            <!-- Swipe action button -->
-            <button 
-              v-if="!participant.isLocal && auth.isAdmin"
-              class="swipe-action-btn"
-              @click="muteParticipant(participant.id)"
-            >
-              <MicOff :size="18" />
-              <span>静音</span>
-            </button>
+            <!-- Swipe action buttons -->
+            <div v-if="!participant.isLocal && auth.isAdmin" class="swipe-actions">
+              <button 
+                class="swipe-action-btn"
+                @click="muteParticipant(participant.id)"
+              >
+                <MicOff :size="18" />
+                <span>静音</span>
+              </button>
+              <button 
+                class="swipe-action-btn kick"
+                @click="kickParticipant(participant.id)"
+              >
+                <UserX :size="18" />
+                <span>踢出</span>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -375,12 +445,49 @@ function closeInviteDialog() {
             <Link :size="20" />
           </button>
           <button
+            class="control-btn glow-effect"
+            :class="{ 'screen-share-active': voice.isScreenSharing }"
+            @click="voice.toggleScreenShare()"
+            :title="voice.isScreenSharing ? '停止共享屏幕' : '共享屏幕'"
+          >
+            <MonitorOff v-if="voice.isScreenSharing" :size="20" />
+            <Monitor v-else :size="20" />
+          </button>
+          <button
             class="control-btn disconnect glow-effect"
             @click="voice.disconnect()"
             title="断开连接"
           >
             <Phone :size="20" />
           </button>
+        </div>
+
+        <!-- Screen Share Display -->
+        <div v-if="activeRemoteScreenShare || voice.isScreenSharing" class="screen-share-section">
+          <div class="screen-share-header" @click="screenShareExpanded = !screenShareExpanded">
+            <Monitor :size="16" />
+            <span v-if="activeRemoteScreenShare">
+              {{ activeRemoteScreenShare.participantName }} 正在共享屏幕
+            </span>
+            <span v-else>你正在共享屏幕</span>
+            <button class="screen-share-toggle">
+              {{ screenShareExpanded ? '收起' : '展开' }}
+            </button>
+          </div>
+          <div v-show="screenShareExpanded" class="screen-share-video">
+            <div
+              v-if="activeRemoteScreenShare"
+              ref="screenShareContainer"
+              class="video-container"
+            ></div>
+            <div
+              v-else-if="voice.isScreenSharing"
+              ref="localScreenShareContainer"
+              class="video-container local-preview"
+            >
+              <div class="local-preview-label">预览</div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -435,6 +542,23 @@ function closeInviteDialog() {
         </div>
       </div>
     </Teleport>
+
+    <!-- Desktop Context Menu -->
+    <div
+      v-if="contextMenu.show && auth.isAdmin"
+      class="context-menu"
+      :style="{ left: contextMenu.x + 'px', top: contextMenu.y + 'px' }"
+      @click.stop
+    >
+      <div class="context-menu-item" @click="contextMuteParticipant">
+        <MicOff :size="14" />
+        <span>静音麦克风</span>
+      </div>
+      <div class="context-menu-item delete" @click="contextKickParticipant">
+        <UserX :size="14" />
+        <span>踢出频道</span>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -622,13 +746,20 @@ function closeInviteDialog() {
   margin: 0 -8px;
 }
 
-.swipe-action-btn {
+.swipe-actions {
   position: absolute;
   right: 0;
   top: 0;
   bottom: 0;
-  width: 70px;
-  background: var(--color-error, #ef4444);
+  display: flex;
+  opacity: 0;
+  transform: translateX(100%);
+  transition: all 0.3s ease;
+}
+
+.swipe-action-btn {
+  width: 60px;
+  background: #f59e0b;
   border: none;
   color: white;
   display: flex;
@@ -638,17 +769,25 @@ function closeInviteDialog() {
   gap: 4px;
   font-size: 12px;
   cursor: pointer;
-  opacity: 0;
-  transform: translateX(100%);
-  transition: all 0.3s ease;
-  border-radius: 8px;
+}
+
+.swipe-action-btn:first-child {
+  border-radius: 8px 0 0 8px;
+}
+
+.swipe-action-btn:last-child {
+  border-radius: 0 8px 8px 0;
+}
+
+.swipe-action-btn.kick {
+  background: var(--color-error, #ef4444);
 }
 
 .voice-user-wrapper.swiped .voice-user {
-  transform: translateX(-70px);
+  transform: translateX(-120px);
 }
 
-.voice-user-wrapper.swiped .swipe-action-btn {
+.voice-user-wrapper.swiped .swipe-actions {
   opacity: 1;
   transform: translateX(0);
 }
@@ -945,6 +1084,88 @@ function closeInviteDialog() {
   filter: brightness(1.1);
 }
 
+/* Screen Share Button */
+.control-btn.screen-share-active {
+  background: linear-gradient(135deg, #10b981, #059669);
+  border-color: #10b981;
+  color: white;
+}
+
+.control-btn.screen-share-active:hover {
+  filter: brightness(1.1);
+}
+
+/* Screen Share Section */
+.screen-share-section {
+  margin-top: 16px;
+  background: var(--surface-glass);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-radius: var(--radius-lg);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  overflow: hidden;
+}
+
+.screen-share-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  background: rgba(16, 185, 129, 0.1);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  cursor: pointer;
+  font-size: 14px;
+  color: #10b981;
+}
+
+.screen-share-header:hover {
+  background: rgba(16, 185, 129, 0.15);
+}
+
+.screen-share-toggle {
+  margin-left: auto;
+  padding: 4px 8px;
+  font-size: 12px;
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.screen-share-toggle:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.screen-share-video {
+  padding: 8px;
+}
+
+.video-container {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: #000;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  position: relative;
+}
+
+.video-container.local-preview {
+  opacity: 0.8;
+}
+
+.local-preview-label {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  padding: 4px 8px;
+  background: rgba(0, 0, 0, 0.6);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  color: #fff;
+  z-index: 1;
+}
+
 /* Invite Dialog Styles */
 .invite-overlay {
   position: fixed;
@@ -1082,6 +1303,44 @@ function closeInviteDialog() {
 }
 
 /* Mobile Responsive */
+/* Context Menu */
+.context-menu {
+  position: fixed;
+  background: var(--surface-glass-strong, rgba(30, 30, 40, 0.95));
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: var(--radius-md, 8px);
+  padding: 4px;
+  min-width: 160px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  z-index: 9999;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+.context-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  font-size: 14px;
+  color: var(--color-text-main);
+  cursor: pointer;
+  border-radius: var(--radius-sm, 6px);
+  transition: background 0.15s ease;
+}
+
+.context-menu-item:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.context-menu-item.delete {
+  color: var(--color-error, #ef4444);
+}
+
+.context-menu-item.delete:hover {
+  background: rgba(239, 68, 68, 0.15);
+}
+
 @media (max-width: 768px) {
   .voice-content {
     padding: 16px;
@@ -1113,6 +1372,10 @@ function closeInviteDialog() {
   .control-btn {
     width: 44px;
     height: 44px;
+  }
+
+  .context-menu {
+    display: none;
   }
 }
 </style>

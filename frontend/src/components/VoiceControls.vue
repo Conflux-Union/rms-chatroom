@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import { useVoiceStore } from '../stores/voice'
 import { useAuthStore } from '../stores/auth'
-import { Volume2, VolumeX, Mic, MicOff, Phone, Crown } from 'lucide-vue-next'
+import { Volume2, VolumeX, Mic, MicOff, Phone, Crown, Monitor, MonitorOff } from 'lucide-vue-next'
 
 const voice = useVoiceStore()
 const auth = useAuthStore()
@@ -16,6 +16,23 @@ const isCurrentUserHost = computed(() =>
 const hostButtonDisabled = computed(() => 
   voice.hostModeEnabled && !isCurrentUserHost.value
 )
+
+// Check if current user is the screen sharer
+const isCurrentUserScreenSharer = computed(() =>
+  voice.screenSharerId === String(auth.user?.id)
+)
+
+// Disable screen share button if someone else is sharing
+const screenShareButtonDisabled = computed(() =>
+  voice.screenShareLocked && !isCurrentUserScreenSharer.value && !voice.isScreenSharing
+)
+
+// Screen share button tooltip
+const screenShareTooltip = computed(() => {
+  if (voice.isScreenSharing) return '停止共享屏幕'
+  if (screenShareButtonDisabled.value) return `${voice.screenSharerName || '其他用户'} 正在共享屏幕`
+  return '共享屏幕'
+})
 </script>
 
 <template>
@@ -60,6 +77,19 @@ const hostButtonDisabled = computed(() =>
         :title="hostButtonDisabled ? '其他用户正在主持' : (voice.hostModeEnabled ? '关闭主持人模式' : '开启主持人模式')"
       >
         <Crown :size="16" />
+      </button>
+      <button
+        class="control-btn"
+        :class="{ 
+          'screen-share-active': voice.isScreenSharing,
+          'screen-share-disabled': screenShareButtonDisabled
+        }"
+        :disabled="screenShareButtonDisabled"
+        @click="voice.toggleScreenShare()"
+        :title="screenShareTooltip"
+      >
+        <MonitorOff v-if="voice.isScreenSharing" :size="16" />
+        <Monitor v-else :size="16" />
       </button>
       <button
         class="control-btn disconnect"
@@ -176,6 +206,27 @@ const hostButtonDisabled = computed(() =>
 }
 
 .control-btn.host-mode-disabled:hover {
+  transform: none;
+  background: var(--surface-glass);
+}
+
+.control-btn.screen-share-active {
+  background: linear-gradient(135deg, #10b981, #059669);
+  border-color: #10b981;
+  color: white;
+}
+
+.control-btn.screen-share-active:hover {
+  filter: brightness(1.1);
+}
+
+.control-btn.screen-share-disabled {
+  background: var(--surface-glass);
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.control-btn.screen-share-disabled:hover {
   transform: none;
   background: var(--surface-glass);
 }

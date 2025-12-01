@@ -142,14 +142,15 @@ class VoiceCallService : Service() {
         channelName = intent?.getStringExtra("channel_name") ?: "语音通话"
 
         val notification = createNotification()
-        // Use MICROPHONE type to maintain background microphone access
+        // Use MICROPHONE, MEDIA_PLAYBACK and MEDIA_PROJECTION types
         // Service is started after connection success, so RECORD_AUDIO permission is already granted
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             startForeground(
                 NOTIFICATION_ID,
                 notification,
                 ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE or
-                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK or
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
             )
         } else {
             startForeground(NOTIFICATION_ID, notification)

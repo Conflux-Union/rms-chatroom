@@ -1,6 +1,15 @@
 import { defineStore } from 'pinia'
 import { ref, shallowRef } from 'vue'
-import { Room, RoomEvent, Track, RemoteParticipant, AudioPresets } from 'livekit-client'
+import {
+  Room,
+  RoomEvent,
+  Track,
+  RemoteParticipant,
+  AudioPresets,
+  RemoteTrackPublication,
+  LocalTrackPublication,
+  ScreenSharePresets,
+} from 'livekit-client'
 import type { Channel } from '../types'
 import { useAuthStore } from './auth'
 
@@ -27,6 +36,12 @@ export interface VoiceParticipant {
 export interface AudioDevice {
   deviceId: string
   label: string
+}
+
+export interface ScreenShareInfo {
+  participantId: string
+  participantName: string
+  track: RemoteTrackPublication
 }
 
 interface ParticipantAudio {
@@ -61,6 +76,16 @@ export const useVoiceStore = defineStore('voice', () => {
   const hostModeEnabled = ref(false)
   const hostModeHostId = ref<string | null>(null)
   const hostModeHostName = ref<string | null>(null)
+
+  // Screen share state
+  const isScreenSharing = ref(false)
+  const localScreenShareTrack = shallowRef<LocalTrackPublication | null>(null)
+  const remoteScreenShares = ref<Map<string, ScreenShareInfo>>(new Map())
+  
+  // Screen share lock state (from server)
+  const screenShareLocked = ref(false)
+  const screenSharerId = ref<string | null>(null)
+  const screenSharerName = ref<string | null>(null)
 
   // Server-side mute state cache (from API)
   const serverMuteState = ref<Map<string, boolean>>(new Map())
@@ -306,65 +331,78 @@ export const useVoiceStore = defineStore('voice', () => {
         currentVoiceChannel.value = null
       })
 
-      room.value.on(RoomEvent.TrackSubscribed, async (track, _pub, participant) => {
-        if (track.kind === Track.Kind.Audio && participant instanceof RemoteParticipant) {
-          const audioElement = track.attach()
-          audioElement.dataset.livekitAudio = 'true'
-          audioElement.dataset.participantId = participant.identity
-          
-          const savedVolume = userVolumes.value.get(participant.identity) ?? 100
-          
-          if (isIOS()) {
-            // iOS: Control the volume of each user with Web Audio API
-            const ctx = ensureAudioContext()
+      room.value.on(RoomEvent.TrackSubscribed, async (track, pub, participant) => {
+        if (participant instanceof RemoteParticipant) {
+          // Handle audio tracks
+          if (track.kind === Track.Kind.Audio && pub.source === Track.Source.Microphone) {
+            const audioElement = track.attach()
+            audioElement.dataset.livekitAudio = 'true'
+            audioElement.dataset.participantId = participant.identity
+            
+            const savedVolume = userVolumes.value.get(participant.identity) ?? 100
+            
+            if (isIOS()) {
+              // iOS: Control the volume of each user with Web Audio API
+              const ctx = ensureAudioContext()
+              const sourceNode = ctx.createMediaElementSource(audioElement)
+              const gainNode = ctx.createGain()
+              const initialGain = Math.max(0, Math.min(3, savedVolume / 100))
+              gainNode.gain.value = initialGain
+              sourceNode.connect(gainNode).connect(ctx.destination)
+              audioElement.volume = 0
+              audioElement.muted = false
 
-            // Use <audio> element as source (with your defined MediaElementAudioSourceNode type)
-            const sourceNode = ctx.createMediaElementSource(audioElement)
-            const gainNode = ctx.createGain()
-
-            // savedVolume is the percentage from 0 to 300, which is mapped to the gain from 0 to 3 here
-            const initialGain = Math.max(0, Math.min(3, savedVolume / 100))
-            gainNode.gain.value = initialGain
-
-            sourceNode.connect(gainNode).connect(ctx.destination)
-
-            // Avoid direct sound from audio and set it to 0
-            audioElement.volume = 0
-            audioElement.muted = false
-
-            participantAudioMap.set(participant.identity, {
-              audioElement,
-              sourceNode,
-              gainNode,
-            })
-          } else {
-            // Non-iOS: use native audioElement.volume
-            audioElement.volume = Math.min(savedVolume / 100, 1)
-          }
-          
-          participantAudioMap.set(participant.identity, { audioElement })
-          
-          // Apply output device
-          if (selectedAudioOutput.value) {
-            const el = audioElement as HTMLAudioElement & { setSinkId?: (id: string) => Promise<void> }
-            if (el.setSinkId) {
-              try { await el.setSinkId(selectedAudioOutput.value) } catch { /* Ignore */ }
+              participantAudioMap.set(participant.identity, {
+                audioElement,
+                sourceNode,
+                gainNode,
+              })
+            } else {
+              // Non-iOS: use native audioElement.volume
+              audioElement.volume = Math.min(savedVolume / 100, 1)
+              participantAudioMap.set(participant.identity, { audioElement })
             }
+            
+            if (selectedAudioOutput.value) {
+              const el = audioElement as HTMLAudioElement & { setSinkId?: (id: string) => Promise<void> }
+              if (el.setSinkId) {
+                try { await el.setSinkId(selectedAudioOutput.value) } catch { /* Ignore */ }
+              }
+            }
+            document.body.appendChild(audioElement)
           }
-          document.body.appendChild(audioElement)
+          // Handle screen share tracks
+          else if (track.kind === Track.Kind.Video && pub.source === Track.Source.ScreenShare) {
+            const newMap = new Map(remoteScreenShares.value)
+            newMap.set(participant.identity, {
+              participantId: participant.identity,
+              participantName: participant.name || participant.identity,
+              track: pub as RemoteTrackPublication,
+            })
+            remoteScreenShares.value = newMap
+          }
         }
       })
 
-      room.value.on(RoomEvent.TrackUnsubscribed, (track, _pub, participant) => {
+      room.value.on(RoomEvent.TrackUnsubscribed, (track, pub, participant) => {
         if (participant instanceof RemoteParticipant) {
-          const info = participantAudioMap.get(participant.identity)
-          if (info?.gainNode) {
-            info.gainNode.disconnect()
+          // Handle audio track cleanup
+          if (pub.source === Track.Source.Microphone) {
+            const info = participantAudioMap.get(participant.identity)
+            if (info?.gainNode) {
+              info.gainNode.disconnect()
+            }
+            if (info?.sourceNode) {
+              info.sourceNode.disconnect()
+            }
+            participantAudioMap.delete(participant.identity)
           }
-          if (info?.sourceNode) {
-            info.sourceNode.disconnect()
+          // Handle screen share cleanup
+          else if (pub.source === Track.Source.ScreenShare) {
+            const newMap = new Map(remoteScreenShares.value)
+            newMap.delete(participant.identity)
+            remoteScreenShares.value = newMap
           }
-          participantAudioMap.delete(participant.identity)
         }
         track.detach().forEach((el) => el.remove())
       })
@@ -379,8 +417,24 @@ export const useVoiceStore = defineStore('voice', () => {
       currentVoiceChannel.value = channel
       updateParticipants()
 
-      // Fetch host mode status after joining
+      // Check existing remote participants for screen shares (for late joiners)
+      room.value.remoteParticipants.forEach((participant) => {
+        participant.trackPublications.forEach((pub) => {
+          if (pub.source === Track.Source.ScreenShare && pub.track) {
+            const newMap = new Map(remoteScreenShares.value)
+            newMap.set(participant.identity, {
+              participantId: participant.identity,
+              participantName: participant.name || participant.identity,
+              track: pub as RemoteTrackPublication,
+            })
+            remoteScreenShares.value = newMap
+          }
+        })
+      })
+
+      // Fetch host mode and screen share status after joining
       await fetchHostModeStatus()
+      await fetchScreenShareStatus()
 
       // Start periodic sync from server for accurate mute state
       startSyncInterval()
@@ -417,6 +471,12 @@ export const useVoiceStore = defineStore('voice', () => {
     hostModeEnabled.value = false
     hostModeHostId.value = null
     hostModeHostName.value = null
+    isScreenSharing.value = false
+    localScreenShareTrack.value = null
+    remoteScreenShares.value = new Map()
+    screenShareLocked.value = false
+    screenSharerId.value = null
+    screenSharerName.value = null
   }
 
   async function toggleMute(): Promise<boolean> {
@@ -519,6 +579,30 @@ export const useVoiceStore = defineStore('voice', () => {
   }
 
   /**
+   * Admin: Kick a participant from voice channel via server API.
+   */
+  async function kickParticipant(userId: string): Promise<boolean> {
+    if (!currentVoiceChannel.value) return false
+
+    const auth = useAuthStore()
+    try {
+      const response = await fetch(
+        `${API_BASE}/api/voice/${currentVoiceChannel.value.id}/kick/${userId}`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${auth.token}`,
+          },
+        }
+      )
+      return response.ok
+    } catch (e) {
+      console.error('Failed to kick participant:', e)
+      return false
+    }
+  }
+
+  /**
    * Fetch host mode status from server.
    */
   async function fetchHostModeStatus(): Promise<void> {
@@ -574,6 +658,171 @@ export const useVoiceStore = defineStore('voice', () => {
     }
   }
 
+  /**
+   * Fetch screen share lock status from server.
+   */
+  async function fetchScreenShareStatus(): Promise<void> {
+    if (!currentVoiceChannel.value) return
+
+    const auth = useAuthStore()
+    try {
+      const response = await fetch(
+        `${API_BASE}/api/voice/${currentVoiceChannel.value.id}/screen-share-status`,
+        { headers: { Authorization: `Bearer ${auth.token}` } }
+      )
+      if (response.ok) {
+        const data = await response.json()
+        screenShareLocked.value = data.locked
+        screenSharerId.value = data.sharer_id
+        screenSharerName.value = data.sharer_name
+      }
+    } catch (e) {
+      console.error('Failed to fetch screen share status:', e)
+    }
+  }
+
+  /**
+   * Attempt to acquire screen share lock from server.
+   */
+  async function lockScreenShare(): Promise<{ success: boolean; sharerName: string | null }> {
+    if (!currentVoiceChannel.value) return { success: false, sharerName: null }
+
+    const auth = useAuthStore()
+    try {
+      const response = await fetch(
+        `${API_BASE}/api/voice/${currentVoiceChannel.value.id}/screen-share/lock`,
+        {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${auth.token}` },
+        }
+      )
+      if (response.ok) {
+        const data = await response.json()
+        screenShareLocked.value = data.success || data.sharer_id !== null
+        screenSharerId.value = data.sharer_id
+        screenSharerName.value = data.sharer_name
+        return { success: data.success, sharerName: data.sharer_name }
+      }
+      return { success: false, sharerName: null }
+    } catch (e) {
+      console.error('Failed to lock screen share:', e)
+      return { success: false, sharerName: null }
+    }
+  }
+
+  /**
+   * Release screen share lock on server.
+   */
+  async function unlockScreenShare(): Promise<void> {
+    if (!currentVoiceChannel.value) return
+
+    const auth = useAuthStore()
+    try {
+      await fetch(
+        `${API_BASE}/api/voice/${currentVoiceChannel.value.id}/screen-share/unlock`,
+        {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${auth.token}` },
+        }
+      )
+      screenShareLocked.value = false
+      screenSharerId.value = null
+      screenSharerName.value = null
+    } catch (e) {
+      console.error('Failed to unlock screen share:', e)
+    }
+  }
+
+  /**
+   * Toggle screen sharing on/off.
+   */
+  async function toggleScreenShare(): Promise<boolean> {
+    if (!room.value || !isConnected.value) return false
+
+    try {
+      if (isScreenSharing.value) {
+        // Stop screen sharing: first stop track, then release lock
+        await room.value.localParticipant.setScreenShareEnabled(false)
+        isScreenSharing.value = false
+        localScreenShareTrack.value = null
+        await unlockScreenShare()
+      } else {
+        // Start screen sharing: first acquire lock, then start
+        const lockResult = await lockScreenShare()
+        if (!lockResult.success) {
+          error.value = `${lockResult.sharerName || '其他用户'} 正在共享屏幕`
+          return false
+        }
+        
+        // Lock acquired, start screen sharing with AV1 codec
+        await room.value.localParticipant.setScreenShareEnabled(true, {
+          resolution: ScreenSharePresets.h1080fps30.resolution,
+          contentHint: 'motion',
+        }, {
+          videoCodec: 'av1',
+          videoEncoding: {
+            maxBitrate: 2_000_000,
+            maxFramerate: 30,
+            priority: 'high',
+          },
+          degradationPreference: 'maintain-framerate',
+        })
+        isScreenSharing.value = true
+        // Find the screen share track publication
+        const screenTrack = room.value.localParticipant.getTrackPublication(Track.Source.ScreenShare)
+        if (screenTrack) {
+          localScreenShareTrack.value = screenTrack
+        }
+      }
+      return true
+    } catch (e) {
+      console.error('Failed to toggle screen share:', e)
+      // User may have cancelled the screen share picker, release lock
+      if (!isScreenSharing.value) {
+        await unlockScreenShare()
+      }
+      isScreenSharing.value = false
+      localScreenShareTrack.value = null
+      return false
+    }
+  }
+
+  /**
+   * Attach a screen share track to a container element.
+   */
+  function attachScreenShare(participantId: string, container: HTMLElement): void {
+    const screenShare = remoteScreenShares.value.get(participantId)
+    if (screenShare?.track?.videoTrack) {
+      const videoElement = screenShare.track.videoTrack.attach()
+      videoElement.style.width = '100%'
+      videoElement.style.height = '100%'
+      videoElement.style.objectFit = 'contain'
+      container.innerHTML = ''
+      container.appendChild(videoElement)
+    }
+  }
+
+  /**
+   * Attach local screen share track to a container element.
+   */
+  function attachLocalScreenShare(container: HTMLElement): void {
+    if (localScreenShareTrack.value?.videoTrack) {
+      const videoElement = localScreenShareTrack.value.videoTrack.attach()
+      videoElement.style.width = '100%'
+      videoElement.style.height = '100%'
+      videoElement.style.objectFit = 'contain'
+      container.innerHTML = ''
+      container.appendChild(videoElement)
+    }
+  }
+
+  /**
+   * Detach screen share from a container.
+   */
+  function detachScreenShare(container: HTMLElement): void {
+    container.innerHTML = ''
+  }
+
   return {
     room,
     isConnected,
@@ -601,7 +850,18 @@ export const useVoiceStore = defineStore('voice', () => {
     setAudioInputDevice,
     setAudioOutputDevice,
     muteParticipant,
+    kickParticipant,
     fetchHostModeStatus,
     toggleHostMode,
+    isScreenSharing,
+    remoteScreenShares,
+    screenShareLocked,
+    screenSharerId,
+    screenSharerName,
+    toggleScreenShare,
+    fetchScreenShareStatus,
+    attachScreenShare,
+    attachLocalScreenShare,
+    detachScreenShare,
   }
 })
