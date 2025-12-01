@@ -586,23 +586,22 @@ function closeInviteDialog() {
   position: relative;
   overflow: hidden;
   margin-bottom: 4px;
+  border-radius: 8px;
 }
 
 .voice-user {
   display: flex;
   flex-direction: column;
-  padding: 8px 0;
+  padding: 8px;
   transition: all 0.2s ease, transform 0.3s ease;
   position: relative;
   z-index: 1;
   background: transparent;
+  border-radius: 8px;
 }
 
 .voice-user.speaking {
   background: rgba(16, 185, 129, 0.1);
-  border-radius: 8px;
-  padding: 8px;
-  margin: 0 -8px;
 }
 
 .swipe-action-btn {
