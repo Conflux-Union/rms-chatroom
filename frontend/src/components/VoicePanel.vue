@@ -159,23 +159,6 @@ function handleVolumeChange(participantId: string, event: Event) {
   }
 }
 
-// iOS: toggle mute for a specific user
-function toggleUserMute(participantId: string) {
-  const participant = voice.participants.find(p => p.id === participantId)
-  if (!participant) return
-  
-  // Toggle between 0 (muted) and 100 (normal)
-  const newVolume = participant.volume === 0 ? 100 : 0
-  voice.setUserVolume(participantId, newVolume, true)
-}
-
-function handleVolumeChangeIOS(participantId: string, event: Event) {
-  const target = event.target as HTMLInputElement
-  const newVolume = parseInt(target.value, 10)
-  
-  voice.setUserVolume(participantId, newVolume)
-}
-
 function confirmVolumeWarning() {
   if (pendingVolumeParticipant.value) {
     voice.acknowledgeVolumeWarning(pendingVolumeParticipant.value)
