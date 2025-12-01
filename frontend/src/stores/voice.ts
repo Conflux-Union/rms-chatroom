@@ -633,13 +633,15 @@ export const useVoiceStore = defineStore('voice', () => {
         // Start screen sharing with AV1 codec (high compression, 1080p @ 30fps)
         await room.value.localParticipant.setScreenShareEnabled(true, {
           resolution: ScreenSharePresets.h1080fps30.resolution,
-          contentHint: 'detail',
+          contentHint: 'motion',  // Prioritize smooth motion over sharp details
         }, {
           videoCodec: 'av1',
           videoEncoding: {
-            maxBitrate: 1_500_000,  // 1.5Mbps (AV1 needs less bitrate for same quality)
+            maxBitrate: 2_000_000,  // 2Mbps
             maxFramerate: 30,
+            priority: 'high',
           },
+          degradationPreference: 'maintain-framerate',  // Prioritize framerate over resolution
         })
         isScreenSharing.value = true
         // Find the screen share track publication
