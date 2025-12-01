@@ -169,6 +169,13 @@ function toggleUserMute(participantId: string) {
   voice.setUserVolume(participantId, newVolume, true)
 }
 
+function handleVolumeChangeIOS(participantId: string, event: Event) {
+  const target = event.target as HTMLInputElement
+  const newVolume = parseInt(target.value, 10)
+  
+  voice.setUserVolume(participantId, newVolume)
+}
+
 function confirmVolumeWarning() {
   if (pendingVolumeParticipant.value) {
     voice.acknowledgeVolumeWarning(pendingVolumeParticipant.value)
@@ -335,7 +342,7 @@ function closeInviteDialog() {
               <div v-if="!participant.isLocal" class="volume-control">
                 <!-- iOS: show mute toggle (volume control not supported) -->
                 <template v-if="isIOS">
-                  <button 
+                  <!-- <button 
                     class="ios-mute-btn"
                     :class="{ muted: participant.volume === 0 }"
                     @click="toggleUserMute(participant.id)"
@@ -344,7 +351,17 @@ function closeInviteDialog() {
                     <VolumeX v-if="participant.volume === 0" :size="16" />
                     <Volume2 v-else :size="16" />
                   </button>
-                  <span class="ios-volume-hint">{{ participant.volume === 0 ? '已静音' : '正常' }}</span>
+                  <span class="ios-volume-hint">{{ participant.volume === 0 ? '已静音' : '正常' }}</span> -->
+                  <Volume2 class="volume-icon" :size="14" />
+                  <input
+                    type="range"
+                    class="volume-slider"
+                    min="0"
+                    max="300"
+                    :value="participant.volume"
+                    @input="handleVolumeChange(participant.id, $event)"
+                  />
+                  <span class="volume-value">{{ participant.volume }}%</span>
                 </template>
                 <!-- Non-iOS: show volume slider -->
                 <template v-else>
@@ -710,22 +727,23 @@ function closeInviteDialog() {
   position: relative;
   overflow: hidden;
   margin-bottom: 4px;
-  border-radius: 8px;
 }
 
 .voice-user {
   display: flex;
   flex-direction: column;
-  padding: 8px;
+  padding: 8px 0;
   transition: all 0.2s ease, transform 0.3s ease;
   position: relative;
   z-index: 1;
   background: transparent;
-  border-radius: 8px;
 }
 
 .voice-user.speaking {
   background: rgba(16, 185, 129, 0.1);
+  border-radius: 8px;
+  padding: 8px;
+  margin: 0 -8px;
 }
 
 .swipe-actions {
