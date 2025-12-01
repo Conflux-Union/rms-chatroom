@@ -20,8 +20,8 @@ fun String.runCommand(): String {
     }
 }
 
-val appVersionCode = 6
-val appVersionName = "1.0.4"
+val appVersionCode = 7
+val appVersionName = "1.0.5-beta-1"
 val commitHash = "git rev-parse --short=8 HEAD".runCommand().ifEmpty { "unknown" }
 val fullVersionName = "v${appVersionName}(${appVersionCode})(commit:${commitHash})"
 
