@@ -2,11 +2,16 @@
 """
 RMS Discord Deployment Script
 
+Version is read from current.version file in project root.
+Format:
+    version=1.0.0
+    code=1
+
 Usage:
-    python deploy.py v1.0.0 1                    # Deploy with version (includes Android)
-    python deploy.py v1.0.0 1 --without-android  # Deploy without Android build
-    python deploy.py v1.0.0 1 --dry-run          # Pack files without uploading
-    python deploy.py v1.0.0 1 --server URL       # Override server URL
+    python deploy.py                    # Deploy with version (includes Android)
+    python deploy.py --without-android  # Deploy without Android build
+    python deploy.py --dry-run          # Pack files without uploading
+    python deploy.py --server URL       # Override server URL
 """
 from __future__ import annotations
 
@@ -35,6 +40,7 @@ DEPLOY_TOKEN = os.environ.get("DEPLOY_TOKEN", "rmstoken")
 PROJECT_ROOT = Path(__file__).parent.resolve()
 
 # Version file paths
+VERSION_FILE = PROJECT_ROOT / "current.version"
 FRONTEND_VERSION_FILE = PROJECT_ROOT / "frontend" / "src" / "version.ts"
 BACKEND_VERSION_FILE = PROJECT_ROOT / "backend" / "version.py"
 
@@ -121,6 +127,40 @@ def get_commit_hash() -> str:
     return "unknown"
 
 
+def read_version_file() -> tuple[str, str]:
+    """Read version info from current.version file.
+    
+    Returns:
+        Tuple of (version_name, version_code)
+    """
+    if not VERSION_FILE.exists():
+        print(f"Error: Version file not found: {VERSION_FILE}")
+        print("       Create current.version with format:")
+        print("       version=1.0.0")
+        print("       code=1")
+        sys.exit(1)
+    
+    content = VERSION_FILE.read_text()
+    version_name = None
+    version_code = None
+    
+    for line in content.strip().splitlines():
+        line = line.strip()
+        if line.startswith("version="):
+            version_name = line.split("=", 1)[1].strip()
+        elif line.startswith("code="):
+            version_code = line.split("=", 1)[1].strip()
+    
+    if not version_name:
+        print("Error: 'version=' not found in current.version")
+        sys.exit(1)
+    if not version_code:
+        print("Error: 'code=' not found in current.version")
+        sys.exit(1)
+    
+    return version_name, version_code
+
+
 def generate_version_files(version_name: str, version_code: str, commit_hash: str) -> None:
     """Generate version files for frontend and backend."""
     # Frontend version.ts
@@ -186,28 +226,6 @@ def update_android_version(version_name: str, version_code: str) -> tuple[bool, 
     
     ANDROID_GRADLE_FILE.write_text(content)
     return True, ""
-
-
-def restore_android_version() -> None:
-    """Restore Android build.gradle.kts to default version."""
-    if not ANDROID_GRADLE_FILE.exists():
-        return
-    
-    content = ANDROID_GRADLE_FILE.read_text()
-    
-    # Restore to placeholder values
-    content = re.sub(
-        r'val appVersionCode = \d+',
-        'val appVersionCode = 0',
-        content
-    )
-    content = re.sub(
-        r'val appVersionName = "[^"]+"',
-        'val appVersionName = "0.0.0"',
-        content
-    )
-    
-    ANDROID_GRADLE_FILE.write_text(content)
 
 
 def build_android_release() -> tuple[bool, str]:
@@ -390,14 +408,6 @@ def main():
         action="store_true",
         help="Skip Android build",
     )
-    parser.add_argument(
-        "version",
-        help="Version string (e.g., v1.0.0)",
-    )
-    parser.add_argument(
-        "code",
-        help="Version code (e.g., 1)",
-    )
     
     args = parser.parse_args()
     
@@ -419,7 +429,9 @@ def main():
         print("       Or set DEPLOY_TOKEN environment variable")
         sys.exit(1)
     
-    version_name = args.version.lstrip("v")  # Remove leading 'v' if present
+    # Read version from file
+    version_name, version_code = read_version_file()
+    version_name = version_name.lstrip("v")  # Remove leading 'v' if present
     commit_hash = get_commit_hash()
     build_android = not args.without_android
     
@@ -430,8 +442,8 @@ def main():
     # Generate version files
     step += 1
     print(f"[{step}/{total_steps}] Generating version files...")
-    print(f"      Version: v{version_name}({args.code})(commit:{commit_hash})")
-    generate_version_files(version_name, args.code, commit_hash)
+    print(f"      Version: v{version_name}({version_code})(commit:{commit_hash})")
+    generate_version_files(version_name, version_code, commit_hash)
     
     try:
         # Android build
@@ -440,7 +452,7 @@ def main():
             print(f"\n[{step}/{total_steps}] Building Android release...")
             
             # Update Android version
-            success, err = update_android_version(version_name, args.code)
+            success, err = update_android_version(version_name, version_code)
             if not success:
                 print(f"      ERROR: {err}")
                 sys.exit(1)
@@ -451,7 +463,6 @@ def main():
             success, err = build_android_release()
             if not success:
                 print(f"      ERROR: {err}")
-                restore_android_version()
                 sys.exit(1)
             print(f"      Build successful")
             
@@ -459,12 +470,8 @@ def main():
             success, err = copy_android_apk()
             if not success:
                 print(f"      ERROR: {err}")
-                restore_android_version()
                 sys.exit(1)
             print(f"      Copied APK to {ANDROID_APK_DEST.relative_to(PROJECT_ROOT)}")
-            
-            # Restore Android version
-            restore_android_version()
         
         # Deploy (pack, upload, result)
         success = deploy(args.server, args.token, args.dry_run, step, total_steps)
