@@ -1,6 +1,7 @@
+# Binary files
 music-service/music-service
 music-service/music-service-linux
-android_app/rms-chatroom.apk
+android_app/*.apk
 
 # Auto-generated version file
 version.py

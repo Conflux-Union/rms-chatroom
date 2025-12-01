@@ -27,3 +27,6 @@ dist/
 build/
 
 debug/
+
+# Scripts
+git-commit-ai.sh
