@@ -66,6 +66,13 @@ export const useVoiceStore = defineStore('voice', () => {
   const serverMuteState = ref<Map<string, boolean>>(new Map())
   let syncInterval: ReturnType<typeof setInterval> | null = null
 
+  function ensureAudioContext(): AudioContext {
+    if (!audioContext.value) {
+      audioContext.value = new (window.AudioContext || (window as any).webkitAudioContext)()
+    }
+    return audioContext.value
+  }
+
   function updateParticipants() {
     if (!room.value) {
       participants.value = []
@@ -308,8 +315,28 @@ export const useVoiceStore = defineStore('voice', () => {
           const savedVolume = userVolumes.value.get(participant.identity) ?? 100
           
           if (isIOS()) {
-            // iOS: only mute/unmute is supported (volume property is ignored)
-            audioElement.muted = savedVolume === 0
+            // iOS: Control the volume of each user with Web Audio API
+            const ctx = ensureAudioContext()
+
+            // Use <audio> element as source (with your defined MediaElementAudioSourceNode type)
+            const sourceNode = ctx.createMediaElementSource(audioElement)
+            const gainNode = ctx.createGain()
+
+            // savedVolume is the percentage from 0 to 300, which is mapped to the gain from 0 to 3 here
+            const initialGain = Math.max(0, Math.min(3, savedVolume / 100))
+            gainNode.gain.value = initialGain
+
+            sourceNode.connect(gainNode).connect(ctx.destination)
+
+            // Avoid direct sound from audio and set it to 0
+            audioElement.volume = 0
+            audioElement.muted = false
+
+            participantAudioMap.set(participant.identity, {
+              audioElement,
+              sourceNode,
+              gainNode,
+            })
           } else {
             // Non-iOS: use native audioElement.volume
             audioElement.volume = Math.min(savedVolume / 100, 1)
@@ -330,10 +357,18 @@ export const useVoiceStore = defineStore('voice', () => {
 
       room.value.on(RoomEvent.TrackUnsubscribed, (track, _pub, participant) => {
         if (participant instanceof RemoteParticipant) {
+          const info = participantAudioMap.get(participant.identity)
+          if (info?.gainNode) {
+            info.gainNode.disconnect()
+          }
+          if (info?.sourceNode) {
+            info.sourceNode.disconnect()
+          }
           participantAudioMap.delete(participant.identity)
         }
         track.detach().forEach((el) => el.remove())
       })
+
 
       await room.value.connect(url, token)
       await room.value.localParticipant.setMicrophoneEnabled(true)
@@ -433,8 +468,11 @@ export const useVoiceStore = defineStore('voice', () => {
     const participantAudio = participantAudioMap.get(participantId)
     if (participantAudio?.audioElement) {
       if (isIOS()) {
-        // iOS: only mute/unmute is supported (volume property is ignored by iOS)
-        participantAudio.audioElement.muted = clampedVolume === 0
+         // --- iOS：用 Web Audio 的 gain 控制 ---
+        if (participantAudio.gainNode) {
+          const gain = Math.max(0, Math.min(3, clampedVolume / 100))
+          participantAudio.gainNode.gain.value = gain
+        }
       } else {
         // Non-iOS: use native volume (max 100%)
         participantAudio.audioElement.volume = Math.min(clampedVolume / 100, 1)
