@@ -340,6 +340,42 @@ async def mute_participant(
         await api.aclose()
 
 
+@router.post("/api/voice/{channel_id}/kick/{target_user_id}")
+async def kick_participant(
+    channel_id: int,
+    target_user_id: str,
+    user: AdminUser,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Kick a participant from voice channel (admin only).
+    """
+    result = await db.execute(select(Channel).where(Channel.id == channel_id))
+    channel = result.scalar_one_or_none()
+    
+    if not channel:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Channel not found")
+    
+    if channel.type != ChannelType.VOICE:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Not a voice channel")
+    
+    room_name = f"voice_{channel_id}"
+    api = await _get_livekit_api()
+    
+    try:
+        await api.room.remove_participant(
+            RoomParticipantIdentity(room=room_name, identity=target_user_id)
+        )
+        return {"success": True}
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Participant not found"
+        )
+    finally:
+        await api.aclose()
+
+
 @router.get("/api/voice/{channel_id}/host-mode", response_model=HostModeResponse)
 async def get_host_mode(
     channel_id: int,

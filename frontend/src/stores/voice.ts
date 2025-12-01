@@ -481,6 +481,30 @@ export const useVoiceStore = defineStore('voice', () => {
   }
 
   /**
+   * Admin: Kick a participant from voice channel via server API.
+   */
+  async function kickParticipant(userId: string): Promise<boolean> {
+    if (!currentVoiceChannel.value) return false
+
+    const auth = useAuthStore()
+    try {
+      const response = await fetch(
+        `${API_BASE}/api/voice/${currentVoiceChannel.value.id}/kick/${userId}`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${auth.token}`,
+          },
+        }
+      )
+      return response.ok
+    } catch (e) {
+      console.error('Failed to kick participant:', e)
+      return false
+    }
+  }
+
+  /**
    * Fetch host mode status from server.
    */
   async function fetchHostModeStatus(): Promise<void> {
@@ -563,6 +587,7 @@ export const useVoiceStore = defineStore('voice', () => {
     setAudioInputDevice,
     setAudioOutputDevice,
     muteParticipant,
+    kickParticipant,
     fetchHostModeStatus,
     toggleHostMode,
   }

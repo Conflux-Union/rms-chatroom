@@ -99,6 +99,12 @@ async function muteVoiceUser() {
   hideContextMenu()
 }
 
+async function kickVoiceUser() {
+  if (!userContextMenu.value.channelId || !userContextMenu.value.userId) return
+  await voice.kickParticipant(userContextMenu.value.userId)
+  hideContextMenu()
+}
+
 async function deleteChannel() {
   if (!contextMenu.value.channelId || !chat.currentServer) return
   if (confirm('确定要删除此频道吗？')) {
@@ -191,6 +197,7 @@ async function deleteChannel() {
       @click.stop
     >
       <div class="context-menu-item" @click="muteVoiceUser">静音麦克风</div>
+      <div class="context-menu-item delete" @click="kickVoiceUser">踢出频道</div>
     </div>
 
     <div v-if="showCreate" class="create-modal" @click.self="showCreate = false">

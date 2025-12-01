@@ -3,7 +3,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useChatStore } from '../stores/chat'
 import { useVoiceStore } from '../stores/voice'
 import { useAuthStore } from '../stores/auth'
-import { Volume2, VolumeX, Mic, MicOff, Phone, AlertTriangle, Crown, Link, Copy, Check } from 'lucide-vue-next'
+import { Volume2, VolumeX, Mic, MicOff, Phone, AlertTriangle, Crown, Link, Copy, Check, UserX } from 'lucide-vue-next'
 
 // Detect iOS devices
 const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
@@ -44,6 +44,11 @@ const swipedUserId = ref<string | null>(null)
 const touchStartX = ref(0)
 const touchCurrentX = ref(0)
 
+// Desktop context menu state
+const contextMenu = ref<{ show: boolean; x: number; y: number; participantId: string }>({
+  show: false, x: 0, y: 0, participantId: ''
+})
+
 function handleTouchStart(event: TouchEvent, _participantId: string) {
   const touch = event.touches[0]
   if (touch) {
@@ -73,6 +78,34 @@ function handleTouchEnd() {
 async function muteParticipant(participantId: string) {
   await voice.muteParticipant(participantId, true)
   swipedUserId.value = null
+}
+
+async function kickParticipant(participantId: string) {
+  await voice.kickParticipant(participantId)
+  swipedUserId.value = null
+  hideContextMenu()
+}
+
+function showContextMenu(event: MouseEvent, participantId: string) {
+  event.preventDefault()
+  event.stopPropagation()
+  contextMenu.value = { show: true, x: event.clientX, y: event.clientY, participantId }
+}
+
+function hideContextMenu() {
+  contextMenu.value = { show: false, x: 0, y: 0, participantId: '' }
+}
+
+async function contextMuteParticipant() {
+  if (!contextMenu.value.participantId) return
+  await voice.muteParticipant(contextMenu.value.participantId, true)
+  hideContextMenu()
+}
+
+async function contextKickParticipant() {
+  if (!contextMenu.value.participantId) return
+  await voice.kickParticipant(contextMenu.value.participantId)
+  hideContextMenu()
 }
 
 async function joinVoice() {
@@ -185,7 +218,7 @@ function closeInviteDialog() {
 </script>
 
 <template>
-  <div class="voice-panel">
+  <div class="voice-panel" @click="hideContextMenu">
     <div class="voice-header">
       <Volume2 class="channel-icon" :size="20" />
       <span class="channel-name">{{ chat.currentChannel?.name }}</span>
@@ -258,6 +291,7 @@ function closeInviteDialog() {
               @touchstart="!participant.isLocal && auth.isAdmin ? handleTouchStart($event, participant.id) : null"
               @touchmove="!participant.isLocal && auth.isAdmin ? handleTouchMove($event, participant.id) : null"
               @touchend="handleTouchEnd"
+              @contextmenu="!participant.isLocal && auth.isAdmin ? showContextMenu($event, participant.id) : null"
             >
               <div class="user-info">
                 <div class="user-avatar">
@@ -299,15 +333,23 @@ function closeInviteDialog() {
                 </template>
               </div>
             </div>
-            <!-- Swipe action button -->
-            <button 
-              v-if="!participant.isLocal && auth.isAdmin"
-              class="swipe-action-btn"
-              @click="muteParticipant(participant.id)"
-            >
-              <MicOff :size="18" />
-              <span>静音</span>
-            </button>
+            <!-- Swipe action buttons -->
+            <div v-if="!participant.isLocal && auth.isAdmin" class="swipe-actions">
+              <button 
+                class="swipe-action-btn"
+                @click="muteParticipant(participant.id)"
+              >
+                <MicOff :size="18" />
+                <span>静音</span>
+              </button>
+              <button 
+                class="swipe-action-btn kick"
+                @click="kickParticipant(participant.id)"
+              >
+                <UserX :size="18" />
+                <span>踢出</span>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -418,6 +460,23 @@ function closeInviteDialog() {
         </div>
       </div>
     </Teleport>
+
+    <!-- Desktop Context Menu -->
+    <div
+      v-if="contextMenu.show && auth.isAdmin"
+      class="context-menu"
+      :style="{ left: contextMenu.x + 'px', top: contextMenu.y + 'px' }"
+      @click.stop
+    >
+      <div class="context-menu-item" @click="contextMuteParticipant">
+        <MicOff :size="14" />
+        <span>静音麦克风</span>
+      </div>
+      <div class="context-menu-item delete" @click="contextKickParticipant">
+        <UserX :size="14" />
+        <span>踢出频道</span>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -604,13 +663,20 @@ function closeInviteDialog() {
   background: rgba(16, 185, 129, 0.1);
 }
 
-.swipe-action-btn {
+.swipe-actions {
   position: absolute;
   right: 0;
   top: 0;
   bottom: 0;
-  width: 70px;
-  background: var(--color-error, #ef4444);
+  display: flex;
+  opacity: 0;
+  transform: translateX(100%);
+  transition: all 0.3s ease;
+}
+
+.swipe-action-btn {
+  width: 60px;
+  background: #f59e0b;
   border: none;
   color: white;
   display: flex;
@@ -620,17 +686,25 @@ function closeInviteDialog() {
   gap: 4px;
   font-size: 12px;
   cursor: pointer;
-  opacity: 0;
-  transform: translateX(100%);
-  transition: all 0.3s ease;
-  border-radius: 8px;
+}
+
+.swipe-action-btn:first-child {
+  border-radius: 8px 0 0 8px;
+}
+
+.swipe-action-btn:last-child {
+  border-radius: 0 8px 8px 0;
+}
+
+.swipe-action-btn.kick {
+  background: var(--color-error, #ef4444);
 }
 
 .voice-user-wrapper.swiped .voice-user {
-  transform: translateX(-70px);
+  transform: translateX(-120px);
 }
 
-.voice-user-wrapper.swiped .swipe-action-btn {
+.voice-user-wrapper.swiped .swipe-actions {
   opacity: 1;
   transform: translateX(0);
 }
@@ -1064,6 +1138,44 @@ function closeInviteDialog() {
 }
 
 /* Mobile Responsive */
+/* Context Menu */
+.context-menu {
+  position: fixed;
+  background: var(--surface-glass-strong, rgba(30, 30, 40, 0.95));
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: var(--radius-md, 8px);
+  padding: 4px;
+  min-width: 160px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  z-index: 9999;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+.context-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  font-size: 14px;
+  color: var(--color-text-main);
+  cursor: pointer;
+  border-radius: var(--radius-sm, 6px);
+  transition: background 0.15s ease;
+}
+
+.context-menu-item:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.context-menu-item.delete {
+  color: var(--color-error, #ef4444);
+}
+
+.context-menu-item.delete:hover {
+  background: rgba(239, 68, 68, 0.15);
+}
+
 @media (max-width: 768px) {
   .voice-content {
     padding: 16px;
@@ -1095,6 +1207,10 @@ function closeInviteDialog() {
   .control-btn {
     width: 44px;
     height: 44px;
+  }
+
+  .context-menu {
+    display: none;
   }
 }
 </style>
