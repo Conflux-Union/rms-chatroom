@@ -1,6 +1,6 @@
 {
-    "version_code": 7,
-    "version_name": "1.0.5-beta-1",
-    "changelog": "- 更新了新建/删除服务器功能（需要管理员）\n- 新增了新建/删除频道功能（需要管理员）",
+    "version_code": 8,
+    "version_name": "1.0.5",
+    "changelog": "- 更新了共享屏幕功能",
     "force_update": false
 }
