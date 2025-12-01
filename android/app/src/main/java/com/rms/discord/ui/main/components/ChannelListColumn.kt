@@ -5,8 +5,10 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -17,8 +19,7 @@ import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -41,8 +42,16 @@ fun ChannelListColumn(
     username: String,
     onLogout: () -> Unit,
     onSettings: () -> Unit = {},
-    voiceChannelUsers: Map<Long, List<VoiceUser>> = emptyMap()
+    voiceChannelUsers: Map<Long, List<VoiceUser>> = emptyMap(),
+    isAdmin: Boolean = false,
+    onCreateChannel: (name: String, type: String) -> Unit = { _, _ -> },
+    onDeleteChannel: (channelId: Long) -> Unit = {}
 ) {
+    var showCreateDialog by remember { mutableStateOf(false) }
+    var createChannelType by remember { mutableStateOf("text") }
+    var showDeleteDialog by remember { mutableStateOf(false) }
+    var channelToDelete by remember { mutableStateOf<Channel?>(null) }
+
     Column(
         modifier = Modifier
             .width(240.dp)
@@ -80,36 +89,58 @@ fun ChannelListColumn(
         ) {
             // Text channels section
             val textChannels = server?.channels?.filter { it.type == ChannelType.TEXT } ?: emptyList()
-            if (textChannels.isNotEmpty()) {
-                item {
-                    ChannelSectionHeader(title = "文字频道")
-                }
-                items(textChannels, key = { it.id }) { channel ->
-                    ChannelItem(
-                        channel = channel,
-                        isSelected = channel.id == currentChannelId,
-                        onClick = { onChannelClick(channel) }
-                    )
-                }
+            item {
+                ChannelSectionHeader(
+                    title = "文字频道",
+                    showAddButton = isAdmin,
+                    onAddClick = {
+                        createChannelType = "text"
+                        showCreateDialog = true
+                    }
+                )
+            }
+            items(textChannels, key = { it.id }) { channel ->
+                ChannelItem(
+                    channel = channel,
+                    isSelected = channel.id == currentChannelId,
+                    onClick = { onChannelClick(channel) },
+                    onLongClick = if (isAdmin) {
+                        {
+                            channelToDelete = channel
+                            showDeleteDialog = true
+                        }
+                    } else null
+                )
             }
 
             // Voice channels section
             val voiceChannels = server?.channels?.filter { it.type == ChannelType.VOICE } ?: emptyList()
-            if (voiceChannels.isNotEmpty()) {
-                item {
-                    Spacer(modifier = Modifier.height(16.dp))
-                    ChannelSectionHeader(title = "语音频道")
-                }
-                voiceChannels.forEach { channel ->
-                    val users = voiceChannelUsers[channel.id] ?: emptyList()
-                    item(key = "voice_${channel.id}") {
-                        VoiceChannelItem(
-                            channel = channel,
-                            isSelected = channel.id == currentChannelId,
-                            onClick = { onChannelClick(channel) },
-                            users = users
-                        )
+            item {
+                Spacer(modifier = Modifier.height(16.dp))
+                ChannelSectionHeader(
+                    title = "语音频道",
+                    showAddButton = isAdmin,
+                    onAddClick = {
+                        createChannelType = "voice"
+                        showCreateDialog = true
                     }
+                )
+            }
+            voiceChannels.forEach { channel ->
+                val users = voiceChannelUsers[channel.id] ?: emptyList()
+                item(key = "voice_${channel.id}") {
+                    VoiceChannelItem(
+                        channel = channel,
+                        isSelected = channel.id == currentChannelId,
+                        onClick = { onChannelClick(channel) },
+                        onLongClick = if (isAdmin) {
+                            {
+                                channelToDelete = channel
+                                showDeleteDialog = true
+                            }
+                        } else null,
+                        users = users
+                    )
                 }
             }
         }
@@ -121,10 +152,94 @@ fun ChannelListColumn(
             onSettings = onSettings
         )
     }
+
+    // Create Channel Dialog
+    if (showCreateDialog) {
+        CreateChannelDialog(
+            channelType = createChannelType,
+            onDismiss = { showCreateDialog = false },
+            onCreate = { name ->
+                onCreateChannel(name, createChannelType)
+                showCreateDialog = false
+            }
+        )
+    }
+
+    // Delete Channel Dialog
+    if (showDeleteDialog && channelToDelete != null) {
+        AlertDialog(
+            onDismissRequest = {
+                showDeleteDialog = false
+                channelToDelete = null
+            },
+            title = { Text("删除频道") },
+            text = { Text("确定要删除频道「${channelToDelete?.name}」吗？此操作不可撤销。") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        channelToDelete?.let { onDeleteChannel(it.id) }
+                        showDeleteDialog = false
+                        channelToDelete = null
+                    },
+                    colors = ButtonDefaults.textButtonColors(contentColor = Color(0xFFED4245))
+                ) {
+                    Text("删除")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showDeleteDialog = false
+                    channelToDelete = null
+                }) {
+                    Text("取消")
+                }
+            }
+        )
+    }
 }
 
 @Composable
-private fun ChannelSectionHeader(title: String) {
+private fun CreateChannelDialog(
+    channelType: String,
+    onDismiss: () -> Unit,
+    onCreate: (name: String) -> Unit
+) {
+    var channelName by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("创建${if (channelType == "text") "文字" else "语音"}频道") },
+        text = {
+            OutlinedTextField(
+                value = channelName,
+                onValueChange = { channelName = it },
+                label = { Text("频道名称") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { if (channelName.isNotBlank()) onCreate(channelName.trim()) },
+                enabled = channelName.isNotBlank()
+            ) {
+                Text("创建")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("取消")
+            }
+        }
+    )
+}
+
+@Composable
+private fun ChannelSectionHeader(
+    title: String,
+    showAddButton: Boolean = false,
+    onAddClick: () -> Unit = {}
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -138,14 +253,29 @@ private fun ChannelSectionHeader(title: String) {
             color = TextMuted,
             modifier = Modifier.weight(1f)
         )
+        if (showAddButton) {
+            IconButton(
+                onClick = onAddClick,
+                modifier = Modifier.size(20.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Add,
+                    contentDescription = "添加频道",
+                    tint = TextMuted,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+        }
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ChannelItem(
     channel: Channel,
     isSelected: Boolean,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onLongClick: (() -> Unit)? = null
 ) {
     val backgroundColor by animateColorAsState(
         targetValue = if (isSelected) SurfaceLighter else Color.Transparent,
@@ -164,7 +294,10 @@ private fun ChannelItem(
             .fillMaxWidth()
             .clip(RoundedCornerShape(4.dp))
             .background(backgroundColor)
-            .clickable(onClick = onClick)
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick
+            )
             .padding(horizontal = 8.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -187,11 +320,13 @@ private fun ChannelItem(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun VoiceChannelItem(
     channel: Channel,
     isSelected: Boolean,
     onClick: () -> Unit,
+    onLongClick: (() -> Unit)? = null,
     users: List<VoiceUser>
 ) {
     val backgroundColor by animateColorAsState(
@@ -213,7 +348,10 @@ private fun VoiceChannelItem(
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(4.dp))
                 .background(backgroundColor)
-                .clickable(onClick = onClick)
+                .combinedClickable(
+                    onClick = onClick,
+                    onLongClick = onLongClick
+                )
                 .padding(horizontal = 8.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {

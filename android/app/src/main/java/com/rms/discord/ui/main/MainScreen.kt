@@ -112,7 +112,14 @@ fun MainScreen(
                             scope.launch { drawerState.close() }
                             onNavigateToSettings()
                         },
-                        voiceChannelUsers = voiceChannelUsers
+                        voiceChannelUsers = voiceChannelUsers,
+                        isAdmin = (authState.user?.permissionLevel ?: 0) >= 4,
+                        onCreateChannel = { name, type ->
+                            mainViewModel.createChannel(name, type)
+                        },
+                        onDeleteChannel = { channelId ->
+                            mainViewModel.deleteChannel(channelId)
+                        }
                     )
                 }
             }

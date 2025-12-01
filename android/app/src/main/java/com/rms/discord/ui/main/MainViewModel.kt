@@ -246,6 +246,40 @@ class MainViewModel @Inject constructor(
 
     fun getUpdateRepository(): UpdateRepository = updateRepository
 
+    fun createChannel(name: String, type: String) {
+        val serverId = _state.value.currentServer?.id ?: return
+        viewModelScope.launch {
+            chatRepository.createChannel(serverId, name, type)
+                .onSuccess {
+                    // Refresh server to update channel list
+                    selectServer(serverId)
+                }
+                .onFailure { e ->
+                    _state.value = _state.value.copy(error = "创建频道失败: ${e.message}")
+                }
+        }
+    }
+
+    fun deleteChannel(channelId: Long) {
+        val serverId = _state.value.currentServer?.id ?: return
+        val currentChannelId = _state.value.currentChannel?.id
+        viewModelScope.launch {
+            chatRepository.deleteChannel(serverId, channelId)
+                .onSuccess {
+                    // If deleted current channel, clear selection
+                    if (currentChannelId == channelId) {
+                        chatRepository.disconnectFromChannel()
+                        _state.value = _state.value.copy(currentChannel = null)
+                    }
+                    // Refresh server to update channel list
+                    selectServer(serverId)
+                }
+                .onFailure { e ->
+                    _state.value = _state.value.copy(error = "删除频道失败: ${e.message}")
+                }
+        }
+    }
+
     override fun onCleared() {
         super.onCleared()
         stopVoiceUsersPolling()

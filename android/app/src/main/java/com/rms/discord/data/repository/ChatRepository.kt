@@ -2,6 +2,7 @@ package com.rms.discord.data.repository
 
 import android.util.Log
 import com.rms.discord.data.api.ApiService
+import com.rms.discord.data.api.CreateChannelRequest
 import com.rms.discord.data.api.SendMessageBody
 import com.rms.discord.data.local.MessageDao
 import com.rms.discord.data.local.MessageEntity
@@ -320,5 +321,33 @@ class ChatRepository @Inject constructor(
 
     fun getVoiceChannelUsers(channelId: Long): List<VoiceUser> {
         return _voiceChannelUsers.value[channelId] ?: emptyList()
+    }
+
+    suspend fun createChannel(serverId: Long, name: String, type: String): Result<Channel> {
+        return try {
+            val token = authRepository.getToken()
+                ?: return Result.failure(AuthException("未登录，请先登录"))
+            val channel = api.createChannel(
+                authRepository.getAuthHeader(token),
+                serverId,
+                CreateChannelRequest(name, type)
+            )
+            Result.success(channel)
+        } catch (e: Exception) {
+            Log.e(TAG, "createChannel failed", e)
+            Result.failure(e.toAuthException())
+        }
+    }
+
+    suspend fun deleteChannel(serverId: Long, channelId: Long): Result<Unit> {
+        return try {
+            val token = authRepository.getToken()
+                ?: return Result.failure(AuthException("未登录，请先登录"))
+            api.deleteChannel(authRepository.getAuthHeader(token), serverId, channelId)
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e(TAG, "deleteChannel failed", e)
+            Result.failure(e.toAuthException())
+        }
     }
 }

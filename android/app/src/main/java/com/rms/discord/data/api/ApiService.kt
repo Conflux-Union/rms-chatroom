@@ -21,6 +21,21 @@ interface ApiService {
         @Path("id") serverId: Long
     ): Server
 
+    // Channel Management (admin only)
+    @POST("api/servers/{serverId}/channels")
+    suspend fun createChannel(
+        @Header("Authorization") token: String,
+        @Path("serverId") serverId: Long,
+        @Body body: CreateChannelRequest
+    ): Channel
+
+    @DELETE("api/servers/{serverId}/channels/{channelId}")
+    suspend fun deleteChannel(
+        @Header("Authorization") token: String,
+        @Path("serverId") serverId: Long,
+        @Path("channelId") channelId: Long
+    )
+
     // Channels
     @GET("api/channels/{id}/messages")
     suspend fun getMessages(
@@ -237,6 +252,7 @@ interface ApiService {
 
 data class SendMessageBody(val content: String)
 data class GuestJoinBody(val username: String)
+data class CreateChannelRequest(val name: String, val type: String = "text")
 
 // Bug Report
 data class BugReportResponse(
