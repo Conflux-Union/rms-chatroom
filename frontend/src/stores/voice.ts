@@ -352,7 +352,8 @@ export const useVoiceStore = defineStore('voice', () => {
             audioElement.dataset.participantId = participant.identity
             
             const savedVolume = userVolumes.value.get(participant.identity) ?? 100
-            
+
+            debug(`Subscribing to audio track of ${participant.identity}, saved volume: ${savedVolume}%`)
             if (isIOS()) {
               // iOS: Control the volume of each user with Web Audio API
               const ctx = ensureAudioContext()
@@ -362,10 +363,14 @@ export const useVoiceStore = defineStore('voice', () => {
 
               const sourceNode = ctx.createMediaElementSource(audioElement)
               const gainNode = ctx.createGain()
+              debug(`Initial iOS volume for ${participant.identity} is ${savedVolume}%`)
 
-              const initialGain = Math.max(0, Math.min(3, savedVolume / 100))
+              const initialGain = Math.min(savedVolume / 100, 1)
+              debug(`Setting gain node value for ${participant.identity} to ${initialGain}`)
+
               gainNode.gain.value = initialGain
               sourceNode.connect(gainNode).connect(ctx.destination)
+              debug(`Connected audio nodes for ${participant.identity}`)
 
               participantAudioMap.set(participant.identity, {
                 audioElement,
@@ -881,3 +886,10 @@ export const useVoiceStore = defineStore('voice', () => {
     detachScreenShare,
   }
 })
+
+function debug(msg: string) {
+  const div = document.getElementById("debug");
+  if (div) {
+    div.innerText += msg + "\n";
+  }
+}
