@@ -30,6 +30,7 @@ import com.smarttoolfactory.slider.ColorfulSlider
 import com.smarttoolfactory.slider.MaterialSliderDefaults
 import com.smarttoolfactory.slider.SliderBrushColor
 import androidx.compose.runtime.*
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -42,16 +43,21 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import android.Manifest
+import android.app.Activity
 import android.content.pm.PackageManager
+import android.media.projection.MediaProjectionManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import io.livekit.android.renderer.TextureViewRenderer
 import com.rms.discord.R
 import com.rms.discord.data.livekit.AudioDeviceInfo
 import com.rms.discord.data.livekit.AudioDeviceType
 import com.rms.discord.data.livekit.ConnectionState
 import com.rms.discord.data.livekit.ParticipantInfo
+import com.rms.discord.data.livekit.ScreenShareInfo
 import com.rms.discord.ui.music.MusicBottomSheet
 import com.rms.discord.ui.music.MusicLoginDialog
 import com.rms.discord.ui.music.MusicSearchDialog
@@ -96,6 +102,19 @@ fun VoiceScreen(
             viewModel.joinVoice()
         } else {
             showPermissionDeniedDialog = true
+        }
+    }
+
+    // MediaProjection permission launcher for screen sharing
+    val mediaProjectionManager = remember {
+        context.getSystemService(android.content.Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+    }
+    val screenShareLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK && result.data != null) {
+            viewModel.setMediaProjectionPermissionData(result.data)
+            viewModel.toggleScreenShare()
         }
     }
 
@@ -333,6 +352,20 @@ fun VoiceScreen(
                 HostModeBanner(hostName = state.hostModeHostName ?: "Unknown")
             }
 
+            // Remote screen share video
+            val activeScreenShare = state.remoteScreenShares.values.firstOrNull()
+            if (activeScreenShare != null && state.isConnected) {
+                key(activeScreenShare.participantId) {
+                    RemoteScreenShareView(
+                        screenShare = activeScreenShare,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(16f / 9f)
+                            .padding(bottom = 8.dp)
+                    )
+                }
+            }
+
             // Voice users grid
             if (state.participants.isNotEmpty()) {
                 LazyVerticalGrid(
@@ -398,7 +431,18 @@ fun VoiceScreen(
                     viewModel.createInvite()
                     showInviteDialog = true
                 },
-                onToggleScreenShare = { viewModel.toggleScreenShare() }
+                onToggleScreenShare = {
+                    if (state.isScreenSharing) {
+                        // Stop sharing - no permission needed
+                        viewModel.toggleScreenShare()
+                    } else if (viewModel.hasMediaProjectionPermission()) {
+                        // Already have permission, start sharing
+                        viewModel.toggleScreenShare()
+                    } else {
+                        // Request MediaProjection permission
+                        screenShareLauncher.launch(mediaProjectionManager.createScreenCaptureIntent())
+                    }
+                }
             )
         }
     }
@@ -1255,6 +1299,76 @@ private fun AudioDeviceItem(
                     modifier = Modifier.size(24.dp),
                     tint = TiColor
                 )
+            }
+        }
+    }
+}
+
+@Composable
+private fun RemoteScreenShareView(
+    screenShare: ScreenShareInfo,
+    modifier: Modifier = Modifier
+) {
+    val videoTrack = screenShare.videoTrack
+    val eglBase = remember { livekit.org.webrtc.EglBase.create() }
+    var rendererAttached by remember { mutableStateOf(false) }
+    
+    DisposableEffect(videoTrack) {
+        onDispose {
+            rendererAttached = false
+        }
+    }
+    
+    Surface(
+        modifier = modifier.clip(RoundedCornerShape(12.dp)),
+        color = SurfaceDarker
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            AndroidView(
+                factory = { ctx ->
+                    TextureViewRenderer(ctx).apply {
+                        init(eglBase.eglBaseContext, null)
+                    }
+                },
+                modifier = Modifier.fillMaxSize(),
+                update = { view ->
+                    if (!rendererAttached) {
+                        videoTrack.addRenderer(view)
+                        rendererAttached = true
+                    }
+                },
+                onRelease = { view ->
+                    try {
+                        videoTrack.removeRenderer(view)
+                        view.release()
+                    } catch (_: Exception) {}
+                }
+            )
+            
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(8.dp),
+                color = SurfaceDark.copy(alpha = 0.8f),
+                shape = RoundedCornerShape(4.dp)
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.DesktopWindows,
+                        contentDescription = null,
+                        modifier = Modifier.size(14.dp),
+                        tint = VoiceConnected
+                    )
+                    Text(
+                        text = screenShare.participantName,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = TextPrimary
+                    )
+                }
             }
         }
     }

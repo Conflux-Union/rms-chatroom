@@ -126,7 +126,9 @@ class VoiceViewModel @Inject constructor(
                     hostModeHostName = _state.value.hostModeHostName,
                     inviteUrl = _inviteUrl.value,
                     inviteLoading = _inviteLoading.value,
-                    inviteError = _inviteError.value
+                    inviteError = _inviteError.value,
+                    isScreenSharing = _state.value.isScreenSharing,
+                    remoteScreenShares = _state.value.remoteScreenShares
                 )
             }.collect { newState ->
                 // Start foreground service on first successful connection

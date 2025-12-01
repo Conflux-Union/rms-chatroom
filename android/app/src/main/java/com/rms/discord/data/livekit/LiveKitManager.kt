@@ -25,6 +25,7 @@ import io.livekit.android.room.track.LocalAudioTrackOptions
 import io.livekit.android.room.track.RemoteAudioTrack
 import io.livekit.android.room.track.RemoteVideoTrack
 import io.livekit.android.room.track.Track
+import io.livekit.android.room.track.screencapture.ScreenCaptureParams
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -433,16 +434,18 @@ class LiveKitManager @Inject constructor(
                     }
                 }
                 is RoomEvent.TrackUnsubscribed -> {
-                    // Check for remote screen share removal
-                    val publication = event.publication
-                    val participant = event.participant
-                    if (publication.source == Track.Source.SCREEN_SHARE && 
-                        participant is RemoteParticipant) {
-                        val identity = participant.identity?.value ?: return@collect
-                        val newMap = _remoteScreenShares.value.toMutableMap()
-                        newMap.remove(identity)
-                        _remoteScreenShares.value = newMap
-                        Log.d(TAG, "Remote screen share stopped: $identity")
+                    // Check for remote screen share removal by matching track reference
+                    val track = event.track
+                    if (track is RemoteVideoTrack) {
+                        val entryToRemove = _remoteScreenShares.value.entries.find { 
+                            it.value.videoTrack == track 
+                        }
+                        if (entryToRemove != null) {
+                            val newMap = _remoteScreenShares.value.toMutableMap()
+                            newMap.remove(entryToRemove.key)
+                            _remoteScreenShares.value = newMap
+                            Log.d(TAG, "Remote screen share stopped: ${entryToRemove.value.participantName}")
+                        }
                     }
                 }
                 is RoomEvent.TrackMuted -> {
@@ -522,7 +525,10 @@ class LiveKitManager @Inject constructor(
                 val permissionData = mediaProjectionPermissionData
                     ?: return Result.failure(IllegalStateException("MediaProjection permission not granted"))
                 
-                currentRoom.localParticipant.setScreenShareEnabled(true, permissionData)
+                val screenCaptureParams = ScreenCaptureParams(
+                    mediaProjectionPermissionResultData = permissionData
+                )
+                currentRoom.localParticipant.setScreenShareEnabled(true, screenCaptureParams)
                 _isScreenSharing.value = true
                 Log.d(TAG, "Screen sharing enabled")
             } else {
