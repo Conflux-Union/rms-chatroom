@@ -129,6 +129,25 @@ interface ApiService {
         @Path("channelId") channelId: Long
     ): InviteCreateResponse
 
+    // Screen share lock APIs
+    @GET("api/voice/{channelId}/screen-share-status")
+    suspend fun getScreenShareStatus(
+        @Header("Authorization") token: String,
+        @Path("channelId") channelId: Long
+    ): ScreenShareStatusResponse
+
+    @POST("api/voice/{channelId}/screen-share/lock")
+    suspend fun lockScreenShare(
+        @Header("Authorization") token: String,
+        @Path("channelId") channelId: Long
+    ): ScreenShareLockResponse
+
+    @POST("api/voice/{channelId}/screen-share/unlock")
+    suspend fun unlockScreenShare(
+        @Header("Authorization") token: String,
+        @Path("channelId") channelId: Long
+    ): ScreenShareLockResponse
+
     // Music - Login
     @GET("api/music/login/check")
     suspend fun checkMusicLogin(

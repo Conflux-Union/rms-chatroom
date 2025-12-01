@@ -44,12 +44,17 @@ data class VoiceState(
     val inviteError: String? = null,
     // Screen share state
     val isScreenSharing: Boolean = false,
-    val remoteScreenShares: Map<String, ScreenShareInfo> = emptyMap()
+    val remoteScreenShares: Map<String, ScreenShareInfo> = emptyMap(),
+    val screenShareLocked: Boolean = false,
+    val screenSharerId: String? = null,
+    val screenSharerName: String? = null
 ) {
     val isConnected: Boolean get() = connectionState == ConnectionState.CONNECTED
     val isReconnecting: Boolean get() = connectionState == ConnectionState.RECONNECTING
     val isCurrentUserHost: Boolean get() = hostModeHostId == userId?.toString()
     val hostButtonDisabled: Boolean get() = hostModeEnabled && !isCurrentUserHost
+    val isCurrentUserScreenSharer: Boolean get() = screenSharerId == userId?.toString()
+    val screenShareButtonDisabled: Boolean get() = screenShareLocked && !isCurrentUserScreenSharer && !isScreenSharing
 }
 
 @HiltViewModel
@@ -137,6 +142,7 @@ class VoiceViewModel @Inject constructor(
                     VoiceCallService.start(context, newState.channelName.ifEmpty { "语音通话" })
                     serviceStarted = true
                     fetchHostMode()
+                    fetchScreenShareStatus()
                 }
                 // Stop service only when truly disconnected (not during reconnection)
                 if (newState.connectionState == ConnectionState.DISCONNECTED && serviceStarted) {
@@ -186,17 +192,38 @@ class VoiceViewModel @Inject constructor(
         viewModelScope.launch {
             combine(
                 voiceRepository.isScreenSharing,
-                voiceRepository.remoteScreenShares
-            ) { isSharing, remoteShares ->
-                Pair(isSharing, remoteShares)
-            }.collect { (isSharing, remoteShares) ->
+                voiceRepository.remoteScreenShares,
+                voiceRepository.screenShareLocked,
+                voiceRepository.screenSharerId,
+                voiceRepository.screenSharerName
+            ) { values ->
+                @Suppress("UNCHECKED_CAST")
+                VoiceScreenShareUpdate(
+                    isSharing = values[0] as Boolean,
+                    remoteShares = values[1] as Map<String, ScreenShareInfo>,
+                    locked = values[2] as Boolean,
+                    sharerId = values[3] as String?,
+                    sharerName = values[4] as String?
+                )
+            }.collect { update ->
                 _state.value = _state.value.copy(
-                    isScreenSharing = isSharing,
-                    remoteScreenShares = remoteShares
+                    isScreenSharing = update.isSharing,
+                    remoteScreenShares = update.remoteShares,
+                    screenShareLocked = update.locked,
+                    screenSharerId = update.sharerId,
+                    screenSharerName = update.sharerName
                 )
             }
         }
     }
+    
+    private data class VoiceScreenShareUpdate(
+        val isSharing: Boolean,
+        val remoteShares: Map<String, ScreenShareInfo>,
+        val locked: Boolean,
+        val sharerId: String?,
+        val sharerName: String?
+    )
 
     fun setChannelId(channelId: Long, channelName: String = "") {
         _channelId.value = channelId
@@ -276,6 +303,13 @@ class VoiceViewModel @Inject constructor(
         val channelId = _channelId.value ?: return
         viewModelScope.launch {
             voiceRepository.fetchHostMode(channelId)
+        }
+    }
+    
+    private fun fetchScreenShareStatus() {
+        val channelId = _channelId.value ?: return
+        viewModelScope.launch {
+            voiceRepository.fetchScreenShareStatus(channelId)
         }
     }
 

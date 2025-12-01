@@ -13,6 +13,8 @@ import com.rms.discord.data.model.HostModeRequest
 import com.rms.discord.data.model.HostModeResponse
 import com.rms.discord.data.model.InviteCreateResponse
 import com.rms.discord.data.model.MuteParticipantRequest
+import com.rms.discord.data.model.ScreenShareLockResponse
+import com.rms.discord.data.model.ScreenShareStatusResponse
 import com.rms.discord.data.model.VoiceInviteInfo
 import com.rms.discord.data.model.VoiceTokenResponse
 import com.rms.discord.data.model.VoiceUser
@@ -75,6 +77,16 @@ class VoiceRepository @Inject constructor(
     // Screen share state
     val isScreenSharing: StateFlow<Boolean> = liveKitManager.isScreenSharing
     val remoteScreenShares: StateFlow<Map<String, ScreenShareInfo>> = liveKitManager.remoteScreenShares
+    
+    // Screen share lock state (from server)
+    private val _screenShareLocked = MutableStateFlow(false)
+    val screenShareLocked: StateFlow<Boolean> = _screenShareLocked.asStateFlow()
+    
+    private val _screenSharerId = MutableStateFlow<String?>(null)
+    val screenSharerId: StateFlow<String?> = _screenSharerId.asStateFlow()
+    
+    private val _screenSharerName = MutableStateFlow<String?>(null)
+    val screenSharerName: StateFlow<String?> = _screenSharerName.asStateFlow()
 
     // Convert ParticipantInfo to VoiceUser for backward compatibility
     val voiceUsers: StateFlow<List<VoiceUser>> get() = object : StateFlow<List<VoiceUser>> {
@@ -134,6 +146,10 @@ class VoiceRepository @Inject constructor(
         _hostModeEnabled.value = false
         _hostModeHostId.value = null
         _hostModeHostName.value = null
+        // Clear screen share lock state
+        _screenShareLocked.value = false
+        _screenSharerId.value = null
+        _screenSharerName.value = null
     }
 
     suspend fun fetchVoiceUsers(channelId: Long): Result<List<VoiceUser>> {
@@ -309,11 +325,82 @@ class VoiceRepository @Inject constructor(
     }
 
     suspend fun setScreenShareEnabled(enabled: Boolean): Result<Unit> {
-        return liveKitManager.setScreenShareEnabled(enabled)
+        val channelId = _currentChannelId.value ?: return Result.failure(Exception("Not in a voice channel"))
+        
+        if (enabled) {
+            // Try to acquire lock first
+            val lockResult = lockScreenShare(channelId)
+            if (lockResult.isFailure) {
+                return Result.failure(lockResult.exceptionOrNull()!!)
+            }
+            val lockResponse = lockResult.getOrThrow()
+            if (!lockResponse.success) {
+                _error.value = "${lockResponse.sharerName ?: "其他用户"} 正在共享屏幕"
+                return Result.failure(Exception("${lockResponse.sharerName ?: "其他用户"} 正在共享屏幕"))
+            }
+            
+            // Lock acquired, start screen sharing
+            val result = liveKitManager.setScreenShareEnabled(true)
+            if (result.isFailure) {
+                // Failed to start, release lock
+                unlockScreenShare(channelId)
+            }
+            return result
+        } else {
+            // Stop screen sharing first, then release lock
+            val result = liveKitManager.setScreenShareEnabled(false)
+            unlockScreenShare(channelId)
+            return result
+        }
     }
 
     fun hasMediaProjectionPermission(): Boolean {
         return liveKitManager.hasMediaProjectionPermission()
+    }
+    
+    suspend fun fetchScreenShareStatus(channelId: Long): Result<ScreenShareStatusResponse> {
+        return try {
+            val token = authRepository.getToken()
+                ?: return Result.failure(AuthException("Not logged in"))
+            val response = api.getScreenShareStatus(authRepository.getAuthHeader(token), channelId)
+            _screenShareLocked.value = response.locked
+            _screenSharerId.value = response.sharerId
+            _screenSharerName.value = response.sharerName
+            Result.success(response)
+        } catch (e: Exception) {
+            Log.e(TAG, "fetchScreenShareStatus failed", e)
+            Result.failure(e.toAuthException())
+        }
+    }
+    
+    suspend fun lockScreenShare(channelId: Long): Result<ScreenShareLockResponse> {
+        return try {
+            val token = authRepository.getToken()
+                ?: return Result.failure(AuthException("Not logged in"))
+            val response = api.lockScreenShare(authRepository.getAuthHeader(token), channelId)
+            _screenShareLocked.value = response.success || response.sharerId != null
+            _screenSharerId.value = response.sharerId
+            _screenSharerName.value = response.sharerName
+            Result.success(response)
+        } catch (e: Exception) {
+            Log.e(TAG, "lockScreenShare failed", e)
+            Result.failure(e.toAuthException())
+        }
+    }
+    
+    suspend fun unlockScreenShare(channelId: Long): Result<ScreenShareLockResponse> {
+        return try {
+            val token = authRepository.getToken()
+                ?: return Result.failure(AuthException("Not logged in"))
+            val response = api.unlockScreenShare(authRepository.getAuthHeader(token), channelId)
+            _screenShareLocked.value = false
+            _screenSharerId.value = null
+            _screenSharerName.value = null
+            Result.success(response)
+        } catch (e: Exception) {
+            Log.e(TAG, "unlockScreenShare failed", e)
+            Result.failure(e.toAuthException())
+        }
     }
 
     private fun ParticipantInfo.toVoiceUser(): VoiceUser {

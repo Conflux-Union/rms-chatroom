@@ -74,6 +74,9 @@ router = APIRouter()
 # Host mode state: room_name -> host_identity (None if disabled)
 _host_mode_state: dict[str, str] = {}
 
+# Screen share lock state: room_name -> (sharer_identity, sharer_name)
+_screen_share_lock: dict[str, tuple[str, str]] = {}
+
 
 class LiveKitTokenResponse(BaseModel):
     token: str
@@ -122,6 +125,18 @@ class GuestJoinResponse(BaseModel):
     url: str
     room_name: str
     channel_name: str
+
+
+class ScreenShareStatusResponse(BaseModel):
+    locked: bool
+    sharer_id: str | None = None
+    sharer_name: str | None = None
+
+
+class ScreenShareLockResponse(BaseModel):
+    success: bool
+    sharer_id: str | None = None
+    sharer_name: str | None = None
 
 
 @router.get("/api/voice/{channel_id}/token", response_model=LiveKitTokenResponse)
@@ -471,6 +486,128 @@ async def set_host_mode(
             return HostModeResponse(enabled=False, host_id=None, host_name=None)
     finally:
         await api.aclose()
+
+
+# ============================================================================
+# Screen Share Lock APIs
+# ============================================================================
+
+async def _check_screen_share_lock(room_name: str) -> tuple[bool, str | None, str | None]:
+    """
+    Check if screen share is locked and if the locker is still in the room.
+    Returns (is_locked, sharer_id, sharer_name).
+    Auto-releases lock if sharer has left the room.
+    """
+    lock_info = _screen_share_lock.get(room_name)
+    if not lock_info:
+        return False, None, None
+    
+    sharer_id, sharer_name = lock_info
+    
+    # Verify sharer is still in the room
+    try:
+        api = await _get_livekit_api()
+        response = await api.room.list_participants(ListParticipantsRequest(room=room_name))
+        participant_ids = {p.identity for p in response.participants}
+        await api.aclose()
+        
+        if sharer_id not in participant_ids:
+            # Sharer left, auto-release lock
+            _screen_share_lock.pop(room_name, None)
+            return False, None, None
+        
+        return True, sharer_id, sharer_name
+    except Exception:
+        # Room doesn't exist, release lock
+        _screen_share_lock.pop(room_name, None)
+        return False, None, None
+
+
+@router.get("/api/voice/{channel_id}/screen-share-status", response_model=ScreenShareStatusResponse)
+async def get_screen_share_status(
+    channel_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """Get current screen share lock status for a voice channel."""
+    result = await db.execute(select(Channel).where(Channel.id == channel_id))
+    channel = result.scalar_one_or_none()
+    
+    if not channel:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Channel not found")
+    
+    if channel.type != ChannelType.VOICE:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Not a voice channel")
+    
+    room_name = f"voice_{channel_id}"
+    is_locked, sharer_id, sharer_name = await _check_screen_share_lock(room_name)
+    
+    return ScreenShareStatusResponse(locked=is_locked, sharer_id=sharer_id, sharer_name=sharer_name)
+
+
+@router.post("/api/voice/{channel_id}/screen-share/lock", response_model=ScreenShareLockResponse)
+async def lock_screen_share(
+    channel_id: int,
+    user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Attempt to acquire screen share lock.
+    Returns success=True if lock acquired, or success=False with current sharer info.
+    """
+    result = await db.execute(select(Channel).where(Channel.id == channel_id))
+    channel = result.scalar_one_or_none()
+    
+    if not channel:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Channel not found")
+    
+    if channel.type != ChannelType.VOICE:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Not a voice channel")
+    
+    room_name = f"voice_{channel_id}"
+    user_id = str(user["id"])
+    user_name = user.get("nickname") or user["username"]
+    
+    # Check current lock status (auto-releases if sharer left)
+    is_locked, sharer_id, sharer_name = await _check_screen_share_lock(room_name)
+    
+    if is_locked:
+        if sharer_id == user_id:
+            # Already locked by this user
+            return ScreenShareLockResponse(success=True, sharer_id=user_id, sharer_name=user_name)
+        # Locked by someone else
+        return ScreenShareLockResponse(success=False, sharer_id=sharer_id, sharer_name=sharer_name)
+    
+    # Acquire lock
+    _screen_share_lock[room_name] = (user_id, user_name)
+    return ScreenShareLockResponse(success=True, sharer_id=user_id, sharer_name=user_name)
+
+
+@router.post("/api/voice/{channel_id}/screen-share/unlock", response_model=ScreenShareLockResponse)
+async def unlock_screen_share(
+    channel_id: int,
+    user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Release screen share lock. Only the lock holder can release it.
+    """
+    result = await db.execute(select(Channel).where(Channel.id == channel_id))
+    channel = result.scalar_one_or_none()
+    
+    if not channel:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Channel not found")
+    
+    if channel.type != ChannelType.VOICE:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Not a voice channel")
+    
+    room_name = f"voice_{channel_id}"
+    user_id = str(user["id"])
+    
+    lock_info = _screen_share_lock.get(room_name)
+    if lock_info and lock_info[0] == user_id:
+        _screen_share_lock.pop(room_name, None)
+    
+    return ScreenShareLockResponse(success=True, sharer_id=None, sharer_name=None)
 
 
 # ============================================================================

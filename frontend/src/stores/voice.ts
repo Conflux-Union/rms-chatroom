@@ -81,6 +81,11 @@ export const useVoiceStore = defineStore('voice', () => {
   const isScreenSharing = ref(false)
   const localScreenShareTrack = shallowRef<LocalTrackPublication | null>(null)
   const remoteScreenShares = ref<Map<string, ScreenShareInfo>>(new Map())
+  
+  // Screen share lock state (from server)
+  const screenShareLocked = ref(false)
+  const screenSharerId = ref<string | null>(null)
+  const screenSharerName = ref<string | null>(null)
 
   // Server-side mute state cache (from API)
   const serverMuteState = ref<Map<string, boolean>>(new Map())
@@ -398,8 +403,9 @@ export const useVoiceStore = defineStore('voice', () => {
         })
       })
 
-      // Fetch host mode status after joining
+      // Fetch host mode and screen share status after joining
       await fetchHostModeStatus()
+      await fetchScreenShareStatus()
 
       // Start periodic sync from server for accurate mute state
       startSyncInterval()
@@ -439,6 +445,9 @@ export const useVoiceStore = defineStore('voice', () => {
     isScreenSharing.value = false
     localScreenShareTrack.value = null
     remoteScreenShares.value = new Map()
+    screenShareLocked.value = false
+    screenSharerId.value = null
+    screenSharerName.value = null
   }
 
   async function toggleMute(): Promise<boolean> {
@@ -618,6 +627,81 @@ export const useVoiceStore = defineStore('voice', () => {
   }
 
   /**
+   * Fetch screen share lock status from server.
+   */
+  async function fetchScreenShareStatus(): Promise<void> {
+    if (!currentVoiceChannel.value) return
+
+    const auth = useAuthStore()
+    try {
+      const response = await fetch(
+        `${API_BASE}/api/voice/${currentVoiceChannel.value.id}/screen-share-status`,
+        { headers: { Authorization: `Bearer ${auth.token}` } }
+      )
+      if (response.ok) {
+        const data = await response.json()
+        screenShareLocked.value = data.locked
+        screenSharerId.value = data.sharer_id
+        screenSharerName.value = data.sharer_name
+      }
+    } catch (e) {
+      console.error('Failed to fetch screen share status:', e)
+    }
+  }
+
+  /**
+   * Attempt to acquire screen share lock from server.
+   */
+  async function lockScreenShare(): Promise<{ success: boolean; sharerName: string | null }> {
+    if (!currentVoiceChannel.value) return { success: false, sharerName: null }
+
+    const auth = useAuthStore()
+    try {
+      const response = await fetch(
+        `${API_BASE}/api/voice/${currentVoiceChannel.value.id}/screen-share/lock`,
+        {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${auth.token}` },
+        }
+      )
+      if (response.ok) {
+        const data = await response.json()
+        screenShareLocked.value = data.success || data.sharer_id !== null
+        screenSharerId.value = data.sharer_id
+        screenSharerName.value = data.sharer_name
+        return { success: data.success, sharerName: data.sharer_name }
+      }
+      return { success: false, sharerName: null }
+    } catch (e) {
+      console.error('Failed to lock screen share:', e)
+      return { success: false, sharerName: null }
+    }
+  }
+
+  /**
+   * Release screen share lock on server.
+   */
+  async function unlockScreenShare(): Promise<void> {
+    if (!currentVoiceChannel.value) return
+
+    const auth = useAuthStore()
+    try {
+      await fetch(
+        `${API_BASE}/api/voice/${currentVoiceChannel.value.id}/screen-share/unlock`,
+        {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${auth.token}` },
+        }
+      )
+      screenShareLocked.value = false
+      screenSharerId.value = null
+      screenSharerName.value = null
+    } catch (e) {
+      console.error('Failed to unlock screen share:', e)
+    }
+  }
+
+  /**
    * Toggle screen sharing on/off.
    */
   async function toggleScreenShare(): Promise<boolean> {
@@ -625,23 +709,31 @@ export const useVoiceStore = defineStore('voice', () => {
 
     try {
       if (isScreenSharing.value) {
-        // Stop screen sharing
+        // Stop screen sharing: first stop track, then release lock
         await room.value.localParticipant.setScreenShareEnabled(false)
         isScreenSharing.value = false
         localScreenShareTrack.value = null
+        await unlockScreenShare()
       } else {
-        // Start screen sharing with AV1 codec (high compression, 1080p @ 30fps)
+        // Start screen sharing: first acquire lock, then start
+        const lockResult = await lockScreenShare()
+        if (!lockResult.success) {
+          error.value = `${lockResult.sharerName || '其他用户'} 正在共享屏幕`
+          return false
+        }
+        
+        // Lock acquired, start screen sharing with AV1 codec
         await room.value.localParticipant.setScreenShareEnabled(true, {
           resolution: ScreenSharePresets.h1080fps30.resolution,
-          contentHint: 'motion',  // Prioritize smooth motion over sharp details
+          contentHint: 'motion',
         }, {
           videoCodec: 'av1',
           videoEncoding: {
-            maxBitrate: 2_000_000,  // 2Mbps
+            maxBitrate: 2_000_000,
             maxFramerate: 30,
             priority: 'high',
           },
-          degradationPreference: 'maintain-framerate',  // Prioritize framerate over resolution
+          degradationPreference: 'maintain-framerate',
         })
         isScreenSharing.value = true
         // Find the screen share track publication
@@ -653,7 +745,10 @@ export const useVoiceStore = defineStore('voice', () => {
       return true
     } catch (e) {
       console.error('Failed to toggle screen share:', e)
-      // User may have cancelled the screen share picker
+      // User may have cancelled the screen share picker, release lock
+      if (!isScreenSharing.value) {
+        await unlockScreenShare()
+      }
       isScreenSharing.value = false
       localScreenShareTrack.value = null
       return false
@@ -728,7 +823,11 @@ export const useVoiceStore = defineStore('voice', () => {
     toggleHostMode,
     isScreenSharing,
     remoteScreenShares,
+    screenShareLocked,
+    screenSharerId,
+    screenSharerName,
     toggleScreenShare,
+    fetchScreenShareStatus,
     attachScreenShare,
     attachLocalScreenShare,
     detachScreenShare,

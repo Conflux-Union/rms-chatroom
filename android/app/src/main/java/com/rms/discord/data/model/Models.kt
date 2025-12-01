@@ -266,3 +266,20 @@ data class InviteCreateResponse(
 data class AllVoiceUsersResponse(
     val users: Map<Long, List<VoiceUser>>
 )
+
+// Screen share lock models
+data class ScreenShareStatusResponse(
+    val locked: Boolean,
+    @SerializedName("sharer_id")
+    val sharerId: String?,
+    @SerializedName("sharer_name")
+    val sharerName: String?
+)
+
+data class ScreenShareLockResponse(
+    val success: Boolean,
+    @SerializedName("sharer_id")
+    val sharerId: String?,
+    @SerializedName("sharer_name")
+    val sharerName: String?
+)

@@ -16,6 +16,23 @@ const isCurrentUserHost = computed(() =>
 const hostButtonDisabled = computed(() => 
   voice.hostModeEnabled && !isCurrentUserHost.value
 )
+
+// Check if current user is the screen sharer
+const isCurrentUserScreenSharer = computed(() =>
+  voice.screenSharerId === String(auth.user?.id)
+)
+
+// Disable screen share button if someone else is sharing
+const screenShareButtonDisabled = computed(() =>
+  voice.screenShareLocked && !isCurrentUserScreenSharer.value && !voice.isScreenSharing
+)
+
+// Screen share button tooltip
+const screenShareTooltip = computed(() => {
+  if (voice.isScreenSharing) return '停止共享屏幕'
+  if (screenShareButtonDisabled.value) return `${voice.screenSharerName || '其他用户'} 正在共享屏幕`
+  return '共享屏幕'
+})
 </script>
 
 <template>
@@ -63,9 +80,13 @@ const hostButtonDisabled = computed(() =>
       </button>
       <button
         class="control-btn"
-        :class="{ 'screen-share-active': voice.isScreenSharing }"
+        :class="{ 
+          'screen-share-active': voice.isScreenSharing,
+          'screen-share-disabled': screenShareButtonDisabled
+        }"
+        :disabled="screenShareButtonDisabled"
         @click="voice.toggleScreenShare()"
-        :title="voice.isScreenSharing ? '停止共享屏幕' : '共享屏幕'"
+        :title="screenShareTooltip"
       >
         <MonitorOff v-if="voice.isScreenSharing" :size="16" />
         <Monitor v-else :size="16" />
@@ -197,6 +218,17 @@ const hostButtonDisabled = computed(() =>
 
 .control-btn.screen-share-active:hover {
   filter: brightness(1.1);
+}
+
+.control-btn.screen-share-disabled {
+  background: var(--surface-glass);
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.control-btn.screen-share-disabled:hover {
+  transform: none;
+  background: var(--surface-glass);
 }
 
 .host-mode-banner {

@@ -421,6 +421,8 @@ fun VoiceScreen(
                 isCurrentUserHost = state.isCurrentUserHost,
                 hostButtonDisabled = state.hostButtonDisabled,
                 isScreenSharing = state.isScreenSharing,
+                screenShareButtonDisabled = state.screenShareButtonDisabled,
+                screenSharerName = state.screenSharerName,
                 onJoin = onJoinWithPermission,
                 onLeave = { viewModel.leaveVoice() },
                 onToggleMute = { viewModel.toggleMute() },
@@ -435,6 +437,8 @@ fun VoiceScreen(
                     if (state.isScreenSharing) {
                         // Stop sharing - no permission needed
                         viewModel.toggleScreenShare()
+                    } else if (state.screenShareButtonDisabled) {
+                        // Disabled - someone else is sharing
                     } else if (viewModel.hasMediaProjectionPermission()) {
                         // Already have permission, start sharing
                         viewModel.toggleScreenShare()
@@ -1008,6 +1012,8 @@ private fun VoiceControls(
     isCurrentUserHost: Boolean,
     hostButtonDisabled: Boolean,
     isScreenSharing: Boolean,
+    screenShareButtonDisabled: Boolean,
+    screenSharerName: String?,
     onJoin: () -> Unit,
     onLeave: () -> Unit,
     onToggleMute: () -> Unit,
@@ -1090,9 +1096,12 @@ private fun VoiceControls(
                 // Screen share button
                 VoiceControlButton(
                     icon = if (isScreenSharing) Icons.Default.DesktopAccessDisabled else Icons.Default.DesktopWindows,
-                    label = if (isScreenSharing) "停止共享" else "共享屏幕",
+                    label = if (isScreenSharing) "停止共享" 
+                            else if (screenShareButtonDisabled) "${screenSharerName ?: "其他用户"}共享中"
+                            else "共享屏幕",
                     isActive = isScreenSharing,
                     activeColor = VoiceConnected,
+                    enabled = !screenShareButtonDisabled,
                     onClick = onToggleScreenShare
                 )
 
