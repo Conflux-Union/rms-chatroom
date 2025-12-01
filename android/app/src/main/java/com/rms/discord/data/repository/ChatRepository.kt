@@ -3,6 +3,7 @@ package com.rms.discord.data.repository
 import android.util.Log
 import com.rms.discord.data.api.ApiService
 import com.rms.discord.data.api.CreateChannelRequest
+import com.rms.discord.data.api.CreateServerRequest
 import com.rms.discord.data.api.SendMessageBody
 import com.rms.discord.data.local.MessageDao
 import com.rms.discord.data.local.MessageEntity
@@ -347,6 +348,33 @@ class ChatRepository @Inject constructor(
             Result.success(Unit)
         } catch (e: Exception) {
             Log.e(TAG, "deleteChannel failed", e)
+            Result.failure(e.toAuthException())
+        }
+    }
+
+    suspend fun createServer(name: String): Result<Server> {
+        return try {
+            val token = authRepository.getToken()
+                ?: return Result.failure(AuthException("未登录，请先登录"))
+            val server = api.createServer(
+                authRepository.getAuthHeader(token),
+                CreateServerRequest(name)
+            )
+            Result.success(server)
+        } catch (e: Exception) {
+            Log.e(TAG, "createServer failed", e)
+            Result.failure(e.toAuthException())
+        }
+    }
+
+    suspend fun deleteServer(serverId: Long): Result<Unit> {
+        return try {
+            val token = authRepository.getToken()
+                ?: return Result.failure(AuthException("未登录，请先登录"))
+            api.deleteServer(authRepository.getAuthHeader(token), serverId)
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e(TAG, "deleteServer failed", e)
             Result.failure(e.toAuthException())
         }
     }

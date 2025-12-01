@@ -95,6 +95,13 @@ fun MainScreen(
                         currentServerId = mainState.currentServer?.id,
                         onServerClick = { serverId ->
                             mainViewModel.selectServer(serverId)
+                        },
+                        isAdmin = (authState.user?.permissionLevel ?: 0) >= 4,
+                        onCreateServer = { name ->
+                            mainViewModel.createServer(name)
+                        },
+                        onDeleteServer = { serverId ->
+                            mainViewModel.deleteServer(serverId)
                         }
                     )
 

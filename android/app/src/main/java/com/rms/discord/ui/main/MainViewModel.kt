@@ -280,6 +280,41 @@ class MainViewModel @Inject constructor(
         }
     }
 
+    fun createServer(name: String) {
+        viewModelScope.launch {
+            chatRepository.createServer(name)
+                .onSuccess { server ->
+                    // Refresh servers and select the new one
+                    loadServers()
+                }
+                .onFailure { e ->
+                    _state.value = _state.value.copy(error = "创建服务器失败: ${e.message}")
+                }
+        }
+    }
+
+    fun deleteServer(serverId: Long) {
+        val currentServerId = _state.value.currentServer?.id
+        viewModelScope.launch {
+            chatRepository.deleteServer(serverId)
+                .onSuccess {
+                    // If deleted current server, clear selection
+                    if (currentServerId == serverId) {
+                        chatRepository.disconnectFromChannel()
+                        _state.value = _state.value.copy(
+                            currentServer = null,
+                            currentChannel = null
+                        )
+                    }
+                    // Refresh servers list
+                    loadServers()
+                }
+                .onFailure { e ->
+                    _state.value = _state.value.copy(error = "删除服务器失败: ${e.message}")
+                }
+        }
+    }
+
     override fun onCleared() {
         super.onCleared()
         stopVoiceUsersPolling()
