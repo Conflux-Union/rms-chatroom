@@ -21,7 +21,6 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
-import com.rms.discord.BuildConfig
 import com.rms.discord.ui.theme.SurfaceDark
 import com.rms.discord.ui.theme.TextMuted
 import com.rms.discord.ui.theme.TextPrimary
@@ -32,7 +31,7 @@ import com.rms.discord.ui.theme.TiColor
 fun SettingsScreen(
     viewModel: SettingsViewModel = hiltViewModel(),
     onNavigateBack: () -> Unit,
-    onNavigateToLicenses: () -> Unit
+    onNavigateToAbout: () -> Unit
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -112,26 +111,12 @@ fun SettingsScreen(
             // About section
             SettingsSectionHeader(title = "关于")
 
-            // Version
+            // About app
             SettingsItem(
                 icon = Icons.Default.Info,
-                title = "版本",
-                subtitle = BuildConfig.VERSION_NAME
-            )
-
-            // Copyright
-            SettingsItem(
-                icon = Icons.Default.Copyright,
-                title = "版权信息",
-                subtitle = "RMS Server 版权所有"
-            )
-
-            // Open source licenses
-            SettingsItem(
-                icon = Icons.Default.Code,
-                title = "开放源代码许可",
-                subtitle = "查看第三方开源库许可",
-                onClick = onNavigateToLicenses
+                title = "关于应用",
+                subtitle = "版本、版权和开源许可",
+                onClick = onNavigateToAbout
             )
 
             Spacer(modifier = Modifier.height(32.dp))
