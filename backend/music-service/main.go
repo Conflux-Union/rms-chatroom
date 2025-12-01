@@ -27,6 +27,7 @@ const (
 	Channels      = 2
 	OpusBitrate   = 256000
 	OpusFrameSize = 20
+	DefaultVolume = 0.5 // Default volume (0.0-1.0)
 )
 
 type PlayState string

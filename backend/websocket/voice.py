@@ -40,8 +40,8 @@ async def check_room_has_real_users(room_name: str) -> bool:
     )
     try:
         response = await api.room.list_participants(ListParticipantsRequest(room=room_name))
-        # Filter out MusicBot
-        real_users = [p for p in response.participants if p.identity != "MusicBot"]
+        # Filter out MusicBot (legacy "MusicBot" and new "music-bot-{room}" format)
+        real_users = [p for p in response.participants if p.identity != "MusicBot" and not p.identity.startswith("music-bot-")]
         return len(real_users) > 0
     except Exception:
         # Room doesn't exist or error, assume no users
