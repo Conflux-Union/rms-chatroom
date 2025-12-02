@@ -177,8 +177,6 @@ const openPdf = () => {
 .image-preview {
   max-width: 400px;
   cursor: pointer;
-  border-radius: var(--radius-md);
-  overflow: hidden;
 }
 
 .image-preview img {
@@ -186,6 +184,7 @@ const openPdf = () => {
   max-height: 300px;
   object-fit: contain;
   display: block;
+  border-radius: var(--radius-md);
   transition: transform 0.2s;
 }
 
