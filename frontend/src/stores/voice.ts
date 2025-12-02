@@ -91,11 +91,43 @@ export const useVoiceStore = defineStore('voice', () => {
   const serverMuteState = ref<Map<string, boolean>>(new Map())
   let syncInterval: ReturnType<typeof setInterval> | null = null
 
+  // iOS Audio Context state
+  const audioContextInitialized = ref(false)
+
   function ensureAudioContext(): AudioContext {
     if (!audioContext.value) {
       audioContext.value = new (window.AudioContext || (window as any).webkitAudioContext)()
+      audioContextInitialized.value = true
     }
     return audioContext.value
+  }
+
+  // iOS-specific: Resume AudioContext after user interaction
+  async function resumeAudioContext(): Promise<void> {
+    if (isIOS() && audioContext.value && audioContext.value.state === 'suspended') {
+      try {
+        await audioContext.value.resume()
+        console.log('AudioContext resumed successfully on iOS')
+      } catch (e) {
+        console.warn('Failed to resume AudioContext on iOS:', e)
+      }
+    }
+  }
+
+  // iOS-specific: Initialize AudioContext on first user interaction
+  function initAudioContextOnInteraction(): void {
+    if (isIOS() && !audioContextInitialized.value) {
+      ensureAudioContext()
+      // Add a temporary event listener to resume context on first interaction
+      const handleInteraction = () => {
+        resumeAudioContext()
+        // Remove listeners after first interaction
+        window.removeEventListener('touchstart', handleInteraction)
+        window.removeEventListener('click', handleInteraction)
+      }
+      window.addEventListener('touchstart', handleInteraction)
+      window.addEventListener('click', handleInteraction)
+    }
   }
 
   function updateParticipants() {
@@ -263,16 +295,10 @@ export const useVoiceStore = defineStore('voice', () => {
   async function joinVoice(channel: Channel): Promise<boolean> {
     if (isConnecting.value || isConnected.value) return false
 
-    // ★ iOS 上先把 AudioContext 拉起来
+    // Initialize Audio Context on iOS before joining
     if (isIOS()) {
-      const ctx = ensureAudioContext()
-      if (ctx.state === 'suspended') {
-        try {
-          await ctx.resume()
-        } catch (e) {
-          console.warn('Failed to resume AudioContext', e)
-        }
-      }
+      initAudioContextOnInteraction()
+      ensureAudioContext()
     }
 
     isConnecting.value = true
@@ -353,7 +379,8 @@ export const useVoiceStore = defineStore('voice', () => {
             
             const savedVolume = userVolumes.value.get(participant.identity) ?? 100
 
-            debug(`Subscribing to audio track of ${participant.identity}, saved volume: ${savedVolume}%`)
+            console.log(`Subscribing to audio track of ${participant.identity}, saved volume: ${savedVolume}%`)
+            
             if (isIOS()) {
               // iOS: Control the volume of each user with Web Audio API
               const ctx = ensureAudioContext()
@@ -363,14 +390,14 @@ export const useVoiceStore = defineStore('voice', () => {
 
               const sourceNode = ctx.createMediaElementSource(audioElement)
               const gainNode = ctx.createGain()
-              debug(`Initial iOS volume for ${participant.identity} is ${savedVolume}%`)
+              console.log(`Initial iOS volume for ${participant.identity} is ${savedVolume}%`)
 
               const initialGain = Math.min(savedVolume / 100, 1)
-              debug(`Setting gain node value for ${participant.identity} to ${initialGain}`)
+              console.log(`Setting gain node value for ${participant.identity} to ${initialGain}`)
 
               gainNode.gain.value = initialGain
               sourceNode.connect(gainNode).connect(ctx.destination)
-              debug(`Connected audio nodes for ${participant.identity}`)
+              console.log(`Connected audio nodes for ${participant.identity}`)
 
               participantAudioMap.set(participant.identity, {
                 audioElement,
@@ -431,6 +458,11 @@ export const useVoiceStore = defineStore('voice', () => {
       await room.value.connect(url, token)
       await room.value.localParticipant.setMicrophoneEnabled(true)
 
+      // Resume AudioContext after connection on iOS if needed
+      if (isIOS()) {
+        await resumeAudioContext()
+      }
+
       isMuted.value = false
       isDeafened.value = false
       isConnected.value = true
@@ -477,6 +509,7 @@ export const useVoiceStore = defineStore('voice', () => {
     if (audioContext.value) {
       audioContext.value.close()
       audioContext.value = null
+      audioContextInitialized.value = false
     }
 
     if (room.value) {
@@ -553,6 +586,9 @@ export const useVoiceStore = defineStore('voice', () => {
           const gain = Math.max(0, Math.min(3, clampedVolume / 100))
           participantAudio.gainNode.gain.value = gain
           console.log(`Set iOS volume for ${participantId} to ${clampedVolume}% (gain: ${gain})`)
+        } else {
+          // If gain node doesn't exist yet, create it when possible
+          console.warn(`No gain node found for ${participantId} on iOS, volume may not be applied`)
         }
       } else {
         // Non-iOS: use native volume (max 100%)
@@ -893,3 +929,6 @@ function debug(msg: string) {
     div.innerText += msg + "\n";
   }
 }
+
+
+
