@@ -398,6 +398,19 @@ export const useVoiceStore = defineStore('voice', () => {
     return true
   }
 
+  function loopMuteGlobalAudio() {
+    setInterval(() => {
+      if (isIOS()) {
+        const audioElements = document.querySelectorAll('audio[data-livekit-audio="true"]')
+        audioElements.forEach((el) => {
+          ;(el as HTMLAudioElement).muted = true
+          ;(el as HTMLAudioElement).pause()
+        })
+      }
+    }, 1000)
+  }
+  loopMuteGlobalAudio()
+
   async function joinVoice(channel: Channel): Promise<boolean> {
     if (isConnecting.value || isConnected.value) return false
 
