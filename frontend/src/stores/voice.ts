@@ -454,6 +454,8 @@ export const useVoiceStore = defineStore('voice', () => {
             if (isIOS()) {
               // iOS: Use Web Audio API for volume control
               connectAudioNodes(participant.identity, audioElement, savedVolume)
+              audioElement.volume = 1.0 // Keep at max, control via GainNode
+              audioElement.muted = true // Prevent double audio output
             } else {
               // Non-iOS: use native audioElement.volume
               audioElement.volume = Math.min(savedVolume / 100, 1)
@@ -684,7 +686,7 @@ export const useVoiceStore = defineStore('voice', () => {
         }
         
         diagnoseAudioRouting(participantId)
-        
+
       } else if (!isIOS() && participantAudio.audioElement) {
         // Non-iOS: use native volume (max 100%)
         participantAudio.audioElement.volume = Math.min(clampedVolume / 100, 1)
