@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, onMounted, onUnmounted, watch } from 'vue'
 import type { Attachment } from '../types'
 import { useAuthStore } from '../stores/auth'
 
@@ -11,6 +11,8 @@ const props = defineProps<{
 
 const auth = useAuthStore()
 const showLightbox = ref(false)
+const blobUrl = ref<string | null>(null)
+const isLoading = ref(true)
 
 const isImage = computed(() => props.attachment.content_type.startsWith('image/'))
 const isVideo = computed(() => props.attachment.content_type.startsWith('video/'))
@@ -19,6 +21,44 @@ const isPdf = computed(() => props.attachment.content_type === 'application/pdf'
 
 const fileUrl = computed(() => `${API_BASE}${props.attachment.url}`)
 const inlineUrl = computed(() => `${fileUrl.value}?inline=1`)
+
+// Fetch file as blob with auth header
+async function loadBlobUrl() {
+  if (!isImage.value && !isVideo.value && !isAudio.value) return
+  
+  isLoading.value = true
+  try {
+    const res = await fetch(inlineUrl.value, {
+      headers: { Authorization: `Bearer ${auth.token}` }
+    })
+    if (res.ok) {
+      const blob = await res.blob()
+      blobUrl.value = URL.createObjectURL(blob)
+    }
+  } catch (e) {
+    console.error('Failed to load file:', e)
+  } finally {
+    isLoading.value = false
+  }
+}
+
+onMounted(() => {
+  loadBlobUrl()
+})
+
+onUnmounted(() => {
+  if (blobUrl.value) {
+    URL.revokeObjectURL(blobUrl.value)
+  }
+})
+
+watch(() => props.attachment.id, () => {
+  if (blobUrl.value) {
+    URL.revokeObjectURL(blobUrl.value)
+    blobUrl.value = null
+  }
+  loadBlobUrl()
+})
 
 const fileIcon = computed(() => {
   if (isImage.value) return '🖼️'
@@ -62,14 +102,16 @@ const openPdf = () => {
 <template>
   <div class="file-preview">
     <!-- Image preview -->
-    <div v-if="isImage" class="image-preview" @click="showLightbox = true">
-      <img :src="inlineUrl" :alt="attachment.filename" loading="lazy" />
+    <div v-if="isImage" class="image-preview">
+      <div v-if="isLoading" class="loading-placeholder">加载中...</div>
+      <img v-else-if="blobUrl" :src="blobUrl" :alt="attachment.filename" @click="showLightbox = true" />
     </div>
 
     <!-- Video preview -->
     <div v-else-if="isVideo" class="video-preview">
-      <video controls preload="metadata">
-        <source :src="inlineUrl" :type="attachment.content_type" />
+      <div v-if="isLoading" class="loading-placeholder">加载中...</div>
+      <video v-else-if="blobUrl" controls preload="metadata">
+        <source :src="blobUrl" :type="attachment.content_type" />
         Your browser does not support video playback.
       </video>
     </div>
@@ -80,8 +122,9 @@ const openPdf = () => {
         <span class="file-icon">{{ fileIcon }}</span>
         <span class="file-name">{{ attachment.filename }}</span>
       </div>
-      <audio controls preload="metadata">
-        <source :src="inlineUrl" :type="attachment.content_type" />
+      <div v-if="isLoading" class="loading-placeholder">加载中...</div>
+      <audio v-else-if="blobUrl" controls preload="metadata">
+        <source :src="blobUrl" :type="attachment.content_type" />
         Your browser does not support audio playback.
       </audio>
     </div>
@@ -108,8 +151,8 @@ const openPdf = () => {
 
     <!-- Image lightbox -->
     <Teleport to="body">
-      <div v-if="showLightbox && isImage" class="lightbox" @click="showLightbox = false">
-        <img :src="inlineUrl" :alt="attachment.filename" />
+      <div v-if="showLightbox && isImage && blobUrl" class="lightbox" @click="showLightbox = false">
+        <img :src="blobUrl" :alt="attachment.filename" />
         <button class="close-btn" @click.stop="showLightbox = false">×</button>
         <button class="download-btn" @click.stop="downloadFile">下载</button>
       </div>
@@ -120,6 +163,15 @@ const openPdf = () => {
 <style scoped>
 .file-preview {
   margin-top: 8px;
+}
+
+.loading-placeholder {
+  padding: 20px;
+  background: var(--surface-glass);
+  border-radius: var(--radius-md);
+  color: var(--color-text-muted);
+  font-size: 14px;
+  text-align: center;
 }
 
 .image-preview {
