@@ -47,7 +47,7 @@ export interface ScreenShareInfo {
 interface ParticipantAudio {
   audioElement: HTMLAudioElement
   gainNode?: GainNode
-  sourceNode?: AudioNode   // ✅ 可以是 MediaStreamSource / MediaElementSource 都行
+  sourceNode?: AudioNode   // can be MediaStreamSource or MediaElementSource
   volume: number
 }
 
@@ -154,43 +154,37 @@ export const useVoiceStore = defineStore('voice', () => {
 
     const ctx = ensureAudioContext()
 
-    // AudioContext 必须是 running 状态
     if (ctx.state !== 'running') {
       console.log(`AudioContext not running (${ctx.state}), cannot connect audio nodes for ${participantId}`)
       return false
     }
 
-    // 从 audioElement 上拿到底层的 MediaStream
     const mediaStream = audioElement.srcObject as MediaStream | null
     if (!mediaStream) {
       console.log(`Audio element for ${participantId} has no srcObject, cannot create MediaStreamSource`)
       return false
     }
 
-    // 你现在是从 MediaStream 进 Web Audio，不再走 MediaElementSource 的限制，
-    // WeakSet 仍然可以当“已经连过”的标记用，避免重复创建节点
     if (connectedAudioElements.has(audioElement)) {
       console.log(`MediaStream for ${participantId} already connected (via its audioElement), skipping`)
       return true
     }
 
     try {
-      // 用 MediaStream 作为 Web Audio 输入
       const sourceNode = ctx.createMediaStreamSource(mediaStream)
       const gainNode = ctx.createGain()
 
-      // 初始音量 -> gain
+      // Set initial gain based on volume (0-300% mapped to 0.0-3.0)
       const gain = Math.max(0, Math.min(3, volume / 100))
       gainNode.gain.value = gain
 
-      // 连接：MediaStreamSource -> gainNode -> destination
+      // Connect nodes: source -> gain -> master
+      const master = ensureMasterGain(ctx)
       sourceNode.connect(gainNode)
-      gainNode.connect(ctx.destination)
+      gainNode.connect(master)
 
-      // 标记这个 audioElement 的 MediaStream 已经接过一次了
       connectedAudioElements.add(audioElement)
 
-      // 存到 map 里，方便后面 setUserVolume / diagnose 用
       participantAudioMap.set(participantId, {
         audioElement,
         sourceNode,
@@ -198,9 +192,8 @@ export const useVoiceStore = defineStore('voice', () => {
         volume,
       })
 
-      // iOS 下走 Web Audio，所以把原生 audio 静音，只用 Web Audio 放声
       audioElement.volume = 0.0
-      audioElement.muted = false // 要保证不被系统直接 mute 掉
+      audioElement.muted = false
 
       console.log(
         `Connected MediaStream audio nodes for ${participantId} with volume ${volume}% (gain: ${gain})`
@@ -208,8 +201,6 @@ export const useVoiceStore = defineStore('voice', () => {
       return true
     } catch (e) {
       console.log(`Failed to connect MediaStream audio nodes for ${participantId}: ${e}`)
-
-      // 兜底：走原来 audioElement 路线（不过你应该不想用兜底就可以直接删掉）
       participantAudioMap.set(participantId, {
         audioElement,
         volume,
@@ -217,6 +208,19 @@ export const useVoiceStore = defineStore('voice', () => {
       return false
     }
   }
+
+
+  let masterGain: GainNode | null = null
+
+  function ensureMasterGain(ctx: AudioContext): GainNode {
+    if (!masterGain) {
+      masterGain = ctx.createGain()
+      masterGain.gain.value = 1 // defaulet to unmuted
+      masterGain.connect(ctx.destination)
+    }
+    return masterGain
+  }
+
 
 
   function updateParticipants() {
@@ -601,6 +605,11 @@ export const useVoiceStore = defineStore('voice', () => {
       audioContextInitialized.value = false
     }
 
+    if (masterGain) {
+      masterGain.disconnect()
+      masterGain = null
+    }
+
     if (room.value) {
       room.value.disconnect()
       room.value = null
@@ -631,13 +640,29 @@ export const useVoiceStore = defineStore('voice', () => {
     return isMuted.value
   }
 
-  function toggleDeafen() {
-    isDeafened.value = !isDeafened.value
+  function setGlobalMute(muted: boolean) {
+    // other plantforms mute via audioElement.muted
     const audioElements = document.querySelectorAll('audio[data-livekit-audio="true"]')
     audioElements.forEach((el) => {
-      ;(el as HTMLAudioElement).muted = isDeafened.value
+      ;(el as HTMLAudioElement).muted = muted
     })
+
+    // iOS change masterGain 
+    if (isIOS()) {
+      const ctx = audioContext.value
+      if (!ctx) return
+
+      const master = ensureMasterGain(ctx)
+      master.gain.value = muted ? 0 : 1
+    }
   }
+
+
+  function toggleDeafen() {
+    isDeafened.value = !isDeafened.value
+    setGlobalMute(isDeafened.value)
+  }
+
 
   /**
    * Set volume for a specific participant.
@@ -684,20 +709,20 @@ export const useVoiceStore = defineStore('voice', () => {
 
         participantAudio.gainNode.gain.value = gain
         
-        // 验证设置是否生效
+        // Debug output new gain value
         console.log(`  - New gain value: ${participantAudio.gainNode.gain.value}`)
         
-        // 检查连接状态
+        // check GainNode properties
         console.log(`  - GainNode numberOfInputs: ${participantAudio.gainNode.numberOfInputs}`)
         console.log(`  - GainNode numberOfOutputs: ${participantAudio.gainNode.numberOfOutputs}`)
-        
-        // 检查 AudioContext 状态
+
+        // check AudioContext status
         if (audioContext.value) {
           console.log(`  - AudioContext state: ${audioContext.value.state}`)
           console.log(`  - AudioContext sampleRate: ${audioContext.value.sampleRate}`)
         }
-        
-        // 检查 audioElement 状态
+
+        // check audioElement status
         if (participantAudio.audioElement) {
           console.log(`  - Audio element paused: ${participantAudio.audioElement.paused}`)
           console.log(`  - Audio element muted: ${participantAudio.audioElement.muted}`)
