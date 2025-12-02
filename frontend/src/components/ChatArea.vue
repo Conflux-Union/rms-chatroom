@@ -2,6 +2,7 @@
 import { ref, watch, nextTick, onUnmounted, computed } from 'vue'
 import { useChatStore } from '../stores/chat'
 import { useWebSocket } from '../composables/useWebSocket'
+import { Paperclip, Send, Upload, X, Image, Video, Music, FileText, File } from 'lucide-vue-next'
 import FilePreview from './FilePreview.vue'
 import type { Attachment } from '../types'
 
@@ -15,6 +16,7 @@ const pendingFiles = ref<File[]>([])
 const uploadedAttachments = ref<Attachment[]>([])
 const uploadProgress = ref<Map<string, number>>(new Map())
 const isUploading = ref(false)
+const isDragging = ref(false)
 
 let ws: ReturnType<typeof useWebSocket> | null = null
 
@@ -80,6 +82,25 @@ function handleFileSelect(event: Event) {
   if (target.files) {
     pendingFiles.value = [...pendingFiles.value, ...Array.from(target.files)]
     target.value = '' // Reset for same file selection
+  }
+}
+
+function handleDragOver(event: DragEvent) {
+  event.preventDefault()
+  isDragging.value = true
+}
+
+function handleDragLeave(event: DragEvent) {
+  event.preventDefault()
+  isDragging.value = false
+}
+
+function handleDrop(event: DragEvent) {
+  event.preventDefault()
+  isDragging.value = false
+  
+  if (event.dataTransfer?.files) {
+    pendingFiles.value = [...pendingFiles.value, ...Array.from(event.dataTransfer.files)]
   }
 }
 
@@ -151,17 +172,38 @@ function formatFileSize(bytes: number) {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`
 }
 
-function getFileIcon(file: File) {
-  if (file.type.startsWith('image/')) return '🖼️'
-  if (file.type.startsWith('video/')) return '🎬'
-  if (file.type.startsWith('audio/')) return '🎵'
-  if (file.type === 'application/pdf') return '📄'
-  return '📎'
+function getFileIconComponent(file: File) {
+  if (file.type.startsWith('image/')) return Image
+  if (file.type.startsWith('video/')) return Video
+  if (file.type.startsWith('audio/')) return Music
+  if (file.type === 'application/pdf') return FileText
+  return File
+}
+
+function getAttachmentIconComponent(att: Attachment) {
+  if (att.content_type.startsWith('image/')) return Image
+  if (att.content_type.startsWith('video/')) return Video
+  if (att.content_type.startsWith('audio/')) return Music
+  if (att.content_type === 'application/pdf') return FileText
+  return File
 }
 </script>
 
 <template>
-  <div class="chat-area">
+  <div 
+    class="chat-area"
+    @dragover="handleDragOver"
+    @dragleave="handleDragLeave"
+    @drop="handleDrop"
+  >
+    <!-- Drag overlay -->
+    <div v-if="isDragging" class="drag-overlay">
+      <div class="drag-content">
+        <Upload class="drag-icon" :size="48" />
+        <span class="drag-text">拖放文件到这里上传</span>
+      </div>
+    </div>
+
     <div class="chat-header">
       <span class="channel-hash">#</span>
       <span class="channel-name">{{ chat.currentChannel?.name }}</span>
@@ -192,7 +234,7 @@ function getFileIcon(file: File) {
     <div v-if="pendingFiles.length > 0 || uploadedAttachments.length > 0" class="pending-files">
       <!-- Uploading files -->
       <div v-for="(file, index) in pendingFiles" :key="'pending-' + file.name" class="pending-file">
-        <span class="file-icon">{{ getFileIcon(file) }}</span>
+        <component :is="getFileIconComponent(file)" class="file-icon-svg" :size="18" />
         <div class="file-info">
           <span class="file-name">{{ file.name }}</span>
           <span class="file-size">{{ formatFileSize(file.size) }}</span>
@@ -200,25 +242,27 @@ function getFileIcon(file: File) {
             <div class="progress-fill" :style="{ width: uploadProgress.get(file.name) + '%' }"></div>
           </div>
         </div>
-        <button class="remove-btn" @click="removePendingFile(index)" :disabled="isUploading">×</button>
+        <button class="remove-btn" @click="removePendingFile(index)" :disabled="isUploading">
+          <X :size="16" />
+        </button>
       </div>
       <!-- Uploaded attachments -->
       <div v-for="(att, index) in uploadedAttachments" :key="'uploaded-' + att.id" class="pending-file uploaded">
-        <span class="file-icon">✓</span>
+        <component :is="getAttachmentIconComponent(att)" class="file-icon-svg" :size="18" />
         <div class="file-info">
           <span class="file-name">{{ att.filename }}</span>
           <span class="file-size">{{ formatFileSize(att.size) }}</span>
         </div>
-        <button class="remove-btn" @click="removeUploadedAttachment(index)">×</button>
+        <button class="remove-btn" @click="removeUploadedAttachment(index)">
+          <X :size="16" />
+        </button>
       </div>
     </div>
 
     <div class="chat-input">
       <input type="file" ref="fileInput" @change="handleFileSelect" multiple hidden />
       <button class="attach-btn" @click="triggerFileSelect" title="添加附件">
-        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/>
-        </svg>
+        <Paperclip :size="20" />
       </button>
       <input
         v-model="messageInput"
@@ -232,10 +276,7 @@ function getFileIcon(file: File) {
         :disabled="!canSend"
         :class="{ active: canSend }"
       >
-        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <line x1="22" y1="2" x2="11" y2="13"></line>
-          <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-        </svg>
+        <Send :size="20" />
       </button>
     </div>
   </div>
@@ -248,6 +289,39 @@ function getFileIcon(file: File) {
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
+  position: relative;
+}
+
+.drag-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.drag-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 32px 48px;
+  background: var(--surface-glass);
+  border: 2px dashed var(--color-accent);
+  border-radius: var(--radius-lg);
+}
+
+.drag-icon {
+  color: var(--color-accent);
+}
+
+.drag-text {
+  font-size: 16px;
+  color: var(--color-text-main);
+  font-weight: 500;
 }
 
 .chat-header {
@@ -356,8 +430,9 @@ function getFileIcon(file: File) {
   background: rgba(34, 197, 94, 0.2);
 }
 
-.pending-file .file-icon {
-  font-size: 18px;
+.pending-file .file-icon-svg {
+  color: var(--color-accent);
+  flex-shrink: 0;
 }
 
 .pending-file .file-info {
@@ -399,10 +474,11 @@ function getFileIcon(file: File) {
   background: none;
   border: none;
   color: var(--color-text-muted);
-  font-size: 18px;
   cursor: pointer;
-  padding: 0 4px;
-  line-height: 1;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .remove-btn:hover {

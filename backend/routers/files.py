@@ -24,11 +24,7 @@ router = APIRouter(prefix="/api", tags=["files"])
 
 # File storage configuration
 UPLOAD_DIR = Path(__file__).parent.parent / "uploads"
-MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB default
-MAX_IMAGE_SIZE = 10 * 1024 * 1024  # 10MB for images
-MAX_VIDEO_SIZE = 50 * 1024 * 1024  # 50MB for videos
-MAX_AUDIO_SIZE = 20 * 1024 * 1024  # 20MB for audio
-MAX_DOC_SIZE = 20 * 1024 * 1024  # 20MB for documents
+MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB for all files
 
 # Allowed file extensions by category
 ALLOWED_IMAGES = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"}
@@ -52,29 +48,6 @@ class AttachmentResponse(BaseModel):
 
     class Config:
         from_attributes = True
-
-
-def get_file_category(content_type: str, ext: str) -> str:
-    """Determine file category for size limits."""
-    if ext.lower() in ALLOWED_IMAGES or content_type.startswith("image/"):
-        return "image"
-    if ext.lower() in ALLOWED_VIDEOS or content_type.startswith("video/"):
-        return "video"
-    if ext.lower() in ALLOWED_AUDIO or content_type.startswith("audio/"):
-        return "audio"
-    if ext.lower() in ALLOWED_DOCS:
-        return "document"
-    return "other"
-
-
-def get_max_size(category: str) -> int:
-    """Get max file size for category."""
-    return {
-        "image": MAX_IMAGE_SIZE,
-        "video": MAX_VIDEO_SIZE,
-        "audio": MAX_AUDIO_SIZE,
-        "document": MAX_DOC_SIZE,
-    }.get(category, MAX_FILE_SIZE)
 
 
 def sanitize_filename(filename: str) -> str:
@@ -119,8 +92,6 @@ async def upload_file(
 
     # Determine content type
     content_type = file.content_type or mimetypes.guess_type(safe_filename)[0] or "application/octet-stream"
-    category = get_file_category(content_type, ext)
-    max_size = get_max_size(category)
 
     # Read file content
     content = await file.read()
@@ -128,10 +99,10 @@ async def upload_file(
 
     if size == 0:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Empty file")
-    if size > max_size:
+    if size > MAX_FILE_SIZE:
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail=f"File too large. Max size for {category} is {max_size // 1024 // 1024}MB"
+            detail=f"File too large. Max size is {MAX_FILE_SIZE // 1024 // 1024}MB"
         )
 
     # Generate unique stored name
