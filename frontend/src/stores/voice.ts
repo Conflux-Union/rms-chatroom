@@ -479,7 +479,7 @@ export const useVoiceStore = defineStore('voice', () => {
               // iOS: Use Web Audio API for volume control
               connectAudioNodes(participant.identity, audioElement, savedVolume)
               audioElement.volume = 0.0 // Mute native volume
-              audioElement.muted = false // Ensure not muted
+              audioElement.muted = true // Ensure not muted
             } else {
               // Non-iOS: use native audioElement.volume
               audioElement.volume = Math.min(savedVolume / 100, 1)
