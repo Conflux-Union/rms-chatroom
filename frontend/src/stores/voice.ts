@@ -642,12 +642,7 @@ export const useVoiceStore = defineStore('voice', () => {
   }
 
   function setGlobalMute(muted: boolean) {
-    // other plantforms mute via audioElement.muted
-    const audioElements = document.querySelectorAll('audio[data-livekit-audio="true"]')
-    audioElements.forEach((el) => {
-      ;(el as HTMLAudioElement).muted = muted
-    })
-
+  
     // iOS change masterGain 
     if (isIOS()) {
       const ctx = audioContext.value
@@ -655,7 +650,12 @@ export const useVoiceStore = defineStore('voice', () => {
 
       const master = ensureMasterGain(ctx)
       master.gain.value = muted ? 0 : 1
-    }
+    } else {
+      // other platforms mute via audioElement.muted
+      const audioElements = document.querySelectorAll('audio[data-livekit-audio="true"]')
+      audioElements.forEach((el) => {
+        ;(el as HTMLAudioElement).muted = muted
+      })
   }
 
 
