@@ -107,7 +107,7 @@ export const useVoiceStore = defineStore('voice', () => {
     if (isIOS() && audioContext.value && audioContext.value.state === 'suspended') {
       try {
         await audioContext.value.resume()
-        console.log('AudioContext resumed successfully on iOS')
+        debug('AudioContext resumed successfully on iOS')
       } catch (e) {
         console.warn('Failed to resume AudioContext on iOS:', e)
       }
@@ -379,7 +379,7 @@ export const useVoiceStore = defineStore('voice', () => {
             
             const savedVolume = userVolumes.value.get(participant.identity) ?? 100
 
-            console.log(`Subscribing to audio track of ${participant.identity}, saved volume: ${savedVolume}%`)
+            debug(`Subscribing to audio track of ${participant.identity}, saved volume: ${savedVolume}%`)
             
             if (isIOS()) {
               // iOS: Control the volume of each user with Web Audio API
@@ -390,14 +390,14 @@ export const useVoiceStore = defineStore('voice', () => {
 
               const sourceNode = ctx.createMediaElementSource(audioElement)
               const gainNode = ctx.createGain()
-              console.log(`Initial iOS volume for ${participant.identity} is ${savedVolume}%`)
+              debug(`Initial iOS volume for ${participant.identity} is ${savedVolume}%`)
 
               const initialGain = Math.min(savedVolume / 100, 1)
-              console.log(`Setting gain node value for ${participant.identity} to ${initialGain}`)
+              debug(`Setting gain node value for ${participant.identity} to ${initialGain}`)
 
               gainNode.gain.value = initialGain
               sourceNode.connect(gainNode).connect(ctx.destination)
-              console.log(`Connected audio nodes for ${participant.identity}`)
+              debug(`Connected audio nodes for ${participant.identity}`)
 
               participantAudioMap.set(participant.identity, {
                 audioElement,
@@ -585,7 +585,7 @@ export const useVoiceStore = defineStore('voice', () => {
         if (participantAudio.gainNode) {
           const gain = Math.max(0, Math.min(3, clampedVolume / 100))
           participantAudio.gainNode.gain.value = gain
-          console.log(`Set iOS volume for ${participantId} to ${clampedVolume}% (gain: ${gain})`)
+          debug(`Set iOS volume for ${participantId} to ${clampedVolume}% (gain: ${gain})`)
         } else {
           // If gain node doesn't exist yet, create it when possible
           console.warn(`No gain node found for ${participantId} on iOS, volume may not be applied`)
