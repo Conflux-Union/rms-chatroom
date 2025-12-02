@@ -47,7 +47,7 @@ export interface ScreenShareInfo {
 interface ParticipantAudio {
   audioElement: HTMLAudioElement
   gainNode?: GainNode
-  sourceNode?: MediaElementAudioSourceNode
+  sourceNode?: AudioNode   // ✅ 可以是 MediaStreamSource / MediaElementSource 都行
   volume: number
 }
 
@@ -144,60 +144,80 @@ export const useVoiceStore = defineStore('voice', () => {
     return ctx.state === 'running'
   }
 
-  // Connect audio nodes for iOS - handles Web Audio API routing
-  function connectAudioNodes(participantId: string, audioElement: HTMLAudioElement, volume: number): boolean {
+  // Connect audio nodes for iOS - handle Web Audio API routing using MediaStream
+  function connectAudioNodes(
+    participantId: string,
+    audioElement: HTMLAudioElement,
+    volume: number
+  ): boolean {
     if (!isIOS()) return true
 
     const ctx = ensureAudioContext()
-    
-    // Check AudioContext state
+
+    // AudioContext 必须是 running 状态
     if (ctx.state !== 'running') {
       debug(`AudioContext not running (${ctx.state}), cannot connect audio nodes for ${participantId}`)
       return false
     }
-    
-    // Prevent duplicate connections - HTMLMediaElement can only have ONE MediaElementSourceNode
+
+    // 从 audioElement 上拿到底层的 MediaStream
+    const mediaStream = audioElement.srcObject as MediaStream | null
+    if (!mediaStream) {
+      debug(`Audio element for ${participantId} has no srcObject, cannot create MediaStreamSource`)
+      return false
+    }
+
+    // 你现在是从 MediaStream 进 Web Audio，不再走 MediaElementSource 的限制，
+    // WeakSet 仍然可以当“已经连过”的标记用，避免重复创建节点
     if (connectedAudioElements.has(audioElement)) {
-      debug(`Audio element for ${participantId} already connected, skipping`)
+      debug(`MediaStream for ${participantId} already connected (via its audioElement), skipping`)
       return true
     }
 
     try {
-      // Create nodes
-      const sourceNode = ctx.createMediaElementSource(audioElement)
+      // 用 MediaStream 作为 Web Audio 输入
+      const sourceNode = ctx.createMediaStreamSource(mediaStream)
       const gainNode = ctx.createGain()
-      
-      // Set initial volume
+
+      // 初始音量 -> gain
       const gain = Math.max(0, Math.min(3, volume / 100))
       gainNode.gain.value = gain
-      
-      // Connect: audioElement -> sourceNode -> gainNode -> destination
+
+      // 连接：MediaStreamSource -> gainNode -> destination
       sourceNode.connect(gainNode)
       gainNode.connect(ctx.destination)
-      
-      // Mark as connected
+
+      // 标记这个 audioElement 的 MediaStream 已经接过一次了
       connectedAudioElements.add(audioElement)
 
-      // Store audio info
+      // 存到 map 里，方便后面 setUserVolume / diagnose 用
       participantAudioMap.set(participantId, {
         audioElement,
         sourceNode,
         gainNode,
-        volume
+        volume,
       })
-      
-      debug(`Connected audio nodes for ${participantId} with volume ${volume}% (gain: ${gain})`)
+
+      // iOS 下走 Web Audio，所以把原生 audio 静音，只用 Web Audio 放声
+      audioElement.volume = 0.0
+      audioElement.muted = false // 要保证不被系统直接 mute 掉
+
+      debug(
+        `Connected MediaStream audio nodes for ${participantId} with volume ${volume}% (gain: ${gain})`
+      )
       return true
     } catch (e) {
-      debug(`Failed to connect audio nodes for ${participantId}: ${e}`)
-      // Fallback: just store without Web Audio routing
+      debug(`Failed to connect MediaStream audio nodes for ${participantId}: ${e}`)
+
+      // 兜底：走原来 audioElement 路线（不过你应该不想用兜底就可以直接删掉）
       participantAudioMap.set(participantId, {
         audioElement,
-        volume
+        volume,
       })
       return false
     }
   }
+
 
   function updateParticipants() {
     if (!room.value) {
