@@ -543,7 +543,7 @@ function closeInviteDialog() {
       </div>
     </div>
   </div>
-  <div id="debug" style="white-space: pre; background:#eee; padding:10px;"></div>
+  <div id="debug" style="white-space: pre; background:#eee; padding:10px; max-height: 30vh; overflow-y: scroll"></div>
 </template>
 
 <style scoped>

@@ -110,7 +110,7 @@ export const useVoiceStore = defineStore('voice', () => {
         await audioContext.value.resume()
         debug('AudioContext resumed successfully on iOS')
       } catch (e) {
-        debug('Failed to resume AudioContext on iOS:', e)
+        debug('Failed to resume AudioContext on iOS:' + e)
       }
     }
   }
@@ -231,7 +231,7 @@ export const useVoiceStore = defineStore('voice', () => {
         updateParticipants()
       }
     } catch (e) {
-      console.error('Failed to sync participants from server:', e)
+      debug('Failed to sync participants from server:' + e)
     }
   }
 
@@ -283,7 +283,7 @@ export const useVoiceStore = defineStore('voice', () => {
         localStorage.removeItem(STORAGE_KEY_OUTPUT)
       }
     } catch (e) {
-      console.error('Failed to enumerate devices:', e)
+      debug('Failed to enumerate devices:' + e)
     }
   }
 
@@ -301,7 +301,7 @@ export const useVoiceStore = defineStore('voice', () => {
         await room.value.switchActiveDevice('audioinput', deviceId || 'default')
         return true
       } catch (e) {
-        console.error('Failed to switch audio input device:', e)
+        debug('Failed to switch audio input device:' + e)
         return false
       }
     }
@@ -326,7 +326,7 @@ export const useVoiceStore = defineStore('voice', () => {
         try {
           await audioEl.setSinkId(targetId)
         } catch (e) {
-          console.error('Failed to set audio output device:', e)
+          debug('Failed to set audio output device:' + e)
           return false
         }
       }
@@ -524,7 +524,7 @@ export const useVoiceStore = defineStore('voice', () => {
       return true
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to connect'
-      console.error('Voice connect error:', e)
+      debug('Voice connect error:' + e)
       return false
     } finally {
       isConnecting.value = false
@@ -659,7 +659,7 @@ export const useVoiceStore = defineStore('voice', () => {
       )
       return response.ok
     } catch (e) {
-      console.error('Failed to mute participant:', e)
+      debug('Failed to mute participant:' + e)
       return false
     }
   }
@@ -683,7 +683,7 @@ export const useVoiceStore = defineStore('voice', () => {
       )
       return response.ok
     } catch (e) {
-      console.error('Failed to kick participant:', e)
+      debug('Failed to kick participant:' + e)
       return false
     }
   }
@@ -707,7 +707,7 @@ export const useVoiceStore = defineStore('voice', () => {
         hostModeHostName.value = data.host_name
       }
     } catch (e) {
-      console.error('Failed to fetch host mode status:', e)
+      debug('Failed to fetch host mode status:' + e)
     }
   }
 
@@ -739,7 +739,7 @@ export const useVoiceStore = defineStore('voice', () => {
       }
       return false
     } catch (e) {
-      console.error('Failed to toggle host mode:', e)
+      debug('Failed to toggle host mode:' + e)
       return false
     }
   }
@@ -763,7 +763,7 @@ export const useVoiceStore = defineStore('voice', () => {
         screenSharerName.value = data.sharer_name
       }
     } catch (e) {
-      console.error('Failed to fetch screen share status:', e)
+      debug('Failed to fetch screen share status:' + e)
     }
   }
 
@@ -791,7 +791,7 @@ export const useVoiceStore = defineStore('voice', () => {
       }
       return { success: false, sharerName: null }
     } catch (e) {
-      console.error('Failed to lock screen share:', e)
+      debug('Failed to lock screen share:' + e)
       return { success: false, sharerName: null }
     }
   }
@@ -815,7 +815,7 @@ export const useVoiceStore = defineStore('voice', () => {
       screenSharerId.value = null
       screenSharerName.value = null
     } catch (e) {
-      console.error('Failed to unlock screen share:', e)
+      debug('Failed to unlock screen share:' + e)
     }
   }
 
@@ -862,7 +862,7 @@ export const useVoiceStore = defineStore('voice', () => {
       }
       return true
     } catch (e) {
-      console.error('Failed to toggle screen share:', e)
+      debug('Failed to toggle screen share:' + e)
       // User may have cancelled the screen share picker, release lock
       if (!isScreenSharing.value) {
         await unlockScreenShare()
@@ -958,3 +958,6 @@ function debug(msg: string) {
     div.innerText += msg + "\n";
   }
 }
+
+
+
