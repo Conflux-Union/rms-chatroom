@@ -45,10 +45,14 @@ class VoiceCallService : Service() {
         const val ACTION_MUTE = "com.rms.discord.ACTION_MUTE"
         const val ACTION_UNMUTE = "com.rms.discord.ACTION_UNMUTE"
         const val ACTION_HANG_UP = "com.rms.discord.ACTION_HANG_UP"
+        
+        private const val EXTRA_CHANNEL_NAME = "channel_name"
+        private const val EXTRA_ENABLE_SCREEN_SHARE = "enable_screen_share"
 
-        fun start(context: Context, channelName: String) {
+        fun start(context: Context, channelName: String, enableScreenShare: Boolean = false) {
             val intent = Intent(context, VoiceCallService::class.java).apply {
-                putExtra("channel_name", channelName)
+                putExtra(EXTRA_CHANNEL_NAME, channelName)
+                putExtra(EXTRA_ENABLE_SCREEN_SHARE, enableScreenShare)
             }
             try {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -139,19 +143,19 @@ class VoiceCallService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        channelName = intent?.getStringExtra("channel_name") ?: "语音通话"
+        channelName = intent?.getStringExtra(EXTRA_CHANNEL_NAME) ?: "语音通话"
+        val enableScreenShare = intent?.getBooleanExtra(EXTRA_ENABLE_SCREEN_SHARE, false) ?: false
 
         val notification = createNotification()
-        // Use MICROPHONE, MEDIA_PLAYBACK and MEDIA_PROJECTION types
-        // Service is started after connection success, so RECORD_AUDIO permission is already granted
+        // Use MICROPHONE and MEDIA_PLAYBACK types for voice call
+        // Add MEDIA_PROJECTION only when screen share is enabled (user has granted permission)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(
-                NOTIFICATION_ID,
-                notification,
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE or
-                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK or
-                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
-            )
+            var serviceType = ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE or
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
+            if (enableScreenShare) {
+                serviceType = serviceType or ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
+            }
+            startForeground(NOTIFICATION_ID, notification, serviceType)
         } else {
             startForeground(NOTIFICATION_ID, notification)
         }

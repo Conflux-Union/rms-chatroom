@@ -353,6 +353,14 @@ class VoiceViewModel @Inject constructor(
             if (_state.value.isScreenSharing) {
                 voiceRepository.setScreenShareEnabled(false)
             } else {
+                // Restart service with mediaProjection type before starting screen share
+                if (serviceStarted) {
+                    VoiceCallService.start(
+                        context,
+                        _channelName.value.ifEmpty { "语音通话" },
+                        enableScreenShare = true
+                    )
+                }
                 voiceRepository.setScreenShareEnabled(true)
             }
         }
