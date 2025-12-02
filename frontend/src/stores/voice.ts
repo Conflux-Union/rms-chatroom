@@ -656,8 +656,8 @@ export const useVoiceStore = defineStore('voice', () => {
       audioElements.forEach((el) => {
         ;(el as HTMLAudioElement).muted = muted
       })
+    }
   }
-
 
   function toggleDeafen() {
     isDeafened.value = !isDeafened.value
