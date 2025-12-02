@@ -152,6 +152,15 @@ export const useVoiceStore = defineStore('voice', () => {
   ): boolean {
     if (!isIOS()) return true
 
+    audioElement.volume = 0.0 // Mute native volume
+    audioElement.muted = true // Ensure not muted
+    audioElement.pause()
+    const audioElements = document.querySelectorAll('audio[data-livekit-audio="true"]')
+    audioElements.forEach((el) => {
+      ;(el as HTMLAudioElement).muted = true
+      ;(el as HTMLAudioElement).pause()
+    })
+
     const ctx = ensureAudioContext()
 
     if (ctx.state !== 'running') {
@@ -484,6 +493,7 @@ export const useVoiceStore = defineStore('voice', () => {
               const audioElements = document.querySelectorAll('audio[data-livekit-audio="true"]')
               audioElements.forEach((el) => {
                 ;(el as HTMLAudioElement).muted = true
+                ;(el as HTMLAudioElement).pause()
               })
             } else {
               // Non-iOS: use native audioElement.volume
