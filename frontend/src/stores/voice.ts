@@ -94,6 +94,8 @@ export const useVoiceStore = defineStore('voice', () => {
 
   // iOS Audio Context state
   const audioContextInitialized = ref(false)
+  // Track which audio elements have been connected to prevent duplicate connections
+  const connectedAudioElements = new WeakSet<HTMLAudioElement>()
 
   function ensureAudioContext(): AudioContext {
     if (!audioContext.value) {
@@ -103,73 +105,98 @@ export const useVoiceStore = defineStore('voice', () => {
     return audioContext.value
   }
 
-  // iOS-specific: Resume AudioContext after user interaction
-  async function resumeAudioContext(): Promise<void> {
-    if (isIOS() && audioContext.value && audioContext.value.state === 'suspended') {
+  // iOS-specific: Resume AudioContext - must be called in user gesture sync stack
+  async function resumeAudioContext(): Promise<boolean> {
+    if (!audioContext.value) return false
+    
+    const ctx = audioContext.value
+    if (ctx.state === 'suspended') {
       try {
-        await audioContext.value.resume()
-        debug('AudioContext resumed successfully on iOS')
+        await ctx.resume()
+        debug(`AudioContext resumed: ${ctx.state}`)
       } catch (e) {
-        debug('Failed to resume AudioContext on iOS:' + e)
+        debug('Failed to resume AudioContext: ' + e)
+        return false
       }
     }
+    return ctx.state === 'running'
   }
 
-  // iOS-specific: Initialize AudioContext on first user interaction
-  function initAudioContextOnInteraction(): void {
-    if (isIOS() && !audioContextInitialized.value) {
-      ensureAudioContext()
-      // Add a temporary event listener to resume context on first interaction
-      const handleInteraction = async () => {
-        await resumeAudioContext()
-        // Remove listeners after first interaction
-        window.removeEventListener('touchstart', handleInteraction)
-        window.removeEventListener('click', handleInteraction)
+  // Initialize and activate AudioContext immediately on user interaction (iOS requirement)
+  async function activateAudioContext(): Promise<boolean> {
+    if (!isIOS()) return true
+    
+    const ctx = ensureAudioContext()
+    debug(`AudioContext state before activation: ${ctx.state}`)
+    
+    // Must resume synchronously in user gesture handler
+    if (ctx.state === 'suspended') {
+      try {
+        // This MUST be called in the same call stack as user gesture
+        await ctx.resume()
+        debug(`AudioContext state after resume: ${ctx.state}`)
+      } catch (e) {
+        debug('Failed to activate AudioContext: ' + e)
+        return false
       }
-      window.addEventListener('touchstart', handleInteraction)
-      window.addEventListener('click', handleInteraction)
     }
+    
+    return ctx.state === 'running'
   }
 
-  // Reconnect audio nodes for iOS when audio element changes
-  function reconnectAudioNodes(participantId: string, audioElement: HTMLAudioElement): void {
-    if (!isIOS()) return
+  // Connect audio nodes for iOS - handles Web Audio API routing
+  function connectAudioNodes(participantId: string, audioElement: HTMLAudioElement, volume: number): boolean {
+    if (!isIOS()) return true
 
     const ctx = ensureAudioContext()
-    const participantAudio = participantAudioMap.get(participantId)
     
-    if (!participantAudio) return
-
-    // Disconnect previous nodes if they exist
-    if (participantAudio.sourceNode) {
-      participantAudio.sourceNode.disconnect()
+    // Check AudioContext state
+    if (ctx.state !== 'running') {
+      debug(`AudioContext not running (${ctx.state}), cannot connect audio nodes for ${participantId}`)
+      return false
     }
-    if (participantAudio.gainNode) {
-      participantAudio.gainNode.disconnect()
+    
+    // Prevent duplicate connections - HTMLMediaElement can only have ONE MediaElementSourceNode
+    if (connectedAudioElements.has(audioElement)) {
+      debug(`Audio element for ${participantId} already connected, skipping`)
+      return true
     }
 
-    // Create new nodes
-    const sourceNode = ctx.createMediaElementSource(audioElement)
-    const gainNode = ctx.createGain()
-    
-    // Set volume to stored value
-    const volume = participantAudio.volume
-    const gain = Math.max(0, Math.min(3, volume / 100))
-    gainNode.gain.value = gain
-    
-    // Connect nodes: audioElement -> sourceNode -> gainNode -> destination
-    sourceNode.connect(gainNode)
-    gainNode.connect(ctx.destination)
+    try {
+      // Create nodes
+      const sourceNode = ctx.createMediaElementSource(audioElement)
+      const gainNode = ctx.createGain()
+      
+      // Set initial volume
+      const gain = Math.max(0, Math.min(3, volume / 100))
+      gainNode.gain.value = gain
+      
+      // Connect: audioElement -> sourceNode -> gainNode -> destination
+      sourceNode.connect(gainNode)
+      gainNode.connect(ctx.destination)
+      
+      // Mark as connected
+      connectedAudioElements.add(audioElement)
 
-    // Update participant audio info
-    participantAudioMap.set(participantId, {
-      ...participantAudio,
-      audioElement,
-      sourceNode,
-      gainNode
-    })
-    
-    debug(`Reconnected audio nodes for ${participantId} with volume ${volume}%`)
+      // Store audio info
+      participantAudioMap.set(participantId, {
+        audioElement,
+        sourceNode,
+        gainNode,
+        volume
+      })
+      
+      debug(`Connected audio nodes for ${participantId} with volume ${volume}% (gain: ${gain})`)
+      return true
+    } catch (e) {
+      debug(`Failed to connect audio nodes for ${participantId}: ${e}`)
+      // Fallback: just store without Web Audio routing
+      participantAudioMap.set(participantId, {
+        audioElement,
+        volume
+      })
+      return false
+    }
   }
 
   function updateParticipants() {
@@ -337,10 +364,11 @@ export const useVoiceStore = defineStore('voice', () => {
   async function joinVoice(channel: Channel): Promise<boolean> {
     if (isConnecting.value || isConnected.value) return false
 
-    // Initialize Audio Context on iOS before joining
-    if (isIOS()) {
-      initAudioContextOnInteraction()
-      ensureAudioContext()
+    // CRITICAL: Activate AudioContext IMMEDIATELY in user gesture call stack (iOS requirement)
+    // This must happen BEFORE any async operations
+    const audioActivated = await activateAudioContext()
+    if (isIOS() && !audioActivated) {
+      debug('Warning: AudioContext activation failed, volume control may not work')
     }
 
     isConnecting.value = true
@@ -424,14 +452,8 @@ export const useVoiceStore = defineStore('voice', () => {
             debug(`Subscribing to audio track of ${participant.identity}, saved volume: ${savedVolume}%`)
             
             if (isIOS()) {
-              // iOS: Store the audio element with its initial volume
-              participantAudioMap.set(participant.identity, {
-                audioElement,
-                volume: savedVolume
-              })
-              
-              // Connect audio nodes
-              reconnectAudioNodes(participant.identity, audioElement)
+              // iOS: Use Web Audio API for volume control
+              connectAudioNodes(participant.identity, audioElement, savedVolume)
             } else {
               // Non-iOS: use native audioElement.volume
               audioElement.volume = Math.min(savedVolume / 100, 1)
