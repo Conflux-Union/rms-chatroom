@@ -193,7 +193,7 @@ export const useVoiceStore = defineStore('voice', () => {
       })
 
       audioElement.volume = 0.0
-      audioElement.muted = false
+      audioElement.muted = true
 
       console.log(
         `Connected MediaStream audio nodes for ${participantId} with volume ${volume}% (gain: ${gain})`
