@@ -647,12 +647,42 @@ export const useVoiceStore = defineStore('voice', () => {
     // Apply volume
     const participantAudio = participantAudioMap.get(participantId)
     if (participantAudio) {
-      debug(`Attempting to set volume for ${participantId}. Has gainNode: ${!!participantAudio?.gainNode}. Is iOS: ${isIOS()}`)
+      debug(`[setUserVolume] Participant: ${participantId}`)
+      debug(`  - Target volume: ${clampedVolume}%`)
+      debug(`  - Is iOS: ${isIOS()}`)
+      debug(`  - Has audioElement: ${!!participantAudio.audioElement}`)
+      debug(`  - Has gainNode: ${!!participantAudio.gainNode}`)
+      debug(`  - Has sourceNode: ${!!participantAudio.sourceNode}`)
       if (isIOS() && participantAudio.gainNode) {
         // iOS: Use Web Audio API gain control
         const gain = Math.max(0, Math.min(3, clampedVolume / 100))
+
+        debug(`  - Current gain value: ${participantAudio.gainNode.gain.value}`)
+        debug(`  - Setting gain to: ${gain}`)
+
         participantAudio.gainNode.gain.value = gain
-        debug(`Set iOS volume for ${participantId} to ${clampedVolume}% (gain: ${gain})`)
+        
+        // 验证设置是否生效
+        debug(`  - New gain value: ${participantAudio.gainNode.gain.value}`)
+        
+        // 检查连接状态
+        debug(`  - GainNode numberOfInputs: ${participantAudio.gainNode.numberOfInputs}`)
+        debug(`  - GainNode numberOfOutputs: ${participantAudio.gainNode.numberOfOutputs}`)
+        
+        // 检查 AudioContext 状态
+        if (audioContext.value) {
+          debug(`  - AudioContext state: ${audioContext.value.state}`)
+          debug(`  - AudioContext sampleRate: ${audioContext.value.sampleRate}`)
+        }
+        
+        // 检查 audioElement 状态
+        if (participantAudio.audioElement) {
+          debug(`  - Audio element paused: ${participantAudio.audioElement.paused}`)
+          debug(`  - Audio element muted: ${participantAudio.audioElement.muted}`)
+          debug(`  - Audio element volume: ${participantAudio.audioElement.volume}`)
+          debug(`  - Audio element readyState: ${participantAudio.audioElement.readyState}`)
+        }
+
       } else if (!isIOS() && participantAudio.audioElement) {
         // Non-iOS: use native volume (max 100%)
         participantAudio.audioElement.volume = Math.min(clampedVolume / 100, 1)
