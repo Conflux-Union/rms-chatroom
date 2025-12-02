@@ -481,6 +481,10 @@ export const useVoiceStore = defineStore('voice', () => {
               audioElement.volume = 0.0 // Mute native volume
               audioElement.muted = true // Ensure not muted
               audioElement.pause()
+              const audioElements = document.querySelectorAll('audio[data-livekit-audio="true"]')
+              audioElements.forEach((el) => {
+                ;(el as HTMLAudioElement).muted = true
+              })
             } else {
               // Non-iOS: use native audioElement.volume
               audioElement.volume = Math.min(savedVolume / 100, 1)
@@ -704,6 +708,11 @@ export const useVoiceStore = defineStore('voice', () => {
       if (isIOS() && participantAudio.gainNode) {
         // iOS: Use Web Audio API gain control
         const gain = Math.max(0, Math.min(3, clampedVolume / 100))
+
+        const audioElements = document.querySelectorAll('audio[data-livekit-audio="true"]')
+        audioElements.forEach((el) => {
+          ;(el as HTMLAudioElement).muted = true
+        })
 
         console.log(`  - Current gain value: ${participantAudio.gainNode.gain.value}`)
         console.log(`  - Setting gain to: ${gain}`)
