@@ -48,6 +48,7 @@ interface ParticipantAudio {
   audioElement: HTMLAudioElement
   gainNode?: GainNode
   sourceNode?: MediaElementAudioSourceNode
+  volume: number
 }
 
 export const useVoiceStore = defineStore('voice', () => {
@@ -109,7 +110,7 @@ export const useVoiceStore = defineStore('voice', () => {
         await audioContext.value.resume()
         debug('AudioContext resumed successfully on iOS')
       } catch (e) {
-        console.warn('Failed to resume AudioContext on iOS:', e)
+        debug('Failed to resume AudioContext on iOS:', e)
       }
     }
   }
@@ -119,8 +120,8 @@ export const useVoiceStore = defineStore('voice', () => {
     if (isIOS() && !audioContextInitialized.value) {
       ensureAudioContext()
       // Add a temporary event listener to resume context on first interaction
-      const handleInteraction = () => {
-        resumeAudioContext()
+      const handleInteraction = async () => {
+        await resumeAudioContext()
         // Remove listeners after first interaction
         window.removeEventListener('touchstart', handleInteraction)
         window.removeEventListener('click', handleInteraction)
@@ -128,6 +129,47 @@ export const useVoiceStore = defineStore('voice', () => {
       window.addEventListener('touchstart', handleInteraction)
       window.addEventListener('click', handleInteraction)
     }
+  }
+
+  // Reconnect audio nodes for iOS when audio element changes
+  function reconnectAudioNodes(participantId: string, audioElement: HTMLAudioElement): void {
+    if (!isIOS()) return
+
+    const ctx = ensureAudioContext()
+    const participantAudio = participantAudioMap.get(participantId)
+    
+    if (!participantAudio) return
+
+    // Disconnect previous nodes if they exist
+    if (participantAudio.sourceNode) {
+      participantAudio.sourceNode.disconnect()
+    }
+    if (participantAudio.gainNode) {
+      participantAudio.gainNode.disconnect()
+    }
+
+    // Create new nodes
+    const sourceNode = ctx.createMediaElementSource(audioElement)
+    const gainNode = ctx.createGain()
+    
+    // Set volume to stored value
+    const volume = participantAudio.volume
+    const gain = Math.max(0, Math.min(3, volume / 100))
+    gainNode.gain.value = gain
+    
+    // Connect nodes: audioElement -> sourceNode -> gainNode -> destination
+    sourceNode.connect(gainNode)
+    gainNode.connect(ctx.destination)
+
+    // Update participant audio info
+    participantAudioMap.set(participantId, {
+      ...participantAudio,
+      audioElement,
+      sourceNode,
+      gainNode
+    })
+    
+    debug(`Reconnected audio nodes for ${participantId} with volume ${volume}%`)
   }
 
   function updateParticipants() {
@@ -382,32 +424,21 @@ export const useVoiceStore = defineStore('voice', () => {
             debug(`Subscribing to audio track of ${participant.identity}, saved volume: ${savedVolume}%`)
             
             if (isIOS()) {
-              // iOS: Control the volume of each user with Web Audio API
-              const ctx = ensureAudioContext()
-
-              audioElement.volume = 1.0
-              audioElement.muted = false
-
-              const sourceNode = ctx.createMediaElementSource(audioElement)
-              const gainNode = ctx.createGain()
-              debug(`Initial iOS volume for ${participant.identity} is ${savedVolume}%`)
-
-              const initialGain = Math.min(savedVolume / 100, 1)
-              debug(`Setting gain node value for ${participant.identity} to ${initialGain}`)
-
-              gainNode.gain.value = initialGain
-              sourceNode.connect(gainNode).connect(ctx.destination)
-              debug(`Connected audio nodes for ${participant.identity}`)
-
+              // iOS: Store the audio element with its initial volume
               participantAudioMap.set(participant.identity, {
                 audioElement,
-                sourceNode,
-                gainNode,
+                volume: savedVolume
               })
+              
+              // Connect audio nodes
+              reconnectAudioNodes(participant.identity, audioElement)
             } else {
               // Non-iOS: use native audioElement.volume
               audioElement.volume = Math.min(savedVolume / 100, 1)
-              participantAudioMap.set(participant.identity, { audioElement })
+              participantAudioMap.set(participant.identity, { 
+                audioElement, 
+                volume: savedVolume 
+              })
             }
             
             if (selectedAudioOutput.value) {
@@ -453,7 +484,6 @@ export const useVoiceStore = defineStore('voice', () => {
         }
         track.detach().forEach((el) => el.remove())
       })
-
 
       await room.value.connect(url, token)
       await room.value.localParticipant.setMicrophoneEnabled(true)
@@ -579,21 +609,20 @@ export const useVoiceStore = defineStore('voice', () => {
 
     // Apply volume
     const participantAudio = participantAudioMap.get(participantId)
-    if (participantAudio?.audioElement) {
-      if (isIOS()) {
-         // --- iOS：用 Web Audio 的 gain 控制 ---
-        if (participantAudio.gainNode) {
-          const gain = Math.max(0, Math.min(3, clampedVolume / 100))
-          participantAudio.gainNode.gain.value = gain
-          debug(`Set iOS volume for ${participantId} to ${clampedVolume}% (gain: ${gain})`)
-        } else {
-          // If gain node doesn't exist yet, create it when possible
-          console.warn(`No gain node found for ${participantId} on iOS, volume may not be applied`)
-        }
-      } else {
+    if (participantAudio) {
+      if (isIOS() && participantAudio.gainNode) {
+        // iOS: Use Web Audio API gain control
+        const gain = Math.max(0, Math.min(3, clampedVolume / 100))
+        participantAudio.gainNode.gain.value = gain
+        debug(`Set iOS volume for ${participantId} to ${clampedVolume}% (gain: ${gain})`)
+      } else if (!isIOS() && participantAudio.audioElement) {
         // Non-iOS: use native volume (max 100%)
         participantAudio.audioElement.volume = Math.min(clampedVolume / 100, 1)
       }
+      
+      // Update stored volume
+      participantAudio.volume = clampedVolume
+      participantAudioMap.set(participantId, participantAudio)
     }
 
     userVolumes.value.set(participantId, clampedVolume)
@@ -929,6 +958,3 @@ function debug(msg: string) {
     div.innerText += msg + "\n";
   }
 }
-
-
-
