@@ -17,8 +17,16 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.CloudOff
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.InsertDriveFile
+import androidx.compose.material.icons.filled.Movie
+import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.foundation.clickable
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
@@ -33,7 +41,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import android.content.Intent
+import android.net.Uri
+import androidx.compose.ui.platform.LocalContext
+import coil.compose.AsyncImage
+import com.rms.discord.BuildConfig
 import com.rms.discord.R
+import com.rms.discord.data.model.Attachment
 import com.rms.discord.data.model.Message
 import com.rms.discord.data.websocket.ConnectionState
 import com.rms.discord.ui.theme.*
@@ -260,6 +274,8 @@ private fun ConnectionBanner(
 
 @Composable
 private fun MessageItem(message: Message) {
+    val context = LocalContext.current
+
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -303,12 +319,113 @@ private fun MessageItem(message: Message) {
             Spacer(modifier = Modifier.height(4.dp))
 
             // Message content
-            Text(
-                text = message.content,
-                style = MaterialTheme.typography.bodyMedium,
-                color = TextSecondary
-            )
+            if (message.content.isNotBlank()) {
+                Text(
+                    text = message.content,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextSecondary
+                )
+            }
+
+            // Attachments
+            message.attachments?.forEach { attachment ->
+                Spacer(modifier = Modifier.height(8.dp))
+                AttachmentItem(
+                    attachment = attachment,
+                    onClick = {
+                        val url = "${BuildConfig.API_BASE_URL}${attachment.url}?inline=1"
+                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                        context.startActivity(intent)
+                    }
+                )
+            }
         }
+    }
+}
+
+@Composable
+private fun AttachmentItem(
+    attachment: Attachment,
+    onClick: () -> Unit
+) {
+    val isImage = attachment.contentType.startsWith("image/")
+    val isVideo = attachment.contentType.startsWith("video/")
+    val isAudio = attachment.contentType.startsWith("audio/")
+    val isPdf = attachment.contentType == "application/pdf"
+
+    val icon = when {
+        isImage -> Icons.Default.Image
+        isVideo -> Icons.Default.Movie
+        isAudio -> Icons.Default.MusicNote
+        isPdf -> Icons.Default.PictureAsPdf
+        else -> Icons.Default.InsertDriveFile
+    }
+
+    // For images, show preview
+    if (isImage) {
+        val imageUrl = "${BuildConfig.API_BASE_URL}${attachment.url}?inline=1"
+        AsyncImage(
+            model = imageUrl,
+            contentDescription = attachment.filename,
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = 200.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .clickable(onClick = onClick)
+        )
+    } else {
+        // For other files, show card
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onClick),
+            shape = RoundedCornerShape(8.dp),
+            color = SurfaceLighter
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = TiColor,
+                    modifier = Modifier.size(24.dp)
+                )
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = attachment.filename,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = TextPrimary,
+                        maxLines = 1
+                    )
+                    Text(
+                        text = formatFileSize(attachment.size),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = TextMuted
+                    )
+                }
+
+                Icon(
+                    imageVector = Icons.Default.Download,
+                    contentDescription = "下载",
+                    tint = TextMuted,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+        }
+    }
+}
+
+private fun formatFileSize(bytes: Long): String {
+    return when {
+        bytes < 1024 -> "$bytes B"
+        bytes < 1024 * 1024 -> "${bytes / 1024} KB"
+        else -> "${bytes / 1024 / 1024} MB"
     }
 }
 

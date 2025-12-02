@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import type { Server, Channel, Message } from '../types'
+import type { Server, Channel, Message, Attachment } from '../types'
 import axios from 'axios'
 import { useAuthStore } from './auth'
 
@@ -198,6 +198,44 @@ export const useChatStore = defineStore('chat', () => {
     return voiceChannelUsers.value.get(channelId) || []
   }
 
+  async function uploadFile(
+    channelId: number,
+    file: File,
+    onProgress?: (progress: number) => void
+  ): Promise<Attachment | null> {
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+
+      const resp = await axios.post<Attachment>(
+        `${API_BASE}/api/channels/${channelId}/upload`,
+        formData,
+        {
+          headers: {
+            ...getAuthHeaders(),
+            'Content-Type': 'multipart/form-data',
+          },
+          onUploadProgress: (event) => {
+            if (event.total && onProgress) {
+              onProgress(Math.round((event.loaded * 100) / event.total))
+            }
+          },
+        }
+      )
+      return resp.data
+    } catch (e) {
+      console.error('Failed to upload file:', e)
+      return null
+    }
+  }
+
+  function getFileUrl(attachmentId: number, inline = false): string {
+    const base = `${API_BASE}/api/files/${attachmentId}`
+    const params = new URLSearchParams()
+    if (inline) params.append('inline', '1')
+    return `${base}${params.toString() ? '?' + params.toString() : ''}`
+  }
+
   return {
     servers,
     currentServer,
@@ -216,5 +254,7 @@ export const useChatStore = defineStore('chat', () => {
     fetchVoiceChannelUsers,
     fetchAllVoiceChannelUsers,
     getVoiceChannelUsers,
+    uploadFile,
+    getFileUrl,
   }
 })

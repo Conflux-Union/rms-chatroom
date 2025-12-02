@@ -7,9 +7,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from ..core.database import get_db
-from ..models.server import Channel, ChannelType, Message
+from ..models.server import Attachment, Channel, ChannelType, Message
 from .deps import CurrentUser
 
 logger = logging.getLogger(__name__)
@@ -18,7 +19,19 @@ router = APIRouter(prefix="/api/channels/{channel_id}/messages", tags=["messages
 
 
 class MessageCreate(BaseModel):
-    content: str
+    content: str = ""
+    attachment_ids: list[int] = []
+
+
+class AttachmentResponse(BaseModel):
+    id: int
+    filename: str
+    content_type: str
+    size: int
+    url: str
+
+    class Config:
+        from_attributes = True
 
 
 class MessageResponse(BaseModel):
@@ -28,9 +41,34 @@ class MessageResponse(BaseModel):
     username: str
     content: str
     created_at: datetime
+    attachments: list[AttachmentResponse] = []
 
     class Config:
         from_attributes = True
+
+
+def _attachment_to_response(att: Attachment) -> AttachmentResponse:
+    """Convert Attachment model to response with URL."""
+    return AttachmentResponse(
+        id=att.id,
+        filename=att.filename,
+        content_type=att.content_type,
+        size=att.size,
+        url=f"/api/files/{att.id}",
+    )
+
+
+def _message_to_response(msg: Message) -> MessageResponse:
+    """Convert Message model to response with attachments."""
+    return MessageResponse(
+        id=msg.id,
+        channel_id=msg.channel_id,
+        user_id=msg.user_id,
+        username=msg.username,
+        content=msg.content,
+        created_at=msg.created_at,
+        attachments=[_attachment_to_response(att) for att in msg.attachments],
+    )
 
 
 @router.get("", response_model=list[MessageResponse])
@@ -50,7 +88,11 @@ async def get_messages(
     if channel.type != ChannelType.TEXT:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Not a text channel")
 
-    query = select(Message).where(Message.channel_id == channel_id)
+    query = (
+        select(Message)
+        .where(Message.channel_id == channel_id)
+        .options(selectinload(Message.attachments))
+    )
     if before:
         query = query.where(Message.id < before)
     query = query.order_by(Message.id.desc()).limit(limit)
@@ -58,8 +100,8 @@ async def get_messages(
     result = await db.execute(query)
     messages = result.scalars().all()
 
-    # Return in chronological order
-    return list(reversed(messages))
+    # Return in chronological order with attachments
+    return [_message_to_response(msg) for msg in reversed(messages)]
 
 
 @router.post("/debug", status_code=status.HTTP_200_OK)
@@ -76,7 +118,12 @@ async def create_message(
     channel_id: int, payload: MessageCreate, user: CurrentUser, request: Request, db: AsyncSession = Depends(get_db)
 ):
     """Send a message to a text channel."""
-    logger.info(f"create_message: channel_id={channel_id}, content={payload.content!r}, user={user.get('username')}")
+    logger.info(f"create_message: channel_id={channel_id}, content={payload.content!r}, attachments={payload.attachment_ids}, user={user.get('username')}")
+
+    # Must have content or attachments
+    if not payload.content.strip() and not payload.attachment_ids:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Message must have content or attachments")
+
     # Verify channel exists and is text type
     channel_result = await db.execute(select(Channel).where(Channel.id == channel_id))
     channel = channel_result.scalar_one_or_none()
@@ -85,6 +132,7 @@ async def create_message(
     if channel.type != ChannelType.TEXT:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Not a text channel")
 
+    # Create message
     message = Message(
         channel_id=channel_id,
         user_id=user["id"],
@@ -94,4 +142,22 @@ async def create_message(
     db.add(message)
     await db.flush()
 
-    return message
+    # Link attachments to message
+    if payload.attachment_ids:
+        att_result = await db.execute(
+            select(Attachment).where(
+                Attachment.id.in_(payload.attachment_ids),
+                Attachment.channel_id == channel_id,
+                Attachment.user_id == user["id"],
+                Attachment.message_id.is_(None),  # Only unlinked attachments
+            )
+        )
+        attachments = att_result.scalars().all()
+        for att in attachments:
+            att.message_id = message.id
+        message.attachments = list(attachments)
+
+    await db.flush()
+    await db.refresh(message)
+
+    return _message_to_response(message)

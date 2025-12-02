@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.database import async_session_maker
-from ..models.server import Channel, ChannelType, Message
+from ..models.server import Attachment, Channel, ChannelType, Message
 from ..services.sso_client import SSOClient
 from .manager import chat_manager
 
@@ -27,8 +27,8 @@ async def chat_websocket(websocket: WebSocket, channel_id: int, token: str | Non
     WebSocket endpoint for real-time chat.
 
     Messages:
-    - Client sends: {"type": "message", "content": "..."}
-    - Server broadcasts: {"type": "message", "id": ..., "user_id": ..., "username": ..., "content": ..., "created_at": ...}
+    - Client sends: {"type": "message", "content": "...", "attachment_ids": [...]}
+    - Server broadcasts: {"type": "message", "id": ..., "user_id": ..., "username": ..., "content": ..., "created_at": ..., "attachments": [...]}
     - Server sends on connect: {"type": "connected", "channel_id": ...}
     """
     if not token:
@@ -60,9 +60,12 @@ async def chat_websocket(websocket: WebSocket, channel_id: int, token: str | Non
             except json.JSONDecodeError:
                 continue
 
-            if msg.get("type") == "message" and msg.get("content"):
-                content = msg["content"].strip()
-                if not content:
+            if msg.get("type") == "message":
+                content = (msg.get("content") or "").strip()
+                attachment_ids = msg.get("attachment_ids") or []
+
+                # Must have content or attachments
+                if not content and not attachment_ids:
                     continue
 
                 # Save to database
@@ -74,17 +77,42 @@ async def chat_websocket(websocket: WebSocket, channel_id: int, token: str | Non
                         content=content,
                     )
                     db.add(message)
+                    await db.flush()
+
+                    # Link attachments to message
+                    attachments_data = []
+                    if attachment_ids:
+                        att_result = await db.execute(
+                            select(Attachment).where(
+                                Attachment.id.in_(attachment_ids),
+                                Attachment.channel_id == channel_id,
+                                Attachment.user_id == user["id"],
+                                Attachment.message_id.is_(None),
+                            )
+                        )
+                        attachments = att_result.scalars().all()
+                        for att in attachments:
+                            att.message_id = message.id
+                            attachments_data.append({
+                                "id": att.id,
+                                "filename": att.filename,
+                                "content_type": att.content_type,
+                                "size": att.size,
+                                "url": f"/api/files/{att.id}",
+                            })
+
                     await db.commit()
-                    await db.refresh(message)
 
                     # Broadcast to channel
                     broadcast_msg = {
                         "type": "message",
                         "id": message.id,
+                        "channel_id": channel_id,
                         "user_id": message.user_id,
                         "username": message.username,
                         "content": message.content,
                         "created_at": message.created_at.isoformat(),
+                        "attachments": attachments_data,
                     }
                     await chat_manager.broadcast_to_channel(channel_id, broadcast_msg)
 

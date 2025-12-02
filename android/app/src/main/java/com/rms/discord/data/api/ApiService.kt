@@ -277,6 +277,15 @@ interface ApiService {
         @Path("roomName") roomName: String
     ): MusicProgressResponse
 
+    // File Upload
+    @Multipart
+    @POST("api/channels/{channelId}/upload")
+    suspend fun uploadFile(
+        @Header("Authorization") token: String,
+        @Path("channelId") channelId: Long,
+        @Part file: MultipartBody.Part
+    ): AttachmentResponse
+
     // Bug Report
     @Multipart
     @POST("api/bug/report")
@@ -289,7 +298,11 @@ interface ApiService {
     suspend fun checkUpdate(): AppUpdateResponse
 }
 
-data class SendMessageBody(val content: String)
+data class SendMessageBody(
+    val content: String = "",
+    @SerializedName("attachment_ids")
+    val attachmentIds: List<Long> = emptyList()
+)
 data class GuestJoinBody(val username: String)
 data class CreateChannelRequest(val name: String, val type: String = "text")
 data class CreateServerRequest(val name: String, val icon: String? = null)

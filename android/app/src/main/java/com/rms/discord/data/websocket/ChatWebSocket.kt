@@ -4,8 +4,10 @@ import android.util.Log
 import com.google.gson.Gson
 import com.google.gson.JsonParser
 import com.rms.discord.BuildConfig
+import com.rms.discord.data.model.Attachment
 import com.rms.discord.data.model.Message
 import com.rms.discord.data.model.VoiceUser
+import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -138,16 +140,24 @@ class ChatWebSocket @Inject constructor(
 
             when (type) {
                 "message" -> {
-                    // Message fields are at root level, not nested in "data"
+                    // Parse attachments if present
+                    val attachments = if (json.has("attachments") && !json.get("attachments").isJsonNull) {
+                        val attachmentsType = object : TypeToken<List<Attachment>>() {}.type
+                        gson.fromJson<List<Attachment>>(json.get("attachments"), attachmentsType)
+                    } else {
+                        null
+                    }
+
                     val message = Message(
                         id = json.get("id").asLong,
                         channelId = json.get("channel_id")?.asLong ?: 0L,
                         userId = json.get("user_id").asLong,
                         username = json.get("username").asString,
-                        content = json.get("content").asString,
-                        createdAt = json.get("created_at").asString
+                        content = json.get("content")?.asString ?: "",
+                        createdAt = json.get("created_at").asString,
+                        attachments = attachments
                     )
-                    Log.d(TAG, "Received message: ${message.id} from ${message.username}")
+                    Log.d(TAG, "Received message: ${message.id} from ${message.username}, attachments: ${attachments?.size ?: 0}")
                     _events.tryEmit(WebSocketEvent.NewMessage(message))
                 }
                 "user_joined" -> {
@@ -237,14 +247,21 @@ class ChatWebSocket @Inject constructor(
         return minOf(delay, MAX_RECONNECT_DELAY_MS)
     }
 
-    fun sendMessage(content: String): Boolean {
+    fun sendMessage(content: String, attachmentIds: List<Long> = emptyList()): Boolean {
         if (_connectionState.value != ConnectionState.CONNECTED) {
             Log.w(TAG, "Cannot send message, not connected")
             return false
         }
 
         return try {
-            val json = gson.toJson(mapOf("type" to "message", "content" to content))
+            val payload = mutableMapOf<String, Any>(
+                "type" to "message",
+                "content" to content
+            )
+            if (attachmentIds.isNotEmpty()) {
+                payload["attachment_ids"] = attachmentIds
+            }
+            val json = gson.toJson(payload)
             webSocket?.send(json) ?: false
         } catch (e: Exception) {
             Log.e(TAG, "Error sending message", e)

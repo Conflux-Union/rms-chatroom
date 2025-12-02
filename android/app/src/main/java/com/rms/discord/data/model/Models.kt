@@ -38,6 +38,15 @@ enum class ChannelType {
     VOICE
 }
 
+data class Attachment(
+    val id: Long,
+    val filename: String,
+    @SerializedName("content_type")
+    val contentType: String,
+    val size: Long,
+    val url: String
+)
+
 data class Message(
     val id: Long,
     @SerializedName("channel_id")
@@ -47,7 +56,8 @@ data class Message(
     val username: String,
     val content: String,
     @SerializedName("created_at")
-    val createdAt: String
+    val createdAt: String,
+    val attachments: List<Attachment>? = null
 )
 
 data class VoiceUser(
@@ -282,4 +292,14 @@ data class ScreenShareLockResponse(
     val sharerId: String?,
     @SerializedName("sharer_name")
     val sharerName: String?
+)
+
+// File upload response
+data class AttachmentResponse(
+    val id: Long,
+    val filename: String,
+    @SerializedName("content_type")
+    val contentType: String,
+    val size: Long,
+    val url: String
 )

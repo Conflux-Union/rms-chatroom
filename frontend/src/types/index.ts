@@ -23,6 +23,14 @@ export interface Channel {
   position: number
 }
 
+export interface Attachment {
+  id: number
+  filename: string
+  content_type: string
+  size: number
+  url: string
+}
+
 export interface Message {
   id: number
   channel_id: number
@@ -30,6 +38,7 @@ export interface Message {
   username: string
   content: string
   created_at: string
+  attachments?: Attachment[]
 }
 
 export interface VoiceUser {
