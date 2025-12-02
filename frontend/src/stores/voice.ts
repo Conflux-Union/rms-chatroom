@@ -610,6 +610,7 @@ export const useVoiceStore = defineStore('voice', () => {
     // Apply volume
     const participantAudio = participantAudioMap.get(participantId)
     if (participantAudio) {
+      debug(`Attempting to set volume for ${participantId}. Has gainNode: ${!!participantAudio?.gainNode}. Is iOS: ${isIOS()}`)
       if (isIOS() && participantAudio.gainNode) {
         // iOS: Use Web Audio API gain control
         const gain = Math.max(0, Math.min(3, clampedVolume / 100))
