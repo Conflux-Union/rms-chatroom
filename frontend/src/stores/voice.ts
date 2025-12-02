@@ -480,6 +480,7 @@ export const useVoiceStore = defineStore('voice', () => {
               connectAudioNodes(participant.identity, audioElement, savedVolume)
               audioElement.volume = 0.0 // Mute native volume
               audioElement.muted = true // Ensure not muted
+              audioElement.pause = true
             } else {
               // Non-iOS: use native audioElement.volume
               audioElement.volume = Math.min(savedVolume / 100, 1)
