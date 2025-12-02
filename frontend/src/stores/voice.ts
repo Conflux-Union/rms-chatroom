@@ -481,6 +481,21 @@ export const useVoiceStore = defineStore('voice', () => {
             })
             remoteScreenShares.value = newMap
           }
+          // Handle screen share audio tracks
+          else if (track.kind === Track.Kind.Audio && pub.source === Track.Source.ScreenShareAudio) {
+            const audioElement = track.attach()
+            audioElement.dataset.livekitAudio = 'true'
+            audioElement.dataset.participantId = participant.identity
+            audioElement.dataset.screenShareAudio = 'true'
+            
+            if (selectedAudioOutput.value) {
+              const el = audioElement as HTMLAudioElement & { setSinkId?: (id: string) => Promise<void> }
+              if (el.setSinkId) {
+                try { await el.setSinkId(selectedAudioOutput.value) } catch { /* Ignore */ }
+              }
+            }
+            document.body.appendChild(audioElement)
+          }
         }
       })
 
@@ -863,10 +878,11 @@ export const useVoiceStore = defineStore('voice', () => {
           return false
         }
         
-        // Lock acquired, start screen sharing with AV1 codec
+        // Lock acquired, start screen sharing with AV1 codec and system audio
         await room.value.localParticipant.setScreenShareEnabled(true, {
           resolution: ScreenSharePresets.h1080fps30.resolution,
           contentHint: 'motion',
+          audio: true,
         }, {
           videoCodec: 'av1',
           videoEncoding: {
