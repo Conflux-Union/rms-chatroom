@@ -682,7 +682,9 @@ export const useVoiceStore = defineStore('voice', () => {
           debug(`  - Audio element volume: ${participantAudio.audioElement.volume}`)
           debug(`  - Audio element readyState: ${participantAudio.audioElement.readyState}`)
         }
-
+        
+        diagnoseAudioRouting(participantId)
+        
       } else if (!isIOS() && participantAudio.audioElement) {
         // Non-iOS: use native volume (max 100%)
         participantAudio.audioElement.volume = Math.min(clampedVolume / 100, 1)
@@ -978,6 +980,40 @@ export const useVoiceStore = defineStore('voice', () => {
     container.innerHTML = ''
   }
 
+  function diagnoseAudioRouting(participantId: string): void {
+    const audio = participantAudioMap.get(participantId)
+    if (!audio) {
+      debug(`No audio info for ${participantId}`)
+      return
+    }
+    
+    debug(`=== Audio Routing Diagnosis for ${participantId} ===`)
+    debug(`AudioElement:`)
+    debug(`  - volume: ${audio.audioElement?.volume}`)
+    debug(`  - muted: ${audio.audioElement?.muted}`)
+    debug(`  - paused: ${audio.audioElement?.paused}`)
+    debug(`  - currentTime: ${audio.audioElement?.currentTime}`)
+    debug(`  - readyState: ${audio.audioElement?.readyState}`)
+    
+    if (isIOS()) {
+      debug(`Web Audio (iOS):`)
+      debug(`  - Has sourceNode: ${!!audio.sourceNode}`)
+      debug(`  - Has gainNode: ${!!audio.gainNode}`)
+      debug(`  - Gain value: ${audio.gainNode?.gain?.value}`)
+      debug(`  - GainNode inputs: ${audio.gainNode?.numberOfInputs}`)
+      debug(`  - GainNode outputs: ${audio.gainNode?.numberOfOutputs}`)
+      
+      if (audioContext.value) {
+        debug(`AudioContext:`)
+        debug(`  - state: ${audioContext.value.state}`)
+        debug(`  - sampleRate: ${audioContext.value.sampleRate}`)
+        debug(`  - currentTime: ${audioContext.value.currentTime}`)
+      }
+    }
+    
+    debug(`=== End Diagnosis ===`)
+  }
+
   return {
     room,
     isConnected,
@@ -1018,6 +1054,7 @@ export const useVoiceStore = defineStore('voice', () => {
     attachScreenShare,
     attachLocalScreenShare,
     detachScreenShare,
+    diagnoseAudioRouting,
   }
 })
 
