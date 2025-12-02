@@ -125,7 +125,11 @@ export const useVoiceStore = defineStore('voice', () => {
   // Initialize and activate AudioContext immediately on user interaction (iOS requirement)
   async function activateAudioContext(): Promise<boolean> {
     if (!isIOS()) return true
-    
+    const audioElements = document.querySelectorAll('audio[data-livekit-audio="true"]')
+    audioElements.forEach((el) => {
+      ;(el as HTMLAudioElement).muted = true
+      ;(el as HTMLAudioElement).pause()
+    })
     const ctx = ensureAudioContext()
     console.log(`AudioContext state before activation: ${ctx.state}`)
     
@@ -404,6 +408,12 @@ export const useVoiceStore = defineStore('voice', () => {
       console.log('Warning: AudioContext activation failed, volume control may not work')
     }
 
+    const audioElements = document.querySelectorAll('audio[data-livekit-audio="true"]')
+    audioElements.forEach((el) => {
+      ;(el as HTMLAudioElement).muted = true
+      ;(el as HTMLAudioElement).pause()
+    })
+
     isConnecting.value = true
     error.value = null
 
@@ -656,7 +666,7 @@ export const useVoiceStore = defineStore('voice', () => {
   }
 
   function setGlobalMute(muted: boolean) {
-  
+    const audioElements = document.querySelectorAll('audio[data-livekit-audio="true"]')
     // iOS change masterGain 
     if (isIOS()) {
       const ctx = audioContext.value
@@ -664,9 +674,12 @@ export const useVoiceStore = defineStore('voice', () => {
 
       const master = ensureMasterGain(ctx)
       master.gain.value = muted ? 0 : 1
+      audioElements.forEach((el) => {
+        ;(el as HTMLAudioElement).muted = true
+        ;(el as HTMLAudioElement).pause()
+      })
     } else {
       // other platforms mute via audioElement.muted
-      const audioElements = document.querySelectorAll('audio[data-livekit-audio="true"]')
       audioElements.forEach((el) => {
         ;(el as HTMLAudioElement).muted = muted
       })
@@ -722,6 +735,7 @@ export const useVoiceStore = defineStore('voice', () => {
         const audioElements = document.querySelectorAll('audio[data-livekit-audio="true"]')
         audioElements.forEach((el) => {
           ;(el as HTMLAudioElement).muted = true
+          ;(el as HTMLAudioElement).pause()
         })
 
         console.log(`  - Current gain value: ${participantAudio.gainNode.gain.value}`)
