@@ -54,7 +54,9 @@ class AuthRepository @Inject constructor(
 
     suspend fun verifyToken(token: String): Result<User> {
         return try {
+            Log.d(TAG, "verifyToken start length=${token.length}")
             val response = api.verifyToken("Bearer $token")
+            Log.d(TAG, "verifyToken response success=${response.success} user=${response.user?.username}")
             if (response.success && response.user != null) {
                 Result.success(response.user)
             } else {

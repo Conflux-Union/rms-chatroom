@@ -42,9 +42,13 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import android.content.Intent
+import android.content.Context
 import android.net.Uri
+import android.os.Bundle
 import androidx.compose.ui.platform.LocalContext
+import androidx.browser.customtabs.CustomTabsIntent
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import cn.net.rms.chatroom.BuildConfig
 import cn.net.rms.chatroom.R
 import cn.net.rms.chatroom.data.model.Attachment
@@ -55,6 +59,7 @@ import kotlinx.coroutines.delay
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import android.provider.Browser
 
 enum class SendingState {
     IDLE,
@@ -69,6 +74,7 @@ fun ChatScreen(
     messages: List<Message>,
     isLoading: Boolean = false,
     connectionState: ConnectionState = ConnectionState.CONNECTED,
+    authToken: String? = null,
     onSendMessage: (String) -> Unit,
     onRefresh: () -> Unit = {},
     onReconnect: () -> Unit = {}
@@ -158,7 +164,10 @@ fun ChatScreen(
                         contentPadding = PaddingValues(vertical = 16.dp)
                     ) {
                         items(messages, key = { it.id }) { message ->
-                            MessageItem(message = message)
+                            MessageItem(
+                                message = message,
+                                authToken = authToken
+                            )
                         }
                     }
                 }
@@ -273,9 +282,10 @@ private fun ConnectionBanner(
 }
 
 @Composable
-private fun MessageItem(message: Message) {
-    val context = LocalContext.current
-
+private fun MessageItem(
+    message: Message,
+    authToken: String?
+) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -332,11 +342,7 @@ private fun MessageItem(message: Message) {
                 Spacer(modifier = Modifier.height(8.dp))
                 AttachmentItem(
                     attachment = attachment,
-                    onClick = {
-                        val url = "${BuildConfig.API_BASE_URL}${attachment.url}?inline=1"
-                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                        context.startActivity(intent)
-                    }
+                    authToken = authToken
                 )
             }
         }
@@ -346,8 +352,9 @@ private fun MessageItem(message: Message) {
 @Composable
 private fun AttachmentItem(
     attachment: Attachment,
-    onClick: () -> Unit
+    authToken: String?
 ) {
+    val context = LocalContext.current
     val isImage = attachment.contentType.startsWith("image/")
     val isVideo = attachment.contentType.startsWith("video/")
     val isAudio = attachment.contentType.startsWith("audio/")
@@ -361,24 +368,35 @@ private fun AttachmentItem(
         else -> Icons.Default.InsertDriveFile
     }
 
+    val fileUrl = "${BuildConfig.API_BASE_URL}${attachment.url}"
+    val inlineUrl = "$fileUrl?inline=1"
+
     // For images, show preview
     if (isImage) {
-        val imageUrl = "${BuildConfig.API_BASE_URL}${attachment.url}?inline=1"
+        val imageRequest = ImageRequest.Builder(context)
+            .data(inlineUrl)
+            .apply {
+                if (!authToken.isNullOrBlank()) {
+                    addHeader("Authorization", "Bearer $authToken")
+                }
+            }
+            .build()
+
         AsyncImage(
-            model = imageUrl,
+            model = imageRequest,
             contentDescription = attachment.filename,
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(max = 200.dp)
                 .clip(RoundedCornerShape(8.dp))
-                .clickable(onClick = onClick)
+                .clickable { openAttachment(context, inlineUrl, authToken) }
         )
     } else {
         // For other files, show card
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable(onClick = onClick),
+                .clickable { openAttachment(context, inlineUrl, authToken) },
             shape = RoundedCornerShape(8.dp),
             color = SurfaceLighter
         ) {
@@ -419,6 +437,21 @@ private fun AttachmentItem(
             }
         }
     }
+}
+
+private fun openAttachment(context: Context, url: String, authToken: String?) {
+    if (authToken.isNullOrBlank()) {
+        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+        return
+    }
+
+    val headers = Bundle().apply {
+        putString("Authorization", "Bearer $authToken")
+    }
+
+    val customTabsIntent = CustomTabsIntent.Builder().build()
+    customTabsIntent.intent.putExtra(Browser.EXTRA_HEADERS, headers)
+    customTabsIntent.launchUrl(context, Uri.parse(url))
 }
 
 private fun formatFileSize(bytes: Long): String {

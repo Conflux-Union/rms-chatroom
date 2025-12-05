@@ -206,6 +206,7 @@ fun MainScreen(
                             messages = mainViewModel.messages.collectAsState().value,
                             isLoading = mainState.isMessagesLoading,
                             connectionState = connectionState,
+                            authToken = authState.token,
                             onSendMessage = { mainViewModel.sendMessage(it) },
                             onRefresh = { mainViewModel.refreshMessages() },
                             onReconnect = { mainViewModel.reconnectWebSocket() }

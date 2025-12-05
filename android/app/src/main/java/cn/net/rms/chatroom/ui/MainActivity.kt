@@ -169,12 +169,16 @@ class MainActivity : ComponentActivity() {
 
     private fun handleIntent(intent: Intent?) {
         intent?.data?.let { uri ->
+            Log.d("MainActivity", "handleIntent uri=$uri")
             when (uri.scheme) {
-                "rmsdiscord" -> {
+                "rmschatroom" -> {
                     when (uri.host) {
                         "callback" -> {
                             uri.getQueryParameter("token")?.let { token ->
+                                Log.d("MainActivity", "callback token length=${token.length}")
                                 authViewModel.handleSsoCallback(token)
+                            } ?: run {
+                                Log.e("MainActivity", "callback token missing")
                             }
                         }
                         "voice-invite" -> {
