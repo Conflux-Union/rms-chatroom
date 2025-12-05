@@ -74,6 +74,10 @@ android {
     kotlin {
         compilerOptions {
             jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+            freeCompilerArgs.addAll(
+                "-opt-in=androidx.compose.material3.ExperimentalMaterial3Api",
+                "-opt-in=androidx.compose.foundation.layout.ExperimentalLayoutApi"
+            )
         }
     }
 
@@ -139,6 +143,13 @@ dependencies {
 
     // Colorful Sliders
     implementation(libs.colorful.sliders)
+
+    // Telephoto (zoomable image preview)
+    implementation(libs.telephoto.zoomable.image.coil)
+
+    // Media3 (video preview)
+    implementation(libs.media3.exoplayer)
+    implementation(libs.media3.ui)
 
     // Testing - Unit tests
     testImplementation(libs.junit)
