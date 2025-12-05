@@ -26,7 +26,7 @@ val commitHash = "git rev-parse --short=8 HEAD".runCommand().ifEmpty { "unknown"
 val fullVersionName = "v${appVersionName}(${appVersionCode})(commit:${commitHash})"
 
 android {
-    namespace = "com.rms.discord"
+    namespace = "cn.net.rms.chatroom"
     compileSdk = 35
 
     signingConfigs {
@@ -39,7 +39,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.rms.discord"
+        applicationId = "cn.net.rms.chatroom"
         minSdk = 26
         targetSdk = 35
         versionCode = appVersionCode

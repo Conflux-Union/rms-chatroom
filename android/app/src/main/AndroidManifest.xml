@@ -38,12 +38,12 @@
             </intent-filter>
 
             <!-- Deep link for SSO callback -->
-            <intent-filter android:autoVerify="true">
+            <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data
-                    android:scheme="rmsdiscord"
+                    android:scheme="rmschatroom"
                     android:host="callback" />
             </intent-filter>
 
@@ -53,7 +53,7 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data
-                    android:scheme="rmsdiscord"
+                    android:scheme="rmschatroom"
                     android:host="voice-invite" />
             </intent-filter>
         </activity>

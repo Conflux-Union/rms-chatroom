@@ -29,19 +29,19 @@
 # Gson
 # ================================
 -keepattributes *Annotation*
--keep class com.rms.discord.data.model.** { *; }
--keepclassmembers class com.rms.discord.data.model.** {
+-keep class cn.net.rms.chatroom.data.model.** { *; }
+-keepclassmembers class cn.net.rms.chatroom.data.model.** {
     <fields>;
     <init>(...);
 }
 # Keep API request/response body classes
--keep class com.rms.discord.data.api.SendMessageBody { *; }
--keep class com.rms.discord.data.api.GuestJoinBody { *; }
--keep class com.rms.discord.data.api.BugReportResponse { *; }
--keep class com.rms.discord.data.api.AppUpdateResponse { *; }
+-keep class cn.net.rms.chatroom.data.api.SendMessageBody { *; }
+-keep class cn.net.rms.chatroom.data.api.GuestJoinBody { *; }
+-keep class cn.net.rms.chatroom.data.api.BugReportResponse { *; }
+-keep class cn.net.rms.chatroom.data.api.AppUpdateResponse { *; }
 # Keep LiveKit data classes
--keep class com.rms.discord.data.livekit.ParticipantInfo { *; }
--keep class com.rms.discord.data.livekit.ConnectionState { *; }
+-keep class cn.net.rms.chatroom.data.livekit.ParticipantInfo { *; }
+-keep class cn.net.rms.chatroom.data.livekit.ConnectionState { *; }
 -keep class * implements com.google.gson.TypeAdapterFactory
 -keep class * implements com.google.gson.JsonSerializer
 -keep class * implements com.google.gson.JsonDeserializer
@@ -106,7 +106,7 @@
 # ================================
 # WebSocket
 # ================================
--keep class com.rms.discord.data.websocket.** { *; }
+-keep class cn.net.rms.chatroom.data.websocket.** { *; }
 
 # ================================
 # Enums
