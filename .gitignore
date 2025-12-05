@@ -30,3 +30,6 @@ debug/
 
 # Scripts
 git-commit-ai.sh
+
+# Claude Context
+.claude-context/
