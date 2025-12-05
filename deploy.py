@@ -9,7 +9,9 @@ Format:
 
 Usage:
     python deploy.py --release   # Release deploy (frontend + backend + Android), creates tag
+    python deploy.py --release --web-only  # Release deploy (frontend + backend only), creates tag
     python deploy.py --hot-fix   # Hot-fix deploy (requires x.x.x-fix-x version), creates tag
+    python deploy.py --hot-fix --web-only  # Hot-fix deploy (web only), creates tag
     python deploy.py --debug     # Debug deploy (frontend + backend only, no Android)
     python deploy.py --dry-run --debug  # Test packaging without upload
 """
@@ -566,6 +568,11 @@ def main():
         action="store_true",
         help="Create archive without uploading",
     )
+    parser.add_argument(
+        "--web-only",
+        action="store_true",
+        help="Deploy frontend + backend only, skip Android build (only for --release and --hot-fix)",
+    )
     
     args = parser.parse_args()
     
@@ -577,7 +584,12 @@ def main():
     else:
         mode = "debug"
     
-    build_android = mode in ("release", "hot-fix")
+    # Validate --web-only usage
+    if args.web_only and mode == "debug":
+        print("Error: --web-only is only valid with --release or --hot-fix")
+        sys.exit(1)
+    
+    build_android = mode in ("release", "hot-fix") and not args.web_only
     create_tag = mode in ("release", "hot-fix")
     
     # Check git working directory is clean (skip for dry-run)
@@ -616,7 +628,8 @@ def main():
     # Step 1: Validate version format
     step += 1
     print(f"[{step}/{total_steps}] Validating version format...")
-    print(f"      Version: v{version_name}({version_code}) [{mode} mode]")
+    mode_desc = f"{mode} mode" + (" (web-only)" if args.web_only else "")
+    print(f"      Version: v{version_name}({version_code}) [{mode_desc}]")
     
     valid, err = validate_version_format(version_name, mode)
     if not valid:
