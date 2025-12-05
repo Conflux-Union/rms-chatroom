@@ -8,15 +8,16 @@ Format:
     code=1
 
 Usage:
-    python deploy.py                    # Deploy with version (includes Android)
-    python deploy.py --without-android  # Deploy without Android build
-    python deploy.py --dry-run          # Pack files without uploading
-    python deploy.py --server URL       # Override server URL
+    python deploy.py --release   # Release deploy (frontend + backend + Android), creates tag
+    python deploy.py --hot-fix   # Hot-fix deploy (requires x.x.x-fix-x version), creates tag
+    python deploy.py --debug     # Debug deploy (frontend + backend only, no Android)
+    python deploy.py --dry-run --debug  # Test packaging without upload
 """
 from __future__ import annotations
 
 import argparse
 import io
+import json
 import os
 import re
 import shutil
@@ -49,6 +50,10 @@ ANDROID_DIR = PROJECT_ROOT / "android"
 ANDROID_GRADLE_FILE = ANDROID_DIR / "app" / "build.gradle.kts"
 ANDROID_APK_OUTPUT = ANDROID_DIR / "app" / "build" / "outputs" / "apk" / "release" / "app-release.apk"
 ANDROID_APK_DEST = PROJECT_ROOT / "backend" / "android_app" / "rms-chatroom.apk"
+ANDROID_VERSION_JSON = PROJECT_ROOT / "backend" / "android_app" / "version.json"
+
+# Frontend directory
+FRONTEND_DIR = PROJECT_ROOT / "frontend"
 
 # Patterns to exclude from deployment package
 EXCLUDE_PATTERNS = {
@@ -91,6 +96,145 @@ def should_exclude(path: Path, rel_path: str) -> bool:
                 return True
     
     return False
+
+
+def validate_version_format(version: str, mode: str) -> tuple[bool, str]:
+    """Validate version format based on deploy mode."""
+    if mode == "hot-fix":
+        # Must match x.x.x-fix-x (e.g., 1.0.6-fix-1)
+        if not re.match(r'^\d+\.\d+\.\d+-fix-\d+$', version):
+            return False, f"Hot-fix requires version format x.x.x-fix-x, got: {version}"
+    elif mode == "debug":
+        # Must contain x.x.x-dev (e.g., 1.0.6-dev, 1.0.6-dev-1)
+        if not re.match(r'^\d+\.\d+\.\d+-dev', version):
+            return False, f"Debug requires version format x.x.x-dev*, got: {version}"
+    return True, ""
+
+
+def check_android_version_json(version_name: str, version_code: str) -> tuple[bool, str]:
+    """Check that android_app/version.json matches current.version."""
+    if not ANDROID_VERSION_JSON.exists():
+        return False, f"Android version.json not found: {ANDROID_VERSION_JSON}"
+    
+    try:
+        with open(ANDROID_VERSION_JSON) as f:
+            data = json.load(f)
+        
+        json_name = data.get("version_name", "")
+        json_code = str(data.get("version_code", ""))
+        
+        if json_name != version_name:
+            return False, f"version.json version_name mismatch: {json_name} != {version_name}"
+        if json_code != version_code:
+            return False, f"version.json version_code mismatch: {json_code} != {version_code}"
+        
+        return True, ""
+    except json.JSONDecodeError as e:
+        return False, f"Invalid version.json: {e}"
+    except Exception as e:
+        return False, f"Failed to read version.json: {e}"
+
+
+def get_last_release_version() -> str | None:
+    """Get the last release version from git tags (excluding -fix- and -dev)."""
+    try:
+        result = subprocess.run(
+            ["git", "tag", "-l", "v*"],
+            cwd=PROJECT_ROOT,
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            return None
+        
+        tags = result.stdout.strip().splitlines()
+        release_versions = []
+        
+        for tag in tags:
+            # Match v{version}({code}) format, excluding -fix- and -dev
+            match = re.match(r'^v(\d+\.\d+\.\d+)\(\d+\)$', tag)
+            if match:
+                release_versions.append(match.group(1))
+        
+        if not release_versions:
+            return None
+        
+        # Sort by version number and return the latest
+        def version_key(v):
+            return tuple(int(x) for x in v.split('.'))
+        
+        release_versions.sort(key=version_key, reverse=True)
+        return release_versions[0]
+    except Exception:
+        return None
+
+
+def create_git_tag(version: str, code: str) -> tuple[bool, str]:
+    """Create git tag: v{version}({code})."""
+    tag_name = f"v{version}({code})"
+    try:
+        result = subprocess.run(
+            ["git", "tag", tag_name],
+            cwd=PROJECT_ROOT,
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            return False, f"Failed to create tag: {result.stderr.strip()}"
+        return True, tag_name
+    except Exception as e:
+        return False, f"Failed to create tag: {e}"
+
+
+def git_push(with_tags: bool = False) -> tuple[bool, str]:
+    """Push commits to remote, optionally with tags."""
+    try:
+        # Push commits
+        result = subprocess.run(
+            ["git", "push"],
+            cwd=PROJECT_ROOT,
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            return False, f"Failed to push commits: {result.stderr.strip()}"
+        
+        if with_tags:
+            # Push tags
+            result = subprocess.run(
+                ["git", "push", "--tags"],
+                cwd=PROJECT_ROOT,
+                capture_output=True,
+                text=True,
+            )
+            if result.returncode != 0:
+                return False, f"Failed to push tags: {result.stderr.strip()}"
+        
+        return True, ""
+    except Exception as e:
+        return False, f"Failed to push: {e}"
+
+
+def build_frontend() -> tuple[bool, str]:
+    """Build frontend locally to verify before deploy."""
+    if not FRONTEND_DIR.exists():
+        return False, f"Frontend directory not found: {FRONTEND_DIR}"
+    
+    try:
+        result = subprocess.run(
+            ["npm", "run", "build"],
+            cwd=FRONTEND_DIR,
+            capture_output=True,
+            text=True,
+            timeout=300,  # 5 minutes timeout
+        )
+        if result.returncode != 0:
+            return False, f"Frontend build failed:\n{result.stderr[-2000:]}"
+        return True, ""
+    except subprocess.TimeoutExpired:
+        return False, "Frontend build timed out (5 minutes)"
+    except Exception as e:
+        return False, f"Frontend build error: {e}"
 
 
 def check_git_clean() -> tuple[bool, str]:
@@ -388,6 +532,25 @@ def deploy(server_url: str, token: str, dry_run: bool = False, step_offset: int 
 
 def main():
     parser = argparse.ArgumentParser(description="Deploy RMS Discord to server")
+    
+    # Required mode argument (mutually exclusive)
+    mode_group = parser.add_mutually_exclusive_group(required=True)
+    mode_group.add_argument(
+        "--release",
+        action="store_true",
+        help="Release deploy (frontend + backend + Android), creates tag",
+    )
+    mode_group.add_argument(
+        "--hot-fix",
+        action="store_true",
+        help="Hot-fix deploy (requires x.x.x-fix-x version), creates tag",
+    )
+    mode_group.add_argument(
+        "--debug",
+        action="store_true",
+        help="Debug deploy (frontend + backend only, no Android, requires x.x.x-dev version)",
+    )
+    
     parser.add_argument(
         "--server",
         default=SERVER_URL,
@@ -403,13 +566,19 @@ def main():
         action="store_true",
         help="Create archive without uploading",
     )
-    parser.add_argument(
-        "--without-android",
-        action="store_true",
-        help="Skip Android build",
-    )
     
     args = parser.parse_args()
+    
+    # Determine mode
+    if args.release:
+        mode = "release"
+    elif args.hot_fix:
+        mode = "hot-fix"
+    else:
+        mode = "debug"
+    
+    build_android = mode in ("release", "hot-fix")
+    create_tag = mode in ("release", "hot-fix")
     
     # Check git working directory is clean (skip for dry-run)
     if not args.dry_run:
@@ -433,20 +602,66 @@ def main():
     version_name, version_code = read_version_file()
     version_name = version_name.lstrip("v")  # Remove leading 'v' if present
     commit_hash = get_commit_hash()
-    build_android = not args.without_android
     
-    # Step counter: version + (android) + pack + upload + result
-    total_steps = 5 if build_android else 4
+    # Calculate total steps based on mode
+    # Steps: validate + version + frontend_build + (android) + (tag) + push + pack + upload + result
+    total_steps = 7  # base: validate + version + frontend + push + pack + upload + result
+    if build_android:
+        total_steps += 1  # android build
+    if create_tag:
+        total_steps += 1  # tag creation
+    
     step = 0
     
-    # Generate version files
+    # Step 1: Validate version format
     step += 1
-    print(f"[{step}/{total_steps}] Generating version files...")
-    print(f"      Version: v{version_name}({version_code})(commit:{commit_hash})")
+    print(f"[{step}/{total_steps}] Validating version format...")
+    print(f"      Version: v{version_name}({version_code}) [{mode} mode]")
+    
+    valid, err = validate_version_format(version_name, mode)
+    if not valid:
+        print(f"      ERROR: {err}")
+        sys.exit(1)
+    
+    # For release mode, check if version already released
+    if mode == "release":
+        last_release = get_last_release_version()
+        if last_release and last_release == version_name:
+            print(f"      ERROR: Version {version_name} already released.")
+            print(f"             Use --hot-fix for fixes to this version.")
+            sys.exit(1)
+        if last_release:
+            print(f"      Last release: v{last_release}")
+    
+    # For release/hot-fix, check android_app/version.json matches
+    if mode in ("release", "hot-fix"):
+        valid, err = check_android_version_json(version_name, version_code)
+        if not valid:
+            print(f"      ERROR: {err}")
+            print(f"             Update backend/android_app/version.json to match current.version")
+            sys.exit(1)
+        print(f"      android_app/version.json matches")
+    
+    print(f"      Version format valid")
+    
+    # Step 2: Generate version files
+    step += 1
+    print(f"\n[{step}/{total_steps}] Generating version files...")
     generate_version_files(version_name, version_code, commit_hash)
+    print(f"      Generated frontend/src/version.ts")
+    print(f"      Generated backend/version.py")
     
     try:
-        # Android build
+        # Step 3: Build frontend locally
+        step += 1
+        print(f"\n[{step}/{total_steps}] Building frontend locally...")
+        success, err = build_frontend()
+        if not success:
+            print(f"      ERROR: {err}")
+            sys.exit(1)
+        print(f"      Frontend build successful")
+        
+        # Step 4 (optional): Android build
         if build_android:
             step += 1
             print(f"\n[{step}/{total_steps}] Building Android release...")
@@ -472,6 +687,33 @@ def main():
                 print(f"      ERROR: {err}")
                 sys.exit(1)
             print(f"      Copied APK to {ANDROID_APK_DEST.relative_to(PROJECT_ROOT)}")
+        
+        # Step 5 (optional): Create git tag
+        tag_name = None
+        if create_tag:
+            step += 1
+            print(f"\n[{step}/{total_steps}] Creating git tag...")
+            success, result = create_git_tag(version_name, version_code)
+            if not success:
+                print(f"      ERROR: {result}")
+                sys.exit(1)
+            tag_name = result
+            print(f"      Tag created: {tag_name}")
+        
+        # Step 6: Git push
+        step += 1
+        print(f"\n[{step}/{total_steps}] Pushing to remote...")
+        if args.dry_run:
+            print(f"      [DRY RUN] Skipping git push")
+        else:
+            success, err = git_push(with_tags=create_tag)
+            if not success:
+                print(f"      ERROR: {err}")
+                sys.exit(1)
+            if create_tag:
+                print(f"      Pushed commits and tags")
+            else:
+                print(f"      Pushed commits")
         
         # Deploy (pack, upload, result)
         success = deploy(args.server, args.token, args.dry_run, step, total_steps)
