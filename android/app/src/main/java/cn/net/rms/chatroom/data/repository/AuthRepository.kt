@@ -71,15 +71,20 @@ class AuthRepository @Inject constructor(
     fun getAuthHeader(token: String): String = "Bearer $token"
 }
 
-class AuthException(message: String) : Exception(message)
+class AuthException(
+    message: String,
+    val isUnauthorized: Boolean = false
+) : Exception(message)
 
 fun Exception.toAuthException(): AuthException {
-    val message = when (this) {
-        is UnknownHostException -> "无法连接服务器，请检查网络"
-        is ConnectException -> "连接服务器失败，请稍后重试"
-        is SocketTimeoutException -> "连接超时，请检查网络"
-        is HttpException -> "服务器错误 (${code()}): ${message()}"
-        else -> "未知错误: ${this.message ?: this.javaClass.simpleName}"
+    return when (this) {
+        is UnknownHostException -> AuthException("无法连接服务器，请检查网络", isUnauthorized = false)
+        is ConnectException -> AuthException("连接服务器失败，请稍后重试", isUnauthorized = false)
+        is SocketTimeoutException -> AuthException("连接超时，请检查网络", isUnauthorized = false)
+        is HttpException -> {
+            val isUnauthorized = code() == 401
+            AuthException("服务器错误 (${code()}): ${message()}", isUnauthorized = isUnauthorized)
+        }
+        else -> AuthException("未知错误: ${this.message ?: this.javaClass.simpleName}", isUnauthorized = false)
     }
-    return AuthException(message)
 }

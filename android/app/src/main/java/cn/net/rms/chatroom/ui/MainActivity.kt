@@ -67,6 +67,8 @@ class MainActivity : ComponentActivity() {
                 val navController = rememberNavController()
                 val authState by authViewModel.state.collectAsState()
 
+                val context = this@MainActivity
+                
                 LaunchedEffect(authState.isAuthenticated, authState.isLoading) {
                     if (!authState.isLoading) {
                         val currentRoute = navController.currentDestination?.route
@@ -79,6 +81,14 @@ class MainActivity : ComponentActivity() {
                                 popUpTo(Screen.Main.route) { inclusive = true }
                             }
                         }
+                    }
+                }
+                
+                // Show error toast when entering main with network error
+                LaunchedEffect(authState.error) {
+                    if (authState.isAuthenticated && authState.error != null) {
+                        Toast.makeText(context, authState.error, Toast.LENGTH_LONG).show()
+                        authViewModel.clearError()
                     }
                 }
 

@@ -4,6 +4,7 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import cn.net.rms.chatroom.data.model.User
+import cn.net.rms.chatroom.data.repository.AuthException
 import cn.net.rms.chatroom.data.repository.AuthRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -55,13 +56,26 @@ class AuthViewModel @Inject constructor(
                     }
                     .onFailure { e ->
                         Log.e(TAG, "checkAuth verify failed", e)
-                        authRepository.clearToken()
-                        _state.value = AuthState(
-                            isLoading = false,
-                            isAuthenticated = false,
-                            token = null,
-                            error = "自动登录失败: ${e.message}"
-                        )
+                        val isUnauthorized = (e as? AuthException)?.isUnauthorized == true
+                        if (isUnauthorized) {
+                            // 401: Token invalid, clear and redirect to login
+                            authRepository.clearToken()
+                            _state.value = AuthState(
+                                isLoading = false,
+                                isAuthenticated = false,
+                                token = null,
+                                error = "登录已过期，请重新登录"
+                            )
+                        } else {
+                            // Other errors (network, server): proceed to main with error message
+                            _state.value = AuthState(
+                                isLoading = false,
+                                isAuthenticated = true,
+                                user = null,
+                                token = token,
+                                error = e.message
+                            )
+                        }
                     }
             } else {
                 Log.d(TAG, "checkAuth no token")
