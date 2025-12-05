@@ -1,6 +1,6 @@
 {
-    "version_code": 10,
-    "version_name": "1.0.6",
-    "changelog": "- 新增了文字频道上传图片、视频、文件功能",
+    "version_code": 11,
+    "version_name": "1.0.7",
+    "changelog": "- 新增应用内附件预览（图片缩放、视频播放、文本查看）\n- 修复认证错误处理逻辑",
     "force_update": false
 }
