@@ -1,0 +1,5 @@
+{
+  "category.rms-chatroom": "RMS 语音聊天",
+  "key.rms-chatroom.open_gui": "打开语音面板 (配合R键)",
+  "key.rms-chatroom.toggle_mic": "切换麦克风 (配合R键)"
+}

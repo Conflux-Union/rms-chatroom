@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "id": "rms-chatroom",
+  "version": "${version}",
+  "name": "RMS Voice Chat",
+  "description": "RMS Discord voice chat integration for Minecraft",
+  "authors": ["Trirrin"],
+  "contact": {
+    "homepage": "https://chatroom.rms.net.cn"
+  },
+  "license": "MIT",
+  "icon": "assets/rms-chatroom/icon.png",
+  "environment": "client",
+  "entrypoints": {
+    "client": [
+      "cn.net.rms.rmsChatroom.client.RmsChatroomClient"
+    ],
+    "main": [
+      "cn.net.rms.rmsChatroom.RmsChatroom"
+    ]
+  },
+  "mixins": [
+    "rms-chatroom.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=${loader_version}",
+    "fabric": "*",
+    "minecraft": "${minecraft_version}",
+    "cloth-config2": "*"
+  },
+  "suggests": {
+    "modmenu": "*"
+  }
+}

@@ -79,6 +79,7 @@ EXCLUDE_PATTERNS = {
     "music-service",
     "android",
     "debug",
+    "fabric-mod",
 }
 
 
