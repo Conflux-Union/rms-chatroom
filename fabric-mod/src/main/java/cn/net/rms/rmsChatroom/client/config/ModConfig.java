@@ -2,11 +2,15 @@ package cn.net.rms.rmsChatroom.client.config;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.google.gson.reflect.TypeToken;
 import net.fabricmc.loader.api.FabricLoader;
 
 import java.io.IOException;
+import java.lang.reflect.Type;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashMap;
+import java.util.Map;
 
 public class ModConfig {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
@@ -17,7 +21,6 @@ public class ModConfig {
 
     // Server settings
     public String serverUrl = "https://preview-chatroom.rms.net.cn";
-    public String ssoUrl = "https://sso.rms.net.cn";
 
     // Auth
     public String token = "";
@@ -35,6 +38,9 @@ public class ModConfig {
     // Audio settings
     public boolean pushToTalk = false;
     public int pushToTalkKey = -1;
+
+    // Per-participant volume settings (participantId -> volume 0.0-2.0)
+    public Map<String, Float> participantVolumes = new HashMap<>();
 
     public static ModConfig getInstance() {
         if (INSTANCE == null) {
@@ -81,5 +87,14 @@ public class ModConfig {
     public void logout() {
         this.token = "";
         save();
+    }
+
+    public void setParticipantVolume(String participantId, float volume) {
+        participantVolumes.put(participantId, volume);
+        save();
+    }
+
+    public float getParticipantVolume(String participantId) {
+        return participantVolumes.getOrDefault(participantId, 1.0f);
     }
 }

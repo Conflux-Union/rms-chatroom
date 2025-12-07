@@ -66,8 +66,8 @@ public class AuthManager {
             int port = callbackServer.start();
 
             String redirectUri = "http://localhost:" + port + "/callback";
-            String ssoUrl = ModConfig.getInstance().ssoUrl;
-            String loginUrl = ssoUrl + "/oauth/authorize?redirect_uri=" + redirectUri + "&client_id=rms-chatroom-mc";
+            String serverUrl = ModConfig.getInstance().serverUrl;
+            String loginUrl = serverUrl + "/api/auth/login?redirect_url=" + redirectUri;
 
             // Open browser
             if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {

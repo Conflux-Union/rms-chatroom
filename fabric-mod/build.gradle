@@ -12,6 +12,7 @@ base {
 
 
 repositories {
+    mavenLocal()
     maven { url 'https://jitpack.io' }
     maven { url 'https://maven.shedaniel.me/' }
     maven { url 'https://maven.terraformersmc.com/' }
@@ -37,10 +38,17 @@ dependencies {
     }
 
     // LiveKit Java SDK
-    implementation('com.github.Trirrin.livekit-java-sdk:rtc:v0.1.0') {
+    implementation('com.github.Trirrin.livekit-java-sdk:rtc:0.1.28') {
         exclude(group: "org.slf4j")
         exclude(group: "org.apache.logging.log4j")
     }
+
+    // WebRTC native libraries for each platform
+    implementation "dev.onvoid.webrtc:webrtc-java:0.14.0:linux-x86_64"
+    implementation "dev.onvoid.webrtc:webrtc-java:0.14.0:linux-aarch64"
+    implementation "dev.onvoid.webrtc:webrtc-java:0.14.0:windows-x86_64"
+    implementation "dev.onvoid.webrtc:webrtc-java:0.14.0:macos-x86_64"
+    implementation "dev.onvoid.webrtc:webrtc-java:0.14.0:macos-aarch64"
 
     // Gson for JSON parsing (should be provided by MC, but declare for safety)
     implementation 'com.google.code.gson:gson:2.10.1'

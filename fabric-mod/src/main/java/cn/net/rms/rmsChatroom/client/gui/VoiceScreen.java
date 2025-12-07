@@ -3,6 +3,7 @@ package cn.net.rms.rmsChatroom.client.gui;
 import cn.net.rms.rmsChatroom.client.api.ApiClient;
 import cn.net.rms.rmsChatroom.client.api.Models;
 import cn.net.rms.rmsChatroom.client.auth.AuthManager;
+import cn.net.rms.rmsChatroom.client.config.ModConfig;
 import cn.net.rms.rmsChatroom.client.voice.VoiceManager;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.widget.ButtonWidget;
@@ -16,9 +17,6 @@ import java.util.List;
 import java.util.Map;
 
 public class VoiceScreen extends Screen {
-    private static final int PANEL_WIDTH = 300;
-    private static final int PANEL_HEIGHT = 220;
-
     private List<Models.Server> servers = new ArrayList<>();
     private List<Models.Channel> channels = new ArrayList<>();
     private Map<Long, List<Models.VoiceUser>> voiceUsers = Map.of();
@@ -26,7 +24,6 @@ public class VoiceScreen extends Screen {
     private Models.Server selectedServer = null;
     private Models.Channel selectedChannel = null;
 
-    private int scrollOffset = 0;
     private String statusMessage = "";
     private boolean isLoading = false;
 
@@ -41,8 +38,7 @@ public class VoiceScreen extends Screen {
         AuthManager authManager = AuthManager.getInstance();
 
         if (!authManager.isLoggedIn()) {
-            // Check if we have a token to validate
-            if (cn.net.rms.rmsChatroom.client.config.ModConfig.getInstance().isLoggedIn()) {
+            if (ModConfig.getInstance().isLoggedIn()) {
                 statusMessage = "Validating session...";
                 isLoading = true;
                 authManager.validateToken().thenAccept(valid -> {
@@ -99,7 +95,6 @@ public class VoiceScreen extends Screen {
             ));
         }
 
-        // Close button
         addDrawableChild(new ButtonWidget(
                 centerX - 75, centerY + 50, 150, 20,
                 new LiteralText("Close"),
@@ -112,7 +107,6 @@ public class VoiceScreen extends Screen {
         statusMessage = "Loading...";
         isLoading = true;
 
-        // Load servers
         ApiClient.getInstance().getServers().thenAccept(serverList -> {
             servers = serverList;
             if (!servers.isEmpty()) {
@@ -144,16 +138,17 @@ public class VoiceScreen extends Screen {
     private void rebuildUI() {
         clearChildren();
 
-        int panelX = (width - PANEL_WIDTH) / 2;
-        int panelY = (height - PANEL_HEIGHT) / 2;
-
         VoiceManager voiceManager = VoiceManager.getInstance();
         Models.User currentUser = AuthManager.getInstance().getCurrentUser();
 
-        // User info and logout button
+        int leftColumnX = 20;
+        int contentWidth = 200;
+        int startY = 50;
+
+        // Title and logout
         if (currentUser != null) {
             addDrawableChild(new ButtonWidget(
-                    panelX + PANEL_WIDTH - 60, panelY + 5, 55, 15,
+                    width - 70, 10, 60, 20,
                     new LiteralText("Logout"),
                     button -> {
                         voiceManager.disconnect();
@@ -163,16 +158,14 @@ public class VoiceScreen extends Screen {
             ));
         }
 
-        // Server selector (simple buttons for now)
-        int serverY = panelY + 25;
-        int serverBtnWidth = 60;
-        int serverX = panelX + 5;
+        // Server buttons
+        int serverY = startY;
+        int serverBtnWidth = 80;
         for (int i = 0; i < Math.min(servers.size(), 4); i++) {
             Models.Server server = servers.get(i);
-            boolean selected = selectedServer != null && selectedServer.id() == server.id();
             addDrawableChild(new ButtonWidget(
-                    serverX + i * (serverBtnWidth + 5), serverY, serverBtnWidth, 20,
-                    new LiteralText(truncate(server.name(), 8)),
+                    leftColumnX + i * (serverBtnWidth + 5), serverY, serverBtnWidth, 20,
+                    new LiteralText(truncate(server.name(), 10)),
                     button -> {
                         selectedServer = server;
                         loadChannels(server.id());
@@ -180,35 +173,57 @@ public class VoiceScreen extends Screen {
             ));
         }
 
-        // Channel list
-        int channelY = panelY + 55;
-        int channelHeight = 20;
-        int maxChannels = 5;
-        for (int i = 0; i < Math.min(channels.size(), maxChannels); i++) {
-            Models.Channel channel = channels.get(i);
-            List<Models.VoiceUser> users = voiceUsers.getOrDefault(channel.id(), List.of());
-            int userCount = users.size();
+        int listY = serverY + 30;
 
-            String label = channel.name() + (userCount > 0 ? " (" + userCount + ")" : "");
-            boolean isCurrentChannel = voiceManager.getCurrentChannelId() == channel.id();
+        // Connected: show participants
+        if (voiceManager.isConnected()) {
+            List<VoiceManager.ParticipantInfo> participants = voiceManager.getParticipants();
+            
+            for (int i = 0; i < Math.min(participants.size(), 8); i++) {
+                VoiceManager.ParticipantInfo participant = participants.get(i);
+                int volPercent = (int)(participant.volume() * 100);
+                String label = participant.name() + 
+                        (participant.isLocal() ? " (You)" : " [" + volPercent + "%]") +
+                        (participant.isMuted() ? " [M]" : "");
+                
+                if (!participant.isLocal()) {
+                    final VoiceManager.ParticipantInfo p = participant;
+                    addDrawableChild(new ButtonWidget(
+                            leftColumnX, listY + i * 25, contentWidth, 20,
+                            new LiteralText(label),
+                            button -> client.setScreen(new VolumeScreen(this, p))
+                    ));
+                } else {
+                    addDrawableChild(new ButtonWidget(
+                            leftColumnX, listY + i * 25, contentWidth, 20,
+                            new LiteralText(label),
+                            button -> {}
+                    ));
+                }
+            }
+        } else {
+            // Not connected: show channels
+            for (int i = 0; i < Math.min(channels.size(), 8); i++) {
+                Models.Channel channel = channels.get(i);
+                List<Models.VoiceUser> users = voiceUsers.getOrDefault(channel.id(), List.of());
+                int userCount = users.size();
+                String label = channel.name() + (userCount > 0 ? " (" + userCount + ")" : "");
+                boolean isCurrentChannel = voiceManager.getCurrentChannelId() == channel.id();
 
-            ButtonWidget btn = new ButtonWidget(
-                    panelX + 5, channelY + i * (channelHeight + 2), PANEL_WIDTH - 10, channelHeight,
-                    new LiteralText((isCurrentChannel ? "> " : "") + label),
-                    button -> {
-                        selectedChannel = channel;
-                    }
-            );
-            addDrawableChild(btn);
+                addDrawableChild(new ButtonWidget(
+                        leftColumnX, listY + i * 25, contentWidth, 20,
+                        new LiteralText((isCurrentChannel ? "> " : "") + label),
+                        button -> selectedChannel = channel
+                ));
+            }
         }
 
-        // Action buttons
-        int actionY = panelY + PANEL_HEIGHT - 60;
+        // Bottom action buttons
+        int actionY = height - 60;
 
-        // Join/Leave button
         if (voiceManager.isConnected()) {
             addDrawableChild(new ButtonWidget(
-                    panelX + 5, actionY, 90, 20,
+                    leftColumnX, actionY, 90, 20,
                     new LiteralText("Disconnect"),
                     button -> {
                         voiceManager.disconnect();
@@ -216,10 +231,9 @@ public class VoiceScreen extends Screen {
                     }
             ));
 
-            // Mute button
             boolean muted = voiceManager.isMuted();
             addDrawableChild(new ButtonWidget(
-                    panelX + 100, actionY, 90, 20,
+                    leftColumnX + 100, actionY, 90, 20,
                     new LiteralText(muted ? "Unmute" : "Mute"),
                     button -> {
                         voiceManager.toggleMute();
@@ -228,7 +242,7 @@ public class VoiceScreen extends Screen {
             ));
         } else if (selectedChannel != null) {
             addDrawableChild(new ButtonWidget(
-                    panelX + 5, actionY, 140, 20,
+                    leftColumnX, actionY, 150, 20,
                     new LiteralText("Join " + truncate(selectedChannel.name(), 12)),
                     button -> {
                         statusMessage = "Connecting...";
@@ -241,9 +255,8 @@ public class VoiceScreen extends Screen {
             ));
         }
 
-        // Refresh button
         addDrawableChild(new ButtonWidget(
-                panelX + PANEL_WIDTH - 75, actionY, 70, 20,
+                leftColumnX + 200, actionY, 70, 20,
                 new LiteralText("Refresh"),
                 button -> {
                     loadVoiceUsers();
@@ -253,9 +266,8 @@ public class VoiceScreen extends Screen {
                 }
         ));
 
-        // Close button
         addDrawableChild(new ButtonWidget(
-                panelX + (PANEL_WIDTH - 80) / 2, actionY + 25, 80, 20,
+                width / 2 - 40, actionY + 25, 80, 20,
                 new LiteralText("Close"),
                 button -> onClose()
         ));
@@ -265,29 +277,23 @@ public class VoiceScreen extends Screen {
     public void render(MatrixStack matrices, int mouseX, int mouseY, float delta) {
         renderBackground(matrices);
 
-        int panelX = (width - PANEL_WIDTH) / 2;
-        int panelY = (height - PANEL_HEIGHT) / 2;
-
-        // Draw panel background
-        fill(matrices, panelX, panelY, panelX + PANEL_WIDTH, panelY + PANEL_HEIGHT, 0xDD2F3136);
-        // Border
-        fill(matrices, panelX, panelY, panelX + PANEL_WIDTH, panelY + 2, 0xFF5865F2);
-
         // Title
-        drawCenteredText(matrices, textRenderer, title, width / 2, panelY + 8, 0xFFFFFF);
+        drawCenteredText(matrices, textRenderer, title, width / 2, 15, 0xFFFFFF);
 
         // User info
         Models.User user = AuthManager.getInstance().getCurrentUser();
         if (user != null) {
             String displayName = user.nickname() != null ? user.nickname() : user.username();
-            drawTextWithShadow(matrices, textRenderer, new LiteralText(displayName).formatted(Formatting.GREEN),
-                    panelX + 5, panelY + 8, 0xFFFFFF);
+            drawTextWithShadow(matrices, textRenderer, 
+                    new LiteralText("User: " + displayName).formatted(Formatting.GREEN),
+                    20, 15, 0xFFFFFF);
         }
 
         // Status message
         if (!statusMessage.isEmpty()) {
-            drawCenteredText(matrices, textRenderer, new LiteralText(statusMessage).formatted(Formatting.YELLOW),
-                    width / 2, panelY + PANEL_HEIGHT - 85, 0xFFFFFF);
+            drawCenteredText(matrices, textRenderer, 
+                    new LiteralText(statusMessage).formatted(Formatting.YELLOW),
+                    width / 2, height - 90, 0xFFFFFF);
         }
 
         // Voice status
@@ -297,24 +303,7 @@ public class VoiceScreen extends Screen {
                     (voiceManager.isMuted() ? " (Muted)" : "");
             drawTextWithShadow(matrices, textRenderer,
                     new LiteralText(voiceStatus).formatted(voiceManager.isMuted() ? Formatting.RED : Formatting.GREEN),
-                    panelX + 5, panelY + PANEL_HEIGHT - 85, 0xFFFFFF);
-        }
-
-        // Selected channel users
-        if (selectedChannel != null && !voiceManager.isConnected()) {
-            List<Models.VoiceUser> users = voiceUsers.getOrDefault(selectedChannel.id(), List.of());
-            if (!users.isEmpty()) {
-                int userListY = panelY + 165;
-                drawTextWithShadow(matrices, textRenderer,
-                        new LiteralText("In channel:").formatted(Formatting.GRAY),
-                        panelX + 5, userListY - 12, 0xFFFFFF);
-                for (int i = 0; i < Math.min(users.size(), 3); i++) {
-                    Models.VoiceUser u = users.get(i);
-                    drawTextWithShadow(matrices, textRenderer,
-                            new LiteralText("  " + u.name()),
-                            panelX + 5, userListY + i * 10, 0xAAAAAA);
-                }
-            }
+                    20, 35, 0xFFFFFF);
         }
 
         super.render(matrices, mouseX, mouseY, delta);
