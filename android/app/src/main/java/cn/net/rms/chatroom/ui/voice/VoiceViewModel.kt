@@ -92,7 +92,7 @@ class VoiceViewModel @Inject constructor(
             val token = authRepository.getToken() ?: return@launch
             val result = authRepository.verifyToken(token)
             result.onSuccess { user ->
-                _isAdmin.value = user.permissionLevel >= 4
+                _isAdmin.value = user.permissionLevel >= 3
                 _userId.value = user.id
             }
         }

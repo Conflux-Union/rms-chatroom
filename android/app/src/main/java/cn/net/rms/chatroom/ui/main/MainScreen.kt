@@ -96,7 +96,7 @@ fun MainScreen(
                         onServerClick = { serverId ->
                             mainViewModel.selectServer(serverId)
                         },
-                        isAdmin = (authState.user?.permissionLevel ?: 0) >= 4,
+                        isAdmin = (authState.user?.permissionLevel ?: 0) >= 3,
                         onCreateServer = { name ->
                             mainViewModel.createServer(name)
                         },
@@ -120,7 +120,7 @@ fun MainScreen(
                             onNavigateToSettings()
                         },
                         voiceChannelUsers = voiceChannelUsers,
-                        isAdmin = (authState.user?.permissionLevel ?: 0) >= 4,
+                        isAdmin = (authState.user?.permissionLevel ?: 0) >= 3,
                         onCreateChannel = { name, type ->
                             mainViewModel.createChannel(name, type)
                         },

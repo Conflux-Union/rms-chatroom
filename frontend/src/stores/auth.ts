@@ -10,7 +10,7 @@ export const useAuthStore = defineStore('auth', () => {
   const token = ref<string | null>(localStorage.getItem('token'))
 
   const isLoggedIn = computed(() => !!user.value && !!token.value)
-  const isAdmin = computed(() => (user.value?.permission_level ?? 0) >= 4)
+  const isAdmin = computed(() => (user.value?.permission_level ?? 0) >= 3)
 
   async function verifyToken(): Promise<boolean> {
     if (!token.value) return false

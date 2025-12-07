@@ -196,9 +196,9 @@ async def delete_file(
     if not attachment:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
 
-    # Check permission: owner or admin (permission_level >= 4)
+    # Check permission: owner or admin (permission_level >= 3)
     is_owner = attachment.user_id == user["id"]
-    is_admin = user.get("permission_level", 0) >= 4
+    is_admin = user.get("permission_level", 0) >= 3
     if not is_owner and not is_admin:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Permission denied")
 
