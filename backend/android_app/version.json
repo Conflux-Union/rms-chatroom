@@ -1,6 +1,6 @@
 {
-    "version_code": 11,
-    "version_name": "1.0.7",
-    "changelog": "- 新增应用内附件预览（图片缩放、视频播放、文本查看）\n- 修复认证错误处理逻辑",
+    "version_code": 12,
+    "version_name": "1.0.7-fix-1",
+    "changelog": "- 降低管理员权限阈值从 >= 4 到 >= 3",
     "force_update": false
 }
