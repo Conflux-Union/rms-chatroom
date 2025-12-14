@@ -120,7 +120,7 @@ def check_android_version_json(version_name: str, version_code: str) -> tuple[bo
         return False, f"Android version.json not found: {ANDROID_VERSION_JSON}"
     
     try:
-        with open(ANDROID_VERSION_JSON) as f:
+        with open(ANDROID_VERSION_JSON, encoding="utf-8") as f:
             data = json.load(f)
         
         json_name = data.get("version_name", "")

@@ -1,6 +1,6 @@
 {
     "version_code": 12,
-    "version_name": "1.0.7-fix-2",
+    "version_name": "1.0.7-fix-1",
     "changelog": "- 降低管理员权限阈值从 >= 4 到 >= 3",
     "force_update": false
 }
