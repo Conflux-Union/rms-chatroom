@@ -58,14 +58,19 @@ type Player struct {
 	positionMs  int64
 	durationMs  int64
 
-	pipeline *gst.Pipeline
-	loop     *glib.MainLoop
+	pipeline     *gst.Pipeline
+	loop         *glib.MainLoop
+	bus          *gst.Bus // Track bus for cleanup
+	hasWatchFunc bool     // Track if watch was added
 
 	ctx    context.Context
 	cancel context.CancelFunc
 
 	// Pause timeout: disconnect from room after 30s of pause
 	pauseTimer *time.Timer
+
+	// Last activity time for cleanup
+	lastActivity time.Time
 }
 
 type PlayerManager struct {
@@ -95,12 +100,14 @@ func (pm *PlayerManager) GetOrCreatePlayer(roomName string) (*Player, error) {
 	defer pm.mu.Unlock()
 
 	if p, ok := pm.players[roomName]; ok {
+		p.lastActivity = time.Now()
 		return p, nil
 	}
 
 	p := &Player{
-		roomName: roomName,
-		state:    StateIdle,
+		roomName:     roomName,
+		state:        StateIdle,
+		lastActivity: time.Now(),
 	}
 
 	pm.players[roomName] = p
@@ -110,7 +117,30 @@ func (pm *PlayerManager) GetOrCreatePlayer(roomName string) (*Player, error) {
 func (pm *PlayerManager) RemovePlayer(roomName string) {
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
+	if p, ok := pm.players[roomName]; ok {
+		p.Stop() // Ensure cleanup before removal
+	}
 	delete(pm.players, roomName)
+}
+
+// CleanupIdlePlayers removes players that have been idle for too long
+func (pm *PlayerManager) CleanupIdlePlayers(maxIdleTime time.Duration) {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+
+	now := time.Now()
+	for roomName, p := range pm.players {
+		p.mu.RLock()
+		isIdle := p.state == StateIdle || p.state == StateStopped
+		lastActivity := p.lastActivity
+		p.mu.RUnlock()
+
+		if isIdle && now.Sub(lastActivity) > maxIdleTime {
+			log.Printf("Cleaning up idle player for room: %s", roomName)
+			p.Stop()
+			delete(pm.players, roomName)
+		}
+	}
 }
 
 // notifySongEnded calls Python backend when a song finishes playing
@@ -174,19 +204,34 @@ func (p *Player) Connect() error {
 	}
 
 	room := lksdk.NewRoom(cb)
-	err := room.Join(manager.config.LiveKitURL, lksdk.ConnectInfo{
-		APIKey:              manager.config.LiveKitAPIKey,
-		APISecret:           manager.config.LiveKitSecret,
-		RoomName:            p.roomName,
-		ParticipantIdentity: fmt.Sprintf("music-bot-%s", p.roomName),
-		ParticipantName:     "Music Bot",
-	}, lksdk.WithAutoSubscribe(false))
-	if err != nil {
-		return fmt.Errorf("failed to join room: %w", err)
+
+	// Use a channel to implement connection timeout
+	connectDone := make(chan error, 1)
+	go func() {
+		err := room.Join(manager.config.LiveKitURL, lksdk.ConnectInfo{
+			APIKey:              manager.config.LiveKitAPIKey,
+			APISecret:           manager.config.LiveKitSecret,
+			RoomName:            p.roomName,
+			ParticipantIdentity: fmt.Sprintf("music-bot-%s", p.roomName),
+			ParticipantName:     "Music Bot",
+		}, lksdk.WithAutoSubscribe(false))
+		connectDone <- err
+	}()
+
+	// Wait for connection with 10 second timeout
+	select {
+	case err := <-connectDone:
+		if err != nil {
+			return fmt.Errorf("failed to join room: %w", err)
+		}
+	case <-time.After(10 * time.Second):
+		room.Disconnect()
+		return fmt.Errorf("connection timeout after 10 seconds")
 	}
 
 	p.mu.Lock()
 	p.room = room
+	p.lastActivity = time.Now()
 	p.mu.Unlock()
 
 	log.Printf("Connected to room %s", p.roomName)
@@ -473,6 +518,10 @@ func (p *Player) playbackLoop(song *SongInfo, startPosMs int64) {
 	p.mu.Unlock()
 
 	bus := pipeline.GetPipelineBus()
+	p.mu.Lock()
+	p.bus = bus
+	p.mu.Unlock()
+
 	bus.AddWatch(func(msg *gst.Message) bool {
 		switch msg.Type() {
 		case gst.MessageStateChanged:
@@ -509,6 +558,10 @@ func (p *Player) playbackLoop(song *SongInfo, startPosMs int64) {
 		return true
 	})
 
+	p.mu.Lock()
+	p.hasWatchFunc = true
+	p.mu.Unlock()
+
 	go func() {
 		<-p.ctx.Done()
 		loop.Quit()
@@ -518,6 +571,14 @@ func (p *Player) playbackLoop(song *SongInfo, startPosMs int64) {
 
 	// Cleanup
 	loadingTimeout.Stop()
+	// Remove bus watch to prevent leaks
+	p.mu.Lock()
+	if p.bus != nil && p.hasWatchFunc {
+		p.bus.RemoveWatch()
+		p.hasWatchFunc = false
+	}
+	p.bus = nil
+	p.mu.Unlock()
 	p.cleanupPlayback(pipeline, room, pubSID)
 }
 
@@ -645,6 +706,13 @@ func (p *Player) Stop() {
 		p.loop.Quit()
 		p.loop = nil
 	}
+
+	// Remove bus watch to prevent leaks
+	if p.bus != nil && p.hasWatchFunc {
+		p.bus.RemoveWatch()
+		p.hasWatchFunc = false
+	}
+	p.bus = nil
 
 	if p.pipeline != nil {
 		p.pipeline.SetState(gst.StateNull)
@@ -827,6 +895,15 @@ func main() {
 	}
 
 	manager = NewPlayerManager(config)
+
+	// Start background cleanup goroutine - clean up idle players every 5 minutes
+	go func() {
+		ticker := time.NewTicker(5 * time.Minute)
+		defer ticker.Stop()
+		for range ticker.C {
+			manager.CleanupIdlePlayers(10 * time.Minute) // Remove players idle for 10+ minutes
+		}
+	}()
 
 	port := os.Getenv("PORT")
 	if port == "" {
