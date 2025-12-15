@@ -743,7 +743,9 @@ export const useVoiceStore = defineStore('voice', () => {
       console.log(`  - Has sourceNode: ${!!participantAudio.sourceNode}`)
       if (isIOS() && participantAudio.gainNode) {
         // iOS: Use Web Audio API gain control
-        const gain = Math.max(0, Math.min(3, clampedVolume / 100))
+        const gain = Math.max(0, Math.min(3, Math.log(clampedVolume + 1) / Math.log(301) * 3));
+
+        (20*Math.log(clampedVolume+1)/Math.log(10))/(20*Math.log(301)/Math.log(10))*3.0
 
         const audioElements = document.querySelectorAll('audio[data-livekit-audio="true"]')
         audioElements.forEach((el) => {
@@ -781,7 +783,7 @@ export const useVoiceStore = defineStore('voice', () => {
 
       } else if (!isIOS() && participantAudio.audioElement) {
         // Non-iOS: use native volume (max 100%)
-        participantAudio.audioElement.volume = Math.min(clampedVolume / 100, 1)
+        participantAudio.audioElement.volume = Math.max(0, Math.min(3, (Math.log(clampedVolume + 1) / Math.log(301)) * 3));
       }
       
       // Update stored volume
