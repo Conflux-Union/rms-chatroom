@@ -503,6 +503,11 @@ export const useVoiceStore = defineStore('voice', () => {
             
             const savedVolume = userVolumes.value.get(participant.identity) ?? 100
 
+            if (participant.identity.includes('music-bot')) {
+              console.log(`Music bot detected, setting volume to 10%`)
+              userVolumes.value.set(participant.identity, 10)
+            }
+
             console.log(`Subscribing to audio track of ${participant.identity}, saved volume: ${savedVolume}%`)
             
             if (isIOS()) {
