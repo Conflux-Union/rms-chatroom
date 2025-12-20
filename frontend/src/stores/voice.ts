@@ -745,7 +745,13 @@ export const useVoiceStore = defineStore('voice', () => {
       debug(`  - Has sourceNode: ${!!participantAudio.sourceNode}`)
       if (isIOS() && participantAudio.gainNode) {
         // iOS: Use Web Audio API gain control
-        const gain = Math.max(0, Math.min(3, (Math.log10(clampedVolume + 1) / Math.log10(301)) * 3));
+        let gain = 0;
+
+        if (clampedVolume <= 100) {
+          gain = Math.max(0, Math.min(1, (Math.log10(clampedVolume + 1) / Math.log10(101)) * 1));
+        } else {
+          gain = clampedVolume / 100;
+        }
 
         // (20*Math.log(clampedVolume+1)/Math.log(10))/(20*Math.log(301)/Math.log(10))*3.0
 
