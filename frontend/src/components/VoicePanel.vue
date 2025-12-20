@@ -353,7 +353,7 @@ function closeInviteDialog() {
                     type="range"
                     class="volume-slider"
                     min="0"
-                    max="300"
+                    max="100"
                     :value="participant.volume"
                     @input="handleVolumeChange(participant.id, $event)"
                   />

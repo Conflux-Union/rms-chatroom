@@ -128,7 +128,7 @@ export const useVoiceStore = defineStore('voice', () => {
     const audioElements = document.querySelectorAll('audio[data-livekit-audio="true"]')
     audioElements.forEach((el) => {
       ;(el as HTMLAudioElement).muted = true
-      ;(el as HTMLAudioElement).pause()
+      ;(el as HTMLAudioElement).volume = 0.0
     })
     const ctx = ensureAudioContext()
     console.log(`AudioContext state before activation: ${ctx.state}`)
@@ -158,11 +158,9 @@ export const useVoiceStore = defineStore('voice', () => {
 
     audioElement.volume = 0.0 // Mute native volume
     audioElement.muted = true // Ensure not muted
-    audioElement.pause()
     const audioElements = document.querySelectorAll('audio[data-livekit-audio="true"]')
     audioElements.forEach((el) => {
       ;(el as HTMLAudioElement).muted = true
-      ;(el as HTMLAudioElement).pause()
     })
 
     const ctx = ensureAudioContext()
@@ -404,7 +402,7 @@ export const useVoiceStore = defineStore('voice', () => {
         const audioElements = document.querySelectorAll('audio[data-livekit-audio="true"]')
         audioElements.forEach((el) => {
           ;(el as HTMLAudioElement).muted = true
-          ;(el as HTMLAudioElement).pause()
+          ;(el as HTMLAudioElement).volume = 0.0
         })
       }
     }, 1000)
@@ -424,7 +422,7 @@ export const useVoiceStore = defineStore('voice', () => {
     const audioElements = document.querySelectorAll('audio[data-livekit-audio="true"]')
     audioElements.forEach((el) => {
       ;(el as HTMLAudioElement).muted = true
-      ;(el as HTMLAudioElement).pause()
+      ;(el as HTMLAudioElement).volume = 0.0
     })
 
     isConnecting.value = true
@@ -512,11 +510,10 @@ export const useVoiceStore = defineStore('voice', () => {
               connectAudioNodes(participant.identity, audioElement, savedVolume)
               audioElement.volume = 0.0 // Mute native volume
               audioElement.muted = true // Ensure not muted
-              audioElement.pause()
               const audioElements = document.querySelectorAll('audio[data-livekit-audio="true"]')
               audioElements.forEach((el) => {
                 ;(el as HTMLAudioElement).muted = true
-                ;(el as HTMLAudioElement).pause()
+                ;(el as HTMLAudioElement).volume = 0.0
               })
             } else {
               // Non-iOS: use native audioElement.volume
@@ -689,7 +686,7 @@ export const useVoiceStore = defineStore('voice', () => {
       master.gain.value = muted ? 0 : 1
       audioElements.forEach((el) => {
         ;(el as HTMLAudioElement).muted = true
-        ;(el as HTMLAudioElement).pause()
+        ;(el as HTMLAudioElement).volume = 0.0
       })
     } else {
       // other platforms mute via audioElement.muted
@@ -750,7 +747,6 @@ export const useVoiceStore = defineStore('voice', () => {
         const audioElements = document.querySelectorAll('audio[data-livekit-audio="true"]')
         audioElements.forEach((el) => {
           ;(el as HTMLAudioElement).muted = true
-          ;(el as HTMLAudioElement).pause()
         })
 
         console.log(`  - Current gain value: ${participantAudio.gainNode.gain.value}`)
