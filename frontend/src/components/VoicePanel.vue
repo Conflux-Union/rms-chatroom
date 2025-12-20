@@ -325,16 +325,6 @@ function closeInviteDialog() {
               <div v-if="!participant.isLocal" class="volume-control">
                 <!-- iOS: show mute toggle (volume control not supported) -->
                 <template v-if="isIOS">
-                  <!-- <button 
-                    class="ios-mute-btn"
-                    :class="{ muted: participant.volume === 0 }"
-                    @click="toggleUserMute(participant.id)"
-                    :title="participant.volume === 0 ? '取消静音' : '静音'"
-                  >
-                    <VolumeX v-if="participant.volume === 0" :size="16" />
-                    <Volume2 v-else :size="16" />
-                  </button>
-                  <span class="ios-volume-hint">{{ participant.volume === 0 ? '已静音' : '正常' }}</span> -->
                   <Volume2 class="volume-icon" :size="14" />
                   <input
                     type="range"
