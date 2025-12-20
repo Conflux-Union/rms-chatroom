@@ -117,7 +117,6 @@ watch(
         <MusicPanel />
       </div>
     </Transition>
-    <div id="debug" style="width: auto; max-height: 30vh; overflow: scroll;"></div>
   </div>
 </template>
 
