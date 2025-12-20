@@ -745,9 +745,9 @@ export const useVoiceStore = defineStore('voice', () => {
       debug(`  - Has sourceNode: ${!!participantAudio.sourceNode}`)
       if (isIOS() && participantAudio.gainNode) {
         // iOS: Use Web Audio API gain control
-        const gain = Math.max(0, Math.min(3, Math.log(clampedVolume + 1) / Math.log(301) * 3));
+        const gain = Math.max(0, Math.min(3, (Math.log10(clampedVolume + 1) / Math.log10(301)) * 3));
 
-        (20*Math.log(clampedVolume+1)/Math.log(10))/(20*Math.log(301)/Math.log(10))*3.0
+        // (20*Math.log(clampedVolume+1)/Math.log(10))/(20*Math.log(301)/Math.log(10))*3.0
 
         const audioElements = document.querySelectorAll('audio[data-livekit-audio="true"]')
         audioElements.forEach((el) => {
