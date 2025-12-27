@@ -118,7 +118,6 @@ watch(
       </div>
     </Transition>
   </div>
-  <div id="debugger" style="width: auto; height: 30vh; overflow: scroll;"></div>
 </template>
 
 <style scoped>
