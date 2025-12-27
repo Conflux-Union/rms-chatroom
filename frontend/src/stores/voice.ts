@@ -1004,12 +1004,14 @@ export const useVoiceStore = defineStore('voice', () => {
         await room.value.localParticipant.setScreenShareEnabled(false)
         isScreenSharing.value = false
         localScreenShareTrack.value = null
+        debug("Screen share stopped by user")
         await unlockScreenShare()
       } else {
         // Start screen sharing: first acquire lock, then start
         const lockResult = await lockScreenShare()
         if (!lockResult.success) {
           error.value = `${lockResult.sharerName || '其他用户'} 正在共享屏幕`
+          debug("Failed to start screen share: " + error.value)
           return false
         }
         
@@ -1028,11 +1030,14 @@ export const useVoiceStore = defineStore('voice', () => {
           degradationPreference: 'maintain-framerate',
         })
         isScreenSharing.value = true
+        debug("Screen share started by user")
+
         // Find the screen share track publication
         const screenTrack = room.value.localParticipant.getTrackPublication(Track.Source.ScreenShare)
         if (screenTrack) {
           localScreenShareTrack.value = screenTrack
         }
+        debug("Screen share track obtained")
       }
       return true
     } catch (e) {
@@ -1054,11 +1059,13 @@ export const useVoiceStore = defineStore('voice', () => {
     const screenShare = remoteScreenShares.value.get(participantId)
     if (screenShare?.track?.videoTrack) {
       const videoElement = screenShare.track.videoTrack.attach()
+      debug(`Attaching screen share for ${participantId}`)
       videoElement.style.width = '100%'
       videoElement.style.height = '100%'
       videoElement.style.objectFit = 'contain'
       container.innerHTML = ''
       container.appendChild(videoElement)
+      debug(`Screen share attached for ${participantId}\n video readyState: ${videoElement.readyState}\n video paused: ${videoElement.paused}\n video volume: ${videoElement.volume}\n video muted: ${videoElement.muted}`)
     }
   }
 
