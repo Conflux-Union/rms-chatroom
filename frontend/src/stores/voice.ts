@@ -1021,7 +1021,6 @@ export const useVoiceStore = defineStore('voice', () => {
           contentHint: 'motion',
           audio: true,
         }, {
-          videoCodec: 'av1',
           videoEncoding: {
             maxBitrate: 2_000_000,
             maxFramerate: 30,
