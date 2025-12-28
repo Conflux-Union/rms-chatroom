@@ -229,13 +229,13 @@ export const useVoiceStore = defineStore('voice', () => {
       masterGain.gain.value = 1
     }
 
-    // iOS：把 WebAudio 输出变成 <audio> 可播的 MediaStream
+    // iOS：put WebAudio output into <audio> for playback
     if (isIOS()) {
       if (!bgDestNode) {
         bgDestNode = ctx.createMediaStreamDestination()
       }
 
-      // 防止重复连接：先断开再连（简单粗暴但稳）
+      // Reconnect master gain to bgDestNode
       try { masterGain.disconnect() } catch {}
       masterGain.connect(bgDestNode)
 
@@ -244,7 +244,7 @@ export const useVoiceStore = defineStore('voice', () => {
         el.srcObject = bgDestNode.stream
       }
     } else {
-      // 非 iOS 仍然走原来的输出
+      // Non-iOS: connect master gain directly to destination
       try { masterGain.disconnect() } catch {}
       masterGain.connect(ctx.destination)
     }
@@ -435,20 +435,29 @@ export const useVoiceStore = defineStore('voice', () => {
 
     // CRITICAL: Activate AudioContext IMMEDIATELY in user gesture call stack (iOS requirement)
     // This must happen BEFORE any async operations
+    let audioActivatedPromise: Promise<boolean> | null = null
+
     if (isIOS()) {
+      // Activate AudioContext
+      audioActivatedPromise = activateAudioContext()
+
+      // Play bgaudio
       const el = ensureBackgroundAudioElement()
-      try {
-        await el.play()
-      } catch (e) {
-        console.log('bgAudio play failed:', e)
+      const playPromise = el.play()
+      if (playPromise && typeof (playPromise as any).catch === 'function') {
+        playPromise.catch((e) => {
+          console.log('bgAudio play failed:', e)
+        })
       }
+    } else {
+      audioActivatedPromise = Promise.resolve(true)
     }
-    
-    const audioActivated = await activateAudioContext()
+
+    // Waiting for async operations
+    const audioActivated = await audioActivatedPromise
     if (isIOS() && !audioActivated) {
       console.log('Warning: AudioContext activation failed, volume control may not work')
     }
-    // joinVoice() 里，在 activateAudioContext() 之后，尽早触发
     
     const audioElements = document.querySelectorAll('audio[data-livekit-audio="true"]')
     audioElements.forEach((el) => {
