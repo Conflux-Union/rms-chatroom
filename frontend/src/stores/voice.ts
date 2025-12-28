@@ -226,11 +226,32 @@ export const useVoiceStore = defineStore('voice', () => {
   function ensureMasterGain(ctx: AudioContext): GainNode {
     if (!masterGain) {
       masterGain = ctx.createGain()
-      masterGain.gain.value = 1 // defaulet to unmuted
+      masterGain.gain.value = 1
+    }
+
+    // iOS：把 WebAudio 输出变成 <audio> 可播的 MediaStream
+    if (isIOS()) {
+      if (!bgDestNode) {
+        bgDestNode = ctx.createMediaStreamDestination()
+      }
+
+      // 防止重复连接：先断开再连（简单粗暴但稳）
+      try { masterGain.disconnect() } catch {}
+      masterGain.connect(bgDestNode)
+
+      const el = ensureBackgroundAudioElement()
+      if (el.srcObject !== bgDestNode.stream) {
+        el.srcObject = bgDestNode.stream
+      }
+    } else {
+      // 非 iOS 仍然走原来的输出
+      try { masterGain.disconnect() } catch {}
       masterGain.connect(ctx.destination)
     }
+
     return masterGain
   }
+
 
 
 
@@ -417,6 +438,15 @@ export const useVoiceStore = defineStore('voice', () => {
     const audioActivated = await activateAudioContext()
     if (isIOS() && !audioActivated) {
       console.log('Warning: AudioContext activation failed, volume control may not work')
+    }
+    // joinVoice() 里，在 activateAudioContext() 之后，尽早触发
+    if (isIOS()) {
+      const el = ensureBackgroundAudioElement()
+      try {
+        await el.play()
+      } catch (e) {
+        console.log('bgAudio play failed:', e)
+      }
     }
 
     const audioElements = document.querySelectorAll('audio[data-livekit-audio="true"]')
@@ -1122,6 +1152,27 @@ export const useVoiceStore = defineStore('voice', () => {
     
     console.log(`=== End Diagnosis ===`)
   }
+
+  let bgAudioEl: HTMLAudioElement | null = null
+  let bgDestNode: MediaStreamAudioDestinationNode | null = null
+
+  function ensureBackgroundAudioElement(): HTMLAudioElement {
+    if (bgAudioEl) return bgAudioEl
+
+    const el = document.createElement('audio')
+    el.dataset.backgroundAudio = 'true'
+    el.autoplay = true
+    el.playsInline = true
+    ;(el as any).webkitPlaysInline = true
+    el.muted = false
+    el.volume = 1.0
+    el.style.display = 'none'
+
+    document.body.appendChild(el)
+    bgAudioEl = el
+    return el
+  }
+
 
   return {
     room,
