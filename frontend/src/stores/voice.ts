@@ -426,7 +426,7 @@ export const useVoiceStore = defineStore('voice', () => {
           ;(el as HTMLAudioElement).volume = 0.0
         })
       }
-    }, 1000)
+    }, 100);
   }
   loopMuteGlobalAudio()
 
@@ -435,11 +435,6 @@ export const useVoiceStore = defineStore('voice', () => {
 
     // CRITICAL: Activate AudioContext IMMEDIATELY in user gesture call stack (iOS requirement)
     // This must happen BEFORE any async operations
-    const audioActivated = await activateAudioContext()
-    if (isIOS() && !audioActivated) {
-      console.log('Warning: AudioContext activation failed, volume control may not work')
-    }
-    // joinVoice() 里，在 activateAudioContext() 之后，尽早触发
     if (isIOS()) {
       const el = ensureBackgroundAudioElement()
       try {
@@ -448,7 +443,13 @@ export const useVoiceStore = defineStore('voice', () => {
         console.log('bgAudio play failed:', e)
       }
     }
-
+    
+    const audioActivated = await activateAudioContext()
+    if (isIOS() && !audioActivated) {
+      console.log('Warning: AudioContext activation failed, volume control may not work')
+    }
+    // joinVoice() 里，在 activateAudioContext() 之后，尽早触发
+    
     const audioElements = document.querySelectorAll('audio[data-livekit-audio="true"]')
     audioElements.forEach((el) => {
       ;(el as HTMLAudioElement).muted = true
