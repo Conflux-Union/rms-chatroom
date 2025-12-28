@@ -1161,9 +1161,9 @@ export const useVoiceStore = defineStore('voice', () => {
 
     const el = document.createElement('audio')
     el.dataset.backgroundAudio = 'true'
-    el.autoplay = true
-    el.playsInline = true
-    ;(el as any).webkitPlaysInline = true
+    el.autoplay = true;
+    (el as HTMLAudioElement & { playsInline?: boolean }).playsInline = true;
+    (el as any).webkitPlaysInline = true;
     el.muted = false
     el.volume = 1.0
     el.style.display = 'none'
