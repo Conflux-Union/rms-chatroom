@@ -203,6 +203,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch all history for changelog generation
 
       - name: Determine release type
         id: release_type
@@ -217,6 +219,118 @@ jobs:
           else
             echo "release_type=Release" >> $GITHUB_OUTPUT
           fi
+
+      - name: Generate changelog from commits
+        id: changelog
+        run: |
+          # Get the previous tag
+          CURRENT_TAG="${{ needs.extract-version.outputs.tag_name }}"
+          PREVIOUS_TAG=$(git tag --sort=-version:refname | grep -A1 "^${CURRENT_TAG}$" | tail -n1)
+
+          if [ -z "$PREVIOUS_TAG" ] || [ "$PREVIOUS_TAG" == "$CURRENT_TAG" ]; then
+            echo "No previous tag found, using all commits"
+            PREVIOUS_TAG=$(git rev-list --max-parents=0 HEAD)
+          fi
+
+          echo "Generating changelog from $PREVIOUS_TAG to $CURRENT_TAG"
+
+          # Generate changelog with conventional commit grouping
+          CHANGELOG=$(git log ${PREVIOUS_TAG}..HEAD --pretty=format:"%s" --no-merges | awk '
+          BEGIN {
+            feat_count = 0
+            fix_count = 0
+            refactor_count = 0
+            docs_count = 0
+            chore_count = 0
+            other_count = 0
+          }
+          /^feat(\(.*\))?:/ {
+            feat[feat_count++] = substr($0, index($0, ":") + 2)
+            next
+          }
+          /^fix(\(.*\))?:/ {
+            fix[fix_count++] = substr($0, index($0, ":") + 2)
+            next
+          }
+          /^refactor(\(.*\))?:/ {
+            refactor[refactor_count++] = substr($0, index($0, ":") + 2)
+            next
+          }
+          /^docs(\(.*\))?:/ {
+            docs[docs_count++] = substr($0, index($0, ":") + 2)
+            next
+          }
+          /^chore(\(.*\))?:/ {
+            chore[chore_count++] = substr($0, index($0, ":") + 2)
+            next
+          }
+          {
+            other[other_count++] = $0
+          }
+          END {
+            if (feat_count > 0) {
+              print "### ✨ New Features"
+              print ""
+              for (i = 0; i < feat_count; i++) {
+                print "- " feat[i]
+              }
+              print ""
+            }
+            if (fix_count > 0) {
+              print "### 🐛 Bug Fixes"
+              print ""
+              for (i = 0; i < fix_count; i++) {
+                print "- " fix[i]
+              }
+              print ""
+            }
+            if (refactor_count > 0) {
+              print "### ♻️ Refactoring"
+              print ""
+              for (i = 0; i < refactor_count; i++) {
+                print "- " refactor[i]
+              }
+              print ""
+            }
+            if (docs_count > 0) {
+              print "### 📝 Documentation"
+              print ""
+              for (i = 0; i < docs_count; i++) {
+                print "- " docs[i]
+              }
+              print ""
+            }
+            if (chore_count > 0) {
+              print "### 🔧 Chores"
+              print ""
+              for (i = 0; i < chore_count; i++) {
+                print "- " chore[i]
+              }
+              print ""
+            }
+            if (other_count > 0) {
+              print "### 📦 Other Changes"
+              print ""
+              for (i = 0; i < other_count; i++) {
+                print "- " other[i]
+              }
+              print ""
+            }
+          }
+          ')
+
+          # If no commits found, use a default message
+          if [ -z "$CHANGELOG" ]; then
+            CHANGELOG="No significant changes recorded."
+          fi
+
+          # Save to output (handle multiline)
+          echo "changelog<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGELOG" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+          echo "Generated changelog:"
+          echo "$CHANGELOG"
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -256,21 +370,29 @@ jobs:
             **Build Code:** ${{ needs.extract-version.outputs.version_code }}
             **Commit:** ${{ github.sha }}
 
-            ### Downloads
+            ---
+
+            ## 📋 What's Changed
+
+            ${{ steps.changelog.outputs.changelog }}
+
+            ---
+
+            ## 📦 Downloads
 
             - **Android APK:** `rms-chatroom-${{ needs.extract-version.outputs.version_name }}.apk`
             - **Windows:** `.exe` installer
             - **macOS:** `.dmg` installer
             - **Linux:** `.AppImage` portable app
 
-            ### Installation
+            ## 📖 Installation
 
-            #### Android
+            ### Android
             1. Download the APK file
             2. Enable "Install from unknown sources" in Android settings
             3. Install the APK
 
-            #### Desktop (Electron)
+            ### Desktop (Electron)
             - **Windows:** Run the `.exe` installer
             - **macOS:** Open the `.dmg` and drag to Applications
             - **Linux:** Make the `.AppImage` executable and run it
