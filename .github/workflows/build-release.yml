@@ -3,7 +3,7 @@ name: Build and Release
 on:
   push:
     tags:
-      - 'v*(*)'  # Matches tags like v1.0.0(1), v1.0.6-fix-1(9)
+      - 'v*'  # Matches tags like v1.0.0(1), v1.0.6-fix-1(9)
 
 jobs:
   extract-version:
