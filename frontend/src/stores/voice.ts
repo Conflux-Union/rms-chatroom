@@ -537,11 +537,11 @@ export const useVoiceStore = defineStore('voice', () => {
       room.value.on(RoomEvent.TrackSubscribed, async (track, pub, participant) => {
         if (participant instanceof RemoteParticipant) {
           // Handle audio tracks
-          if (track.kind === Track.Kind.Audio && pub.source === Track.Source.Microphone) {
-            const audioElement = track.attach()
-            audioElement.dataset.livekitAudio = 'true'
+          if (track.kind === Track.Kind.Audio) {
+            const audioElement = track.attach() as HTMLAudioElement
+            audioElement.dataset.livekitAudio = "true"
             audioElement.dataset.participantId = participant.identity
-            
+
             let savedVolume = userVolumes.value.get(participant.identity) ?? 100
 
             console.log(firstAddedRoom)
@@ -593,8 +593,8 @@ export const useVoiceStore = defineStore('voice', () => {
             remoteScreenShares.value = newMap
           }
           // Handle screen share audio tracks
-          else if (track.kind === Track.Kind.Audio && pub.source === Track.Source.ScreenShareAudio) {
-            const audioElement = track.attach()
+          else if (pub.source === Track.Source.ScreenShareAudio) {
+            const audioElement = track.attach() as HTMLAudioElement
             audioElement.dataset.livekitAudio = 'true'
             audioElement.dataset.participantId = participant.identity
             audioElement.dataset.screenShareAudio = 'true'
@@ -611,27 +611,43 @@ export const useVoiceStore = defineStore('voice', () => {
       })
 
       room.value.on(RoomEvent.TrackUnsubscribed, (track, pub, participant) => {
+        // 先 detach（只调用一次），后面统一 remove
+        const detachedEls = track.detach()
+        const elList = Array.isArray(detachedEls) ? detachedEls : [detachedEls]
+
         if (participant instanceof RemoteParticipant) {
-          // Handle audio track cleanup
-          if (pub.source === Track.Source.Microphone) {
+          // ✅ 1) 音频清理：只要是 Audio track 就清理，不再卡 Microphone
+          if (track.kind === Track.Kind.Audio) {
             const info = participantAudioMap.get(participant.identity)
-            if (info?.gainNode) {
-              info.gainNode.disconnect()
+
+            if (info) {
+              // 更稳：只有当 map 里存的 audioElement 就是这次 detach 的元素，或者它已经不在 DOM 了，才清理
+              const matched =
+                info.audioElement && elList.includes(info.audioElement)
+
+              const disconnected =
+                info.audioElement && !info.audioElement.isConnected
+
+              if (matched || disconnected || !info.audioElement) {
+                if (info.gainNode) info.gainNode.disconnect()
+                if (info.sourceNode) info.sourceNode.disconnect()
+                participantAudioMap.delete(participant.identity)
+              }
             }
-            if (info?.sourceNode) {
-              info.sourceNode.disconnect()
-            }
-            participantAudioMap.delete(participant.identity)
           }
-          // Handle screen share cleanup
+
+          // ✅ 2) 屏幕共享清理：保持你原来的判断
           else if (pub.source === Track.Source.ScreenShare) {
             const newMap = new Map(remoteScreenShares.value)
             newMap.delete(participant.identity)
             remoteScreenShares.value = newMap
           }
         }
-        track.detach().forEach((el) => el.remove())
+
+        // ✅ 3) DOM 清理：把 detach 下来的元素移除
+        elList.forEach((el) => el.remove())
       })
+
 
       await room.value.connect(url, token)
       await room.value.localParticipant.setMicrophoneEnabled(true)
