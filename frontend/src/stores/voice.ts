@@ -768,15 +768,6 @@ export const useVoiceStore = defineStore('voice', () => {
     const currentVolume = userVolumes.value.get(participantId) ?? 100
     console.log(`[setUserVolume] called id=${participantId}, target=${clampedVolume}, hasMap=${participantAudioMap.has(participantId)}`)
 
-    const el = document.querySelector(
-      `audio[data-livekit-audio="true"][data-participant-id="${participantId}"]`
-    ) as HTMLAudioElement | null
-
-    if (el) {
-      el.volume = Math.pow(Math.max(0, Math.min(clampedVolume, 100)) / 100, 2.6)
-      participantAudioMap.set(participantId, { audioElement: el, volume: clampedVolume })
-    }
-
     // Safety check: crossing 100% threshold requires warning acknowledgement
     if (currentVolume <= 100 && clampedVolume > 100 && !bypassWarning) {
       if (!volumeWarningAcknowledged.value.has(participantId)) {
