@@ -14,6 +14,7 @@ import androidx.core.content.FileProvider
 import cn.net.rms.chatroom.BuildConfig
 import cn.net.rms.chatroom.data.api.ApiService
 import cn.net.rms.chatroom.data.api.AppUpdateResponse
+import cn.net.rms.chatroom.data.api.GitHubReleaseResponse
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
