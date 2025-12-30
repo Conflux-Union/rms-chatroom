@@ -2,9 +2,22 @@
 const { app, BrowserWindow, session, ipcMain, globalShortcut, shell } = require("electron");
 const path = require("path");
 const http = require("http");
+const https = require("https");
 const fs = require("fs");
 const Store = require("electron-store").default;
 const { autoUpdater } = require("electron-updater");
+
+// =====================
+// 你要改的：两个镜像源（目录下必须有 latest.yml）
+// 例： https://download-cn.xxx.com/rms-chat/win/   （里面有 latest.yml、exe、blockmap）
+// =====================
+const UPDATE_FEED_CN = "https://api.hurrybili1016hjh.cc/RMS-Chatroom/Win/";
+const UPDATE_FEED_INTL = "https://api.hurrybili1016hjh.cc/RMS-Chatroom/Win/";
+
+// GitHub 最低优先级（public 可不填 token；private 需要 GH_TOKEN/GITHUB_TOKEN）
+const GITHUB_OWNER = "RMS-Server";
+const GITHUB_REPO = "RMS-ChatRoom";
+const GITHUB_TOKEN = process.env.GH_TOKEN || process.env.GITHUB_TOKEN || "";
 
 // =====================
 // Store（默认快捷键）
@@ -188,7 +201,7 @@ function installCSP() {
 }
 
 // =====================
-// 强制更新判断（核心）
+// 强制更新判断（保留你原逻辑）
 // =====================
 function textIncludesForceWords(text) {
   const t = String(text || "").toLowerCase();
@@ -216,10 +229,7 @@ function filenameIncludesSecurityOrForced(info) {
 }
 
 function isForcedUpdate(info) {
-  // 1) 文件名命中 Security/Forced
   if (filenameIncludesSecurityOrForced(info)) return true;
-
-  // 2) releaseName / releaseNotes 命中强制词
   if (textIncludesForceWords(info?.releaseName)) return true;
 
   const notes = info?.releaseNotes;
@@ -229,46 +239,212 @@ function isForcedUpdate(info) {
   } else {
     if (textIncludesForceWords(notes)) return true;
   }
-
   return false;
 }
 
 // =====================
-// Auto Updater（可选更新 + 强制更新）
+// Updater：智能选源（你要的核心）
 // =====================
+let currentUpdateSource = null; // "CN" | "INTL" | "GITHUB" | null
+
 function sendUpdaterStatus(payload) {
   if (!mainWin || mainWin.isDestroyed()) return;
   mainWin.webContents.send("updater:status", payload);
 }
 
-function setupAutoUpdater() {
-  // 关键：可选更新让用户选，默认不自动下
-  autoUpdater.autoDownload = false;
+// --- 简单 GET（支持重定向 + 超时）---
+function httpGetText(url, timeoutMs = 2500) {
+  const doReq = (u, redirectsLeft) =>
+    new Promise((resolve, reject) => {
+      const parsed = new URL(u);
+      const mod = parsed.protocol === "https:" ? https : http;
 
-  autoUpdater.on("checking-for-update", () => sendUpdaterStatus({ state: "checking" }));
+      const req = mod.request(
+        {
+          method: "GET",
+          hostname: parsed.hostname,
+          port: parsed.port || (parsed.protocol === "https:" ? 443 : 80),
+          path: parsed.pathname + parsed.search,
+          headers: {
+            "User-Agent": "RMS-Chat-Updater",
+            "Cache-Control": "no-cache",
+          },
+        },
+        (res) => {
+          // follow redirect
+          if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location && redirectsLeft > 0) {
+            res.resume();
+            const nextUrl = new URL(res.headers.location, u).toString();
+            return resolve(doReq(nextUrl, redirectsLeft - 1));
+          }
 
-  autoUpdater.on("update-available", async (info) => {
-    const forced = isForcedUpdate(info);
+          let data = "";
+          res.setEncoding("utf8");
+          res.on("data", (chunk) => (data += chunk));
+          res.on("end", () => {
+            if (res.statusCode >= 200 && res.statusCode < 300) return resolve(data);
+            reject(new Error(`HTTP ${res.statusCode} ${u}`));
+          });
+        }
+      );
 
-    sendUpdaterStatus({ state: "available", forced, info });
+      req.on("error", reject);
+      req.setTimeout(timeoutMs, () => req.destroy(new Error(`Timeout ${timeoutMs}ms ${u}`)));
+      req.end();
+    });
 
-    // 强制更新：一发现就直接开始下载（让用户别多一步）
-    if (forced) {
-      try {
-        await autoUpdater.downloadUpdate();
-      } catch (e) {
-        sendUpdaterStatus({ state: "error", forced, message: String(e) });
+  return doReq(url, 3);
+}
+
+// --- 探活：能否拿到 latest.yml（连不上就算不可用）---
+async function probeFeedOk(feedBaseUrl) {
+  try {
+    const base = feedBaseUrl.endsWith("/") ? feedBaseUrl : feedBaseUrl + "/";
+    await httpGetText(base + "latest.yml", 2500);
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+// --- IP 判断：大陆/非大陆（失败默认当大陆，保证国内用户走国内源）---
+async function detectMainlandChina() {
+  const apis = [
+    "https://ipapi.co/json/",
+    "https://ipinfo.io/json",
+    "https://api.ip.sb/geoip",
+    "https://geojs.io/v1/ip/geo.json",
+  ];
+
+  for (const api of apis) {
+    try {
+      const txt = await httpGetText(api, 2500);
+      const j = JSON.parse(txt);
+
+      const country = String(j.country_code || j.country || j.countryCode || "").toUpperCase();
+      const region = String(j.region || j.region_name || j.regionName || j.province || "").toUpperCase();
+
+      if (country === "CN") {
+        // 排除港澳台（不当大陆）
+        const notMainland = ["HONG KONG", "HK", "MACAU", "MO", "TAIWAN", "TW"];
+        if (notMainland.some((x) => region.includes(x))) return false;
+        return true;
       }
+      if (country) return false;
+    } catch (_) {}
+  }
+
+  // 都失败：默认当大陆（你要“国内优先”）
+  return true;
+}
+
+// --- 每次 check：临时监听 available/none/error，返回结果 ---
+async function checkOnce(feedConfig, sourceTag) {
+  return new Promise((resolve) => {
+    const cleanup = () => {
+      autoUpdater.removeListener("update-available", onAvail);
+      autoUpdater.removeListener("update-not-available", onNone);
+      autoUpdater.removeListener("error", onErr);
+    };
+
+    const onAvail = (info) => {
+      cleanup();
+      resolve({ ok: true, available: true, info, source: sourceTag });
+    };
+    const onNone = (info) => {
+      cleanup();
+      resolve({ ok: true, available: false, info, source: sourceTag });
+    };
+    const onErr = (err) => {
+      cleanup();
+      resolve({ ok: false, error: String(err), source: sourceTag });
+    };
+
+    autoUpdater.once("update-available", onAvail);
+    autoUpdater.once("update-not-available", onNone);
+    autoUpdater.once("error", onErr);
+
+    try {
+      autoUpdater.setFeedURL(feedConfig);
+
+      // GitHub 私库需要 token（公库不需要）
+      if (feedConfig.provider === "github" && GITHUB_TOKEN) {
+        autoUpdater.requestHeaders = { Authorization: `token ${GITHUB_TOKEN}` };
+      } else {
+        autoUpdater.requestHeaders = null;
+      }
+
+      autoUpdater.checkForUpdates().catch(onErr);
+    } catch (e) {
+      onErr(e);
     }
   });
+}
 
-  autoUpdater.on("update-not-available", (info) => {
-    sendUpdaterStatus({ state: "none", forced: false, info });
-  });
+function genericFeed(url) {
+  return { provider: "generic", url: url.endsWith("/") ? url : url + "/" };
+}
+function githubFeed() {
+  return { provider: "github", owner: GITHUB_OWNER, repo: GITHUB_REPO };
+}
+
+// --- 你的权重逻辑：primary -> secondary -> GitHub(最低) ---
+async function smartCheckForUpdates() {
+  sendUpdaterStatus({ state: "checking" });
+  currentUpdateSource = null;
+
+  const isMainland = await detectMainlandChina();
+
+  const primary = isMainland ? UPDATE_FEED_CN : UPDATE_FEED_INTL;
+  const secondary = isMainland ? UPDATE_FEED_INTL : UPDATE_FEED_CN;
+
+  const primaryOk = await probeFeedOk(primary);
+  const secondaryOk = await probeFeedOk(secondary);
+
+  // 1) 优先源：能连 && 有新
+  if (primaryOk) {
+    const r1 = await checkOnce(genericFeed(primary), isMainland ? "CN" : "INTL");
+    if (r1.ok && r1.available) return onSelectedUpdate(r1.info, r1.source);
+  }
+
+  // 2) 另一个源：能连 && 有新
+  if (secondaryOk) {
+    const r2 = await checkOnce(genericFeed(secondary), isMainland ? "INTL" : "CN");
+    if (r2.ok && r2.available) return onSelectedUpdate(r2.info, r2.source);
+  }
+
+  // 3) 两源都没新（或不可用） -> GitHub 最低权重
+  const rg = await checkOnce(githubFeed(), "GITHUB");
+  if (rg.ok && rg.available) return onSelectedUpdate(rg.info, "GITHUB");
+
+  // 都没新
+  sendUpdaterStatus({ state: "none", forced: false });
+}
+
+async function onSelectedUpdate(info, source) {
+  currentUpdateSource = source;
+  const forced = isForcedUpdate(info);
+
+  sendUpdaterStatus({ state: "available", forced, source, info });
+
+  // 强制更新：直接开始下载
+  if (forced) {
+    try {
+      await autoUpdater.downloadUpdate();
+    } catch (e) {
+      sendUpdaterStatus({ state: "error", forced, source, message: String(e) });
+    }
+  }
+}
+
+// --- 只保留下载/完成/错误事件（checking/available/none 由 smartCheck 发）---
+function setupAutoUpdaterSmartEvents() {
+  autoUpdater.autoDownload = false;
 
   autoUpdater.on("download-progress", (p) => {
     sendUpdaterStatus({
       state: "downloading",
+      source: currentUpdateSource,
       percent: p.percent,
       transferred: p.transferred,
       total: p.total,
@@ -278,28 +454,18 @@ function setupAutoUpdater() {
 
   autoUpdater.on("update-downloaded", (info) => {
     const forced = isForcedUpdate(info);
-    sendUpdaterStatus({ state: "downloaded", forced, info });
+    sendUpdaterStatus({ state: "downloaded", forced, source: currentUpdateSource, info });
   });
 
   autoUpdater.on("error", (err) => {
-    sendUpdaterStatus({ state: "error", forced: false, message: String(err) });
+    sendUpdaterStatus({ state: "error", forced: false, source: currentUpdateSource, message: String(err) });
   });
 }
 
-async function checkForUpdatesSafe() {
-  try {
-    return await autoUpdater.checkForUpdates();
-  } catch (e) {
-    sendUpdaterStatus({ state: "error", forced: false, message: String(e) });
-    return null;
-  }
-}
-
 // =====================
-// IPC（保留旧接口名 + 新增 updater / quit）
+// IPC
 // =====================
 function setupIpc() {
-  // 快捷键
   ipcMain.handle("shortcuts:get", () => store.get("shortcuts"));
   ipcMain.handle("shortcuts:set", (_event, key, accelerator) => {
     store.set(`shortcuts.${key}`, accelerator);
@@ -308,7 +474,6 @@ function setupIpc() {
     return { ok: true };
   });
 
-  // SSO
   ipcMain.handle("auth:getCallbackUrl", async () => {
     if (!callbackUrl && mainWin) await startCallbackServer(mainWin);
     return callbackUrl;
@@ -323,8 +488,12 @@ function setupIpc() {
     }
   });
 
-  // 更新：检查 / 下载 / 安装
-  ipcMain.handle("updater:check", async () => checkForUpdatesSafe());
+  // ===== 更新：检查(智能选源) / 下载 / 安装 =====
+  ipcMain.handle("updater:check", async () => {
+    await smartCheckForUpdates();
+    return true;
+  });
+
   ipcMain.handle("updater:download", async () => {
     try {
       await autoUpdater.downloadUpdate();
@@ -333,12 +502,12 @@ function setupIpc() {
       return { ok: false, error: String(e) };
     }
   });
+
   ipcMain.handle("updater:install", async () => {
     autoUpdater.quitAndInstall();
     return true;
   });
 
-  // 强制更新不更新就退出：给渲染层一个退出接口
   ipcMain.handle("app:quit", async () => {
     app.quit();
     return true;
@@ -346,7 +515,7 @@ function setupIpc() {
 }
 
 // =====================
-// App 生命周期（只保留一次）
+// App 生命周期
 // =====================
 app.whenReady().then(async () => {
   installCSP();
@@ -355,15 +524,12 @@ app.whenReady().then(async () => {
   mainWin = createWindow();
   await startCallbackServer(mainWin);
 
-  // 注册快捷键
   registerToggleShortcut(store.get("shortcuts.toggleWindow"));
   registerMicShortcut(store.get("shortcuts.toggleMic"));
 
-  // 更新器
-  setupAutoUpdater();
-
-  // 启动自动检查一次（可删）
-  await checkForUpdatesSafe();
+  // 更新器：事件绑定 + 启动检查
+  setupAutoUpdaterSmartEvents();
+  await smartCheckForUpdates();
 });
 
 app.on("will-quit", () => {
