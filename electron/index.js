@@ -108,6 +108,7 @@ function createWindow() {
   const win = new BrowserWindow({
     width: 1200,
     height: 800,
+    autoHideMenuBar: true,
     icon: path.join(__dirname, "assets", "icon.png"),
     webPreferences: {
       contextIsolation: true,
@@ -115,6 +116,8 @@ function createWindow() {
       preload: path.join(__dirname, "preload.js"),
     },
   });
+
+  win.setMenuBarVisibility(false);
 
   const distDir = path.join(__dirname, "frontend", "dist");
   const indexHtml = path.join(distDir, "index.html");
