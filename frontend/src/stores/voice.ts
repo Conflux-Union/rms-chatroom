@@ -611,17 +611,17 @@ export const useVoiceStore = defineStore('voice', () => {
       })
 
       room.value.on(RoomEvent.TrackUnsubscribed, (track, pub, participant) => {
-        // 先 detach（只调用一次），后面统一 remove
+        // Detach first and remove all from DOM later to avoid issues
         const detachedEls = track.detach()
         const elList = Array.isArray(detachedEls) ? detachedEls : [detachedEls]
 
         if (participant instanceof RemoteParticipant) {
-          // ✅ 1) 音频清理：只要是 Audio track 就清理，不再卡 Microphone
+          // Clear if it is a audio track
           if (track.kind === Track.Kind.Audio) {
             const info = participantAudioMap.get(participant.identity)
 
             if (info) {
-              // 更稳：只有当 map 里存的 audioElement 就是这次 detach 的元素，或者它已经不在 DOM 了，才清理
+              // Only remove if the audioElement matches or is disconnected
               const matched =
                 info.audioElement && elList.includes(info.audioElement)
 
@@ -636,7 +636,7 @@ export const useVoiceStore = defineStore('voice', () => {
             }
           }
 
-          // ✅ 2) 屏幕共享清理：保持你原来的判断
+          // Clear the screen share entry if applicable
           else if (pub.source === Track.Source.ScreenShare) {
             const newMap = new Map(remoteScreenShares.value)
             newMap.delete(participant.identity)
@@ -644,7 +644,7 @@ export const useVoiceStore = defineStore('voice', () => {
           }
         }
 
-        // ✅ 3) DOM 清理：把 detach 下来的元素移除
+        // Clear the DOM elements after handling
         elList.forEach((el) => el.remove())
       })
 
