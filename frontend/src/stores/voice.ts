@@ -549,6 +549,7 @@ export const useVoiceStore = defineStore('voice', () => {
             if (participant.identity.includes('music-bot') && firstAddedRoom) {
               console.log(`Music bot detected, firstAddedRoom: true, setting default volume to 30%`)
               savedVolume = 30;
+              userVolumes.value.set(participant.identity, 30)
               firstAddedRoom = false;
             }
 
@@ -566,7 +567,7 @@ export const useVoiceStore = defineStore('voice', () => {
               })
             } else {
               // Non-iOS: use native audioElement.volume
-              audioElement.volume = Math.min(savedVolume / 100, 1)
+              audioElement.volume = Math.pow(Math.max(0, Math.min(savedVolume, 100)) / 100, 2.6)
               participantAudioMap.set(participant.identity, { 
                 audioElement, 
                 volume: savedVolume 
@@ -765,6 +766,16 @@ export const useVoiceStore = defineStore('voice', () => {
   ): { success: boolean; showWarning: boolean } {
     const clampedVolume = Math.max(0, Math.min(300, volume))
     const currentVolume = userVolumes.value.get(participantId) ?? 100
+    console.log(`[setUserVolume] called id=${participantId}, target=${clampedVolume}, hasMap=${participantAudioMap.has(participantId)}`)
+
+    const el = document.querySelector(
+      `audio[data-livekit-audio="true"][data-participant-id="${participantId}"]`
+    ) as HTMLAudioElement | null
+
+    if (el) {
+      el.volume = Math.pow(Math.max(0, Math.min(clampedVolume, 100)) / 100, 2.6)
+      participantAudioMap.set(participantId, { audioElement: el, volume: clampedVolume })
+    }
 
     // Safety check: crossing 100% threshold requires warning acknowledgement
     if (currentVolume <= 100 && clampedVolume > 100 && !bypassWarning) {
