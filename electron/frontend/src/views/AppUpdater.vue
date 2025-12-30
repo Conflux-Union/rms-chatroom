@@ -7,6 +7,7 @@
 
       <div class="info">
         <div>状态：{{ stateText }}</div>
+        <div v-if="sourceText">更新源：{{ sourceText }}</div>
         <div v-if="versionText">版本：{{ versionText }}</div>
       </div>
 
@@ -70,6 +71,9 @@ const total = ref(0);
 const message = ref("");
 const versionText = ref("");
 
+// 新增：显示当前选择的更新源
+const sourceText = ref("");
+
 const stateText = computed(() => {
   const map = {
     idle: "空闲",
@@ -124,11 +128,9 @@ async function quit() {
 async function forceUpdateAction() {
   if (state.value === "downloaded") return install();
   if (state.value === "available") return download();
-  // 其它状态就不管
 }
 
 function later() {
-  // 可选更新：稍后就先隐藏提示
   visible.value = false;
 }
 
@@ -139,7 +141,13 @@ onMounted(() => {
     state.value = data.state || "idle";
     forced.value = !!data.forced;
 
-    // 有些 provider 会给 version / releaseName
+    // 新增：显示源（主进程会发 CN / INTL / GITHUB）
+    if (data.source) {
+      const s = String(data.source).toUpperCase();
+      sourceText.value = s === "CN" ? "国内源" : s === "INTL" ? "海外源" : s === "GITHUB" ? "GitHub" : s;
+    }
+
+    // 版本信息
     const v = data?.info?.version || data?.info?.releaseName || "";
     if (v) versionText.value = String(v);
 
@@ -148,18 +156,12 @@ onMounted(() => {
     if (data.total != null) total.value = data.total;
     if (data.message) message.value = data.message;
 
-    // 显示逻辑：
-    // - 强制更新：available/downloading/downloaded/error 都要弹出来挡住
-    // - 可选更新：available/downloaded/error 弹出来；none 不弹
     if (forced.value) {
       if (["available", "downloading", "downloaded", "error"].includes(state.value)) visible.value = true;
     } else {
       if (["available", "downloaded", "error"].includes(state.value)) visible.value = true;
     }
   });
-
-  // 启动时你主进程已经会 check 一次了，这里可以不再 check
-  // check();
 });
 
 onBeforeUnmount(() => {
