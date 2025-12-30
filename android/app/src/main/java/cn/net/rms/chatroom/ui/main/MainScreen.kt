@@ -290,13 +290,7 @@ fun MainScreen(
             onDismissRequest = { if (!updateInfo.forceUpdate) mainViewModel.dismissUpdate() },
             title = { Text("发现新版本") },
             text = {
-                Column {
-                    Text("版本: ${updateInfo.versionName}")
-                    if (updateInfo.changelog.isNotEmpty()) {
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text("更新内容:\n${updateInfo.changelog}")
-                    }
-                }
+                Text("版本: ${updateInfo.versionName}")
             },
             confirmButton = {
                 TextButton(
