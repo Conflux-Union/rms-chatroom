@@ -8,16 +8,19 @@ const Store = require("electron-store").default;
 const { autoUpdater } = require("electron-updater");
 
 // =====================
-// 你要改的：两个镜像源（目录下必须有 latest.yml）
-// 例： https://download-cn.xxx.com/rms-chat/win/   （里面有 latest.yml、exe、blockmap）
+// GitHub Release Configuration
 // =====================
-const UPDATE_FEED_CN = "https://api.hurrybili1016hjh.cc/RMS-Chatroom/Win/";
-const UPDATE_FEED_INTL = "https://api.hurrybili1016hjh.cc/RMS-Chatroom/Win/";
-
-// GitHub 最低优先级（public 可不填 token；private 需要 GH_TOKEN/GITHUB_TOKEN）
 const GITHUB_OWNER = "RMS-Server";
-const GITHUB_REPO = "RMS-ChatRoom";
+const GITHUB_REPO = "rms-chatroom";
 const GITHUB_TOKEN = process.env.GH_TOKEN || process.env.GITHUB_TOKEN || "";
+
+// ghproxy mirrors for mainland China acceleration (updated 2025-02)
+const GHPROXY_MIRRORS = [
+  "https://ghp.ci",
+  "https://gh-proxy.com",
+  "https://ghproxy.net",
+  "https://moeyy.cn/gh-proxy",
+];
 
 // =====================
 // Store（默认快捷键）
@@ -296,18 +299,18 @@ function httpGetText(url, timeoutMs = 2500) {
   return doReq(url, 3);
 }
 
-// --- 探活：能否拿到 latest.yml（连不上就算不可用）---
-async function probeFeedOk(feedBaseUrl) {
+// --- Probe if a GitHub API endpoint is accessible ---
+async function probeGitHubApi(baseUrl) {
   try {
-    const base = feedBaseUrl.endsWith("/") ? feedBaseUrl : feedBaseUrl + "/";
-    await httpGetText(base + "latest.yml", 2500);
+    const url = `${baseUrl}/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`;
+    await httpGetText(url, 3000);
     return true;
   } catch (_) {
     return false;
   }
 }
 
-// --- IP 判断：大陆/非大陆（失败默认当大陆，保证国内用户走国内源）---
+// --- Detect if user is in mainland China (default: true for CN users) ---
 async function detectMainlandChina() {
   const apis = [
     "https://ipapi.co/json/",
@@ -325,7 +328,7 @@ async function detectMainlandChina() {
       const region = String(j.region || j.region_name || j.regionName || j.province || "").toUpperCase();
 
       if (country === "CN") {
-        // 排除港澳台（不当大陆）
+        // Exclude Hong Kong, Macau, Taiwan
         const notMainland = ["HONG KONG", "HK", "MACAU", "MO", "TAIWAN", "TW"];
         if (notMainland.some((x) => region.includes(x))) return false;
         return true;
@@ -334,11 +337,11 @@ async function detectMainlandChina() {
     } catch (_) {}
   }
 
-  // 都失败：默认当大陆（你要“国内优先”）
+  // Default to mainland China if all APIs fail (prioritize CN users)
   return true;
 }
 
-// --- 每次 check：临时监听 available/none/error，返回结果 ---
+// --- Check for updates once with a specific feed config ---
 async function checkOnce(feedConfig, sourceTag) {
   return new Promise((resolve) => {
     const cleanup = () => {
@@ -367,7 +370,7 @@ async function checkOnce(feedConfig, sourceTag) {
     try {
       autoUpdater.setFeedURL(feedConfig);
 
-      // GitHub 私库需要 token（公库不需要）
+      // GitHub private repos need token (public repos don't)
       if (feedConfig.provider === "github" && GITHUB_TOKEN) {
         autoUpdater.requestHeaders = { Authorization: `token ${GITHUB_TOKEN}` };
       } else {
@@ -381,43 +384,44 @@ async function checkOnce(feedConfig, sourceTag) {
   });
 }
 
-function genericFeed(url) {
-  return { provider: "generic", url: url.endsWith("/") ? url : url + "/" };
-}
-function githubFeed() {
-  return { provider: "github", owner: GITHUB_OWNER, repo: GITHUB_REPO };
+function githubFeed(apiUrl = "https://api.github.com") {
+  return {
+    provider: "github",
+    owner: GITHUB_OWNER,
+    repo: GITHUB_REPO,
+    ...(apiUrl !== "https://api.github.com" && { url: apiUrl })
+  };
 }
 
-// --- 你的权重逻辑：primary -> secondary -> GitHub(最低) ---
+// --- Smart update check: try ghproxy mirrors first for CN users, fallback to GitHub ---
 async function smartCheckForUpdates() {
   sendUpdaterStatus({ state: "checking" });
   currentUpdateSource = null;
 
   const isMainland = await detectMainlandChina();
 
-  const primary = isMainland ? UPDATE_FEED_CN : UPDATE_FEED_INTL;
-  const secondary = isMainland ? UPDATE_FEED_INTL : UPDATE_FEED_CN;
+  // For mainland China users: try ghproxy mirrors first
+  if (isMainland) {
+    for (const mirror of GHPROXY_MIRRORS) {
+      const mirrorApi = `${mirror}/https://api.github.com`;
+      const accessible = await probeGitHubApi(mirrorApi);
 
-  const primaryOk = await probeFeedOk(primary);
-  const secondaryOk = await probeFeedOk(secondary);
-
-  // 1) 优先源：能连 && 有新
-  if (primaryOk) {
-    const r1 = await checkOnce(genericFeed(primary), isMainland ? "CN" : "INTL");
-    if (r1.ok && r1.available) return onSelectedUpdate(r1.info, r1.source);
+      if (accessible) {
+        const result = await checkOnce(githubFeed(mirrorApi), `GHPROXY:${mirror}`);
+        if (result.ok && result.available) {
+          return onSelectedUpdate(result.info, result.source);
+        }
+      }
+    }
   }
 
-  // 2) 另一个源：能连 && 有新
-  if (secondaryOk) {
-    const r2 = await checkOnce(genericFeed(secondary), isMainland ? "INTL" : "CN");
-    if (r2.ok && r2.available) return onSelectedUpdate(r2.info, r2.source);
+  // Fallback to official GitHub API
+  const result = await checkOnce(githubFeed(), "GITHUB");
+  if (result.ok && result.available) {
+    return onSelectedUpdate(result.info, result.source);
   }
 
-  // 3) 两源都没新（或不可用） -> GitHub 最低权重
-  const rg = await checkOnce(githubFeed(), "GITHUB");
-  if (rg.ok && rg.available) return onSelectedUpdate(rg.info, "GITHUB");
-
-  // 都没新
+  // No updates available
   sendUpdaterStatus({ state: "none", forced: false });
 }
 
@@ -437,7 +441,7 @@ async function onSelectedUpdate(info, source) {
   }
 }
 
-// --- 只保留下载/完成/错误事件（checking/available/none 由 smartCheck 发）---
+// --- Setup auto-updater event listeners (download/complete/error only) ---
 function setupAutoUpdaterSmartEvents() {
   autoUpdater.autoDownload = false;
 

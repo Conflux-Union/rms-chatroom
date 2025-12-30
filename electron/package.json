@@ -45,7 +45,7 @@
       {
         "provider": "github",
         "owner": "RMS-Server",
-        "repo": "RMS-Chat-terminal"
+        "repo": "rms-chatroom"
       }
     ]
   }
