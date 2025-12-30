@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>404</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+
+      /* 背景渐变 + 轻微纹理感 */
+      background: radial-gradient(circle at top, #eef2ff 0%, #f8fafc 45%, #ffffff 100%);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC",
+        "Hiragino Sans GB", "Microsoft YaHei", Arial, sans-serif;
+      color: #0f172a;
+      padding: 24px;
+    }
+
+    .card {
+      width: min(560px, 92vw);
+      padding: 28px 28px 24px;
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.8);
+      border: 1px solid rgba(148, 163, 184, 0.35);
+      box-shadow: 0 18px 50px rgba(15, 23, 42, 0.12);
+      backdrop-filter: blur(10px);
+      text-align: center;
+    }
+
+    .icon {
+      width: 54px;
+      height: 54px;
+      margin: 0 auto 14px;
+      border-radius: 999px;
+      display: grid;
+      place-items: center;
+      background: linear-gradient(135deg, #c52222 0%, #ff6c6c 100%);
+      box-shadow: 0 10px 24px rgba(34, 197, 94, 0.25);
+      color: #fff;
+      font-size: 28px;
+      line-height: 1;
+    }
+    h1 {
+      margin: 0 0 10px;
+      font-size: 26px;
+      letter-spacing: 0.5px;
+    }
+
+    p {
+      margin: 0;
+      font-size: 16px;
+      line-height: 1.8;
+      color: #334155;
+    }
+
+    .hint {
+      margin-top: 14px;
+      font-size: 13px;
+      color: #64748b;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="card" role="status" aria-live="polite">
+    <div class="icon">✓</div>
+    <h1>啊哦，界面不见了！</h1>
+    <p>请检查是否正确输入网址</p>
+    <div class="hint">404</div>
+    <img src="../public/bg.webp" alt="background picture" style="display:none;" />
+  </div>
+</body>
+</html>

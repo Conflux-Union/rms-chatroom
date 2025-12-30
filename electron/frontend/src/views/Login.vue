@@ -1,0 +1,165 @@
+<script setup lang="ts">
+import { useAuthStore } from '../stores/auth'
+import { useRouter } from 'vue-router'
+
+const auth = useAuthStore()
+const router = useRouter()
+
+// Electron 环境：监听主进程回调（token/code），然后交给你们已有的 Callback 页面处理
+const electronAPI = (window as any).electronAPI
+
+if (electronAPI?.onAuthCallback) {
+  electronAPI.onAuthCallback((data: any) => {
+    const { token, code } = data || {}
+    if (token) {
+      router.replace({ path: '/callback', query: { token } })
+    } else if (code) {
+      router.replace({ path: '/callback', query: { code } })
+    }
+  })
+}
+
+async function handleLogin() {
+  const loginUrl = auth.getLoginUrl()
+
+  // ✅ Electron：走系统浏览器，不要 window.location 跳走主窗口
+  if (electronAPI?.getCallbackUrl && electronAPI?.openExternal) {
+    const cb = await electronAPI.getCallbackUrl() // 形如 http://127.0.0.1:53333/callback
+    if (!cb) {
+      console.error('callbackUrl 为空，无法走浏览器 SSO')
+      return
+    }
+
+    // 把 loginUrl 里的 redirect_url 换成 cb
+    const u = new URL(loginUrl)
+    if (u.searchParams.has('redirect_url')) {
+      u.searchParams.set('redirect_url', cb)
+    }
+
+    await electronAPI.openExternal(u.toString())
+    return
+  }
+
+  // ✅ 网页端：保持原逻辑
+  window.location.href = loginUrl
+}
+</script>
+
+<template>
+  <div class="page-shell">
+    <div class="page-surface">
+      <div class="page-surface__inner">
+        <div class="page-content">
+          <h1 class="title">RMS ChatRoom</h1>
+          <p class="subtitle">欢迎！请使用 RMS 账号登录</p>
+          <button class="btn glow-effect" @click="handleLogin">RMS 账号登录</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<style scoped>
+.page-shell {
+  min-height: 100vh;
+  min-height: 100dvh;
+  width: 100%;
+  display: flex;
+  justify-content: flex-end;
+  align-items: stretch;
+  padding-left: clamp(2rem, 10vw, 20rem);
+}
+
+.page-surface {
+  min-height: 100vh;
+  min-height: 100dvh;
+  width: auto;
+  min-width: 480px;
+  max-width: 100%;
+  flex: 0 0 auto;
+  padding: var(--spacing-xxl) var(--spacing-xl);
+  background: var(--surface-glass);
+  backdrop-filter: blur(var(--blur-strength));
+  -webkit-backdrop-filter: blur(var(--blur-strength));
+  box-shadow: -5px 0 30px rgba(0, 0, 0, 0.05);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  transition: width 0.35s var(--transition-normal), padding 0.3s var(--transition-normal);
+}
+
+.page-surface__inner {
+  width: 100%;
+  max-width: 440px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.page-content {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xl);
+}
+
+.title {
+  color: var(--color-text-main);
+  text-align: center;
+  font-size: 2.25rem;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+  margin: 0;
+}
+
+.subtitle {
+  color: var(--color-text-muted);
+  text-align: center;
+  font-size: 1.1rem;
+  margin: 0;
+}
+
+.btn {
+  width: 100%;
+  padding: 16px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: var(--color-gradient-primary);
+  color: white;
+  font-size: 1.1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-normal);
+  box-shadow: var(--shadow-glow);
+}
+
+.btn:hover {
+  transform: translateY(-2px);
+  filter: brightness(1.1);
+  box-shadow: 0 12px 28px rgba(220, 38, 127, 0.35);
+}
+
+.btn:active {
+  transform: translateY(0) scale(0.98);
+}
+
+@media (max-width: 960px) {
+  .page-shell {
+    padding-left: 0;
+    justify-content: center;
+  }
+  .page-surface {
+    width: 100%;
+    min-width: 100%;
+    padding: var(--spacing-xl) var(--spacing-md);
+    background: var(--surface-glass-strong);
+  }
+}
+
+@media (max-width: 600px) {
+  .page-surface {
+    align-items: flex-start;
+    padding-top: 40px;
+  }
+}
+</style>

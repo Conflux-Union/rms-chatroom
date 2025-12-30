@@ -1,0 +1,42 @@
+{
+  "name": "rms-chat-terminal",
+  "version": "1.0.0",
+  "description": "",
+  "license": "ISC",
+  "author": "mgHurryo",
+  "type": "commonjs",
+  "main": "index.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder"
+  },
+  "devDependencies": {
+    "electron": "^39.2.7",
+    "electron-builder": "^26.0.12",
+    "electron-packager": "^17.1.2"
+  },
+  "dependencies": {
+    "electron-store": "^11.0.2",
+    "electron-updater": "^6.6.2"
+  },
+  "build": {
+    "appId": "com.rms.app",
+    "productName": "RMS Chat",
+    "win": {
+      "icon": "build/icon.ico"
+    },
+    "mac": {
+      "icon": "build/icon.icns"
+    },
+    "linux": {
+      "icon": "build"
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "RMS-Server",
+        "repo": "RMS-Chat-terminal"
+      }
+    ]
+  }
+}
