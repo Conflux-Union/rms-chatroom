@@ -36,7 +36,7 @@ except ImportError:
 
 # Configuration - modify these for your deployment
 SERVER_URL = os.environ.get("DEPLOY_SERVER", "https://preview-chatroom.rms.net.cn")
-DEPLOY_TOKEN = os.environ.get("DEPLOY_TOKEN", "rmstoken")
+DEPLOY_TOKEN = os.environ.get("DEPLOY_TOKEN")  # No default - must be explicitly set
 
 PROJECT_ROOT = Path(__file__).parent.resolve()
 
@@ -490,9 +490,8 @@ def main():
         print("       Or set DEPLOY_SERVER environment variable")
         sys.exit(1)
 
-    if args.token == "your-secret-token" and not args.dry_run:
-        print("Error: Please configure DEPLOY_TOKEN in deploy.py or use --token")
-        print("       Or set DEPLOY_TOKEN environment variable")
+    if not args.token and not args.dry_run:
+        print("Error: Deploy token is required. Use --token or set DEPLOY_TOKEN environment variable")
         sys.exit(1)
 
     # Read version from file
