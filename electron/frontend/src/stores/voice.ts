@@ -741,6 +741,20 @@ export const useVoiceStore = defineStore('voice', () => {
     return isMuted.value
   }
 
+  let _micHotkeyBound = false
+
+  function bindMicHotkeyOnce() {
+    if (_micHotkeyBound) return
+    _micHotkeyBound = true
+
+    window.electronAPI?.onMicToggle?.(() => {
+      console.log('[hotkey] mic:toggle -> voice.toggleMute()')
+      toggleMute()
+    })
+  }
+
+  bindMicHotkeyOnce()
+
   function setGlobalMute(muted: boolean) {
     const audioElements = document.querySelectorAll('audio[data-livekit-audio="true"]')
     // iOS change masterGain 
