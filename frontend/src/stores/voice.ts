@@ -17,6 +17,7 @@ const API_BASE = import.meta.env.VITE_API_BASE || ''
 
 const STORAGE_KEY_INPUT = 'rms-voice-input-device'
 const STORAGE_KEY_OUTPUT = 'rms-voice-output-device'
+let firstAddedRoom = true
 
 // Detect iOS devices (iPad, iPhone, iPod, or iPad with desktop mode)
 function isIOS(): boolean {
@@ -543,9 +544,11 @@ export const useVoiceStore = defineStore('voice', () => {
             
             let savedVolume = userVolumes.value.get(participant.identity) ?? 100
 
-            if (participant.identity.includes('music-bot')) {
-              console.log(`Music bot detected, setting volume to 10%`)
+            console.log(firstAddedRoom)
+            if (participant.identity.includes('music-bot') && firstAddedRoom) {
+              console.log(`Music bot detected, firstAddedRoom: true, setting default volume to 30%`)
               savedVolume = 30;
+              firstAddedRoom = false;
             }
 
             console.log(`Subscribing to audio track of ${participant.identity}, saved volume: ${savedVolume}%`)
@@ -830,7 +833,14 @@ export const useVoiceStore = defineStore('voice', () => {
 
       } else if (!isIOS() && participantAudio.audioElement) {
         // Non-iOS: use native volume (max 100%)
-        participantAudio.audioElement.volume = Math.pow(Math.max(0, Math.min(clampedVolume, 100)) / 100, 2.6);;
+        participantAudio.audioElement.volume = Math.pow(Math.max(0, Math.min(clampedVolume, 100)) / 100, 2.6);
+
+        console.log(`  - Website using Audio element volume control`)
+        console.log(`  - First added room: ${firstAddedRoom}`)
+        console.log(`  - Setting audioElement.volume to: ${participantAudio.audioElement.volume}`)
+        console.log(`  - Audio element paused: ${participantAudio.audioElement.paused}`)
+        console.log(`  - Audio element muted: ${participantAudio.audioElement.muted}`)
+        console.log(`  - Audio element readyState: ${participantAudio.audioElement.readyState}`)
       }
       
       // Update stored volume
