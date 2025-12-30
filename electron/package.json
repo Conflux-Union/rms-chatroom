@@ -1,7 +1,8 @@
 {
   "name": "rms-chat-terminal",
   "version": "1.0.0",
-  "description": "",
+  "description": "RMS Chat - ChatRoom For RMS",
+  "homepage": "https://github.com/RMS-Server/rms-chatroom",
   "license": "ISC",
   "author": "mgHurryo",
   "type": "commonjs",
