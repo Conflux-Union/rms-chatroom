@@ -545,6 +545,7 @@ export const useVoiceStore = defineStore('voice', () => {
             let savedVolume = userVolumes.value.get(participant.identity) ?? 100
 
             console.log(firstAddedRoom)
+            console.log(`  - Participant ID: ${participant.identity}`)
             if (participant.identity.includes('music-bot') && firstAddedRoom) {
               console.log(`Music bot detected, firstAddedRoom: true, setting default volume to 30%`)
               savedVolume = 30;

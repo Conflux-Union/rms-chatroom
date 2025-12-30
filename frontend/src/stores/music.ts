@@ -279,6 +279,7 @@ export const useMusicStore = defineStore('music', () => {
       if (data.success) {
         botConnected.value = true
         botRoom.value = roomName
+        console.log('Music bot started in room:', roomName)
       }
       return data.success
     } catch (e) {
@@ -296,6 +297,7 @@ export const useMusicStore = defineStore('music', () => {
       })
       botConnected.value = false
       botRoom.value = null
+      console.log('Music bot stopped in room:', roomName)
     } catch (e) {
       console.error('Failed to stop bot:', e)
     }
@@ -311,6 +313,12 @@ export const useMusicStore = defineStore('music', () => {
       botConnected.value = data.connected
       botRoom.value = data.room
       isPlaying.value = data.is_playing
+      console.log('Music bot status:')
+      console.log(`  - Connected: ${botConnected.value}`)
+      console.log(`  - Room: ${botRoom.value}`)
+      console.log(`  - Is playing: ${isPlaying.value}`)
+      console.log(`  - Current song: ${currentSong.value}`)
+
       return data
     } catch (e) {
       console.error('Failed to get bot status:', e)
