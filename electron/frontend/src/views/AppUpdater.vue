@@ -156,6 +156,12 @@ onMounted(() => {
     if (data.total != null) total.value = data.total;
     if (data.message) message.value = data.message;
 
+    // Close dialog when no updates available
+    if (state.value === "none") {
+      visible.value = false;
+      return;
+    }
+
     if (forced.value) {
       if (["available", "downloading", "downloaded", "error"].includes(state.value)) visible.value = true;
     } else {
