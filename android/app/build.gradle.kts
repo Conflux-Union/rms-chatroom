@@ -32,9 +32,9 @@ android {
     signingConfigs {
         create("release") {
             storeFile = file("release.keystore")
-            storePassword = "rmsdiscord123"
-            keyAlias = "rms-discord"
-            keyPassword = "rmsdiscord123"
+            storePassword = System.getenv("KEYSTORE_PASSWORD") ?: "rmsdiscord123"
+            keyAlias = System.getenv("KEY_ALIAS") ?: "rms-discord"
+            keyPassword = System.getenv("KEY_PASSWORD") ?: "rmsdiscord123"
         }
     }
 

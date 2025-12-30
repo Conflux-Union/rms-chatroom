@@ -293,9 +293,9 @@ interface ApiService {
         @Part file: MultipartBody.Part
     ): BugReportResponse
 
-    // App Update
-    @GET("api/app/android/checkupdate")
-    suspend fun checkUpdate(): AppUpdateResponse
+    // App Update - GitHub Release
+    @GET
+    suspend fun checkGitHubRelease(@Url url: String): GitHubReleaseResponse
 }
 
 data class SendMessageBody(
@@ -313,7 +313,26 @@ data class BugReportResponse(
     val reportId: String
 )
 
-// App Update
+// GitHub Release Response
+data class GitHubReleaseResponse(
+    @SerializedName("tag_name")
+    val tagName: String,  // e.g., "v1.0.7-fix-2(33)"
+    val name: String,
+    val body: String,  // Release notes / changelog
+    @SerializedName("html_url")
+    val htmlUrl: String,
+    val assets: List<GitHubAsset>,
+    val prerelease: Boolean
+)
+
+data class GitHubAsset(
+    val name: String,  // e.g., "rms-chatroom-1.0.7-fix-2.apk"
+    @SerializedName("browser_download_url")
+    val browserDownloadUrl: String,
+    val size: Long
+)
+
+// App Update (legacy, kept for compatibility)
 data class AppUpdateResponse(
     @SerializedName("version_code")
     val versionCode: Int,

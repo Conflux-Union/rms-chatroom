@@ -8,21 +8,19 @@ Format:
     code=1
 
 Usage:
-    python deploy.py --release   # Release deploy (frontend + backend + Android), creates tag
-    python deploy.py --release --web-only  # Release deploy (frontend + backend only), creates tag
-    python deploy.py --hot-fix   # Hot-fix deploy (requires x.x.x-fix-x version), creates tag
-    python deploy.py --hot-fix --web-only  # Hot-fix deploy (web only), creates tag
-    python deploy.py --debug     # Debug deploy (frontend + backend only, no Android)
+    python deploy.py --release   # Release deploy (frontend + backend), creates tag, triggers CI/CD
+    python deploy.py --hot-fix   # Hot-fix deploy (requires x.x.x-fix-x version), creates tag, triggers CI/CD
+    python deploy.py --debug     # Debug deploy (frontend + backend only, no tag, no CI/CD)
     python deploy.py --dry-run --debug  # Test packaging without upload
+
+Note: Android and Electron builds are handled by GitHub Actions when tags are pushed.
 """
 from __future__ import annotations
 
 import argparse
 import io
-import json
 import os
 import re
-import shutil
 import subprocess
 import sys
 import tarfile
@@ -46,13 +44,6 @@ PROJECT_ROOT = Path(__file__).parent.resolve()
 VERSION_FILE = PROJECT_ROOT / "current.version"
 FRONTEND_VERSION_FILE = PROJECT_ROOT / "frontend" / "src" / "version.ts"
 BACKEND_VERSION_FILE = PROJECT_ROOT / "backend" / "version.py"
-
-# Android paths
-ANDROID_DIR = PROJECT_ROOT / "android"
-ANDROID_GRADLE_FILE = ANDROID_DIR / "app" / "build.gradle.kts"
-ANDROID_APK_OUTPUT = ANDROID_DIR / "app" / "build" / "outputs" / "apk" / "release" / "app-release.apk"
-ANDROID_APK_DEST = PROJECT_ROOT / "backend" / "android_app" / "rms-chatroom.apk"
-ANDROID_VERSION_JSON = PROJECT_ROOT / "backend" / "android_app" / "version.json"
 
 # Frontend directory
 FRONTEND_DIR = PROJECT_ROOT / "frontend"
@@ -113,30 +104,6 @@ def validate_version_format(version: str, mode: str) -> tuple[bool, str]:
         if not re.match(r'^\d+\.\d+\.\d+-dev', version):
             return False, f"Debug requires version format x.x.x-dev*, got: {version}"
     return True, ""
-
-
-def check_android_version_json(version_name: str, version_code: str) -> tuple[bool, str]:
-    """Check that android_app/version.json matches current.version."""
-    if not ANDROID_VERSION_JSON.exists():
-        return False, f"Android version.json not found: {ANDROID_VERSION_JSON}"
-    
-    try:
-        with open(ANDROID_VERSION_JSON, encoding="utf-8") as f:
-            data = json.load(f)
-        
-        json_name = data.get("version_name", "")
-        json_code = str(data.get("version_code", ""))
-        
-        if json_name != version_name:
-            return False, f"version.json version_name mismatch: {json_name} != {version_name}"
-        if json_code != version_code:
-            return False, f"version.json version_code mismatch: {json_code} != {version_code}"
-        
-        return True, ""
-    except json.JSONDecodeError as e:
-        return False, f"Invalid version.json: {e}"
-    except Exception as e:
-        return False, f"Failed to read version.json: {e}"
 
 
 def get_last_release_version() -> str | None:
@@ -345,79 +312,6 @@ COMMIT_HASH = "unknown"
     BACKEND_VERSION_FILE.write_text(default_backend)
 
 
-def update_android_version(version_name: str, version_code: str) -> tuple[bool, str]:
-    """Update version in Android build.gradle.kts."""
-    if not ANDROID_GRADLE_FILE.exists():
-        return False, f"Android gradle file not found: {ANDROID_GRADLE_FILE}"
-    
-    content = ANDROID_GRADLE_FILE.read_text()
-    
-    # Check patterns exist
-    if not re.search(r'val appVersionCode = \d+', content):
-        return False, "appVersionCode not found in build.gradle.kts"
-    if not re.search(r'val appVersionName = "[^"]+"', content):
-        return False, "appVersionName not found in build.gradle.kts"
-    
-    # Update appVersionCode
-    content = re.sub(
-        r'val appVersionCode = \d+',
-        f'val appVersionCode = {version_code}',
-        content
-    )
-    
-    # Update appVersionName
-    content = re.sub(
-        r'val appVersionName = "[^"]+"',
-        f'val appVersionName = "{version_name}"',
-        content
-    )
-    
-    ANDROID_GRADLE_FILE.write_text(content)
-    return True, ""
-
-
-def build_android_release() -> tuple[bool, str]:
-    """Build Android release APK."""
-    if not ANDROID_DIR.exists():
-        return False, f"Android directory not found: {ANDROID_DIR}"
-    
-    gradlew = ANDROID_DIR / "gradlew"
-    if not gradlew.exists():
-        return False, f"gradlew not found: {gradlew}"
-    
-    try:
-        result = subprocess.run(
-            ["./gradlew", "assembleRelease"],
-            cwd=ANDROID_DIR,
-            capture_output=True,
-            text=True,
-            timeout=600,  # 10 minutes timeout
-        )
-        if result.returncode != 0:
-            return False, f"Gradle build failed:\n{result.stderr[-2000:]}"
-        return True, ""
-    except subprocess.TimeoutExpired:
-        return False, "Android build timed out (10 minutes)"
-    except Exception as e:
-        return False, f"Android build error: {e}"
-
-
-def copy_android_apk() -> tuple[bool, str]:
-    """Copy built APK to backend/android_app/."""
-    if not ANDROID_APK_OUTPUT.exists():
-        return False, f"APK not found: {ANDROID_APK_OUTPUT}"
-    
-    ANDROID_APK_DEST.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(ANDROID_APK_OUTPUT, ANDROID_APK_DEST)
-    return True, ""
-
-
-def cleanup_android_apk() -> None:
-    """Remove APK from backend/android_app/."""
-    if ANDROID_APK_DEST.exists():
-        ANDROID_APK_DEST.unlink()
-
-
 def create_archive() -> tuple[io.BytesIO, int, int]:
     """Create tar.gz archive of project files."""
     buffer = io.BytesIO()
@@ -536,25 +430,25 @@ def deploy(server_url: str, token: str, dry_run: bool = False, step_offset: int 
 
 def main():
     parser = argparse.ArgumentParser(description="Deploy RMS Discord to server")
-    
+
     # Required mode argument (mutually exclusive)
     mode_group = parser.add_mutually_exclusive_group(required=True)
     mode_group.add_argument(
         "--release",
         action="store_true",
-        help="Release deploy (frontend + backend + Android), creates tag",
+        help="Release deploy (frontend + backend), creates tag, triggers CI/CD",
     )
     mode_group.add_argument(
         "--hot-fix",
         action="store_true",
-        help="Hot-fix deploy (requires x.x.x-fix-x version), creates tag",
+        help="Hot-fix deploy (requires x.x.x-fix-x version), creates tag, triggers CI/CD",
     )
     mode_group.add_argument(
         "--debug",
         action="store_true",
-        help="Debug deploy (frontend + backend only, no Android, requires x.x.x-dev version)",
+        help="Debug deploy (frontend + backend only, no tag, no CI/CD)",
     )
-    
+
     parser.add_argument(
         "--server",
         default=SERVER_URL,
@@ -570,14 +464,9 @@ def main():
         action="store_true",
         help="Create archive without uploading",
     )
-    parser.add_argument(
-        "--web-only",
-        action="store_true",
-        help="Deploy frontend + backend only, skip Android build (only for --release and --hot-fix)",
-    )
-    
+
     args = parser.parse_args()
-    
+
     # Determine mode
     if args.release:
         mode = "release"
@@ -585,15 +474,9 @@ def main():
         mode = "hot-fix"
     else:
         mode = "debug"
-    
-    # Validate --web-only usage
-    if args.web_only and mode == "debug":
-        print("Error: --web-only is only valid with --release or --hot-fix")
-        sys.exit(1)
-    
-    build_android = mode in ("release", "hot-fix") and not args.web_only
+
     create_tag = mode in ("release", "hot-fix")
-    
+
     # Check git working directory is clean (skip for dry-run)
     if not args.dry_run:
         is_clean, msg = check_git_clean()
@@ -601,43 +484,40 @@ def main():
             print(f"Error: {msg}")
             print("       Please commit or stash your changes before deploying.")
             sys.exit(1)
-    
+
     if args.server == "https://your-server.com" and not args.dry_run:
         print("Error: Please configure SERVER_URL in deploy.py or use --server")
         print("       Or set DEPLOY_SERVER environment variable")
         sys.exit(1)
-    
+
     if args.token == "your-secret-token" and not args.dry_run:
         print("Error: Please configure DEPLOY_TOKEN in deploy.py or use --token")
         print("       Or set DEPLOY_TOKEN environment variable")
         sys.exit(1)
-    
+
     # Read version from file
     version_name, version_code = read_version_file()
     version_name = version_name.lstrip("v")  # Remove leading 'v' if present
     commit_hash = get_commit_hash()
-    
+
     # Calculate total steps based on mode
-    # Steps: validate + version + frontend_build + (android) + (tag) + push + pack + upload + result
-    total_steps = 7  # base: validate + version + frontend + push + pack + upload + result
-    if build_android:
-        total_steps += 1  # android build
+    # Steps: validate + version + frontend_build + (tag) + push + pack + upload + result
+    total_steps = 6  # base: validate + version + frontend + push + pack + upload + result
     if create_tag:
         total_steps += 1  # tag creation
-    
+
     step = 0
-    
+
     # Step 1: Validate version format
     step += 1
     print(f"[{step}/{total_steps}] Validating version format...")
-    mode_desc = f"{mode} mode" + (" (web-only)" if args.web_only else "")
-    print(f"      Version: v{version_name}({version_code}) [{mode_desc}]")
-    
+    print(f"      Version: v{version_name}({version_code}) [{mode} mode]")
+
     valid, err = validate_version_format(version_name, mode)
     if not valid:
         print(f"      ERROR: {err}")
         sys.exit(1)
-    
+
     # For release mode, check if version already released
     if mode == "release":
         last_release = get_last_release_version()
@@ -647,25 +527,16 @@ def main():
             sys.exit(1)
         if last_release:
             print(f"      Last release: v{last_release}")
-    
-    # For release/hot-fix, check android_app/version.json matches
-    if mode in ("release", "hot-fix"):
-        valid, err = check_android_version_json(version_name, version_code)
-        if not valid:
-            print(f"      ERROR: {err}")
-            print(f"             Update backend/android_app/version.json to match current.version")
-            sys.exit(1)
-        print(f"      android_app/version.json matches")
-    
+
     print(f"      Version format valid")
-    
+
     # Step 2: Generate version files
     step += 1
     print(f"\n[{step}/{total_steps}] Generating version files...")
     generate_version_files(version_name, version_code, commit_hash)
     print(f"      Generated frontend/src/version.ts")
     print(f"      Generated backend/version.py")
-    
+
     try:
         # Step 3: Build frontend locally
         step += 1
@@ -675,35 +546,8 @@ def main():
             print(f"      ERROR: {err}")
             sys.exit(1)
         print(f"      Frontend build successful")
-        
-        # Step 4 (optional): Android build
-        if build_android:
-            step += 1
-            print(f"\n[{step}/{total_steps}] Building Android release...")
-            
-            # Update Android version
-            success, err = update_android_version(version_name, version_code)
-            if not success:
-                print(f"      ERROR: {err}")
-                sys.exit(1)
-            print(f"      Updated build.gradle.kts")
-            
-            # Build APK
-            print(f"      Running gradle assembleRelease (this may take a while)...")
-            success, err = build_android_release()
-            if not success:
-                print(f"      ERROR: {err}")
-                sys.exit(1)
-            print(f"      Build successful")
-            
-            # Copy APK
-            success, err = copy_android_apk()
-            if not success:
-                print(f"      ERROR: {err}")
-                sys.exit(1)
-            print(f"      Copied APK to {ANDROID_APK_DEST.relative_to(PROJECT_ROOT)}")
-        
-        # Step 5 (optional): Create git tag
+
+        # Step 4 (optional): Create git tag
         tag_name = None
         if create_tag:
             step += 1
@@ -714,8 +558,9 @@ def main():
                 sys.exit(1)
             tag_name = result
             print(f"      Tag created: {tag_name}")
-        
-        # Step 6: Git push
+            print(f"      Note: GitHub Actions will extract version from tag and build Android/Electron")
+
+        # Step 5: Git push
         step += 1
         print(f"\n[{step}/{total_steps}] Pushing to remote...")
         if args.dry_run:
@@ -727,18 +572,17 @@ def main():
                 sys.exit(1)
             if create_tag:
                 print(f"      Pushed commits and tags")
+                print(f"      GitHub Actions will build Android APK and Electron apps")
             else:
                 print(f"      Pushed commits")
-        
+
         # Deploy (pack, upload, result)
         success = deploy(args.server, args.token, args.dry_run, step, total_steps)
-        
+
     finally:
         # Cleanup
         cleanup_version_files()
-        if build_android:
-            cleanup_android_apk()
-    
+
     sys.exit(0 if success else 1)
 
 

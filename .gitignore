@@ -26,6 +26,11 @@ dist/
 # Build
 build/
 
+# Android
+android/app/release.keystore
+*.jks
+*.keystore
+
 debug/
 
 # Scripts

@@ -29,17 +29,62 @@ class UpdateRepository @Inject constructor(
     companion object {
         private const val TAG = "UpdateRepository"
         private const val APK_FILE_NAME = "rms-chatroom-update.apk"
+        private const val GITHUB_REPO_OWNER = "Trirrin"
+        private const val GITHUB_REPO_NAME = "rms-discord"
+        private const val GITHUB_RELEASE_API = "https://api.github.com/repos/$GITHUB_REPO_OWNER/$GITHUB_REPO_NAME/releases/latest"
     }
 
     private var downloadId: Long = -1
 
+    /**
+     * Parse version code from tag name
+     * Example: "v1.0.7-fix-2(33)" -> 33
+     */
+    private fun parseVersionCode(tagName: String): Int? {
+        val regex = """v[^(]+\((\d+)\)""".toRegex()
+        return regex.find(tagName)?.groupValues?.get(1)?.toIntOrNull()
+    }
+
+    /**
+     * Parse version name from tag name
+     * Example: "v1.0.7-fix-2(33)" -> "1.0.7-fix-2"
+     */
+    private fun parseVersionName(tagName: String): String? {
+        val regex = """v([^(]+)\(\d+\)""".toRegex()
+        return regex.find(tagName)?.groupValues?.get(1)
+    }
+
     suspend fun checkUpdate(): Result<AppUpdateResponse?> = withContext(Dispatchers.IO) {
         try {
-            val response = api.checkUpdate()
+            val release = api.checkGitHubRelease(GITHUB_RELEASE_API)
             val currentVersionCode = BuildConfig.VERSION_CODE
-            
-            if (response.versionCode > currentVersionCode) {
-                Result.success(response)
+
+            // Parse version info from tag
+            val versionCode = parseVersionCode(release.tagName)
+            val versionName = parseVersionName(release.tagName)
+
+            if (versionCode == null || versionName == null) {
+                Log.e(TAG, "Failed to parse version from tag: ${release.tagName}")
+                return@withContext Result.failure(Exception("Invalid tag format"))
+            }
+
+            // Find APK asset
+            val apkAsset = release.assets.find { it.name.endsWith(".apk") }
+            if (apkAsset == null) {
+                Log.e(TAG, "No APK found in release assets")
+                return@withContext Result.failure(Exception("No APK found"))
+            }
+
+            if (versionCode > currentVersionCode) {
+                // Convert to AppUpdateResponse format
+                val updateResponse = AppUpdateResponse(
+                    versionCode = versionCode,
+                    versionName = versionName,
+                    changelog = release.body,
+                    forceUpdate = false,  // GitHub releases don't have force update flag
+                    downloadUrl = apkAsset.browserDownloadUrl
+                )
+                Result.success(updateResponse)
             } else {
                 Result.success(null)
             }
@@ -58,13 +103,8 @@ class UpdateRepository @Inject constructor(
             apkFile.delete()
         }
 
-        val fullUrl = if (downloadUrl.startsWith("http")) {
-            downloadUrl
-        } else {
-            BuildConfig.API_BASE_URL.trimEnd('/') + downloadUrl
-        }
-
-        val request = DownloadManager.Request(Uri.parse(fullUrl))
+        // downloadUrl is already a full URL from GitHub
+        val request = DownloadManager.Request(Uri.parse(downloadUrl))
             .setTitle("RMS Chatroom Update")
             .setDescription("Downloading update...")
             .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)

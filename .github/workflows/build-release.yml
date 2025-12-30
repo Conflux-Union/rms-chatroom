@@ -1,0 +1,268 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*(*)'  # Matches tags like v1.0.0(1), v1.0.6-fix-1(9)
+
+jobs:
+  extract-version:
+    name: Extract Version Info
+    runs-on: ubuntu-latest
+    outputs:
+      version_name: ${{ steps.version.outputs.version }}
+      version_code: ${{ steps.version.outputs.code }}
+      tag_name: ${{ steps.version.outputs.tag_name }}
+    steps:
+      - name: Extract version from tag
+        id: version
+        run: |
+          TAG_NAME=${GITHUB_REF#refs/tags/}
+          echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
+
+          # Extract version and code from tag (e.g., v1.0.7-fix-2(33) -> 1.0.7-fix-2, 33)
+          VERSION=$(echo $TAG_NAME | sed -E 's/v([^(]+)\(([^)]+)\)/\1/')
+          CODE=$(echo $TAG_NAME | sed -E 's/v([^(]+)\(([^)]+)\)/\2/')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "code=$CODE" >> $GITHUB_OUTPUT
+
+          echo "Extracted: version=$VERSION, code=$CODE"
+
+  build-android:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+    needs: extract-version
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Update Android version in build.gradle.kts
+        run: |
+          VERSION_NAME="${{ needs.extract-version.outputs.version_name }}"
+          VERSION_CODE="${{ needs.extract-version.outputs.version_code }}"
+
+          sed -i "s/val appVersionCode = [0-9]*/val appVersionCode = $VERSION_CODE/" android/app/build.gradle.kts
+          sed -i "s/val appVersionName = \"[^\"]*\"/val appVersionName = \"$VERSION_NAME\"/" android/app/build.gradle.kts
+
+          echo "Updated Android version to: $VERSION_NAME ($VERSION_CODE)"
+          grep -A 2 "appVersionCode\|appVersionName" android/app/build.gradle.kts
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Cache Gradle packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x android/gradlew
+
+      - name: Decode and setup keystore
+        run: |
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > android/app/release.keystore
+
+      - name: Build Release APK
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          cd android
+          ./gradlew assembleRelease --no-daemon
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: android/app/build/outputs/apk/release/app-release.apk
+          retention-days: 7
+
+  build-electron:
+    name: Build Electron Apps
+    runs-on: ${{ matrix.os }}
+    needs: extract-version
+
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Update Electron version in package.json
+        shell: bash
+        run: |
+          VERSION_NAME="${{ needs.extract-version.outputs.version_name }}"
+          cd electron
+
+          # Update version in package.json
+          sed -i.bak "s/\"version\": \"[^\"]*\"/\"version\": \"$VERSION_NAME\"/" package.json
+          rm -f package.json.bak
+
+          echo "Updated Electron version to: $VERSION_NAME"
+          grep "\"version\"" package.json
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: electron/package-lock.json
+
+      - name: Install Electron dependencies
+        run: |
+          cd electron
+          npm ci
+
+      - name: Build frontend
+        run: |
+          cd electron/frontend
+          npm ci
+          npm run build
+
+      - name: Build Electron app (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          cd electron
+          npm run build -- --linux --x64
+
+      - name: Build Electron app (macOS)
+        if: matrix.os == 'macos-latest'
+        run: |
+          cd electron
+          npm run build -- --mac --x64 --arm64
+
+      - name: Build Electron app (Windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          cd electron
+          npm run build -- --win --x64
+
+      - name: Upload Linux artifacts
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: electron-linux
+          path: electron/dist/*.AppImage
+          retention-days: 7
+
+      - name: Upload macOS artifacts
+        if: matrix.os == 'macos-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: electron-macos
+          path: electron/dist/*.dmg
+          retention-days: 7
+
+      - name: Upload Windows artifacts
+        if: matrix.os == 'windows-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: electron-windows
+          path: electron/dist/*.exe
+          retention-days: 7
+
+  create-release:
+    name: Create GitHub Release
+    needs: [extract-version, build-android, build-electron]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Determine release type
+        id: release_type
+        run: |
+          VERSION="${{ needs.extract-version.outputs.version_name }}"
+
+          # Determine release type
+          if [[ $VERSION == *"-fix-"* ]] || [[ $VERSION == *"-fix" ]]; then
+            echo "release_type=Hot-fix" >> $GITHUB_OUTPUT
+          elif [[ $VERSION == *"-dev"* ]]; then
+            echo "release_type=Debug" >> $GITHUB_OUTPUT
+          else
+            echo "release_type=Release" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare release assets
+        run: |
+          mkdir -p release-assets
+
+          # Android APK
+          if [ -f artifacts/android-apk/app-release.apk ]; then
+            cp artifacts/android-apk/app-release.apk release-assets/rms-chatroom-${{ needs.extract-version.outputs.version_name }}.apk
+          fi
+
+          # Electron apps
+          if [ -d artifacts/electron-linux ]; then
+            cp artifacts/electron-linux/*.AppImage release-assets/ 2>/dev/null || true
+          fi
+          if [ -d artifacts/electron-macos ]; then
+            cp artifacts/electron-macos/*.dmg release-assets/ 2>/dev/null || true
+          fi
+          if [ -d artifacts/electron-windows ]; then
+            cp artifacts/electron-windows/*.exe release-assets/ 2>/dev/null || true
+          fi
+
+          ls -lh release-assets/
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.extract-version.outputs.tag_name }}
+          name: ${{ steps.release_type.outputs.release_type }} ${{ needs.extract-version.outputs.version_name }} (Build ${{ needs.extract-version.outputs.version_code }})
+          body: |
+            ## ${{ steps.release_type.outputs.release_type }} ${{ needs.extract-version.outputs.version_name }}
+
+            **Build Code:** ${{ needs.extract-version.outputs.version_code }}
+            **Commit:** ${{ github.sha }}
+
+            ### Downloads
+
+            - **Android APK:** `rms-chatroom-${{ needs.extract-version.outputs.version_name }}.apk`
+            - **Windows:** `.exe` installer
+            - **macOS:** `.dmg` installer
+            - **Linux:** `.AppImage` portable app
+
+            ### Installation
+
+            #### Android
+            1. Download the APK file
+            2. Enable "Install from unknown sources" in Android settings
+            3. Install the APK
+
+            #### Desktop (Electron)
+            - **Windows:** Run the `.exe` installer
+            - **macOS:** Open the `.dmg` and drag to Applications
+            - **Linux:** Make the `.AppImage` executable and run it
+
+            ---
+
+            *Auto-generated by GitHub Actions*
+          draft: false
+          prerelease: ${{ contains(needs.extract-version.outputs.version_name, '-dev') || contains(needs.extract-version.outputs.version_name, '-fix-') }}
+          files: release-assets/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
