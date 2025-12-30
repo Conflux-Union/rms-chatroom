@@ -80,6 +80,7 @@ EXCLUDE_PATTERNS = {
     "android",
     "debug",
     "fabric-mod",
+    "electron"
 }
 
 
