@@ -1,5 +1,5 @@
 // index.js
-const { app, BrowserWindow, session, ipcMain, globalShortcut, shell } = require("electron");
+const { app, BrowserWindow, session, ipcMain, globalShortcut, shell, desktopCapturer } = require("electron");
 const path = require("path");
 const http = require("http");
 const https = require("https");
@@ -23,7 +23,7 @@ const GHPROXY_MIRRORS = [
 ];
 
 // =====================
-// Store（默认快捷键）
+// Store (default shortcuts)
 // =====================
 const store = new Store({
   defaults: {
@@ -37,9 +37,10 @@ const store = new Store({
 let mainWin = null;
 let currentToggleShortcut = null;
 let currentMicShortcut = null;
+let selectedCaptureSourceId = null;
 
 // =====================
-// SSO 回调服务器
+// SSO callback server
 // =====================
 let callbackServer = null;
 let callbackUrl = null;
@@ -101,8 +102,64 @@ function startCallbackServer(win) {
   });
 }
 
+function setupScreenCapture() {
+  // For renderer: get list of windows/screens (with thumbnails)
+  ipcMain.handle("capture:getSources", async () => {
+    ipcMain.handle("capture:getSelectedSourceId", async () => {
+      return selectedCaptureSourceId;
+    });
+    const sources = await desktopCapturer.getSources({
+      types: ["window", "screen"],
+      thumbnailSize: { width: 320, height: 180 },
+      fetchWindowIcons: true,
+    });
+
+    return sources.map((s) => ({
+      id: s.id,
+      name: s.name,
+      // Convert to dataURL so renderer can display with <img :src="...">
+      thumbnail: s.thumbnail ? s.thumbnail.toDataURL() : null,
+      appIcon: s.appIcon ? s.appIcon.toDataURL() : null,
+    }));
+  });
+
+  ipcMain.handle("capture:setSource", async (_e, sourceId) => {
+    selectedCaptureSourceId = sourceId || null;
+    return true;
+  });
+
+  ipcMain.handle("capture:clearSource", async () => {
+    selectedCaptureSourceId = null;
+    return true;
+  });
+
+  // Core: intercept getDisplayMedia
+  // Any page/LiveKit call to getDisplayMedia will arrive here
+  session.defaultSession.setDisplayMediaRequestHandler(async (request, callback) => {
+    try {
+      // If none selected, reject (let renderer prompt 'please select window/screen')
+      if (!selectedCaptureSourceId) return callback();
+
+      const sources = await desktopCapturer.getSources({ types: ["window", "screen"] });
+      const chosen = sources.find((s) => s.id === selectedCaptureSourceId);
+
+      if (!chosen) return callback();
+
+      // audio: loopback works better on Windows; macOS often can't capture system audio
+      const wantAudio = !!request.audioRequested;
+      const audio =
+        wantAudio && process.platform === "win32" ? "loopback" : false;
+
+      callback({ video: chosen, audio });
+    } catch (e) {
+      // On error, reject to avoid crashing the main process
+      callback();
+    }
+  });
+}
+
 // =====================
-// 创建窗口
+// Create window
 // =====================
 function createWindow() {
   const win = new BrowserWindow({
@@ -127,7 +184,7 @@ function createWindow() {
 }
 
 // =====================
-// 快捷键：显示/隐藏窗口
+// Shortcut: show/hide window
 // =====================
 function toggleMainWindow() {
   if (!mainWin) return;
@@ -153,7 +210,7 @@ function registerToggleShortcut(accelerator) {
 }
 
 // =====================
-// 快捷键：麦克风 toggle（发事件给渲染层）
+// Shortcut: microphone toggle (send event to renderer)
 // =====================
 function toggleMic() {
   if (!mainWin || mainWin.isDestroyed()) return;
@@ -175,7 +232,7 @@ function registerMicShortcut(accelerator) {
 }
 
 // =====================
-// CSP（你原来白名单那套）
+// CSP (your original whitelist setup)
 // =====================
 function installCSP() {
   const CSP =
@@ -207,7 +264,7 @@ function installCSP() {
 }
 
 // =====================
-// 强制更新判断（保留你原逻辑）
+// Forced update detection (keep your original logic)
 // =====================
 function textIncludesForceWords(text) {
   const t = String(text || "").toLowerCase();
@@ -249,7 +306,7 @@ function isForcedUpdate(info) {
 }
 
 // =====================
-// Updater：智能选源（你要的核心）
+// Updater: smart source selection (the core you wanted)
 // =====================
 let currentUpdateSource = null; // "CN" | "INTL" | "GITHUB" | null
 
@@ -258,7 +315,7 @@ function sendUpdaterStatus(payload) {
   mainWin.webContents.send("updater:status", payload);
 }
 
-// --- 简单 GET（支持重定向 + 超时）---
+// --- Simple GET (supports redirects + timeout) ---
 function httpGetText(url, timeoutMs = 2500) {
   const doReq = (u, redirectsLeft) =>
     new Promise((resolve, reject) => {
@@ -434,7 +491,7 @@ async function onSelectedUpdate(info, source) {
 
   sendUpdaterStatus({ state: "available", forced, source, info });
 
-  // 强制更新：直接开始下载
+  // Forced update: start download immediately
   if (forced) {
     try {
       await autoUpdater.downloadUpdate();
@@ -495,7 +552,7 @@ function setupIpc() {
     }
   });
 
-  // ===== 更新：检查(智能选源) / 下载 / 安装 =====
+  // ===== Updater: check (smart source) / download / install =====
   ipcMain.handle("updater:check", async () => {
     await smartCheckForUpdates();
     return true;
@@ -522,11 +579,12 @@ function setupIpc() {
 }
 
 // =====================
-// App 生命周期
+// App lifecycle
 // =====================
 app.whenReady().then(async () => {
   installCSP();
   setupIpc();
+  setupScreenCapture();
 
   mainWin = createWindow();
   await startCallbackServer(mainWin);
@@ -534,7 +592,7 @@ app.whenReady().then(async () => {
   registerToggleShortcut(store.get("shortcuts.toggleWindow"));
   registerMicShortcut(store.get("shortcuts.toggleMic"));
 
-  // 更新器：事件绑定 + 启动检查
+  // Updater: bind events + start check
   setupAutoUpdaterSmartEvents();
   await smartCheckForUpdates();
 });

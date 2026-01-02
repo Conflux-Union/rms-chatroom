@@ -11,6 +11,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
     return () => ipcRenderer.removeListener("auth:callback", handler);
   },
 
+  // ===== screen capture =====
+  getCaptureSources: () => ipcRenderer.invoke("capture:getSources"),
+  setCaptureSource: (id) => ipcRenderer.invoke("capture:setSource", id),
+  clearCaptureSource: () => ipcRenderer.invoke("capture:clearSource"),
+  getSelectedCaptureSourceId: () => ipcRenderer.invoke("capture:getSelectedSourceId"),
+
   // ===== mic toggle =====
   onMicToggle: (cb) => {
     const handler = () => cb();
@@ -32,7 +38,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   quitApp: () => ipcRenderer.invoke("app:quit"),
 });
 
-// 你原来的快捷键接口（保持不变）
+// ===== hotkey =====
 contextBridge.exposeInMainWorld("hotkey", {
   get: () => ipcRenderer.invoke("shortcuts:get"),
   set: (key, accelerator) => ipcRenderer.invoke("shortcuts:set", key, accelerator),

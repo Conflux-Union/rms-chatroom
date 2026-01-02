@@ -1088,6 +1088,8 @@ export const useVoiceStore = defineStore('voice', () => {
         isScreenSharing.value = false
         localScreenShareTrack.value = null
         console.log("Screen share stopped by user")
+        const api = (window as any).electronAPI
+        if (api?.clearCaptureSource) await api.clearCaptureSource()
         await unlockScreenShare()
       } else {
         // Start screen sharing: first acquire lock, then start
@@ -1097,7 +1099,14 @@ export const useVoiceStore = defineStore('voice', () => {
           console.log("Failed to start screen share: " + error.value)
           return false
         }
-        
+        // 👇 新增：先让用户选窗口/屏幕
+        const hasSource = await ensureElectronCaptureSourceSelected()
+        if (!hasSource) {
+          // 用户取消/选错：记得解锁
+          await unlockScreenShare()
+          error.value = '已取消屏幕共享'
+          return false
+        }
         // Lock acquired, start screen sharing with AV1 codec and system audio
         await room.value.localParticipant.setScreenShareEnabled(true, {
           resolution: ScreenSharePresets.h1080fps30.resolution,
@@ -1133,6 +1142,39 @@ export const useVoiceStore = defineStore('voice', () => {
       return false
     }
   }
+
+  async function ensureElectronCaptureSourceSelected(): Promise<boolean> {
+    const api = (window as any).electronAPI
+    if (!api?.getCaptureSources) return true // 非 Electron：浏览器自带 picker
+    if (api?.getSelectedCaptureSourceId) {
+      const id = await api.getSelectedCaptureSourceId()
+      return !!id
+    }
+    return true
+  }
+
+  async function pickElectronCaptureSource(): Promise<boolean> {
+    const api = (window as any).electronAPI
+    if (!api?.getCaptureSources) return true // 非 Electron：走浏览器/系统自己的 picker
+
+    const sources = await api.getCaptureSources()
+    if (!Array.isArray(sources) || sources.length === 0) return false
+
+    // 简单粗暴：用 prompt 让用户输入序号（先跑通）
+    const menu = sources
+      .map((s: any, i: number) => `${i + 1}. ${s.name}`)
+      .join('\n')
+
+    const input = window.prompt(`选择要共享的窗口/屏幕（输入序号）：\n\n${menu}`)
+    if (!input) return false
+
+    const idx = Number(input) - 1
+    if (!Number.isFinite(idx) || idx < 0 || idx >= sources.length) return false
+
+    await api.setCaptureSource(sources[idx].id)
+    return true
+  }
+
 
   /**
    * Attach a screen share track to a container element.

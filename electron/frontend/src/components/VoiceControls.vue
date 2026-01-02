@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useVoiceStore } from '../stores/voice'
 import { useAuthStore } from '../stores/auth'
+import ScreenSharePicker from './ScreenSharePicker.vue'
 import { Volume2, VolumeX, Mic, MicOff, Phone, Crown, Monitor, MonitorOff } from 'lucide-vue-next'
 
 const voice = useVoiceStore()
@@ -16,6 +17,26 @@ const isCurrentUserHost = computed(() =>
 const hostButtonDisabled = computed(() => 
   voice.hostModeEnabled && !isCurrentUserHost.value
 )
+
+const showScreenPicker = ref(false)
+
+async function onScreenShareClick() {
+  if (voice.isScreenSharing) {
+    await voice.toggleScreenShare()
+    return
+  }
+  if (screenShareButtonDisabled.value) return
+
+  const api = (window as any).electronAPI
+  const isElectron = !!api?.getCaptureSources && !!api?.setCaptureSource
+
+  if (isElectron) {
+    showScreenPicker.value = true
+    return
+  }
+
+  await voice.toggleScreenShare()
+}
 
 // Check if current user is the screen sharer
 const isCurrentUserScreenSharer = computed(() =>
@@ -85,9 +106,10 @@ const screenShareTooltip = computed(() => {
           'screen-share-disabled': screenShareButtonDisabled
         }"
         :disabled="screenShareButtonDisabled"
-        @click="voice.toggleScreenShare()"
+        @click="onScreenShareClick"
         :title="screenShareTooltip"
       >
+        <ScreenSharePicker v-model="showScreenPicker" />
         <MonitorOff v-if="voice.isScreenSharing" :size="16" />
         <Monitor v-else :size="16" />
       </button>
