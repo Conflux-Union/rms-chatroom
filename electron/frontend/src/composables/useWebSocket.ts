@@ -1,7 +1,7 @@
 import { ref, onUnmounted } from 'vue'
 import { useAuthStore } from '../stores/auth'
 
-const WS_BASE = import.meta.env.VITE_WS_BASE || 'ws://preview-chatroom.rms.net.cn'
+const WS_BASE = import.meta.env.VITE_WS_BASE || 'wss://preview-chatroom.rms.net.cn'
 
 export function useWebSocket(path: string) {
   const ws = ref<WebSocket | null>(null)
