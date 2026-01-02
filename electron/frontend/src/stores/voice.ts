@@ -1145,6 +1145,7 @@ export const useVoiceStore = defineStore('voice', () => {
       videoElement.style.width = '100%'
       videoElement.style.height = '100%'
       videoElement.style.objectFit = 'contain'
+      videoElement.controls = true
       container.innerHTML = ''
       container.appendChild(videoElement)
       console.log(`Screen share attached for ${participantId}\n video readyState: ${videoElement.readyState}\n video paused: ${videoElement.paused}\n video volume: ${videoElement.volume}\n video muted: ${videoElement.muted}`)
