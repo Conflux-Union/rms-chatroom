@@ -29,6 +29,8 @@ logger = logging.getLogger(__name__)
 
 # Global progress timer tasks for each room
 _progress_tasks: dict[str, asyncio.Task] = {}
+# Lock for seek operations to prevent race conditions
+_seek_locks: dict[str, asyncio.Lock] = {}
 
 
 router = APIRouter(prefix="/api/music", tags=["music"])
@@ -65,6 +67,13 @@ def _get_room_state(room_name: str) -> RoomMusicState:
     if room_name not in _room_states:
         _room_states[room_name] = RoomMusicState(room_name=room_name)
     return _room_states[room_name]
+
+
+def _get_seek_lock(room_name: str) -> asyncio.Lock:
+    """Get or create seek lock for a room."""
+    if room_name not in _seek_locks:
+        _seek_locks[room_name] = asyncio.Lock()
+    return _seek_locks[room_name]
 
 
 async def _broadcast_playback_state(room_name: str) -> None:
@@ -109,31 +118,58 @@ async def _start_progress_timer(room_name: str):
     # Cancel old timer if exists
     if room_name in _progress_tasks:
         _progress_tasks[room_name].cancel()
+        try:
+            await _progress_tasks[room_name]
+        except asyncio.CancelledError:
+            pass
 
     async def progress_loop():
-        while True:
-            await asyncio.sleep(1)  # Update every second
+        try:
+            while True:
+                await asyncio.sleep(1)  # Update every second
 
-            state = _get_room_state(room_name)
-            if not state.is_playing:
-                break
-
-            # Calculate current position
-            elapsed_ms = int((time_module.time() - state.play_start_time) * 1000)
-            state.position_ms = state.play_start_position + elapsed_ms
-
-            # Check if song finished
-            if state.play_queue and 0 <= state.current_index < len(state.play_queue):
-                current_song = state.play_queue[state.current_index]["song"]
-                duration_ms = current_song.get("duration", 0) * 1000
-
-                if state.position_ms >= duration_ms:
-                    # Play next song
-                    await _play_next_song(room_name)
+                # Check if room still exists
+                if room_name not in _room_states:
+                    logger.info(f"Room {room_name} deleted, stopping progress timer")
                     break
 
-            # Broadcast state
-            await _broadcast_playback_state(room_name)
+                state = _room_states[room_name]
+                if not state.is_playing:
+                    logger.debug(f"Room {room_name} not playing, stopping progress timer")
+                    break
+
+                # Use seek lock to prevent race conditions
+                seek_lock = _get_seek_lock(room_name)
+                async with seek_lock:
+                    # Re-check state after acquiring lock
+                    if not state.is_playing:
+                        break
+
+                    # Calculate current position
+                    elapsed_ms = int((time_module.time() - state.play_start_time) * 1000)
+                    state.position_ms = state.play_start_position + elapsed_ms
+
+                    # Check if song finished
+                    if state.play_queue and 0 <= state.current_index < len(state.play_queue):
+                        current_song = state.play_queue[state.current_index]["song"]
+                        duration_ms = current_song.get("duration", 0) * 1000
+
+                        if duration_ms > 0 and state.position_ms >= duration_ms:
+                            # Play next song
+                            logger.info(f"Song finished in room {room_name}, playing next")
+                            await _play_next_song(room_name)
+                            break
+
+                # Broadcast state (outside lock to avoid holding it too long)
+                await _broadcast_playback_state(room_name)
+        except asyncio.CancelledError:
+            logger.debug(f"Progress timer cancelled for room {room_name}")
+            raise
+        except Exception as e:
+            logger.error(f"Progress timer error for room {room_name}: {e}")
+        finally:
+            # Clean up task reference
+            _progress_tasks.pop(room_name, None)
 
     _progress_tasks[room_name] = asyncio.create_task(progress_loop())
 
@@ -142,11 +178,15 @@ async def _stop_progress_timer(room_name: str):
     """Stop playback progress timer for a room."""
     if room_name in _progress_tasks:
         _progress_tasks[room_name].cancel()
-        del _progress_tasks[room_name]
+        try:
+            await _progress_tasks[room_name]
+        except asyncio.CancelledError:
+            pass
+        _progress_tasks.pop(room_name, None)
 
 
 async def _play_next_song(room_name: str) -> bool:
-    """Play next song in queue. Auto-skip unavailable songs."""
+    """Play next song in queue. Auto-skip unavailable songs and notify users."""
     state = _get_room_state(room_name)
 
     # Try to play next songs, skip unavailable ones
@@ -163,8 +203,21 @@ async def _play_next_song(room_name: str) -> bool:
             await _broadcast_playback_state(room_name)
             return True
 
-        # Current song failed, try next one
-        logger.warning(f"Song at index {state.current_index} unavailable, trying next...")
+        # Current song failed, notify users and try next one
+        if state.play_queue and 0 <= state.current_index < len(state.play_queue):
+            failed_song = state.play_queue[state.current_index]["song"]
+            song_name = failed_song.get("name", "Unknown")
+            platform = failed_song.get("platform", "qq")
+            logger.warning(f"Song '{song_name}' at index {state.current_index} unavailable, notifying users...")
+
+            # Notify users about unavailable song
+            if _ws_broadcast:
+                await _ws_broadcast("song_unavailable", {
+                    "room_name": room_name,
+                    "song_name": song_name,
+                    "platform": platform,
+                    "reason": "Song may require VIP or be region-restricted"
+                })
 
     # No more songs or all remaining songs failed
     logger.info(f"Queue finished for room {room_name}, no more playable songs")
@@ -763,9 +816,10 @@ async def stop_bot(req: QueueRequest, _user: CurrentUser):
     # Stop timer
     await _stop_progress_timer(req.room_name)
 
-    # Clean up room state
+    # Clean up room state and seek lock
     if req.room_name in _room_states:
         del _room_states[req.room_name]
+    _seek_locks.pop(req.room_name, None)
 
     return {"success": True, "room_name": req.room_name}
 
@@ -918,16 +972,19 @@ class SeekRequestWithRoom(BaseModel):
 @router.post("/bot/seek")
 async def bot_seek(req: SeekRequestWithRoom, _user: CurrentUser):
     """Seek to position in the current song for a specific room."""
-    state = _get_room_state(req.room_name)
-    state.position_ms = req.position_ms
-    state.play_start_time = time_module.time()
-    state.play_start_position = req.position_ms
+    # Use seek lock to prevent race condition with progress timer
+    seek_lock = _get_seek_lock(req.room_name)
+    async with seek_lock:
+        state = _get_room_state(req.room_name)
+        state.position_ms = req.position_ms
+        state.play_start_time = time_module.time()
+        state.play_start_position = req.position_ms
 
-    # Broadcast seek command
-    await _ws_broadcast("seek", {
-        "room_name": req.room_name,
-        "position_ms": req.position_ms
-    })
+        # Broadcast seek command
+        await _ws_broadcast("seek", {
+            "room_name": req.room_name,
+            "position_ms": req.position_ms
+        })
 
     return {"success": True, "position_ms": req.position_ms, "room_name": req.room_name}
 

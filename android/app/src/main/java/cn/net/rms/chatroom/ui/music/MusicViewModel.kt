@@ -177,6 +177,15 @@ class MusicViewModel @Inject constructor(
                             }
                         }
                     }
+                    is MusicWebSocketEvent.SongUnavailable -> {
+                        val currentRoom = _state.value.currentRoomName
+                        if (currentRoom != null && event.roomName == currentRoom) {
+                            Log.w(TAG, "Song unavailable: ${event.songName} - ${event.reason}")
+                            _state.value = _state.value.copy(
+                                error = "歌曲不可用: ${event.songName}"
+                            )
+                        }
+                    }
                     is MusicWebSocketEvent.Connected -> {
                         Log.d(TAG, "Music WebSocket connected")
                     }
@@ -247,17 +256,17 @@ class MusicViewModel @Inject constructor(
         if (roomName != null) {
             refreshQueue(roomName)
             getBotStatus(roomName)
-            connectMusicWebSocket()
+            connectMusicWebSocket(roomName)
         } else {
             musicWebSocket.disconnect()
         }
     }
 
-    private fun connectMusicWebSocket() {
+    private fun connectMusicWebSocket(roomName: String) {
         viewModelScope.launch {
             val token = authRepository.getToken()
             if (token != null) {
-                musicWebSocket.connect(token)
+                musicWebSocket.connect(token, roomName)
             }
         }
     }

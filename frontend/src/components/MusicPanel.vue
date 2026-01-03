@@ -21,6 +21,7 @@ const audioRef = ref<HTMLAudioElement | null>(null)
 const musicWs = ref<WebSocket | null>(null)
 const volume = ref(1.0)
 const isProcessingPlayback = ref(false)
+const currentWsRoom = ref<string | null>(null)
 
 // Get current voice room name for music API calls
 const currentRoomName = computed(() => {
@@ -62,29 +63,45 @@ function handleVolumeChange(value: number) {
 }
 
 // Connect to music WebSocket for real-time state sync
-function connectMusicWs() {
-  if (!auth.token) return
-  
-  const url = `${WS_BASE}/ws/music?token=${auth.token}`
-  musicWs.value = new WebSocket(url)
-  
-  musicWs.value.onopen = () => {
-    console.log('Music WebSocket connected')
+function connectMusicWs(roomName: string) {
+  if (!auth.token || !roomName) return
+
+  // Disconnect existing connection if room changed
+  if (musicWs.value && currentWsRoom.value !== roomName) {
+    musicWs.value.close()
+    musicWs.value = null
   }
-  
+
+  if (musicWs.value) return // Already connected to same room
+
+  currentWsRoom.value = roomName
+  const url = `${WS_BASE}/ws/music?token=${auth.token}&room_name=${encodeURIComponent(roomName)}`
+  musicWs.value = new WebSocket(url)
+
+  musicWs.value.onopen = () => {
+    console.log(`Music WebSocket connected to room ${roomName}`)
+  }
+
   musicWs.value.onclose = () => {
     console.log('Music WebSocket disconnected')
-    // Reconnect after 3 seconds
+    musicWs.value = null
+    // Reconnect after 3 seconds if still in same room
     setTimeout(() => {
-      if (auth.token) connectMusicWs()
+      if (auth.token && currentRoomName.value && currentRoomName.value === currentWsRoom.value) {
+        connectMusicWs(currentRoomName.value)
+      }
     }, 3000)
   }
-  
+
   musicWs.value.onmessage = (event) => {
     try {
       const msg = JSON.parse(event.data)
 
-      // Handle playback commands
+      // Handle playback commands - only process if for our room
+      if (msg.room_name && msg.room_name !== currentRoomName.value) {
+        return // Ignore messages for other rooms
+      }
+
       if (msg.type === 'play') {
         if (!audioRef.value) {
           console.error('Audio element not ready, cannot play')
@@ -121,15 +138,23 @@ function connectMusicWs() {
         console.log('Received seek command, position:', msg.position_ms)
         audioRef.value.currentTime = (msg.position_ms || 0) / 1000
       } else if (msg.type === 'music_state' && msg.data) {
+        // Only process if for our room
+        if (msg.data.room_name && msg.data.room_name !== currentRoomName.value) {
+          return
+        }
         // Update music store with real-time state
         music.updateProgress(msg.data)
-        // Also refresh queue to sync current index (use room_name from message or current)
+        // Also refresh queue to sync current index
         if (msg.data.current_index !== undefined) {
           const roomName = msg.data.room_name || currentRoomName.value
           if (roomName) {
             music.refreshQueue(roomName)
           }
         }
+      } else if (msg.type === 'song_unavailable') {
+        // Show notification for unavailable song
+        console.warn(`Song unavailable: ${msg.song_name} - ${msg.reason}`)
+        // Could add a toast notification here
       }
     } catch (e) {
       console.error('Failed to handle music WebSocket message:', e)
@@ -137,15 +162,22 @@ function connectMusicWs() {
   }
 }
 
+function disconnectMusicWs() {
+  if (musicWs.value) {
+    musicWs.value.close()
+    musicWs.value = null
+  }
+  currentWsRoom.value = null
+}
+
 onMounted(async () => {
   await music.checkAllLoginStatus()
   if (currentRoomName.value) {
     await music.refreshQueue(currentRoomName.value)
     await music.getBotStatus(currentRoomName.value)
+    // Connect to music WebSocket for the current room
+    connectMusicWs(currentRoomName.value)
   }
-
-  // Connect to music WebSocket for real-time playback commands
-  connectMusicWs()
 
   // Load saved volume from localStorage
   const savedVolume = localStorage.getItem('musicVolume')
@@ -157,11 +189,16 @@ onMounted(async () => {
   }
 })
 
-// Refresh queue when voice channel changes
-watch(currentRoomName, async (newRoom) => {
+// Refresh queue and reconnect WebSocket when voice channel changes
+watch(currentRoomName, async (newRoom, oldRoom) => {
   if (newRoom) {
     await music.refreshQueue(newRoom)
     await music.getBotStatus(newRoom)
+    // Reconnect WebSocket to new room
+    connectMusicWs(newRoom)
+  } else if (oldRoom) {
+    // Left voice channel, disconnect WebSocket
+    disconnectMusicWs()
   }
 })
 
@@ -169,10 +206,7 @@ onUnmounted(() => {
   if (loginPollingInterval.value) {
     clearInterval(loginPollingInterval.value)
   }
-  if (musicWs.value) {
-    musicWs.value.close()
-    musicWs.value = null
-  }
+  disconnectMusicWs()
 })
 
 async function startLogin(platform: 'qq' | 'netease' = 'qq') {
