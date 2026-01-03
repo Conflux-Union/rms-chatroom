@@ -240,8 +240,9 @@ function installCSP() {
     "script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' blob: data:; " +
     "script-src-elem 'self' blob: data:; " +
     "worker-src 'self' blob:; " +
-    "img-src 'self' blob: data:; " + 
-    "media-src 'self' blob: data:; " + 
+    // Allow media/img from specific music hosts in addition to self/blob/data
+    "img-src 'self' blob: data: http://m701.music.126.net https://isure.stream.qqmusic.qq.com; " +
+    "media-src 'self' blob: data: http://m701.music.126.net https://isure.stream.qqmusic.qq.com; " +
     "connect-src 'self' blob: data: " +
       "https://preview-chatroom.rms.net.cn " +
       "http://preview-chatroom.rms.net.cn " +
