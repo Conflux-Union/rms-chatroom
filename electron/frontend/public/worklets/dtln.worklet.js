@@ -9,20 +9,20 @@
 import * as DTLNNS from './wasm/dtln/dtln_rs.js';
 
 function pickFactory(ns) {
-  // 1) 先试 ESM 导出
+  // Try ESM default export first
   if (ns && typeof ns.default === 'function') return ns.default;
 
   for (const k of ['createDTLNWasmModule', 'createModule', 'Module']) {
     if (ns && typeof ns[k] === 'function') return ns[k];
   }
 
-  // 2) 很多 emscripten 打包会把工厂挂到 globalThis（但不导出）
+  // Many emscripten bundles attach the factory to globalThis (without exporting it)
   const g = globalThis;
   for (const k of ['createDTLNWasmModule', 'createModule', 'Module']) {
     if (typeof g[k] === 'function') return g[k];
   }
 
-  // 3) 兜底：找第一个函数导出
+  // Fallback: find the first function export
   for (const v of Object.values(ns || {})) {
     if (typeof v === 'function') return v;
   }
@@ -127,7 +127,7 @@ class DTLNProcessor extends AudioWorkletProcessor {
 async boot() {
   if (!this.moduleWasmBytes) throw new Error('DTLN: missing moduleWasmBytes');
 
-  // 注意：dtln_rs.js 可能不导出工厂，但会把工厂函数挂在 globalThis 上
+  // Note: dtln_rs.js may not export the factory, but the factory function could be attached to globalThis
   const factory = pickFactory(DTLNNS);
   if (!factory) throw new Error('DTLN: dtln_rs.js factory not found (no export, no global)');
 
