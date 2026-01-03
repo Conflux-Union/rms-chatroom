@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import okhttp3.*
+import java.net.URLEncoder
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -25,17 +26,20 @@ sealed class MusicWebSocketEvent {
         val positionMs: Long,
         val durationMs: Long,
         val state: String,
-        val queueLength: Int
+        val queueLength: Int,
+        val serverTime: Double? = null
     ) : MusicWebSocketEvent()
     data class Play(
         val roomName: String,
         val song: Song,
         val url: String,
-        val positionMs: Long
+        val positionMs: Long,
+        val serverTime: Double? = null
     ) : MusicWebSocketEvent()
-    data class Pause(val roomName: String) : MusicWebSocketEvent()
-    data class Resume(val roomName: String, val positionMs: Long) : MusicWebSocketEvent()
-    data class Seek(val roomName: String, val positionMs: Long) : MusicWebSocketEvent()
+    data class Pause(val roomName: String, val serverTime: Double? = null) : MusicWebSocketEvent()
+    data class Resume(val roomName: String, val positionMs: Long, val serverTime: Double? = null) : MusicWebSocketEvent()
+    data class Seek(val roomName: String, val positionMs: Long, val serverTime: Double? = null) : MusicWebSocketEvent()
+    data class SongUnavailable(val roomName: String, val songName: String, val reason: String) : MusicWebSocketEvent()
     object Connected : MusicWebSocketEvent()
     object Disconnected : MusicWebSocketEvent()
     data class Error(val error: String) : MusicWebSocketEvent()
@@ -62,6 +66,7 @@ class MusicWebSocket @Inject constructor(
     val connectionState: StateFlow<ConnectionState> = _connectionState.asStateFlow()
 
     private var currentToken: String? = null
+    private var currentRoomName: String? = null
     private var reconnectAttempts = 0
     private var shouldReconnect = false
 
@@ -69,15 +74,17 @@ class MusicWebSocket @Inject constructor(
     private var heartbeatJob: Job? = null
     private var reconnectJob: Job? = null
 
-    fun connect(token: String) {
-        if (_connectionState.value == ConnectionState.CONNECTED && currentToken == token) {
-            Log.d(TAG, "Already connected with same token")
+    fun connect(token: String, roomName: String) {
+        if (_connectionState.value == ConnectionState.CONNECTED &&
+            currentToken == token && currentRoomName == roomName) {
+            Log.d(TAG, "Already connected with same token and room")
             return
         }
 
         disconnect(sendEvent = false)
 
         currentToken = token
+        currentRoomName = roomName
         shouldReconnect = true
         reconnectAttempts = 0
 
@@ -86,6 +93,7 @@ class MusicWebSocket @Inject constructor(
 
     private fun doConnect() {
         val token = currentToken ?: return
+        val roomName = currentRoomName ?: return
 
         if (_connectionState.value == ConnectionState.RECONNECTING) {
             // Keep reconnecting state
@@ -93,8 +101,9 @@ class MusicWebSocket @Inject constructor(
             _connectionState.value = ConnectionState.CONNECTING
         }
 
-        val url = "${BuildConfig.WS_BASE_URL}/ws/music?token=$token"
-        Log.d(TAG, "Connecting to Music WebSocket")
+        val encodedRoom = URLEncoder.encode(roomName, "UTF-8")
+        val url = "${BuildConfig.WS_BASE_URL}/ws/music?token=$token&room_name=$encodedRoom"
+        Log.d(TAG, "Connecting to Music WebSocket for room $roomName")
 
         val request = Request.Builder()
             .url(url)
@@ -102,7 +111,7 @@ class MusicWebSocket @Inject constructor(
 
         webSocket = client.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
-                Log.d(TAG, "Music WebSocket connected")
+                Log.d(TAG, "Music WebSocket connected to room $roomName")
                 _connectionState.value = ConnectionState.CONNECTED
                 reconnectAttempts = 0
                 _events.tryEmit(MusicWebSocketEvent.Connected)
@@ -143,6 +152,7 @@ class MusicWebSocket @Inject constructor(
         try {
             val json = JsonParser.parseString(text).asJsonObject
             val type = json.get("type")?.asString
+            val serverTime = json.get("server_time")?.asDouble
 
             when (type) {
                 "play" -> {
@@ -160,25 +170,25 @@ class MusicWebSocket @Inject constructor(
                         cover = songObj.get("cover")?.asString ?: ""
                     )
 
-                    Log.d(TAG, "Play command: room=$roomName, song=${song.name}, url=$url")
-                    _events.tryEmit(MusicWebSocketEvent.Play(roomName, song, url, positionMs))
+                    Log.d(TAG, "Play command: room=$roomName, song=${song.name}, url=$url, serverTime=$serverTime")
+                    _events.tryEmit(MusicWebSocketEvent.Play(roomName, song, url, positionMs, serverTime))
                 }
                 "pause" -> {
                     val roomName = json.get("room_name")?.asString ?: ""
-                    Log.d(TAG, "Pause command: room=$roomName")
-                    _events.tryEmit(MusicWebSocketEvent.Pause(roomName))
+                    Log.d(TAG, "Pause command: room=$roomName, serverTime=$serverTime")
+                    _events.tryEmit(MusicWebSocketEvent.Pause(roomName, serverTime))
                 }
                 "resume" -> {
                     val roomName = json.get("room_name")?.asString ?: ""
                     val positionMs = json.get("position_ms")?.asLong ?: 0L
-                    Log.d(TAG, "Resume command: room=$roomName, position=$positionMs")
-                    _events.tryEmit(MusicWebSocketEvent.Resume(roomName, positionMs))
+                    Log.d(TAG, "Resume command: room=$roomName, position=$positionMs, serverTime=$serverTime")
+                    _events.tryEmit(MusicWebSocketEvent.Resume(roomName, positionMs, serverTime))
                 }
                 "seek" -> {
                     val roomName = json.get("room_name")?.asString ?: ""
                     val positionMs = json.get("position_ms")?.asLong ?: 0L
-                    Log.d(TAG, "Seek command: room=$roomName, position=$positionMs")
-                    _events.tryEmit(MusicWebSocketEvent.Seek(roomName, positionMs))
+                    Log.d(TAG, "Seek command: room=$roomName, position=$positionMs, serverTime=$serverTime")
+                    _events.tryEmit(MusicWebSocketEvent.Seek(roomName, positionMs, serverTime))
                 }
                 "music_state" -> {
                     val data = json.getAsJsonObject("data")
@@ -188,6 +198,7 @@ class MusicWebSocket @Inject constructor(
                     val durationMs = data.get("duration_ms")?.asLong ?: 0L
                     val currentIndex = data.get("current_index")?.asInt ?: 0
                     val queueLength = data.get("queue_length")?.asInt ?: 0
+                    val dataServerTime = data.get("server_time")?.asDouble
 
                     val currentSong = if (data.has("current_song") && !data.get("current_song").isJsonNull) {
                         val songObj = data.getAsJsonObject("current_song")
@@ -211,8 +222,16 @@ class MusicWebSocket @Inject constructor(
                         positionMs = positionMs,
                         durationMs = durationMs,
                         state = state,
-                        queueLength = queueLength
+                        queueLength = queueLength,
+                        serverTime = dataServerTime
                     ))
+                }
+                "song_unavailable" -> {
+                    val roomName = json.get("room_name")?.asString ?: ""
+                    val songName = json.get("song_name")?.asString ?: ""
+                    val reason = json.get("reason")?.asString ?: "Unknown reason"
+                    Log.w(TAG, "Song unavailable: room=$roomName, song=$songName, reason=$reason")
+                    _events.tryEmit(MusicWebSocketEvent.SongUnavailable(roomName, songName, reason))
                 }
                 "connected" -> {
                     Log.d(TAG, "Music WebSocket server confirmed connection")
@@ -301,6 +320,7 @@ class MusicWebSocket @Inject constructor(
 
         _connectionState.value = ConnectionState.DISCONNECTED
         currentToken = null
+        currentRoomName = null
 
         if (sendEvent) {
             _events.tryEmit(MusicWebSocketEvent.Disconnected)
@@ -308,4 +328,6 @@ class MusicWebSocket @Inject constructor(
     }
 
     fun isConnected(): Boolean = _connectionState.value == ConnectionState.CONNECTED
+
+    fun getCurrentRoom(): String? = currentRoomName
 }
