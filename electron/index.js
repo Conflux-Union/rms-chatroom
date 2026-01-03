@@ -247,6 +247,8 @@ function installCSP() {
       "http://preview-chatroom.rms.net.cn " +
       "wss://preview-chatroom.rms.net.cn " +
       "ws://preview-chatroom.rms.net.cn " +
+      "http://m701.music.126.net " +
+      "https://isure.stream.qqmusic.qq.com " +
       "http://localhost:8000 " +
       "http://127.0.0.1:8000 " +
       "ws://localhost:8000 " +
