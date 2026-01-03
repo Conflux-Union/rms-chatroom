@@ -1,8 +1,12 @@
 package cn.net.rms.chatroom.ui.music
 
+import android.app.Application
 import android.util.Log
-import androidx.lifecycle.ViewModel
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
 import cn.net.rms.chatroom.data.api.ApiService
 import cn.net.rms.chatroom.data.model.MusicBotStartRequest
 import cn.net.rms.chatroom.data.model.MusicQueueAddRequest
@@ -60,10 +64,11 @@ data class MusicState(
 
 @HiltViewModel
 class MusicViewModel @Inject constructor(
+    application: Application,
     private val api: ApiService,
     private val authRepository: AuthRepository,
     private val musicWebSocket: MusicWebSocket
-) : ViewModel() {
+) : AndroidViewModel(application) {
 
     companion object {
         private const val TAG = "MusicViewModel"
@@ -72,9 +77,38 @@ class MusicViewModel @Inject constructor(
     private val _state = MutableStateFlow(MusicState())
     val state: StateFlow<MusicState> = _state.asStateFlow()
 
-    private var progressPollingJob: Job? = null
     private var loginPollingJob: Job? = null
     private var webSocketObserveJob: Job? = null
+
+    // ExoPlayer for client-side music playback
+    private val exoPlayer: ExoPlayer = ExoPlayer.Builder(application).build().apply {
+        addListener(object : Player.Listener {
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                when (playbackState) {
+                    Player.STATE_ENDED -> {
+                        Log.d(TAG, "ExoPlayer: Song ended")
+                    }
+                    Player.STATE_READY -> {
+                        Log.d(TAG, "ExoPlayer: Ready to play")
+                    }
+                    Player.STATE_BUFFERING -> {
+                        Log.d(TAG, "ExoPlayer: Buffering")
+                    }
+                    Player.STATE_IDLE -> {
+                        Log.d(TAG, "ExoPlayer: Idle")
+                    }
+                }
+            }
+
+            override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                Log.e(TAG, "ExoPlayer error: ${error.message}", error)
+                _state.value = _state.value.copy(
+                    error = "播放失败: ${error.message}",
+                    playbackState = "error"
+                )
+            }
+        })
+    }
 
     init {
         viewModelScope.launch {
@@ -88,6 +122,34 @@ class MusicViewModel @Inject constructor(
         webSocketObserveJob = viewModelScope.launch {
             musicWebSocket.events.collect { event ->
                 when (event) {
+                    is MusicWebSocketEvent.Play -> {
+                        val currentRoom = _state.value.currentRoomName
+                        if (currentRoom != null && event.roomName == currentRoom) {
+                            Log.d(TAG, "WebSocket Play: song=${event.song.name}, url=${event.url}, position=${event.positionMs}")
+                            handlePlayCommand(event.song, event.url, event.positionMs)
+                        }
+                    }
+                    is MusicWebSocketEvent.Pause -> {
+                        val currentRoom = _state.value.currentRoomName
+                        if (currentRoom != null && event.roomName == currentRoom) {
+                            Log.d(TAG, "WebSocket Pause")
+                            handlePauseCommand()
+                        }
+                    }
+                    is MusicWebSocketEvent.Resume -> {
+                        val currentRoom = _state.value.currentRoomName
+                        if (currentRoom != null && event.roomName == currentRoom) {
+                            Log.d(TAG, "WebSocket Resume: position=${event.positionMs}")
+                            handleResumeCommand(event.positionMs)
+                        }
+                    }
+                    is MusicWebSocketEvent.Seek -> {
+                        val currentRoom = _state.value.currentRoomName
+                        if (currentRoom != null && event.roomName == currentRoom) {
+                            Log.d(TAG, "WebSocket Seek: position=${event.positionMs}")
+                            handleSeekCommand(event.positionMs)
+                        }
+                    }
                     is MusicWebSocketEvent.MusicStateUpdate -> {
                         val currentRoom = _state.value.currentRoomName
                         if (currentRoom != null && event.roomName == currentRoom) {
@@ -118,6 +180,56 @@ class MusicViewModel @Inject constructor(
                 }
             }
         }
+    }
+
+    // Handle WebSocket play command
+    private fun handlePlayCommand(song: Song, url: String, positionMs: Long) {
+        try {
+            val mediaItem = MediaItem.fromUri(url)
+            exoPlayer.setMediaItem(mediaItem)
+            exoPlayer.prepare()
+            exoPlayer.seekTo(positionMs)
+            exoPlayer.play()
+
+            _state.value = _state.value.copy(
+                currentSong = song,
+                isPlaying = true,
+                playbackState = "playing",
+                positionMs = positionMs
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to play song", e)
+            _state.value = _state.value.copy(
+                error = "播放失败: ${e.message}",
+                playbackState = "error"
+            )
+        }
+    }
+
+    // Handle WebSocket pause command
+    private fun handlePauseCommand() {
+        exoPlayer.pause()
+        _state.value = _state.value.copy(
+            isPlaying = false,
+            playbackState = "paused"
+        )
+    }
+
+    // Handle WebSocket resume command
+    private fun handleResumeCommand(positionMs: Long) {
+        exoPlayer.seekTo(positionMs)
+        exoPlayer.play()
+        _state.value = _state.value.copy(
+            isPlaying = true,
+            playbackState = "playing",
+            positionMs = positionMs
+        )
+    }
+
+    // Handle WebSocket seek command
+    private fun handleSeekCommand(positionMs: Long) {
+        exoPlayer.seekTo(positionMs)
+        _state.value = _state.value.copy(positionMs = positionMs)
     }
     
     // Set current room name when user joins a voice channel
@@ -345,10 +457,6 @@ class MusicViewModel @Inject constructor(
                     botRoom = response.room,
                     isPlaying = response.isPlaying
                 )
-                
-                if (response.isPlaying) {
-                    startProgressPolling(roomName)
-                }
             } catch (e: Exception) {
                 // Ignore errors
             }
@@ -367,7 +475,6 @@ class MusicViewModel @Inject constructor(
                         botRoom = roomName,
                         playbackState = "playing"
                     )
-                    startProgressPolling(roomName)
                     refreshQueue(roomName)
                 }
             } catch (e: Exception) {
@@ -388,7 +495,6 @@ class MusicViewModel @Inject constructor(
                     isPlaying = false,
                     playbackState = "paused"
                 )
-                stopProgressPolling()
             } catch (e: Exception) {
                 _state.value = _state.value.copy(error = "暂停失败")
             }
@@ -405,7 +511,6 @@ class MusicViewModel @Inject constructor(
                         isPlaying = true,
                         playbackState = "playing"
                     )
-                    startProgressPolling(roomName)
                 }
             } catch (e: Exception) {
                 _state.value = _state.value.copy(error = "恢复播放失败")
@@ -460,41 +565,10 @@ class MusicViewModel @Inject constructor(
                     isPlaying = false,
                     playbackState = "idle"
                 )
-                stopProgressPolling()
             } catch (e: Exception) {
                 _state.value = _state.value.copy(error = "停止机器人失败")
             }
         }
-    }
-
-    private fun startProgressPolling(roomName: String) {
-        progressPollingJob?.cancel()
-        progressPollingJob = viewModelScope.launch {
-            while (true) {
-                delay(1000)
-                try {
-                    val response = api.getMusicProgress(getAuthHeader(), roomName)
-                    _state.value = _state.value.copy(
-                        positionMs = response.positionMs,
-                        durationMs = response.durationMs,
-                        playbackState = response.state,
-                        isPlaying = response.state == "playing",
-                        currentSong = response.currentSong ?: _state.value.currentSong
-                    )
-                    
-                    if (response.state != "playing") {
-                        break
-                    }
-                } catch (e: Exception) {
-                    break
-                }
-            }
-        }
-    }
-
-    private fun stopProgressPolling() {
-        progressPollingJob?.cancel()
-        progressPollingJob = null
     }
 
     // Toggle play/pause
@@ -513,9 +587,9 @@ class MusicViewModel @Inject constructor(
 
     override fun onCleared() {
         super.onCleared()
-        progressPollingJob?.cancel()
         loginPollingJob?.cancel()
         webSocketObserveJob?.cancel()
         musicWebSocket.disconnect()
+        exoPlayer.release()
     }
 }
