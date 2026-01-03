@@ -119,10 +119,13 @@ fun VoiceScreen(
     }
 
     val voiceRoomName = remember(channelId) { "voice_$channelId" }
-    
-    // Set current room for music queue
-    LaunchedEffect(voiceRoomName) {
+
+    // Set current room for music queue, disconnect when leaving
+    DisposableEffect(voiceRoomName) {
         musicViewModel.setCurrentRoom(voiceRoomName)
+        onDispose {
+            musicViewModel.setCurrentRoom(null)
+        }
     }
     
     // Permission denied dialog

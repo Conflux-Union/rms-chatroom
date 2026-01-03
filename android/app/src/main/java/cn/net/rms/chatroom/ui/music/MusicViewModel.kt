@@ -258,7 +258,17 @@ class MusicViewModel @Inject constructor(
             getBotStatus(roomName)
             connectMusicWebSocket(roomName)
         } else {
+            // Disconnect WebSocket and stop playback when leaving voice channel
             musicWebSocket.disconnect()
+            exoPlayer.stop()
+            exoPlayer.clearMediaItems()
+            _state.value = _state.value.copy(
+                isPlaying = false,
+                playbackState = "idle",
+                currentSong = null,
+                positionMs = 0,
+                durationMs = 0
+            )
         }
     }
 
