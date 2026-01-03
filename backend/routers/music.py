@@ -146,23 +146,32 @@ async def _stop_progress_timer(room_name: str):
 
 
 async def _play_next_song(room_name: str) -> bool:
-    """Play next song in queue."""
+    """Play next song in queue. Auto-skip unavailable songs."""
     state = _get_room_state(room_name)
 
-    if state.current_index < len(state.play_queue) - 1:
+    # Try to play next songs, skip unavailable ones
+    max_attempts = len(state.play_queue) - state.current_index - 1
+    for _ in range(max_attempts):
+        if state.current_index >= len(state.play_queue) - 1:
+            break
+
         state.current_index += 1
         logger.info(f"Playing next song in room {room_name}, index: {state.current_index}")
 
         success = await _play_current_song(room_name)
-        await _broadcast_playback_state(room_name)
+        if success:
+            await _broadcast_playback_state(room_name)
+            return True
 
-        return success
-    else:
-        logger.info(f"Queue finished for room {room_name}, no more songs")
-        state.is_playing = False
-        await _stop_progress_timer(room_name)
-        await _broadcast_playback_state(room_name)
-        return False
+        # Current song failed, try next one
+        logger.warning(f"Song at index {state.current_index} unavailable, trying next...")
+
+    # No more songs or all remaining songs failed
+    logger.info(f"Queue finished for room {room_name}, no more playable songs")
+    state.is_playing = False
+    await _stop_progress_timer(room_name)
+    await _broadcast_playback_state(room_name)
+    return False
 
 
 def _save_credential(cred: Credential | None) -> None:
@@ -782,22 +791,28 @@ class BotPlayRequest(BaseModel):
 async def bot_play(req: BotPlayRequest, _user: CurrentUser):
     """Start playing the current song through the bot for a specific room."""
     state = _get_room_state(req.room_name)
-    
+
     if not state.play_queue or state.current_index >= len(state.play_queue):
         raise HTTPException(status_code=400, detail="No song in queue")
-    
+
     current_song = state.play_queue[state.current_index]["song"]
-    
+
     try:
         success = await _play_current_song(req.room_name)
-        
+
         if success:
             # Broadcast state change
             asyncio.create_task(_broadcast_playback_state(req.room_name))
             return {"success": True, "playing": current_song["name"], "room_name": req.room_name}
         else:
-            raise HTTPException(status_code=500, detail="Failed to start playback")
-        
+            # Song URL not available (copyright/VIP restriction)
+            song_name = current_song.get("name", "Unknown")
+            platform = current_song.get("platform", "qq")
+            raise HTTPException(
+                status_code=404,
+                detail=f"Song '{song_name}' is not available for playback on {platform} (may require VIP or be restricted)"
+            )
+
     except HTTPException:
         raise
     except Exception as e:
