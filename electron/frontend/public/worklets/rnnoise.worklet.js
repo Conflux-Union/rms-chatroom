@@ -1,37 +1,39 @@
-// rnnoise.worklet.ultra3.js (AudioWorklet) - Electron-friendly
-// ultra2 + Low-pass filter to tame harsh highs / hiss
+// rnnoise.worklet.js - AudioWorklet for RNNoise-based noise suppression
+// RNNoise processing plus optional post-filters (HPF, LPF, EQ, notches, band-cut)
 //
-// Expects processorOptions:
+// Processor options (processorOptions):
 // {
-//   rnnoiseWasmBytes: ArrayBuffer,            // REQUIRED
-//   hpHz?: number,                            // default 110
-//   lpHz?: number,                            // default 9000
-//   enableLPF?: boolean,                      // default true
-//   vadThreshold?: number,                    // default 0.60
-//   vadKnee?: number,                         // default 0.15
-//   floorDb?: number,                         // default 28
-//   aggressiveness?: number,                  // default 1.6
-//   gateAttackMs?: number,                    // default 30
-//   gateReleaseMs?: number,                   // default 180
-//   energyGateDb?: number,                    // default -45
-//   disableGate?: boolean,                    // default false
-
-// Additional band-cut options (for fan noise band suppression):
-//   bandCutEnable?: boolean    // default false
-//   bandCutLowHz?: number      // default 1570
-//   bandCutHighHz?: number     // default 6188
-//   bandCutDb?: number         // default -8   (negative = cut)
-//   bandCutDynamic?: boolean   // default true (cut stronger when no speech)
-
-// Multi-notch options (for tonal fan peaks like ~1055Hz / ~1219Hz):
-//   notchEnable?: boolean         // default false
-//   notchFreqs?: number[]         // default [1055, 1219]
-//   notchQ?: number               // default 12 (higher = narrower)
-//   notchDynamic?: boolean        // default true (stronger when no speech)
+//   rnnoiseWasmBytes: ArrayBuffer,    // REQUIRED: rnnoise.wasm bytes loaded in main thread
+//   hpHz?: number,                    // high-pass cutoff (default 110 Hz)
+//   lpHz?: number,                    // low-pass cutoff (default 9000 Hz)
+//   enableLPF?: boolean,              // enable low-pass filter (default true)
+//   vadThreshold?: number,            // VAD threshold (default 0.60)
+//   vadKnee?: number,                 // VAD knee width (default 0.15)
+//   floorDb?: number,                 // noise floor dB (default 28)
+//   aggressiveness?: number,          // gating aggressiveness (default 1.6)
+//   gateAttackMs?: number,            // gate attack (ms, default 30)
+//   gateReleaseMs?: number,           // gate release (ms, default 180)
+//   energyGateDb?: number,            // energy gate threshold (dB, default -45)
+//   disableGate?: boolean,            // disable gating entirely (default false)
 //
-// Existing options:
-//   rnnoiseWasmBytes (required), hpHz, lpHz, enableLPF, vadThreshold, vadKnee, floorDb,
-//   aggressiveness, gateAttackMs, gateReleaseMs, energyGateDb, disableGate
+//   // Band-cut options (wide cut for fan noise):
+//   bandCutEnable?: boolean,
+//   bandCutLowHz?: number,
+//   bandCutHighHz?: number,
+//   bandCutDb?: number,               // negative = cut
+//   bandCutDynamic?: boolean,
+//
+//   // Multi-notch options (for tonal peaks):
+//   notchEnable?: boolean,
+//   notchFreqs?: number[],
+//   notchQ?: number,
+//   notchDynamic?: boolean,
+// }
+//
+// Notes:
+// - Operates on ~10ms frames. Resamples input to RNNoise internal rate (48k) for processing,
+//   then resamples output back to the input sample rate.
+// - Designed to be used in Electron (no network fetch inside the worklet).
 
 import createRNNWasmModule from './wasm/RNN/rnnoise.js';
 

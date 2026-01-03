@@ -68,20 +68,20 @@ export const useVoiceStore = defineStore('voice', () => {
   const error = ref<string | null>(null)
   const currentVoiceChannel = ref<Channel | null>(null)
 
-  // ===== 降噪模式（webrtc / rnnoise / dtln）=====
+  // ===== Noise cancellation mode (webrtc / rnnoise / dtln) =====
   const STORAGE_KEY_NOISE_MODE = 'rms-voice-noise-cancel-mode'
   const noiseCancelMode = ref<NoiseCancelMode>(
     (localStorage.getItem(STORAGE_KEY_NOISE_MODE) as NoiseCancelMode) || 'webrtc',
   )
 
-  // 自定义降噪链路（rnnoise / dtln）发布用
+  // Custom noise cancellation pipeline (for publishing rnnoise / dtln)
   let noiseSession: NoiseCancelSession | null = null
   let customMicTrack: LocalAudioTrack | null = null
 
   async function stopNoisePipeline() {
     try {
       if (room.value) {
-        // ✅ JS 这边用 track 对象卸载
+        // ✅ In JS, unpublish using the track object
         if (customMicPub?.track) {
           await room.value.localParticipant.unpublishTrack(customMicPub.track as any)
         } else if (customMicTrack) {
@@ -105,15 +105,15 @@ export const useVoiceStore = defineStore('voice', () => {
     await stopNoisePipeline()
 
     if (mode === 'webrtc') {
-      // ✅ 回到 webrtc：直接用 SDK 自带那条
+      // Revert to webrtc: use SDK's built-in microphone track
       await room.value.localParticipant.setMicrophoneEnabled(!isMuted.value)
       return
     }
 
-    // ✅ 先把 SDK 自带 mic 静音
+    // Mute SDK's built-in mic
     await room.value.localParticipant.setMicrophoneEnabled(false)
 
-    // ✅ 再把它真的 unpublish 掉（否则永远双轨）
+    // Truly unpublish it (otherwise there will be two tracks)
     try {
       const pub = room.value.localParticipant.getTrackPublication(Track.Source.Microphone)
       if (pub?.track) {
@@ -132,7 +132,7 @@ export const useVoiceStore = defineStore('voice', () => {
 
     customMicTrack = new LocalAudioTrack(processedTrack as any, undefined, true)
 
-    // ✅ 关键：发布出去（这步你缺了）
+    // Publish
     customMicPub = await room.value.localParticipant.publishTrack(customMicTrack as any, {
       source: Track.Source.Microphone,
     } as any)
@@ -145,7 +145,7 @@ export const useVoiceStore = defineStore('voice', () => {
       trackId: p.track?.mediaStreamTrack?.id,
     })))
 
-    // 保持静音状态
+    // Keep muted state
     if (isMuted.value) {
       try { await Promise.resolve((customMicTrack as any).mute?.()) } catch {}
     }
@@ -641,7 +641,7 @@ export const useVoiceStore = defineStore('voice', () => {
       room.value.on(RoomEvent.ActiveSpeakersChanged, () => updateParticipants())
       room.value.on(RoomEvent.Disconnected, () => {
         
-        // 断开时清理自定义降噪管线
+        // Clean up custom noise pipeline on disconnect
         void stopNoisePipeline()
 isConnected.value = false
         participants.value = []
@@ -765,7 +765,7 @@ isConnected.value = false
 
       await room.value.connect(url, token)
 
-      // 按当前降噪模式发布麦克风（webrtc / rnnoise / dtln）
+      // Publish microphone according to current noise cancellation mode (webrtc / rnnoise / dtln)
       await applyNoiseCancelMode(noiseCancelMode.value)
 
       // Resume AudioContext after connection on iOS if needed
@@ -1231,10 +1231,10 @@ isConnected.value = false
           console.log("Failed to start screen share: " + error.value)
           return false
         }
-        // 👇 新增：先让用户选窗口/屏幕
+        // Ensure user has selected a source in Electron
         const hasSource = await ensureElectronCaptureSourceSelected()
         if (!hasSource) {
-          // 用户取消/选错：记得解锁
+          // User cancelled source selection, release lock
           await unlockScreenShare()
           error.value = '已取消屏幕共享'
           return false
@@ -1278,10 +1278,10 @@ isConnected.value = false
   async function ensureElectronCaptureSourceSelected(): Promise<boolean> {
     const api = (window as any).electronAPI
 
-    // 非 Electron：浏览器自己会弹系统 picker
+    // Ensure Electron API is available
     if (!api?.getCaptureSources || !api?.setCaptureSource) return true
 
-    // 选过就直接用
+    // User has selected a source before
     try {
       if (typeof api.getSelectedCaptureSourceId === 'function') {
         const id = await api.getSelectedCaptureSourceId()
@@ -1291,7 +1291,7 @@ isConnected.value = false
       console.log('[ensureElectronCaptureSourceSelected] getSelectedCaptureSourceId failed:', e)
     }
 
-    // ✅ 没选过：打开你做的 Vue 弹窗
+    // User has not selected a source before, open the capture picker
     capturePickerOpen.value = true
     return false
   }

@@ -13,13 +13,13 @@ type StartOptions = {
 }
 
 function publicUrl(path: string) {
-  // 不用 origin（file:// 下可能是 null），用 href 最稳
+  // Do not use origin (may be null under file://); using href is most stable
   return new URL(path.replace(/^\//, ''), window.location.href).toString()
 }
 
 function mustGetFirstAudioTrack(stream: MediaStream, label: string): MediaStreamTrack {
   const t = stream.getAudioTracks()[0]
-  if (!t) throw new Error(`${label}: 没拿到音频轨（getAudioTracks()[0] 是空的）`)
+  if (!t) throw new Error(`${label}: getAudioTracks()[0] is empty`)
   return t
 }
 
@@ -58,7 +58,7 @@ export async function startNoiseCancel(
     video: false,
   })
 
-  // webrtc：直接返回原始轨
+  // webrtc: return raw track directly
   if (mode === 'webrtc') {
     const processedTrack = mustGetFirstAudioTrack(rawStream, 'webrtc rawStream')
     return {
@@ -79,7 +79,7 @@ export async function startNoiseCancel(
     if (mode === 'rnnoise') {
       await addWorkletModule(ctx, publicUrl('worklets/rnnoise.worklet.js'))
 
-      // 只需要 wasm bytes
+      // only need wasm bytes
       const rnnoiseWasmBytes = await toArrayBuffer(publicUrl('worklets/wasm/RNN/rnnoise.wasm'))
 
       worklet = new AudioWorkletNode(ctx, 'rnnoise-processor', {
@@ -103,7 +103,7 @@ export async function startNoiseCancel(
           eqQ: 1.0,
           eqGainDb: 4,
 
-          // 门控放松，避免吞字（开了 WebRTC 后更要保守）
+          // Loosen gating to avoid clipping words (be more conservative when WebRTC is enabled)
           vadThreshold: 0.48,
           floorDb: 23,
           aggressiveness: 1.1,
@@ -116,7 +116,7 @@ export async function startNoiseCancel(
   } else {
      await addWorkletModule(ctx, publicUrl('worklets/dtln.worklet.js'))
 
-    // 只需要 wasm bytes
+    // only need wasm bytes
     const moduleWasmBytes = await toArrayBuffer(publicUrl('worklets/wasm/dtln/dtln_rs.wasm'))
 
     worklet = new AudioWorkletNode(ctx, 'dtln-processor', {

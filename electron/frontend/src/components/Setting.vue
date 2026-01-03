@@ -35,13 +35,13 @@ async function setNoiseMode(m: NoiseCancelMode) {
   }
 }
 
-// 保持你原来的 v-model 行为：改这里的值 => 仍然会触发 setNoiseMode
+// Keep the original v-model behavior: changing this value => will still trigger setNoiseMode
 const noiseModeSelect = computed<NoiseCancelMode>({
   get: () => noiseCancelMode.value as NoiseCancelMode,
   set: (v) => setNoiseMode(v),
 })
 
-/* ====== 自定义下拉（替代 select） ====== */
+/* ====== Custom dropdown (replaces select) ====== */
 const noiseDd = ref<HTMLElement | null>(null)
 const noiseMenu = ref<HTMLElement | null>(null)
 
@@ -88,7 +88,7 @@ function toggleNoise() {
 }
 
 function selectNoise(v: NoiseCancelMode) {
-  // 这句会走 computed setter -> setNoiseMode(v)，所以事件/逻辑完全不变
+  // This will run the computed setter -> setNoiseMode(v), so behavior/logic remains identical
   noiseModeSelect.value = v
   closeNoise()
 }
@@ -143,7 +143,7 @@ function onDocMouseDown(e: MouseEvent) {
   if (root && !root.contains(e.target as Node)) closeNoise()
 }
 
-/* ====== 你原来的快捷键逻辑（不改） ====== */
+/* ====== Your original hotkey logic (unchanged) ====== */
 function normalizeKeyName(k: string) {
   const map: Record<string, string> = {
     ' ': 'Space',
