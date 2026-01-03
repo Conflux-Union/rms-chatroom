@@ -4,11 +4,14 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "predev": "node -e \"const fs=require('fs');fs.writeFileSync('src/version.ts','export const VERSION_NAME=\\\"dev\\\"\\nexport const VERSION_CODE=0\\nexport const COMMIT_HASH=\\\"local\\\"\\n')\"",
+    "prebuild": "node -e \"const fs=require('fs');if(!fs.existsSync('src/version.ts'))fs.writeFileSync('src/version.ts','export const VERSION_NAME=\\\"dev\\\"\\nexport const VERSION_CODE=0\\nexport const COMMIT_HASH=\\\"local\\\"\\n')\"",
     "dev": "vite",
     "build": "vue-tsc -b && vite build",
     "preview": "vite preview"
   },
   "dependencies": {
+    "@vueform/slider": "^2.1.10",
     "axios": "^1.13.2",
     "livekit-client": "^2.16.0",
     "lucide-vue-next": "^0.555.0",

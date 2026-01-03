@@ -239,6 +239,7 @@ fun VoiceScreen(
                 onTogglePlayPause = { musicViewModel.togglePlayPause(voiceRoomName) },
                 onSkip = { musicViewModel.botSkip() },
                 onSeek = { musicViewModel.botSeek(it) },
+                onVolumeChange = { musicViewModel.setVolume(it) },
                 onRemoveFromQueue = { musicViewModel.removeFromQueue(it) },
                 onClearQueue = { musicViewModel.clearQueue() },
                 onShowSearch = { showSearchDialog = true },

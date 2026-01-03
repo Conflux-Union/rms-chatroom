@@ -27,6 +27,15 @@ sealed class MusicWebSocketEvent {
         val state: String,
         val queueLength: Int
     ) : MusicWebSocketEvent()
+    data class Play(
+        val roomName: String,
+        val song: Song,
+        val url: String,
+        val positionMs: Long
+    ) : MusicWebSocketEvent()
+    data class Pause(val roomName: String) : MusicWebSocketEvent()
+    data class Resume(val roomName: String, val positionMs: Long) : MusicWebSocketEvent()
+    data class Seek(val roomName: String, val positionMs: Long) : MusicWebSocketEvent()
     object Connected : MusicWebSocketEvent()
     object Disconnected : MusicWebSocketEvent()
     data class Error(val error: String) : MusicWebSocketEvent()
@@ -136,6 +145,41 @@ class MusicWebSocket @Inject constructor(
             val type = json.get("type")?.asString
 
             when (type) {
+                "play" -> {
+                    val roomName = json.get("room_name")?.asString ?: ""
+                    val url = json.get("url")?.asString ?: ""
+                    val positionMs = json.get("position_ms")?.asLong ?: 0L
+
+                    val songObj = json.getAsJsonObject("song")
+                    val song = Song(
+                        mid = songObj.get("mid")?.asString ?: "",
+                        name = songObj.get("name")?.asString ?: "",
+                        artist = songObj.get("artist")?.asString ?: "",
+                        album = songObj.get("album")?.asString ?: "",
+                        duration = songObj.get("duration")?.asInt ?: 0,
+                        cover = songObj.get("cover")?.asString ?: ""
+                    )
+
+                    Log.d(TAG, "Play command: room=$roomName, song=${song.name}, url=$url")
+                    _events.tryEmit(MusicWebSocketEvent.Play(roomName, song, url, positionMs))
+                }
+                "pause" -> {
+                    val roomName = json.get("room_name")?.asString ?: ""
+                    Log.d(TAG, "Pause command: room=$roomName")
+                    _events.tryEmit(MusicWebSocketEvent.Pause(roomName))
+                }
+                "resume" -> {
+                    val roomName = json.get("room_name")?.asString ?: ""
+                    val positionMs = json.get("position_ms")?.asLong ?: 0L
+                    Log.d(TAG, "Resume command: room=$roomName, position=$positionMs")
+                    _events.tryEmit(MusicWebSocketEvent.Resume(roomName, positionMs))
+                }
+                "seek" -> {
+                    val roomName = json.get("room_name")?.asString ?: ""
+                    val positionMs = json.get("position_ms")?.asLong ?: 0L
+                    Log.d(TAG, "Seek command: room=$roomName, position=$positionMs")
+                    _events.tryEmit(MusicWebSocketEvent.Seek(roomName, positionMs))
+                }
                 "music_state" -> {
                     val data = json.getAsJsonObject("data")
                     val roomName = data.get("room_name")?.asString ?: ""

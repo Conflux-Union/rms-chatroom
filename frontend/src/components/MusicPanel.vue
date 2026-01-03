@@ -3,7 +3,9 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useMusicStore, type Song } from '../stores/music'
 import { useVoiceStore } from '../stores/voice'
 import { useAuthStore } from '../stores/auth'
-import { Music, Bot, SkipBack, Pause, Play, SkipForward, Plus, Trash2, X, Search, Loader2 } from 'lucide-vue-next'
+import { Music, Bot, SkipBack, Pause, Play, SkipForward, Plus, Trash2, X, Search, Loader2, Volume2 } from 'lucide-vue-next'
+import Slider from '@vueform/slider'
+import '@vueform/slider/themes/default.css'
 
 const music = useMusicStore()
 const voice = useVoiceStore()
@@ -16,10 +18,8 @@ const showSearch = ref(false)
 const showLoginSelect = ref(false)
 const loginPollingInterval = ref<number | null>(null)
 const audioRef = ref<HTMLAudioElement | null>(null)
-const progressPollingInterval = ref<number | null>(null)
-const isDragging = ref(false)
-const dragPosition = ref(0)
 const musicWs = ref<WebSocket | null>(null)
+const volume = ref(1.0)
 
 // Get current voice room name for music API calls
 const currentRoomName = computed(() => {
@@ -29,11 +29,18 @@ const currentRoomName = computed(() => {
   return ''
 })
 
-// Computed progress percentage
-const progressPercent = computed(() => {
-  if (music.durationMs <= 0) return 0
-  const pos = isDragging.value ? dragPosition.value : music.positionMs
-  return (pos / music.durationMs) * 100
+// Progress value for slider (0-100)
+const progressValue = computed({
+  get: () => {
+    if (music.durationMs <= 0) return 0
+    return (music.positionMs / music.durationMs) * 100
+  },
+  set: (value: number) => {
+    if (currentRoomName.value) {
+      const newPosition = Math.floor((value / 100) * music.durationMs)
+      music.botSeek(currentRoomName.value, newPosition)
+    }
+  }
 })
 
 // Format milliseconds to mm:ss
@@ -42,6 +49,15 @@ function formatTime(ms: number): string {
   const mins = Math.floor(seconds / 60)
   const secs = seconds % 60
   return `${mins}:${secs.toString().padStart(2, '0')}`
+}
+
+// Volume control handler
+function handleVolumeChange(value: number) {
+  volume.value = value
+  if (audioRef.value) {
+    audioRef.value.volume = value
+  }
+  localStorage.setItem('musicVolume', value.toString())
 }
 
 // Connect to music WebSocket for real-time state sync
@@ -66,7 +82,24 @@ function connectMusicWs() {
   musicWs.value.onmessage = (event) => {
     try {
       const msg = JSON.parse(event.data)
-      if (msg.type === 'music_state' && msg.data) {
+
+      // Handle playback commands
+      if (msg.type === 'play' && audioRef.value) {
+        // Play new song
+        audioRef.value.src = msg.url
+        audioRef.value.currentTime = (msg.position_ms || 0) / 1000
+        audioRef.value.play().catch(e => console.error('Play failed:', e))
+      } else if (msg.type === 'pause' && audioRef.value) {
+        // Pause playback
+        audioRef.value.pause()
+      } else if (msg.type === 'resume' && audioRef.value) {
+        // Resume playback
+        audioRef.value.currentTime = (msg.position_ms || 0) / 1000
+        audioRef.value.play().catch(e => console.error('Resume failed:', e))
+      } else if (msg.type === 'seek' && audioRef.value) {
+        // Seek to position
+        audioRef.value.currentTime = (msg.position_ms || 0) / 1000
+      } else if (msg.type === 'music_state' && msg.data) {
         // Update music store with real-time state
         music.updateProgress(msg.data)
         // Also refresh queue to sync current index (use room_name from message or current)
@@ -89,16 +122,18 @@ onMounted(async () => {
     await music.refreshQueue(currentRoomName.value)
     await music.getBotStatus(currentRoomName.value)
   }
-  
-  // Connect to music WebSocket
+
+  // Connect to music WebSocket for real-time playback commands
   connectMusicWs()
-  
-  // Poll progress every 1 second when playing
-  progressPollingInterval.value = window.setInterval(async () => {
-    if (music.isPlaying && currentRoomName.value) {
-      await music.getProgress(currentRoomName.value)
-    }
-  }, 1000)
+
+  // Load saved volume from localStorage
+  const savedVolume = localStorage.getItem('musicVolume')
+  if (savedVolume) {
+    volume.value = parseFloat(savedVolume)
+  }
+  if (audioRef.value) {
+    audioRef.value.volume = volume.value
+  }
 })
 
 // Refresh queue when voice channel changes
@@ -113,66 +148,9 @@ onUnmounted(() => {
   if (loginPollingInterval.value) {
     clearInterval(loginPollingInterval.value)
   }
-  if (progressPollingInterval.value) {
-    clearInterval(progressPollingInterval.value)
-  }
   if (musicWs.value) {
     musicWs.value.close()
     musicWs.value = null
-  }
-})
-
-// Progress bar seek handlers
-function handleProgressClick(event: MouseEvent) {
-  if (!currentRoomName.value) return
-  const bar = event.currentTarget as HTMLElement
-  const rect = bar.getBoundingClientRect()
-  const percent = (event.clientX - rect.left) / rect.width
-  const newPosition = Math.floor(percent * music.durationMs)
-  music.botSeek(currentRoomName.value, newPosition)
-}
-
-function handleProgressMouseDown(event: MouseEvent) {
-  isDragging.value = true
-  handleProgressDrag(event)
-  window.addEventListener('mousemove', handleProgressDrag)
-  window.addEventListener('mouseup', handleProgressMouseUp)
-}
-
-function handleProgressDrag(event: MouseEvent) {
-  const bar = document.querySelector('.progress-bar') as HTMLElement
-  if (!bar) return
-  const rect = bar.getBoundingClientRect()
-  const percent = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width))
-  dragPosition.value = Math.floor(percent * music.durationMs)
-}
-
-function handleProgressMouseUp() {
-  window.removeEventListener('mousemove', handleProgressDrag)
-  window.removeEventListener('mouseup', handleProgressMouseUp)
-  if (isDragging.value && currentRoomName.value) {
-    music.botSeek(currentRoomName.value, dragPosition.value)
-    isDragging.value = false
-  }
-}
-
-// Watch for song URL changes to auto-play
-watch(() => music.currentSongUrl, (url) => {
-  if (url && audioRef.value) {
-    audioRef.value.src = url
-    if (music.isPlaying) {
-      audioRef.value.play()
-    }
-  }
-})
-
-watch(() => music.isPlaying, (playing) => {
-  if (audioRef.value) {
-    if (playing) {
-      audioRef.value.play()
-    } else {
-      audioRef.value.pause()
-    }
   }
 })
 
@@ -202,12 +180,6 @@ async function handleAddToQueue(song: Song) {
   showSearch.value = false
   searchInput.value = ''
   music.searchResults = []
-}
-
-function handleAudioEnded() {
-  if (currentRoomName.value) {
-    music.botSkip(currentRoomName.value)
-  }
 }
 
 async function handleBotPlayPause() {
@@ -253,6 +225,13 @@ async function handleStopBot() {
     await music.stopBot(currentRoomName.value)
   }
 }
+
+// Watch for audio element changes to apply volume
+watch(audioRef, (newAudio) => {
+  if (newAudio) {
+    newAudio.volume = volume.value
+  }
+})
 </script>
 
 <template>
@@ -345,31 +324,45 @@ async function handleStopBot() {
           </div>
           <!-- Progress Bar -->
           <div class="progress-container">
-            <span class="time-current">{{ formatTime(isDragging ? dragPosition : music.positionMs) }}</span>
-            <div 
-              class="progress-bar" 
-              @click="handleProgressClick"
-              @mousedown="handleProgressMouseDown"
-            >
-              <div class="progress-fill" :style="{ width: progressPercent + '%' }"></div>
-              <div class="progress-thumb" :style="{ left: progressPercent + '%' }"></div>
-            </div>
+            <span class="time-current">{{ formatTime(music.positionMs) }}</span>
+            <Slider
+              v-model="progressValue"
+              :min="0"
+              :max="100"
+              :tooltips="false"
+              class="progress-slider"
+            />
             <span class="time-total">{{ formatTime(music.durationMs) }}</span>
           </div>
         </div>
-        <div class="playback-controls">
-          <button class="control-btn" @click="handleBotPrevious" title="上一首"><SkipBack :size="18" /></button>
-          <button 
-            class="control-btn play-btn" 
-            @click="handleBotPlayPause"
-            :disabled="!voice.isConnected && music.playbackState !== 'paused'"
-            :title="voice.isConnected || music.playbackState === 'paused' ? '' : '请先加入语音频道'"
-          >
-            <Loader2 v-if="music.playbackState === 'loading'" :size="22" class="spin" />
-            <Pause v-else-if="music.isPlaying" :size="22" />
-            <Play v-else :size="22" />
-          </button>
-          <button class="control-btn" @click="handleBotSkip" title="下一首"><SkipForward :size="18" /></button>
+        <div class="controls-wrapper">
+          <div class="playback-controls">
+            <button class="control-btn" @click="handleBotPrevious" title="上一首"><SkipBack :size="18" /></button>
+            <button
+              class="control-btn play-btn"
+              @click="handleBotPlayPause"
+              :disabled="!voice.isConnected && music.playbackState !== 'paused'"
+              :title="voice.isConnected || music.playbackState === 'paused' ? '' : '请先加入语音频道'"
+            >
+              <Loader2 v-if="music.playbackState === 'loading'" :size="22" class="spin" />
+              <Pause v-else-if="music.isPlaying" :size="22" />
+              <Play v-else :size="22" />
+            </button>
+            <button class="control-btn" @click="handleBotSkip" title="下一首"><SkipForward :size="18" /></button>
+          </div>
+          <div class="volume-control">
+            <Volume2 :size="16" class="volume-icon" />
+            <Slider
+              :model-value="volume"
+              @update:model-value="handleVolumeChange"
+              :min="0"
+              :max="1"
+              :step="0.01"
+              :tooltips="false"
+              class="volume-slider"
+            />
+            <span class="volume-text">{{ Math.round(volume * 100) }}%</span>
+          </div>
         </div>
       </div>
 
@@ -468,10 +461,9 @@ async function handleStopBot() {
         </div>
       </Teleport>
 
-      <!-- Hidden audio element for local playback -->
-      <audio 
-        ref="audioRef" 
-        @ended="handleAudioEnded"
+      <!-- Hidden audio element for client-side playback -->
+      <audio
+        ref="audioRef"
         style="display: none;"
       />
     </div>
@@ -745,42 +737,16 @@ async function handleStopBot() {
   text-align: center;
 }
 
-.progress-bar {
+.progress-slider {
   flex: 1;
-  height: 4px;
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 2px;
-  cursor: pointer;
-  position: relative;
 }
 
-.progress-bar:hover {
-  height: 6px;
-}
-
-.progress-bar:hover .progress-thumb {
-  opacity: 1;
-  transform: translate(-50%, -50%) scale(1);
-}
-
-.progress-fill {
-  height: 100%;
-  background: var(--color-primary, #6366f1);
-  border-radius: 2px;
-  transition: width 0.1s linear;
-}
-
-.progress-thumb {
-  position: absolute;
-  top: 50%;
-  width: 12px;
-  height: 12px;
-  background: #fff;
-  border-radius: 50%;
-  transform: translate(-50%, -50%) scale(0);
-  opacity: 0;
-  transition: opacity 0.15s, transform 0.15s;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+/* Controls wrapper */
+.controls-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
 }
 
 /* Loading spinner */
@@ -819,6 +785,75 @@ async function handleStopBot() {
   height: 48px;
   font-size: 22px;
   background: var(--color-gradient-primary);
+}
+
+/* Volume Control */
+.volume-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 20px;
+  min-width: 140px;
+}
+
+.volume-icon {
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+}
+
+.volume-slider {
+  flex: 1;
+}
+
+.volume-text {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  min-width: 32px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+/* Customize Slider component */
+:deep(.slider-connect) {
+  background: var(--color-primary, #6366f1);
+}
+
+:deep(.slider-tooltip) {
+  display: none;
+}
+
+:deep(.slider-base) {
+  background: rgba(255, 255, 255, 0.1);
+  height: 4px;
+  border-radius: 2px;
+}
+
+:deep(.slider-origin) {
+  background: transparent;
+}
+
+:deep(.slider-handle) {
+  width: 12px;
+  height: 12px;
+  background: #fff;
+  border: none;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+:deep(.slider-handle:hover) {
+  transform: translateY(-50%) scale(1.2);
+}
+
+:deep(.slider-horizontal) {
+  height: 4px;
+}
+
+:deep(.slider-horizontal .slider-handle) {
+  right: -6px;
 }
 
 /* Empty State */
