@@ -5,7 +5,7 @@ import asyncio
 import json
 import logging
 import time
-from typing import Any
+from typing import Any, Callable, Awaitable
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
@@ -21,6 +21,15 @@ _room_clients: dict[str, set[WebSocket]] = {}
 # WebSocket to room mapping for cleanup
 _ws_to_room: dict[WebSocket, str] = {}
 _lock = asyncio.Lock()
+
+# Callback to get current playback state for a room (set by music router)
+_get_room_playback_state: Callable[[str], Awaitable[dict | None]] | None = None
+
+
+def set_get_room_playback_state(func: Callable[[str], Awaitable[dict | None]]) -> None:
+    """Set callback to get current playback state for a room."""
+    global _get_room_playback_state
+    _get_room_playback_state = func
 
 
 async def broadcast_music_state(event_type: str, data: dict[str, Any]) -> None:
@@ -124,6 +133,23 @@ async def music_websocket(
 
     try:
         await websocket.send_json({"type": "connected", "room_name": room_name})
+
+        # Send current playback state if room is playing
+        # This ensures late joiners can start playing immediately
+        if _get_room_playback_state:
+            try:
+                playback_state = await _get_room_playback_state(room_name)
+                if playback_state and playback_state.get("is_playing"):
+                    # Send play command with current state
+                    server_time = time.time()
+                    await websocket.send_json({
+                        "type": "play",
+                        "server_time": server_time,
+                        **playback_state
+                    })
+                    logger.info(f"Sent current playback state to new client in room {room_name}")
+            except Exception as e:
+                logger.error(f"Failed to send playback state to new client: {e}")
 
         # Keep connection alive, handle ping/pong and room changes
         while True:

@@ -332,6 +332,33 @@ def set_ws_broadcast(broadcast_func):
     _ws_broadcast = broadcast_func
 
 
+async def get_room_playback_state(room_name: str) -> dict | None:
+    """Get current playback state for a room (used by WebSocket for late joiners)."""
+    if room_name not in _room_states:
+        return None
+
+    state = _room_states[room_name]
+    if not state.is_playing or not state.current_song_url:
+        return None
+
+    if not state.play_queue or state.current_index >= len(state.play_queue):
+        return None
+
+    current_song = state.play_queue[state.current_index]["song"]
+
+    # Calculate current position
+    elapsed_ms = int((time_module.time() - state.play_start_time) * 1000)
+    position_ms = state.play_start_position + elapsed_ms
+
+    return {
+        "room_name": room_name,
+        "song": current_song,
+        "url": state.current_song_url,
+        "position_ms": position_ms,
+        "is_playing": True
+    }
+
+
 # --- Models ---
 
 class SearchRequest(BaseModel):
