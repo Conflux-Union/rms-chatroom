@@ -20,6 +20,7 @@ const loginPollingInterval = ref<number | null>(null)
 const audioRef = ref<HTMLAudioElement | null>(null)
 const musicWs = ref<WebSocket | null>(null)
 const volume = ref(1.0)
+const isProcessingPlayback = ref(false)
 
 // Get current voice room name for music API calls
 const currentRoomName = computed(() => {
@@ -204,15 +205,33 @@ async function handleAddToQueue(song: Song) {
 
 async function handleBotPlayPause() {
   if (!currentRoomName.value && music.playbackState !== 'paused') return
-  
-  if (music.isPlaying) {
-    await music.botPause(currentRoomName.value)
-  } else if (music.playbackState === 'paused') {
-    // Resume from paused state
-    await music.botResume(currentRoomName.value)
-  } else if (currentRoomName.value) {
-    // Start new playback
-    await music.botPlay(currentRoomName.value)
+
+  // Prevent rapid clicks
+  if (isProcessingPlayback.value) {
+    console.log('Playback action already in progress, ignoring')
+    return
+  }
+
+  isProcessingPlayback.value = true
+
+  try {
+    if (music.isPlaying) {
+      console.log('Pausing playback')
+      await music.botPause(currentRoomName.value)
+    } else if (music.playbackState === 'paused') {
+      // Resume from paused state
+      console.log('Resuming playback')
+      await music.botResume(currentRoomName.value)
+    } else if (currentRoomName.value) {
+      // Start new playback
+      console.log('Starting new playback')
+      await music.botPlay(currentRoomName.value)
+    }
+  } finally {
+    // Add a small delay to prevent rapid toggling
+    setTimeout(() => {
+      isProcessingPlayback.value = false
+    }, 300)
   }
 }
 
@@ -361,10 +380,10 @@ watch(audioRef, (newAudio) => {
             <button
               class="control-btn play-btn"
               @click="handleBotPlayPause"
-              :disabled="!voice.isConnected && music.playbackState !== 'paused'"
+              :disabled="!voice.isConnected && music.playbackState !== 'paused' || isProcessingPlayback"
               :title="voice.isConnected || music.playbackState === 'paused' ? '' : '请先加入语音频道'"
             >
-              <Loader2 v-if="music.playbackState === 'loading'" :size="22" class="spin" />
+              <Loader2 v-if="music.playbackState === 'loading' || isProcessingPlayback" :size="22" class="spin" />
               <Pause v-else-if="music.isPlaying" :size="22" />
               <Play v-else :size="22" />
             </button>

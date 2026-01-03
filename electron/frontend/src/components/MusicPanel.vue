@@ -21,6 +21,7 @@ const audioRef = ref<HTMLAudioElement | null>(null)
 const progressPollingInterval = ref<number | null>(null)
 const musicWs = ref<WebSocket | null>(null)
 const volume = ref(1.0)
+const isProcessingPlayback = ref(false)
 
 // Get current voice room name for music API calls
 const currentRoomName = computed(() => {
@@ -185,26 +186,6 @@ onUnmounted(() => {
   }
 })
 
-// Watch for song URL changes to auto-play
-watch(() => music.currentSongUrl, (url) => {
-  if (url && audioRef.value) {
-    audioRef.value.src = url
-    if (music.isPlaying) {
-      audioRef.value.play()
-    }
-  }
-})
-
-watch(() => music.isPlaying, (playing) => {
-  if (audioRef.value) {
-    if (playing) {
-      audioRef.value.play()
-    } else {
-      audioRef.value.pause()
-    }
-  }
-})
-
 // Watch for audio element changes to apply volume
 watch(audioRef, (newAudio) => {
   if (newAudio) {
@@ -248,15 +229,33 @@ function handleAudioEnded() {
 
 async function handleBotPlayPause() {
   if (!currentRoomName.value && music.playbackState !== 'paused') return
-  
-  if (music.isPlaying) {
-    await music.botPause(currentRoomName.value)
-  } else if (music.playbackState === 'paused') {
-    // Resume from paused state
-    await music.botResume(currentRoomName.value)
-  } else if (currentRoomName.value) {
-    // Start new playback
-    await music.botPlay(currentRoomName.value)
+
+  // Prevent rapid clicks
+  if (isProcessingPlayback.value) {
+    console.log('Playback action already in progress, ignoring')
+    return
+  }
+
+  isProcessingPlayback.value = true
+
+  try {
+    if (music.isPlaying) {
+      console.log('Pausing playback')
+      await music.botPause(currentRoomName.value)
+    } else if (music.playbackState === 'paused') {
+      // Resume from paused state
+      console.log('Resuming playback')
+      await music.botResume(currentRoomName.value)
+    } else if (currentRoomName.value) {
+      // Start new playback
+      console.log('Starting new playback')
+      await music.botPlay(currentRoomName.value)
+    }
+  } finally {
+    // Add a small delay to prevent rapid toggling
+    setTimeout(() => {
+      isProcessingPlayback.value = false
+    }, 300)
   }
 }
 
@@ -398,10 +397,10 @@ async function handleStopBot() {
             <button
               class="control-btn play-btn"
               @click="handleBotPlayPause"
-              :disabled="!voice.isConnected && music.playbackState !== 'paused'"
+              :disabled="!voice.isConnected && music.playbackState !== 'paused' || isProcessingPlayback"
               :title="voice.isConnected || music.playbackState === 'paused' ? '' : '请先加入语音频道'"
             >
-              <Loader2 v-if="music.playbackState === 'loading'" :size="22" class="spin" />
+              <Loader2 v-if="music.playbackState === 'loading' || isProcessingPlayback" :size="22" class="spin" />
               <Pause v-else-if="music.isPlaying" :size="22" />
               <Play v-else :size="22" />
             </button>
