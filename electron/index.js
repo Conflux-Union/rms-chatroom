@@ -103,11 +103,11 @@ function startCallbackServer(win) {
 }
 
 function setupScreenCapture() {
-  // For renderer: get list of windows/screens (with thumbnails)
+  ipcMain.handle("capture:getSelectedSourceId", async () => {
+    return selectedCaptureSourceId;
+  });
+
   ipcMain.handle("capture:getSources", async () => {
-    ipcMain.handle("capture:getSelectedSourceId", async () => {
-      return selectedCaptureSourceId;
-    });
     const sources = await desktopCapturer.getSources({
       types: ["window", "screen"],
       thumbnailSize: { width: 320, height: 180 },
@@ -117,7 +117,6 @@ function setupScreenCapture() {
     return sources.map((s) => ({
       id: s.id,
       name: s.name,
-      // Convert to dataURL so renderer can display with <img :src="...">
       thumbnail: s.thumbnail ? s.thumbnail.toDataURL() : null,
       appIcon: s.appIcon ? s.appIcon.toDataURL() : null,
     }));
@@ -133,6 +132,7 @@ function setupScreenCapture() {
     return true;
   });
 
+  console.log("IPC capture handlers registered");
   // Core: intercept getDisplayMedia
   // Any page/LiveKit call to getDisplayMedia will arrive here
   session.defaultSession.setDisplayMediaRequestHandler(async (request, callback) => {
@@ -237,18 +237,21 @@ function registerMicShortcut(accelerator) {
 function installCSP() {
   const CSP =
     "default-src 'self'; " +
-    "script-src 'self'; " +
-    "style-src 'self' 'unsafe-inline'; " +
-    "img-src 'self' data: blob: file: https:; " +
-    "connect-src 'self' " +
-    "https://preview-chatroom.rms.net.cn " +
-    "http://preview-chatroom.rms.net.cn " +
-    "wss://preview-chatroom.rms.net.cn " +
-    "ws://preview-chatroom.rms.net.cn " +
-    "http://localhost:8000 " +
-    "http://127.0.0.1:8000 " +
-    "ws://localhost:8000 " +
-    "ws://127.0.0.1:8000;";
+    "script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' blob: data:; " +
+    "script-src-elem 'self' blob: data:; " +
+    "worker-src 'self' blob:; " +
+    "img-src 'self' blob: data:; " + 
+    "media-src 'self' blob: data:; " + 
+    "connect-src 'self' blob: data: " +
+      "https://preview-chatroom.rms.net.cn " +
+      "http://preview-chatroom.rms.net.cn " +
+      "wss://preview-chatroom.rms.net.cn " +
+      "ws://preview-chatroom.rms.net.cn " +
+      "http://localhost:8000 " +
+      "http://127.0.0.1:8000 " +
+      "ws://localhost:8000 " +
+      "ws://127.0.0.1:8000;";
+
 
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
     const headers = { ...(details.responseHeaders || {}) };

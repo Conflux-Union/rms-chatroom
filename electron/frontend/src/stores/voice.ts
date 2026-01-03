@@ -9,15 +9,19 @@ import {
   RemoteTrackPublication,
   LocalTrackPublication,
   ScreenSharePresets,
+  LocalAudioTrack,
 } from 'livekit-client'
 import type { Channel } from '../types'
 import { useAuthStore } from './auth'
+import { startNoiseCancel, type NoiseCancelMode, type NoiseCancelSession } from '../composables/noiseCancle'
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'https://preview-chatroom.rms.net.cn'
 
 const STORAGE_KEY_INPUT = 'rms-voice-input-device'
 const STORAGE_KEY_OUTPUT = 'rms-voice-output-device'
 let firstAddedRoom = true
+
+const capturePickerOpen = ref(false)
 
 // Detect iOS devices (iPad, iPhone, iPod, or iPad with desktop mode)
 function isIOS(): boolean {
@@ -52,6 +56,8 @@ interface ParticipantAudio {
   volume: number
 }
 
+let customMicPub: LocalTrackPublication | null = null
+
 export const useVoiceStore = defineStore('voice', () => {
   const room = shallowRef<Room | null>(null)
   const isConnected = ref(false)
@@ -61,6 +67,99 @@ export const useVoiceStore = defineStore('voice', () => {
   const participants = ref<VoiceParticipant[]>([])
   const error = ref<string | null>(null)
   const currentVoiceChannel = ref<Channel | null>(null)
+
+  // ===== 降噪模式（webrtc / rnnoise / dtln）=====
+  const STORAGE_KEY_NOISE_MODE = 'rms-voice-noise-cancel-mode'
+  const noiseCancelMode = ref<NoiseCancelMode>(
+    (localStorage.getItem(STORAGE_KEY_NOISE_MODE) as NoiseCancelMode) || 'webrtc',
+  )
+
+  // 自定义降噪链路（rnnoise / dtln）发布用
+  let noiseSession: NoiseCancelSession | null = null
+  let customMicTrack: LocalAudioTrack | null = null
+
+  async function stopNoisePipeline() {
+    try {
+      if (room.value) {
+        // ✅ JS 这边用 track 对象卸载
+        if (customMicPub?.track) {
+          await room.value.localParticipant.unpublishTrack(customMicPub.track as any)
+        } else if (customMicTrack) {
+          await room.value.localParticipant.unpublishTrack(customMicTrack as any)
+        }
+      }
+    } catch {}
+
+    customMicPub = null
+
+    try { customMicTrack?.stop?.() } catch {}
+    customMicTrack = null
+
+    try { await noiseSession?.stop?.() } catch {}
+    noiseSession = null
+  }
+
+  async function applyNoiseCancelMode(mode: NoiseCancelMode) {
+    if (!room.value) return
+
+    await stopNoisePipeline()
+
+    if (mode === 'webrtc') {
+      // ✅ 回到 webrtc：直接用 SDK 自带那条
+      await room.value.localParticipant.setMicrophoneEnabled(!isMuted.value)
+      return
+    }
+
+    // ✅ 先把 SDK 自带 mic 静音
+    await room.value.localParticipant.setMicrophoneEnabled(false)
+
+    // ✅ 再把它真的 unpublish 掉（否则永远双轨）
+    try {
+      const pub = room.value.localParticipant.getTrackPublication(Track.Source.Microphone)
+      if (pub?.track) {
+        await room.value.localParticipant.unpublishTrack(pub.track as any)
+        try { pub.track.stop?.() } catch {}
+      }
+    } catch {}
+      await room.value.localParticipant.setMicrophoneEnabled(false)
+
+    noiseSession = await startNoiseCancel(mode, {
+      deviceId: selectedAudioInput.value || undefined,
+    })
+
+    const processedTrack = noiseSession.processedTrack
+    if (!processedTrack) throw new Error('noisecancle: processedTrack is empty')
+
+    customMicTrack = new LocalAudioTrack(processedTrack as any, undefined, true)
+
+    // ✅ 关键：发布出去（这步你缺了）
+    customMicPub = await room.value.localParticipant.publishTrack(customMicTrack as any, {
+      source: Track.Source.Microphone,
+    } as any)
+    const pubs = Array.from(room.value.localParticipant.audioTrackPublications.values())
+    console.log('local audio pubs:', pubs.map(p => ({
+      sid: p.trackSid,
+      source: p.source,
+      muted: p.isMuted,
+      hasTrack: !!p.track,
+      trackId: p.track?.mediaStreamTrack?.id,
+    })))
+
+    // 保持静音状态
+    if (isMuted.value) {
+      try { await Promise.resolve((customMicTrack as any).mute?.()) } catch {}
+    }
+  }
+
+  async function setNoiseCancelMode(mode: NoiseCancelMode) {
+    noiseCancelMode.value = mode
+    localStorage.setItem(STORAGE_KEY_NOISE_MODE, mode)
+
+    if (room.value && isConnected.value) {
+      await applyNoiseCancelMode(mode)
+    }
+  }
+
 
   // Volume control state
   const audioContext = shallowRef<AudioContext | null>(null)
@@ -265,10 +364,17 @@ export const useVoiceStore = defineStore('voice', () => {
     const list: VoiceParticipant[] = []
 
     const local = room.value.localParticipant
+    let localMuted: boolean
+    if (noiseCancelMode.value === 'webrtc') {
+      localMuted = !local.isMicrophoneEnabled
+    } else {
+      localMuted = isMuted.value
+    }
+    
     list.push({
       id: local.identity,
       name: local.name || local.identity,
-      isMuted: !local.isMicrophoneEnabled,
+      isMuted: localMuted,
       isSpeaking: local.isSpeaking,
       isLocal: true,
       volume: 100,
@@ -382,7 +488,12 @@ export const useVoiceStore = defineStore('voice', () => {
     // If connected, switch device immediately
     if (room.value && isConnected.value) {
       try {
-        await room.value.switchActiveDevice('audioinput', deviceId || 'default')
+        if (noiseCancelMode.value === 'webrtc') {
+          await room.value.switchActiveDevice('audioinput', deviceId || 'default')
+        } else {
+          // rnnoise/dtln：重建管线（用新的 deviceId）
+          await applyNoiseCancelMode(noiseCancelMode.value)
+        }
         return true
       } catch (e) {
         console.log('Failed to switch audio input device:' + e)
@@ -529,7 +640,10 @@ export const useVoiceStore = defineStore('voice', () => {
       })
       room.value.on(RoomEvent.ActiveSpeakersChanged, () => updateParticipants())
       room.value.on(RoomEvent.Disconnected, () => {
-        isConnected.value = false
+        
+        // 断开时清理自定义降噪管线
+        void stopNoisePipeline()
+isConnected.value = false
         participants.value = []
         currentVoiceChannel.value = null
       })
@@ -650,7 +764,9 @@ export const useVoiceStore = defineStore('voice', () => {
 
 
       await room.value.connect(url, token)
-      await room.value.localParticipant.setMicrophoneEnabled(true)
+
+      // 按当前降噪模式发布麦克风（webrtc / rnnoise / dtln）
+      await applyNoiseCancelMode(noiseCancelMode.value)
 
       // Resume AudioContext after connection on iOS if needed
       if (isIOS()) {
@@ -711,6 +827,10 @@ export const useVoiceStore = defineStore('voice', () => {
       masterGain = null
     }
 
+
+    // 断开前清理降噪管线
+    void stopNoisePipeline()
+
     if (room.value) {
       room.value.disconnect()
       room.value = null
@@ -735,8 +855,20 @@ export const useVoiceStore = defineStore('voice', () => {
     if (!room.value) return isMuted.value
 
     const newMuted = !isMuted.value
-    await room.value.localParticipant.setMicrophoneEnabled(!newMuted)
     isMuted.value = newMuted
+
+    if (noiseCancelMode.value === 'webrtc') {
+      await room.value.localParticipant.setMicrophoneEnabled(!newMuted)
+    } else {
+      // 自定义降噪轨：只操作 track 本身
+      if (customMicTrack) {
+        try {
+          if (newMuted) await Promise.resolve((customMicTrack as any).mute?.())
+          else await Promise.resolve((customMicTrack as any).unmute?.())
+        } catch {}
+      }
+    }
+
     updateParticipants()
     return isMuted.value
   }
@@ -1145,35 +1277,47 @@ export const useVoiceStore = defineStore('voice', () => {
 
   async function ensureElectronCaptureSourceSelected(): Promise<boolean> {
     const api = (window as any).electronAPI
-    if (!api?.getCaptureSources) return true // 非 Electron：浏览器自带 picker
-    if (api?.getSelectedCaptureSourceId) {
-      const id = await api.getSelectedCaptureSourceId()
-      return !!id
+
+    // 非 Electron：浏览器自己会弹系统 picker
+    if (!api?.getCaptureSources || !api?.setCaptureSource) return true
+
+    // 选过就直接用
+    try {
+      if (typeof api.getSelectedCaptureSourceId === 'function') {
+        const id = await api.getSelectedCaptureSourceId()
+        if (id) return true
+      }
+    } catch (e) {
+      console.log('[ensureElectronCaptureSourceSelected] getSelectedCaptureSourceId failed:', e)
     }
-    return true
+
+    // ✅ 没选过：打开你做的 Vue 弹窗
+    capturePickerOpen.value = true
+    return false
   }
 
-  async function pickElectronCaptureSource(): Promise<boolean> {
-    const api = (window as any).electronAPI
-    if (!api?.getCaptureSources) return true // 非 Electron：走浏览器/系统自己的 picker
 
-    const sources = await api.getCaptureSources()
-    if (!Array.isArray(sources) || sources.length === 0) return false
+  // async function pickElectronCaptureSource(): Promise<boolean> {
+  //   const api = (window as any).electronAPI
+  //   if (!api?.getCaptureSources) return true // 非 Electron：走浏览器/系统自己的 picker
 
-    // 简单粗暴：用 prompt 让用户输入序号（先跑通）
-    const menu = sources
-      .map((s: any, i: number) => `${i + 1}. ${s.name}`)
-      .join('\n')
+  //   const sources = await api.getCaptureSources()
+  //   if (!Array.isArray(sources) || sources.length === 0) return false
 
-    const input = window.prompt(`选择要共享的窗口/屏幕（输入序号）：\n\n${menu}`)
-    if (!input) return false
+  //   // 简单粗暴：用 prompt 让用户输入序号（先跑通）
+  //   const menu = sources
+  //     .map((s: any, i: number) => `${i + 1}. ${s.name}`)
+  //     .join('\n')
 
-    const idx = Number(input) - 1
-    if (!Number.isFinite(idx) || idx < 0 || idx >= sources.length) return false
+  //   const input = window.prompt(`选择要共享的窗口/屏幕（输入序号）：\n\n${menu}`)
+  //   if (!input) return false
 
-    await api.setCaptureSource(sources[idx].id)
-    return true
-  }
+  //   const idx = Number(input) - 1
+  //   if (!Number.isFinite(idx) || idx < 0 || idx >= sources.length) return false
+
+  //   await api.setCaptureSource(sources[idx].id)
+  //   return true
+  // }
 
 
   /**
@@ -1286,6 +1430,8 @@ export const useVoiceStore = defineStore('voice', () => {
     hostModeEnabled,
     hostModeHostId,
     hostModeHostName,
+    noiseCancelMode,
+    setNoiseCancelMode,
     joinVoice,
     disconnect,
     toggleMute,
@@ -1301,6 +1447,7 @@ export const useVoiceStore = defineStore('voice', () => {
     fetchHostModeStatus,
     toggleHostMode,
     isScreenSharing,
+    capturePickerOpen,
     remoteScreenShares,
     screenShareLocked,
     screenSharerId,
