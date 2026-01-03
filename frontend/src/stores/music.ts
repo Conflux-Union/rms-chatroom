@@ -1,8 +1,11 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import { useAuthStore } from './auth'
+import { useVoiceStore } from './voice'
 
-const API_BASE = import.meta.env.VITE_API_BASE || ''
+const API_BASE = import.meta.env.VITE_API_BASE || 'https://preview-chatroom.rms.net.cn'
+const WS_BASE = import.meta.env.VITE_WS_BASE || 'wss://preview-chatroom.rms.net.cn'
+
 
 export type MusicPlatform = 'qq' | 'netease' | 'all'
 
@@ -56,11 +59,18 @@ export const useMusicStore = defineStore('music', () => {
   
   // Current song URL for audio playback
   const currentSongUrl = ref<string | null>(null)
-  
+
   // Bot state
   const botConnected = ref(false)
   const botRoom = ref<string | null>(null)
-  
+
+  // WebSocket and audio state (managed by store, not component)
+  let musicWs: WebSocket | null = null
+  let currentWsRoom: string | null = null
+  let audioElement: HTMLAudioElement | null = null
+  const volume = ref(parseFloat(localStorage.getItem('musicVolume') || '1.0'))
+  const wsConnected = ref(false)
+
   const headers = () => ({
     'Content-Type': 'application/json',
     'Authorization': `Bearer ${auth.token}`
@@ -279,7 +289,6 @@ export const useMusicStore = defineStore('music', () => {
       if (data.success) {
         botConnected.value = true
         botRoom.value = roomName
-        console.log('Music bot started in room:', roomName)
       }
       return data.success
     } catch (e) {
@@ -297,7 +306,6 @@ export const useMusicStore = defineStore('music', () => {
       })
       botConnected.value = false
       botRoom.value = null
-      console.log('Music bot stopped in room:', roomName)
     } catch (e) {
       console.error('Failed to stop bot:', e)
     }
@@ -313,12 +321,6 @@ export const useMusicStore = defineStore('music', () => {
       botConnected.value = data.connected
       botRoom.value = data.room
       isPlaying.value = data.is_playing
-      console.log('Music bot status:')
-      console.log(`  - Connected: ${botConnected.value}`)
-      console.log(`  - Room: ${botRoom.value}`)
-      console.log(`  - Is playing: ${isPlaying.value}`)
-      console.log(`  - Current song: ${currentSong.value}`)
-
       return data
     } catch (e) {
       console.error('Failed to get bot status:', e)
@@ -436,12 +438,12 @@ export const useMusicStore = defineStore('music', () => {
       return null
     }
   }
-  
+
   // Called from WebSocket to update progress
-  function updateProgress(data: { 
-    position_ms: number; 
-    duration_ms: number; 
-    state: string; 
+  function updateProgress(data: {
+    position_ms: number;
+    duration_ms: number;
+    state: string;
     current_song?: Song;
     current_index?: number;
   }) {
@@ -456,7 +458,158 @@ export const useMusicStore = defineStore('music', () => {
       currentIndex.value = data.current_index
     }
   }
-  
+
+  // --- WebSocket and Audio Management ---
+
+  function ensureAudioElement(): HTMLAudioElement {
+    if (!audioElement) {
+      audioElement = document.createElement('audio')
+      audioElement.style.display = 'none'
+      audioElement.volume = volume.value
+      document.body.appendChild(audioElement)
+    }
+    return audioElement
+  }
+
+  function connectMusicWs(roomName: string) {
+    if (!auth.token || !roomName) return
+
+    // Disconnect existing connection if room changed
+    if (musicWs && currentWsRoom !== roomName) {
+      musicWs.close()
+      musicWs = null
+    }
+
+    if (musicWs) return // Already connected to same room
+
+    currentWsRoom = roomName
+    const url = `${WS_BASE}/ws/music?token=${auth.token}&room_name=${encodeURIComponent(roomName)}`
+    musicWs = new WebSocket(url)
+
+    musicWs.onopen = () => {
+      console.log(`[MusicStore] WebSocket connected to room ${roomName}`)
+      wsConnected.value = true
+    }
+
+    musicWs.onclose = () => {
+      console.log('[MusicStore] WebSocket disconnected')
+      wsConnected.value = false
+      musicWs = null
+      // Reconnect after 3 seconds if still in same room
+      const voice = useVoiceStore()
+      setTimeout(() => {
+        const currentRoom = voice.currentVoiceChannel ? `voice_${voice.currentVoiceChannel.id}` : null
+        if (auth.token && currentRoom && currentRoom === currentWsRoom) {
+          connectMusicWs(currentRoom)
+        }
+      }, 3000)
+    }
+
+    musicWs.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data)
+        const voice = useVoiceStore()
+        const currentRoom = voice.currentVoiceChannel ? `voice_${voice.currentVoiceChannel.id}` : null
+
+        // Handle playback commands - only process if for our room
+        if (msg.room_name && msg.room_name !== currentRoom) {
+          return // Ignore messages for other rooms
+        }
+
+        const audio = ensureAudioElement()
+
+        if (msg.type === 'play') {
+          // Play new song
+          console.log('[MusicStore] Received play command:', msg.song?.name, 'URL:', msg.url)
+          audio.src = msg.url
+          audio.currentTime = (msg.position_ms || 0) / 1000
+          audio.play().catch(e => console.error('[MusicStore] Play failed:', e))
+        } else if (msg.type === 'pause') {
+          // Pause playback
+          console.log('[MusicStore] Received pause command')
+          audio.pause()
+        } else if (msg.type === 'resume') {
+          // Resume playback
+          console.log('[MusicStore] Received resume command, position:', msg.position_ms)
+          audio.currentTime = (msg.position_ms || 0) / 1000
+          audio.play().catch(e => console.error('[MusicStore] Resume failed:', e))
+        } else if (msg.type === 'seek') {
+          // Seek to position
+          console.log('[MusicStore] Received seek command, position:', msg.position_ms)
+          audio.currentTime = (msg.position_ms || 0) / 1000
+        } else if (msg.type === 'music_state' && msg.data) {
+          // Only process if for our room
+          if (msg.data.room_name && msg.data.room_name !== currentRoom) {
+            return
+          }
+          // Update music store with real-time state
+          updateProgress(msg.data)
+          // Also refresh queue to sync current index
+          if (msg.data.current_index !== undefined) {
+            const roomName = msg.data.room_name || currentRoom
+            if (roomName) {
+              refreshQueue(roomName)
+            }
+          }
+        } else if (msg.type === 'song_unavailable') {
+          // Show notification for unavailable song
+          console.warn(`[MusicStore] Song unavailable: ${msg.song_name} - ${msg.reason}`)
+        }
+      } catch (e) {
+        console.error('[MusicStore] Failed to handle WebSocket message:', e)
+      }
+    }
+  }
+
+  function disconnectMusicWs() {
+    if (musicWs) {
+      musicWs.close()
+      musicWs = null
+    }
+    wsConnected.value = false
+    currentWsRoom = null
+  }
+
+  function setVolume(newVolume: number) {
+    volume.value = newVolume
+    if (audioElement) {
+      audioElement.volume = newVolume
+    }
+    localStorage.setItem('musicVolume', newVolume.toString())
+  }
+
+  function getAudioElement(): HTMLAudioElement | null {
+    return audioElement
+  }
+
+  // Watch voice channel changes and auto-connect/disconnect WebSocket
+  function initVoiceChannelWatcher() {
+    const voice = useVoiceStore()
+
+    watch(
+      () => voice.currentVoiceChannel,
+      async (newChannel, oldChannel) => {
+        if (newChannel) {
+          const roomName = `voice_${newChannel.id}`
+          await refreshQueue(roomName)
+          await getBotStatus(roomName)
+          connectMusicWs(roomName)
+        } else if (oldChannel) {
+          // Left voice channel, disconnect WebSocket and stop audio
+          disconnectMusicWs()
+          if (audioElement) {
+            audioElement.pause()
+            audioElement.src = ''
+          }
+        }
+      },
+      { immediate: true }
+    )
+  }
+
+  // Initialize watcher when store is created
+  initVoiceChannelWatcher()
+
   return {
     // Login state
     isLoggedIn,
@@ -469,14 +622,14 @@ export const useMusicStore = defineStore('music', () => {
     getQRCode,
     pollLoginStatus,
     logout,
-    
+
     // Search state
     searchQuery,
     searchResults,
     searchPlatform,
     isSearching,
     search,
-    
+
     // Queue state
     queue,
     currentIndex,
@@ -486,14 +639,14 @@ export const useMusicStore = defineStore('music', () => {
     removeFromQueue,
     clearQueue,
     refreshQueue,
-    
+
     // Playback state
     isPlaying,
     playbackState,
     positionMs,
     durationMs,
     getSongUrl,
-    
+
     // Bot state
     botConnected,
     botRoom,
@@ -508,7 +661,15 @@ export const useMusicStore = defineStore('music', () => {
     botSeek,
     getProgress,
     updateProgress,
-    
+
+    // WebSocket and audio state
+    volume,
+    wsConnected,
+    setVolume,
+    getAudioElement,
+    connectMusicWs,
+    disconnectMusicWs,
+
     // Utils
     formatDuration
   }
