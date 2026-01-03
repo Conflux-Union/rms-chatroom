@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
 from sqlalchemy import select
@@ -103,6 +103,56 @@ async def chat_websocket(websocket: WebSocket, channel_id: int, token: str | Non
 
                     await db.commit()
 
+                    # Determine created time to broadcast: prefer client-sent timestamp if valid
+                    def parse_client_time(val):
+                        if val is None:
+                            return None
+                        # numeric epoch (ms or s)
+                        try:
+                            if isinstance(val, (int, float)):
+                                v = float(val)
+                                # heuristic: > 1e12 -> ms
+                                if v > 1e12:
+                                    return datetime.fromtimestamp(v / 1000.0, tz=timezone.utc)
+                                return datetime.fromtimestamp(v, tz=timezone.utc)
+                        except Exception:
+                            pass
+
+                        # string ISO or numeric string
+                        if isinstance(val, str):
+                            s = val.strip()
+                            try:
+                                if s.endswith('Z'):
+                                    s2 = s[:-1] + '+00:00'
+                                    return datetime.fromisoformat(s2)
+                                return datetime.fromisoformat(s)
+                            except Exception:
+                                try:
+                                    v = float(s)
+                                    if v > 1e12:
+                                        return datetime.fromtimestamp(v / 1000.0, tz=timezone.utc)
+                                    return datetime.fromtimestamp(v, tz=timezone.utc)
+                                except Exception:
+                                    return None
+                        return None
+
+                    client_ts = msg.get('created_at') if isinstance(msg, dict) else None
+                    parsed = parse_client_time(client_ts)
+                    beijing = timezone(timedelta(hours=8))
+                    if parsed is not None:
+                        # if parsed has no tzinfo, assume UTC
+                        if parsed.tzinfo is None:
+                            parsed = parsed.replace(tzinfo=timezone.utc)
+                        created_beijing = parsed.astimezone(beijing)
+                        created_str = created_beijing.strftime('%Y-%m-%d %H:%M')
+                    else:
+                        # fallback to DB timestamp
+                        created = message.created_at
+                        if created.tzinfo is None:
+                            created = created.replace(tzinfo=timezone.utc)
+                        created_beijing = created.astimezone(beijing)
+                        created_str = created_beijing.strftime('%Y-%m-%d %H:%M')
+
                     # Broadcast to channel
                     broadcast_msg = {
                         "type": "message",
@@ -111,7 +161,7 @@ async def chat_websocket(websocket: WebSocket, channel_id: int, token: str | Non
                         "user_id": message.user_id,
                         "username": message.username,
                         "content": message.content,
-                        "created_at": message.created_at.isoformat(),
+                        "created_at": created_str,
                         "attachments": attachments_data,
                     }
                     await chat_manager.broadcast_to_channel(channel_id, broadcast_msg)

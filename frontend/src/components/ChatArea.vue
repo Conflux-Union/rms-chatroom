@@ -163,7 +163,13 @@ async function sendMessage() {
 function formatTime(dateStr: string) {
   const utcStr = dateStr.endsWith('Z') ? dateStr : dateStr + 'Z'
   const date = new Date(utcStr)
-  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  const pad = (n: number) => String(n).padStart(2, '0')
+  const y = date.getFullYear()
+  const m = pad(date.getMonth() + 1)
+  const d = pad(date.getDate())
+  const hh = pad(date.getHours())
+  const mm = pad(date.getMinutes())
+  return `${y}-${m}-${d} ${hh}:${mm}`
 }
 
 function formatFileSize(bytes: number) {
