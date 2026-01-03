@@ -45,6 +45,7 @@ fun MusicBottomSheet(
     onTogglePlayPause: () -> Unit,
     onSkip: () -> Unit,
     onSeek: (Long) -> Unit,
+    onVolumeChange: (Float) -> Unit,
     onRemoveFromQueue: (Int) -> Unit,
     onClearQueue: () -> Unit,
     onShowSearch: () -> Unit,
@@ -84,10 +85,12 @@ fun MusicBottomSheet(
                     playbackState = state.playbackState,
                     positionMs = state.positionMs,
                     durationMs = state.durationMs,
+                    volume = state.volume,
                     voiceConnected = voiceConnected,
                     onTogglePlayPause = onTogglePlayPause,
                     onSkip = onSkip,
-                    onSeek = onSeek
+                    onSeek = onSeek,
+                    onVolumeChange = onVolumeChange
                 )
             } else {
                 EmptyPlayingState(onShowSearch = onShowSearch)
@@ -235,109 +238,123 @@ private fun NowPlayingSection(
     playbackState: String,
     positionMs: Long,
     durationMs: Long,
+    volume: Float,
     voiceConnected: Boolean,
     onTogglePlayPause: () -> Unit,
     onSkip: () -> Unit,
-    onSeek: (Long) -> Unit
+    onSeek: (Long) -> Unit,
+    onVolumeChange: (Float) -> Unit
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
         color = SurfaceLight,
         shape = RoundedCornerShape(16.dp)
     ) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .padding(16.dp)
         ) {
-            // Album cover
-            AsyncImage(
-                model = ImageRequest.Builder(LocalContext.current)
-                    .data(song.cover)
-                    .crossfade(true)
-                    .build(),
-                contentDescription = "Album cover",
-                modifier = Modifier
-                    .size(64.dp)
-                    .clip(RoundedCornerShape(8.dp)),
-                contentScale = ContentScale.Crop
-            )
-
-            Spacer(modifier = Modifier.width(16.dp))
-
-            // Song info and progress
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = song.name,
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.SemiBold,
-                    color = TextPrimary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text = song.artist,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = TextMuted,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // Progress bar
-                ProgressBar(
-                    positionMs = positionMs,
-                    durationMs = durationMs,
-                    onSeek = onSeek
-                )
-            }
-
-            Spacer(modifier = Modifier.width(8.dp))
-
-            // Playback controls
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                // Play/Pause button
-                IconButton(
-                    onClick = onTogglePlayPause,
-                    enabled = voiceConnected || playbackState == "paused",
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Album cover
+                AsyncImage(
+                    model = ImageRequest.Builder(LocalContext.current)
+                        .data(song.cover)
+                        .crossfade(true)
+                        .build(),
+                    contentDescription = "Album cover",
                     modifier = Modifier
-                        .size(48.dp)
-                        .clip(CircleShape)
-                        .background(TiColor)
-                ) {
-                    when (playbackState) {
-                        "loading" -> CircularProgressIndicator(
-                            modifier = Modifier.size(22.dp),
-                            color = Color.White,
-                            strokeWidth = 2.dp
-                        )
-                        else -> Icon(
-                            imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                            contentDescription = if (isPlaying) "暂停" else "播放",
-                            tint = Color.White,
-                            modifier = Modifier.size(24.dp)
+                        .size(64.dp)
+                        .clip(RoundedCornerShape(8.dp)),
+                    contentScale = ContentScale.Crop
+                )
+
+                Spacer(modifier = Modifier.width(16.dp))
+
+                // Song info and progress
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = song.name,
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        color = TextPrimary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = song.artist,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextMuted,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Progress bar
+                    ProgressBar(
+                        positionMs = positionMs,
+                        durationMs = durationMs,
+                        onSeek = onSeek
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(8.dp))
+
+                // Playback controls
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    // Play/Pause button
+                    IconButton(
+                        onClick = onTogglePlayPause,
+                        enabled = voiceConnected || playbackState == "paused",
+                        modifier = Modifier
+                            .size(48.dp)
+                            .clip(CircleShape)
+                            .background(TiColor)
+                    ) {
+                        when (playbackState) {
+                            "loading" -> CircularProgressIndicator(
+                                modifier = Modifier.size(22.dp),
+                                color = Color.White,
+                                strokeWidth = 2.dp
+                            )
+                            else -> Icon(
+                                imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                                contentDescription = if (isPlaying) "暂停" else "播放",
+                                tint = Color.White,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                    }
+
+                    // Skip button
+                    IconButton(
+                        onClick = onSkip,
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .background(SurfaceDark)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.SkipNext,
+                            contentDescription = "下一首",
+                            tint = TextPrimary,
+                            modifier = Modifier.size(20.dp)
                         )
                     }
                 }
-
-                // Skip button
-                IconButton(
-                    onClick = onSkip,
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(CircleShape)
-                        .background(SurfaceDark)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.SkipNext,
-                        contentDescription = "下一首",
-                        tint = TextPrimary,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
             }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Volume control
+            VolumeControl(
+                volume = volume,
+                onVolumeChange = onVolumeChange
+            )
         }
     }
 }
@@ -606,4 +623,53 @@ private fun formatDuration(seconds: Int): String {
     val mins = seconds / 60
     val secs = seconds % 60
     return "$mins:${secs.toString().padStart(2, '0')}"
+}
+
+@Composable
+private fun VolumeControl(
+    volume: Float,
+    onVolumeChange: (Float) -> Unit
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = SurfaceDark.copy(alpha = 0.5f),
+        shape = RoundedCornerShape(20.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.VolumeUp,
+                contentDescription = "音量",
+                tint = TextMuted,
+                modifier = Modifier.size(16.dp)
+            )
+
+            ColorfulSlider(
+                value = volume,
+                onValueChange = onVolumeChange,
+                modifier = Modifier.weight(1f),
+                thumbRadius = 8.dp,
+                trackHeight = 4.dp,
+                coerceThumbInTrack = true,
+                colors = MaterialSliderDefaults.materialColors(
+                    thumbColor = SliderBrushColor(color = TiColor),
+                    activeTrackColor = SliderBrushColor(color = TiColor),
+                    inactiveTrackColor = SliderBrushColor(color = SurfaceDarker)
+                )
+            )
+
+            Text(
+                text = "${(volume * 100).toInt()}%",
+                style = MaterialTheme.typography.labelSmall,
+                color = TextMuted,
+                modifier = Modifier.width(32.dp),
+                textAlign = TextAlign.End
+            )
+        }
+    }
 }

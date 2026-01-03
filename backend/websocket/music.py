@@ -21,20 +21,26 @@ _lock = asyncio.Lock()
 
 
 async def broadcast_music_state(event_type: str, data: dict[str, Any]) -> None:
-    """Broadcast music state to all connected clients."""
+    """Broadcast music commands/state to all connected clients."""
     if not _music_clients:
         return
-    
-    message = json.dumps({"type": event_type, "data": data})
+
+    # For play/pause/resume/seek commands, send directly without wrapping in "data"
+    if event_type in ("play", "pause", "resume", "seek"):
+        message = json.dumps({"type": event_type, **data})
+    else:
+        # For music_state, wrap in "data" field
+        message = json.dumps({"type": event_type, "data": data})
+
     disconnected: list[WebSocket] = []
-    
+
     async with _lock:
         for ws in _music_clients:
             try:
                 await ws.send_text(message)
             except Exception:
                 disconnected.append(ws)
-        
+
         for ws in disconnected:
             _music_clients.discard(ws)
 
