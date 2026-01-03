@@ -20,6 +20,7 @@ const loginPollingInterval = ref<number | null>(null)
 const audioRef = ref<HTMLAudioElement | null>(null)
 const musicWs = ref<WebSocket | null>(null)
 const volume = ref(1.0)
+const isProcessingPlayback = ref(false)
 
 // Get current voice room name for music API calls
 const currentRoomName = computed(() => {
@@ -84,20 +85,40 @@ function connectMusicWs() {
       const msg = JSON.parse(event.data)
 
       // Handle playback commands
-      if (msg.type === 'play' && audioRef.value) {
+      if (msg.type === 'play') {
+        if (!audioRef.value) {
+          console.error('Audio element not ready, cannot play')
+          return
+        }
         // Play new song
+        console.log('Received play command:', msg.song?.name, 'URL:', msg.url)
         audioRef.value.src = msg.url
         audioRef.value.currentTime = (msg.position_ms || 0) / 1000
         audioRef.value.play().catch(e => console.error('Play failed:', e))
-      } else if (msg.type === 'pause' && audioRef.value) {
+      } else if (msg.type === 'pause') {
+        if (!audioRef.value) {
+          console.error('Audio element not ready, cannot pause')
+          return
+        }
         // Pause playback
+        console.log('Received pause command')
         audioRef.value.pause()
-      } else if (msg.type === 'resume' && audioRef.value) {
+      } else if (msg.type === 'resume') {
+        if (!audioRef.value) {
+          console.error('Audio element not ready, cannot resume')
+          return
+        }
         // Resume playback
+        console.log('Received resume command, position:', msg.position_ms)
         audioRef.value.currentTime = (msg.position_ms || 0) / 1000
         audioRef.value.play().catch(e => console.error('Resume failed:', e))
-      } else if (msg.type === 'seek' && audioRef.value) {
+      } else if (msg.type === 'seek') {
+        if (!audioRef.value) {
+          console.error('Audio element not ready, cannot seek')
+          return
+        }
         // Seek to position
+        console.log('Received seek command, position:', msg.position_ms)
         audioRef.value.currentTime = (msg.position_ms || 0) / 1000
       } else if (msg.type === 'music_state' && msg.data) {
         // Update music store with real-time state
@@ -111,7 +132,7 @@ function connectMusicWs() {
         }
       }
     } catch (e) {
-      // Ignore parse errors
+      console.error('Failed to handle music WebSocket message:', e)
     }
   }
 }
@@ -184,15 +205,33 @@ async function handleAddToQueue(song: Song) {
 
 async function handleBotPlayPause() {
   if (!currentRoomName.value && music.playbackState !== 'paused') return
-  
-  if (music.isPlaying) {
-    await music.botPause(currentRoomName.value)
-  } else if (music.playbackState === 'paused') {
-    // Resume from paused state
-    await music.botResume(currentRoomName.value)
-  } else if (currentRoomName.value) {
-    // Start new playback
-    await music.botPlay(currentRoomName.value)
+
+  // Prevent rapid clicks
+  if (isProcessingPlayback.value) {
+    console.log('Playback action already in progress, ignoring')
+    return
+  }
+
+  isProcessingPlayback.value = true
+
+  try {
+    if (music.isPlaying) {
+      console.log('Pausing playback')
+      await music.botPause(currentRoomName.value)
+    } else if (music.playbackState === 'paused') {
+      // Resume from paused state
+      console.log('Resuming playback')
+      await music.botResume(currentRoomName.value)
+    } else if (currentRoomName.value) {
+      // Start new playback
+      console.log('Starting new playback')
+      await music.botPlay(currentRoomName.value)
+    }
+  } finally {
+    // Add a small delay to prevent rapid toggling
+    setTimeout(() => {
+      isProcessingPlayback.value = false
+    }, 300)
   }
 }
 
@@ -341,10 +380,10 @@ watch(audioRef, (newAudio) => {
             <button
               class="control-btn play-btn"
               @click="handleBotPlayPause"
-              :disabled="!voice.isConnected && music.playbackState !== 'paused'"
+              :disabled="!voice.isConnected && music.playbackState !== 'paused' || isProcessingPlayback"
               :title="voice.isConnected || music.playbackState === 'paused' ? '' : '请先加入语音频道'"
             >
-              <Loader2 v-if="music.playbackState === 'loading'" :size="22" class="spin" />
+              <Loader2 v-if="music.playbackState === 'loading' || isProcessingPlayback" :size="22" class="spin" />
               <Pause v-else-if="music.isPlaying" :size="22" />
               <Play v-else :size="22" />
             </button>
