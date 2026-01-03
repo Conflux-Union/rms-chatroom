@@ -1153,6 +1153,7 @@ export const useVoiceStore = defineStore('voice', () => {
     return true
   }
 
+  // @ts-expect-error - Reserved for future use
   async function pickElectronCaptureSource(): Promise<boolean> {
     const api = (window as any).electronAPI
     if (!api?.getCaptureSources) return true // 非 Electron：走浏览器/系统自己的 picker
