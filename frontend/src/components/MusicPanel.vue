@@ -84,20 +84,40 @@ function connectMusicWs() {
       const msg = JSON.parse(event.data)
 
       // Handle playback commands
-      if (msg.type === 'play' && audioRef.value) {
+      if (msg.type === 'play') {
+        if (!audioRef.value) {
+          console.error('Audio element not ready, cannot play')
+          return
+        }
         // Play new song
+        console.log('Received play command:', msg.song?.name, 'URL:', msg.url)
         audioRef.value.src = msg.url
         audioRef.value.currentTime = (msg.position_ms || 0) / 1000
         audioRef.value.play().catch(e => console.error('Play failed:', e))
-      } else if (msg.type === 'pause' && audioRef.value) {
+      } else if (msg.type === 'pause') {
+        if (!audioRef.value) {
+          console.error('Audio element not ready, cannot pause')
+          return
+        }
         // Pause playback
+        console.log('Received pause command')
         audioRef.value.pause()
-      } else if (msg.type === 'resume' && audioRef.value) {
+      } else if (msg.type === 'resume') {
+        if (!audioRef.value) {
+          console.error('Audio element not ready, cannot resume')
+          return
+        }
         // Resume playback
+        console.log('Received resume command, position:', msg.position_ms)
         audioRef.value.currentTime = (msg.position_ms || 0) / 1000
         audioRef.value.play().catch(e => console.error('Resume failed:', e))
-      } else if (msg.type === 'seek' && audioRef.value) {
+      } else if (msg.type === 'seek') {
+        if (!audioRef.value) {
+          console.error('Audio element not ready, cannot seek')
+          return
+        }
         // Seek to position
+        console.log('Received seek command, position:', msg.position_ms)
         audioRef.value.currentTime = (msg.position_ms || 0) / 1000
       } else if (msg.type === 'music_state' && msg.data) {
         // Update music store with real-time state
@@ -111,7 +131,7 @@ function connectMusicWs() {
         }
       }
     } catch (e) {
-      // Ignore parse errors
+      console.error('Failed to handle music WebSocket message:', e)
     }
   }
 }
