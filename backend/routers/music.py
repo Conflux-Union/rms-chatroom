@@ -746,17 +746,24 @@ class BotStartRequest(BaseModel):
     room_name: str
 
 
+def _ensure_https(url: str | None) -> str | None:
+    """Convert http:// URLs to https:// for security."""
+    if url and url.startswith("http://"):
+        return "https://" + url[7:]
+    return url
+
+
 async def _get_qq_song_url(mid: str, cred: Credential | None) -> str | None:
     """Get song URL from QQ Music."""
     file_type = song.SongFileType.MP3_320 if cred else song.SongFileType.MP3_128
     urls = await song.get_song_urls([mid], file_type=file_type, credential=cred)
     url = urls.get(mid, "")
-    
+
     if not url:
         urls = await song.get_song_urls([mid], file_type=song.SongFileType.MP3_128)
         url = urls.get(mid, "")
-    
-    return url if url else None
+
+    return _ensure_https(url) if url else None
 
 
 def _get_netease_song_url(song_id: str) -> str | None:
@@ -766,17 +773,17 @@ def _get_netease_song_url(song_id: str) -> str | None:
         if result.get("code") == 200:
             data_list = result.get("data", [])
             if data_list and data_list[0].get("url"):
-                return data_list[0]["url"]
-        
+                return _ensure_https(data_list[0]["url"])
+
         # Fallback to lower quality
         result = ncm_track.GetTrackAudio([int(song_id)], bitrate=128000)
         if result.get("code") == 200:
             data_list = result.get("data", [])
             if data_list and data_list[0].get("url"):
-                return data_list[0]["url"]
+                return _ensure_https(data_list[0]["url"])
     except Exception as e:
         logger.error(f"Failed to get NetEase song URL: {e}")
-    
+
     return None
 
 
