@@ -20,7 +20,6 @@ const isDragging = ref(false)
 const dragPosition = ref(0)
 const musicWs = ref<WebSocket | null>(null)
 const volume = ref(1.0)
-const isDraggingVolume = ref(false)
 
 // Get current voice room name for music API calls
 const currentRoomName = computed(() => {
