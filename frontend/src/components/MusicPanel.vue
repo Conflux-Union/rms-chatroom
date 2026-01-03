@@ -16,7 +16,6 @@ const showSearch = ref(false)
 const showLoginSelect = ref(false)
 const loginPollingInterval = ref<number | null>(null)
 const audioRef = ref<HTMLAudioElement | null>(null)
-const progressPollingInterval = ref<number | null>(null)
 const isDragging = ref(false)
 const dragPosition = ref(0)
 const musicWs = ref<WebSocket | null>(null)
@@ -66,7 +65,24 @@ function connectMusicWs() {
   musicWs.value.onmessage = (event) => {
     try {
       const msg = JSON.parse(event.data)
-      if (msg.type === 'music_state' && msg.data) {
+
+      // Handle playback commands
+      if (msg.type === 'play' && audioRef.value) {
+        // Play new song
+        audioRef.value.src = msg.url
+        audioRef.value.currentTime = (msg.position_ms || 0) / 1000
+        audioRef.value.play().catch(e => console.error('Play failed:', e))
+      } else if (msg.type === 'pause' && audioRef.value) {
+        // Pause playback
+        audioRef.value.pause()
+      } else if (msg.type === 'resume' && audioRef.value) {
+        // Resume playback
+        audioRef.value.currentTime = (msg.position_ms || 0) / 1000
+        audioRef.value.play().catch(e => console.error('Resume failed:', e))
+      } else if (msg.type === 'seek' && audioRef.value) {
+        // Seek to position
+        audioRef.value.currentTime = (msg.position_ms || 0) / 1000
+      } else if (msg.type === 'music_state' && msg.data) {
         // Update music store with real-time state
         music.updateProgress(msg.data)
         // Also refresh queue to sync current index (use room_name from message or current)
@@ -89,16 +105,9 @@ onMounted(async () => {
     await music.refreshQueue(currentRoomName.value)
     await music.getBotStatus(currentRoomName.value)
   }
-  
-  // Connect to music WebSocket
+
+  // Connect to music WebSocket for real-time playback commands
   connectMusicWs()
-  
-  // Poll progress every 1 second when playing
-  progressPollingInterval.value = window.setInterval(async () => {
-    if (music.isPlaying && currentRoomName.value) {
-      await music.getProgress(currentRoomName.value)
-    }
-  }, 1000)
 })
 
 // Refresh queue when voice channel changes
@@ -112,9 +121,6 @@ watch(currentRoomName, async (newRoom) => {
 onUnmounted(() => {
   if (loginPollingInterval.value) {
     clearInterval(loginPollingInterval.value)
-  }
-  if (progressPollingInterval.value) {
-    clearInterval(progressPollingInterval.value)
   }
   if (musicWs.value) {
     musicWs.value.close()
@@ -156,26 +162,6 @@ function handleProgressMouseUp() {
   }
 }
 
-// Watch for song URL changes to auto-play
-watch(() => music.currentSongUrl, (url) => {
-  if (url && audioRef.value) {
-    audioRef.value.src = url
-    if (music.isPlaying) {
-      audioRef.value.play()
-    }
-  }
-})
-
-watch(() => music.isPlaying, (playing) => {
-  if (audioRef.value) {
-    if (playing) {
-      audioRef.value.play()
-    } else {
-      audioRef.value.pause()
-    }
-  }
-})
-
 async function startLogin(platform: 'qq' | 'netease' = 'qq') {
   showLoginSelect.value = false
   await music.getQRCode(platform)
@@ -202,12 +188,6 @@ async function handleAddToQueue(song: Song) {
   showSearch.value = false
   searchInput.value = ''
   music.searchResults = []
-}
-
-function handleAudioEnded() {
-  if (currentRoomName.value) {
-    music.botSkip(currentRoomName.value)
-  }
 }
 
 async function handleBotPlayPause() {
@@ -468,10 +448,9 @@ async function handleStopBot() {
         </div>
       </Teleport>
 
-      <!-- Hidden audio element for local playback -->
-      <audio 
-        ref="audioRef" 
-        @ended="handleAudioEnded"
+      <!-- Hidden audio element for client-side playback -->
+      <audio
+        ref="audioRef"
         style="display: none;"
       />
     </div>
