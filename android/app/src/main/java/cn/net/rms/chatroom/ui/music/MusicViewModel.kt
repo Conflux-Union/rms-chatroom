@@ -35,12 +35,12 @@ data class MusicState(
     val qrCodeUrl: String? = null,
     val loginStatus: String = "idle",
     val loginPlatform: String = "qq",  // Current login platform
-    
+
     // Search state
     val searchPlatform: String = "all",  // "all", "qq", or "netease"
     val searchResults: List<Song> = emptyList(),
     val isSearching: Boolean = false,
-    
+
     // Playback state
     val isPlaying: Boolean = false,
     val currentSong: Song? = null,
@@ -49,14 +49,15 @@ data class MusicState(
     val playbackState: String = "idle",
     val positionMs: Long = 0,
     val durationMs: Long = 0,
-    
+    val volume: Float = 1.0f,  // Volume level (0.0 to 1.0)
+
     // Bot state
     val botConnected: Boolean = false,
     val botRoom: String? = null,
-    
+
     // Current room for multi-channel support
     val currentRoomName: String? = null,
-    
+
     // UI state
     val isLoading: Boolean = false,
     val error: String? = null
@@ -115,6 +116,14 @@ class MusicViewModel @Inject constructor(
             checkLoginStatus()
         }
         observeMusicWebSocketEvents()
+        loadSavedVolume()
+    }
+
+    private fun loadSavedVolume() {
+        val sharedPrefs = getApplication<Application>().getSharedPreferences("music_prefs", android.content.Context.MODE_PRIVATE)
+        val savedVolume = sharedPrefs.getFloat("volume", 1.0f)
+        _state.value = _state.value.copy(volume = savedVolume)
+        exoPlayer.volume = savedVolume
     }
 
     private fun observeMusicWebSocketEvents() {
@@ -583,6 +592,17 @@ class MusicViewModel @Inject constructor(
 
     fun clearError() {
         _state.value = _state.value.copy(error = null)
+    }
+
+    // Volume control
+    fun setVolume(volume: Float) {
+        val clampedVolume = volume.coerceIn(0f, 1f)
+        _state.value = _state.value.copy(volume = clampedVolume)
+        exoPlayer.volume = clampedVolume
+
+        // Save to SharedPreferences
+        val sharedPrefs = getApplication<Application>().getSharedPreferences("music_prefs", android.content.Context.MODE_PRIVATE)
+        sharedPrefs.edit().putFloat("volume", clampedVolume).apply()
     }
 
     override fun onCleared() {

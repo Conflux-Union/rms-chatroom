@@ -3,7 +3,7 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useMusicStore, type Song } from '../stores/music'
 import { useVoiceStore } from '../stores/voice'
 import { useAuthStore } from '../stores/auth'
-import { Music, Bot, SkipBack, Pause, Play, SkipForward, Plus, Trash2, X, Search, Loader2 } from 'lucide-vue-next'
+import { Music, Bot, SkipBack, Pause, Play, SkipForward, Plus, Trash2, X, Search, Loader2, Volume2 } from 'lucide-vue-next'
 
 const music = useMusicStore()
 const voice = useVoiceStore()
@@ -19,6 +19,8 @@ const audioRef = ref<HTMLAudioElement | null>(null)
 const isDragging = ref(false)
 const dragPosition = ref(0)
 const musicWs = ref<WebSocket | null>(null)
+const volume = ref(1.0)
+const isDraggingVolume = ref(false)
 
 // Get current voice room name for music API calls
 const currentRoomName = computed(() => {
@@ -108,6 +110,15 @@ onMounted(async () => {
 
   // Connect to music WebSocket for real-time playback commands
   connectMusicWs()
+
+  // Load saved volume from localStorage
+  const savedVolume = localStorage.getItem('musicVolume')
+  if (savedVolume) {
+    volume.value = parseFloat(savedVolume)
+  }
+  if (audioRef.value) {
+    audioRef.value.volume = volume.value
+  }
 })
 
 // Refresh queue when voice channel changes
@@ -233,6 +244,23 @@ async function handleStopBot() {
     await music.stopBot(currentRoomName.value)
   }
 }
+
+// Volume control handlers
+function handleVolumeChange(event: Event) {
+  const target = event.target as HTMLInputElement
+  volume.value = parseFloat(target.value)
+  if (audioRef.value) {
+    audioRef.value.volume = volume.value
+  }
+  localStorage.setItem('musicVolume', volume.value.toString())
+}
+
+// Watch for audio element changes to apply volume
+watch(audioRef, (newAudio) => {
+  if (newAudio) {
+    newAudio.volume = volume.value
+  }
+})
 </script>
 
 <template>
@@ -326,8 +354,8 @@ async function handleStopBot() {
           <!-- Progress Bar -->
           <div class="progress-container">
             <span class="time-current">{{ formatTime(isDragging ? dragPosition : music.positionMs) }}</span>
-            <div 
-              class="progress-bar" 
+            <div
+              class="progress-bar"
               @click="handleProgressClick"
               @mousedown="handleProgressMouseDown"
             >
@@ -337,19 +365,35 @@ async function handleStopBot() {
             <span class="time-total">{{ formatTime(music.durationMs) }}</span>
           </div>
         </div>
-        <div class="playback-controls">
-          <button class="control-btn" @click="handleBotPrevious" title="上一首"><SkipBack :size="18" /></button>
-          <button 
-            class="control-btn play-btn" 
-            @click="handleBotPlayPause"
-            :disabled="!voice.isConnected && music.playbackState !== 'paused'"
-            :title="voice.isConnected || music.playbackState === 'paused' ? '' : '请先加入语音频道'"
-          >
-            <Loader2 v-if="music.playbackState === 'loading'" :size="22" class="spin" />
-            <Pause v-else-if="music.isPlaying" :size="22" />
-            <Play v-else :size="22" />
-          </button>
-          <button class="control-btn" @click="handleBotSkip" title="下一首"><SkipForward :size="18" /></button>
+        <div class="controls-wrapper">
+          <div class="playback-controls">
+            <button class="control-btn" @click="handleBotPrevious" title="上一首"><SkipBack :size="18" /></button>
+            <button
+              class="control-btn play-btn"
+              @click="handleBotPlayPause"
+              :disabled="!voice.isConnected && music.playbackState !== 'paused'"
+              :title="voice.isConnected || music.playbackState === 'paused' ? '' : '请先加入语音频道'"
+            >
+              <Loader2 v-if="music.playbackState === 'loading'" :size="22" class="spin" />
+              <Pause v-else-if="music.isPlaying" :size="22" />
+              <Play v-else :size="22" />
+            </button>
+            <button class="control-btn" @click="handleBotSkip" title="下一首"><SkipForward :size="18" /></button>
+          </div>
+          <div class="volume-control">
+            <Volume2 :size="16" class="volume-icon" />
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.01"
+              :value="volume"
+              @input="handleVolumeChange"
+              class="volume-slider"
+              title="音量"
+            />
+            <span class="volume-text">{{ Math.round(volume * 100) }}%</span>
+          </div>
         </div>
       </div>
 
@@ -762,6 +806,14 @@ async function handleStopBot() {
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
 }
 
+/* Controls wrapper */
+.controls-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+}
+
 /* Loading spinner */
 .spin {
   animation: spin 1s linear infinite;
@@ -798,6 +850,82 @@ async function handleStopBot() {
   height: 48px;
   font-size: 22px;
   background: var(--color-gradient-primary);
+}
+
+/* Volume Control */
+.volume-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 20px;
+  min-width: 140px;
+}
+
+.volume-icon {
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+}
+
+.volume-slider {
+  flex: 1;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.volume-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  background: var(--color-primary, #6366f1);
+  border-radius: 50%;
+  cursor: pointer;
+  transition: transform 0.15s;
+}
+
+.volume-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+}
+
+.volume-slider::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  background: var(--color-primary, #6366f1);
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+  transition: transform 0.15s;
+}
+
+.volume-slider::-moz-range-thumb:hover {
+  transform: scale(1.2);
+}
+
+.volume-slider::-webkit-slider-runnable-track {
+  height: 4px;
+  background: linear-gradient(
+    to right,
+    var(--color-primary, #6366f1) 0%,
+    var(--color-primary, #6366f1) var(--volume-percent, 100%),
+    rgba(255, 255, 255, 0.1) var(--volume-percent, 100%),
+    rgba(255, 255, 255, 0.1) 100%
+  );
+  border-radius: 2px;
+}
+
+.volume-text {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  min-width: 32px;
+  text-align: right;
+  flex-shrink: 0;
 }
 
 /* Empty State */
