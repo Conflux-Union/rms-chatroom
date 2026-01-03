@@ -4,6 +4,8 @@ import { useMusicStore, type Song } from '../stores/music'
 import { useVoiceStore } from '../stores/voice'
 import { useAuthStore } from '../stores/auth'
 import { Music, Bot, SkipBack, Pause, Play, SkipForward, Plus, Trash2, X, Search, Loader2, Volume2 } from 'lucide-vue-next'
+import Slider from '@vueform/slider'
+import '@vueform/slider/themes/default.css'
 
 const music = useMusicStore()
 const voice = useVoiceStore()
@@ -16,8 +18,6 @@ const showSearch = ref(false)
 const showLoginSelect = ref(false)
 const loginPollingInterval = ref<number | null>(null)
 const audioRef = ref<HTMLAudioElement | null>(null)
-const isDragging = ref(false)
-const dragPosition = ref(0)
 const musicWs = ref<WebSocket | null>(null)
 const volume = ref(1.0)
 
@@ -29,11 +29,18 @@ const currentRoomName = computed(() => {
   return ''
 })
 
-// Computed progress percentage
-const progressPercent = computed(() => {
-  if (music.durationMs <= 0) return 0
-  const pos = isDragging.value ? dragPosition.value : music.positionMs
-  return (pos / music.durationMs) * 100
+// Progress value for slider (0-100)
+const progressValue = computed({
+  get: () => {
+    if (music.durationMs <= 0) return 0
+    return (music.positionMs / music.durationMs) * 100
+  },
+  set: (value: number) => {
+    if (currentRoomName.value) {
+      const newPosition = Math.floor((value / 100) * music.durationMs)
+      music.botSeek(currentRoomName.value, newPosition)
+    }
+  }
 })
 
 // Format milliseconds to mm:ss
@@ -42,6 +49,15 @@ function formatTime(ms: number): string {
   const mins = Math.floor(seconds / 60)
   const secs = seconds % 60
   return `${mins}:${secs.toString().padStart(2, '0')}`
+}
+
+// Volume control handler
+function handleVolumeChange(value: number) {
+  volume.value = value
+  if (audioRef.value) {
+    audioRef.value.volume = value
+  }
+  localStorage.setItem('musicVolume', value.toString())
 }
 
 // Connect to music WebSocket for real-time state sync
@@ -138,40 +154,6 @@ onUnmounted(() => {
   }
 })
 
-// Progress bar seek handlers
-function handleProgressClick(event: MouseEvent) {
-  if (!currentRoomName.value) return
-  const bar = event.currentTarget as HTMLElement
-  const rect = bar.getBoundingClientRect()
-  const percent = (event.clientX - rect.left) / rect.width
-  const newPosition = Math.floor(percent * music.durationMs)
-  music.botSeek(currentRoomName.value, newPosition)
-}
-
-function handleProgressMouseDown(event: MouseEvent) {
-  isDragging.value = true
-  handleProgressDrag(event)
-  window.addEventListener('mousemove', handleProgressDrag)
-  window.addEventListener('mouseup', handleProgressMouseUp)
-}
-
-function handleProgressDrag(event: MouseEvent) {
-  const bar = document.querySelector('.progress-bar') as HTMLElement
-  if (!bar) return
-  const rect = bar.getBoundingClientRect()
-  const percent = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width))
-  dragPosition.value = Math.floor(percent * music.durationMs)
-}
-
-function handleProgressMouseUp() {
-  window.removeEventListener('mousemove', handleProgressDrag)
-  window.removeEventListener('mouseup', handleProgressMouseUp)
-  if (isDragging.value && currentRoomName.value) {
-    music.botSeek(currentRoomName.value, dragPosition.value)
-    isDragging.value = false
-  }
-}
-
 async function startLogin(platform: 'qq' | 'netease' = 'qq') {
   showLoginSelect.value = false
   await music.getQRCode(platform)
@@ -242,16 +224,6 @@ async function handleStopBot() {
   if (currentRoomName.value) {
     await music.stopBot(currentRoomName.value)
   }
-}
-
-// Volume control handlers
-function handleVolumeChange(event: Event) {
-  const target = event.target as HTMLInputElement
-  volume.value = parseFloat(target.value)
-  if (audioRef.value) {
-    audioRef.value.volume = volume.value
-  }
-  localStorage.setItem('musicVolume', volume.value.toString())
 }
 
 // Watch for audio element changes to apply volume
@@ -352,15 +324,14 @@ watch(audioRef, (newAudio) => {
           </div>
           <!-- Progress Bar -->
           <div class="progress-container">
-            <span class="time-current">{{ formatTime(isDragging ? dragPosition : music.positionMs) }}</span>
-            <div
-              class="progress-bar"
-              @click="handleProgressClick"
-              @mousedown="handleProgressMouseDown"
-            >
-              <div class="progress-fill" :style="{ width: progressPercent + '%' }"></div>
-              <div class="progress-thumb" :style="{ left: progressPercent + '%' }"></div>
-            </div>
+            <span class="time-current">{{ formatTime(music.positionMs) }}</span>
+            <Slider
+              v-model="progressValue"
+              :min="0"
+              :max="100"
+              :tooltips="false"
+              class="progress-slider"
+            />
             <span class="time-total">{{ formatTime(music.durationMs) }}</span>
           </div>
         </div>
@@ -381,15 +352,14 @@ watch(audioRef, (newAudio) => {
           </div>
           <div class="volume-control">
             <Volume2 :size="16" class="volume-icon" />
-            <input
-              type="range"
-              min="0"
-              max="1"
-              step="0.01"
-              :value="volume"
-              @input="handleVolumeChange"
+            <Slider
+              :model-value="volume"
+              @update:model-value="handleVolumeChange"
+              :min="0"
+              :max="1"
+              :step="0.01"
+              :tooltips="false"
               class="volume-slider"
-              title="音量"
             />
             <span class="volume-text">{{ Math.round(volume * 100) }}%</span>
           </div>
@@ -767,42 +737,8 @@ watch(audioRef, (newAudio) => {
   text-align: center;
 }
 
-.progress-bar {
+.progress-slider {
   flex: 1;
-  height: 4px;
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 2px;
-  cursor: pointer;
-  position: relative;
-}
-
-.progress-bar:hover {
-  height: 6px;
-}
-
-.progress-bar:hover .progress-thumb {
-  opacity: 1;
-  transform: translate(-50%, -50%) scale(1);
-}
-
-.progress-fill {
-  height: 100%;
-  background: var(--color-primary, #6366f1);
-  border-radius: 2px;
-  transition: width 0.1s linear;
-}
-
-.progress-thumb {
-  position: absolute;
-  top: 50%;
-  width: 12px;
-  height: 12px;
-  background: #fff;
-  border-radius: 50%;
-  transform: translate(-50%, -50%) scale(0);
-  opacity: 0;
-  transition: opacity 0.15s, transform 0.15s;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
 }
 
 /* Controls wrapper */
@@ -869,54 +805,6 @@ watch(audioRef, (newAudio) => {
 
 .volume-slider {
   flex: 1;
-  height: 4px;
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 2px;
-  outline: none;
-  cursor: pointer;
-  -webkit-appearance: none;
-  appearance: none;
-}
-
-.volume-slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 12px;
-  height: 12px;
-  background: var(--color-primary, #6366f1);
-  border-radius: 50%;
-  cursor: pointer;
-  transition: transform 0.15s;
-}
-
-.volume-slider::-webkit-slider-thumb:hover {
-  transform: scale(1.2);
-}
-
-.volume-slider::-moz-range-thumb {
-  width: 12px;
-  height: 12px;
-  background: var(--color-primary, #6366f1);
-  border-radius: 50%;
-  border: none;
-  cursor: pointer;
-  transition: transform 0.15s;
-}
-
-.volume-slider::-moz-range-thumb:hover {
-  transform: scale(1.2);
-}
-
-.volume-slider::-webkit-slider-runnable-track {
-  height: 4px;
-  background: linear-gradient(
-    to right,
-    var(--color-primary, #6366f1) 0%,
-    var(--color-primary, #6366f1) var(--volume-percent, 100%),
-    rgba(255, 255, 255, 0.1) var(--volume-percent, 100%),
-    rgba(255, 255, 255, 0.1) 100%
-  );
-  border-radius: 2px;
 }
 
 .volume-text {
@@ -925,6 +813,47 @@ watch(audioRef, (newAudio) => {
   min-width: 32px;
   text-align: right;
   flex-shrink: 0;
+}
+
+/* Customize Slider component */
+:deep(.slider-connect) {
+  background: var(--color-primary, #6366f1);
+}
+
+:deep(.slider-tooltip) {
+  display: none;
+}
+
+:deep(.slider-base) {
+  background: rgba(255, 255, 255, 0.1);
+  height: 4px;
+  border-radius: 2px;
+}
+
+:deep(.slider-origin) {
+  background: transparent;
+}
+
+:deep(.slider-handle) {
+  width: 12px;
+  height: 12px;
+  background: #fff;
+  border: none;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+:deep(.slider-handle:hover) {
+  transform: translateY(-50%) scale(1.2);
+}
+
+:deep(.slider-horizontal) {
+  height: 4px;
+}
+
+:deep(.slider-horizontal .slider-handle) {
+  right: -6px;
 }
 
 /* Empty State */
