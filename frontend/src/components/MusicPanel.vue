@@ -1,27 +1,19 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useMusicStore, type Song } from '../stores/music'
 import { useVoiceStore } from '../stores/voice'
-import { useAuthStore } from '../stores/auth'
 import { Music, Bot, SkipBack, Pause, Play, SkipForward, Plus, Trash2, X, Search, Loader2, Volume2 } from 'lucide-vue-next'
 import Slider from '@vueform/slider'
 import '@vueform/slider/themes/default.css'
 
 const music = useMusicStore()
 const voice = useVoiceStore()
-const auth = useAuthStore()
-
-const WS_BASE = import.meta.env.VITE_WS_BASE || 'ws://localhost:8000'
 
 const searchInput = ref('')
 const showSearch = ref(false)
 const showLoginSelect = ref(false)
 const loginPollingInterval = ref<number | null>(null)
-const audioRef = ref<HTMLAudioElement | null>(null)
-const musicWs = ref<WebSocket | null>(null)
-const volume = ref(1.0)
 const isProcessingPlayback = ref(false)
-const currentWsRoom = ref<string | null>(null)
 
 // Get current voice room name for music API calls
 const currentRoomName = computed(() => {
@@ -53,166 +45,27 @@ function formatTime(ms: number): string {
   return `${mins}:${secs.toString().padStart(2, '0')}`
 }
 
-// Volume control handler
+// Volume control handler - use store's setVolume
 function handleVolumeChange(value: number) {
-  volume.value = value
-  if (audioRef.value) {
-    audioRef.value.volume = value
-  }
-  localStorage.setItem('musicVolume', value.toString())
-}
-
-// Connect to music WebSocket for real-time state sync
-function connectMusicWs(roomName: string) {
-  if (!auth.token || !roomName) return
-
-  // Disconnect existing connection if room changed
-  if (musicWs.value && currentWsRoom.value !== roomName) {
-    musicWs.value.close()
-    musicWs.value = null
-  }
-
-  if (musicWs.value) return // Already connected to same room
-
-  currentWsRoom.value = roomName
-  const url = `${WS_BASE}/ws/music?token=${auth.token}&room_name=${encodeURIComponent(roomName)}`
-  musicWs.value = new WebSocket(url)
-
-  musicWs.value.onopen = () => {
-    console.log(`Music WebSocket connected to room ${roomName}`)
-  }
-
-  musicWs.value.onclose = () => {
-    console.log('Music WebSocket disconnected')
-    musicWs.value = null
-    // Reconnect after 3 seconds if still in same room
-    setTimeout(() => {
-      if (auth.token && currentRoomName.value && currentRoomName.value === currentWsRoom.value) {
-        connectMusicWs(currentRoomName.value)
-      }
-    }, 3000)
-  }
-
-  musicWs.value.onmessage = (event) => {
-    try {
-      const msg = JSON.parse(event.data)
-
-      // Handle playback commands - only process if for our room
-      if (msg.room_name && msg.room_name !== currentRoomName.value) {
-        return // Ignore messages for other rooms
-      }
-
-      if (msg.type === 'play') {
-        if (!audioRef.value) {
-          console.error('Audio element not ready, cannot play')
-          return
-        }
-        // Play new song
-        console.log('Received play command:', msg.song?.name, 'URL:', msg.url)
-        audioRef.value.src = msg.url
-        audioRef.value.currentTime = (msg.position_ms || 0) / 1000
-        audioRef.value.play().catch(e => console.error('Play failed:', e))
-      } else if (msg.type === 'pause') {
-        if (!audioRef.value) {
-          console.error('Audio element not ready, cannot pause')
-          return
-        }
-        // Pause playback
-        console.log('Received pause command')
-        audioRef.value.pause()
-      } else if (msg.type === 'resume') {
-        if (!audioRef.value) {
-          console.error('Audio element not ready, cannot resume')
-          return
-        }
-        // Resume playback
-        console.log('Received resume command, position:', msg.position_ms)
-        audioRef.value.currentTime = (msg.position_ms || 0) / 1000
-        audioRef.value.play().catch(e => console.error('Resume failed:', e))
-      } else if (msg.type === 'seek') {
-        if (!audioRef.value) {
-          console.error('Audio element not ready, cannot seek')
-          return
-        }
-        // Seek to position
-        console.log('Received seek command, position:', msg.position_ms)
-        audioRef.value.currentTime = (msg.position_ms || 0) / 1000
-      } else if (msg.type === 'music_state' && msg.data) {
-        // Only process if for our room
-        if (msg.data.room_name && msg.data.room_name !== currentRoomName.value) {
-          return
-        }
-        // Update music store with real-time state
-        music.updateProgress(msg.data)
-        // Also refresh queue to sync current index
-        if (msg.data.current_index !== undefined) {
-          const roomName = msg.data.room_name || currentRoomName.value
-          if (roomName) {
-            music.refreshQueue(roomName)
-          }
-        }
-      } else if (msg.type === 'song_unavailable') {
-        // Show notification for unavailable song
-        console.warn(`Song unavailable: ${msg.song_name} - ${msg.reason}`)
-        // Could add a toast notification here
-      }
-    } catch (e) {
-      console.error('Failed to handle music WebSocket message:', e)
-    }
-  }
-}
-
-function disconnectMusicWs() {
-  if (musicWs.value) {
-    musicWs.value.close()
-    musicWs.value = null
-  }
-  currentWsRoom.value = null
+  music.setVolume(value)
 }
 
 onMounted(async () => {
   await music.checkAllLoginStatus()
-  if (currentRoomName.value) {
-    await music.refreshQueue(currentRoomName.value)
-    await music.getBotStatus(currentRoomName.value)
-    // Connect to music WebSocket for the current room
-    connectMusicWs(currentRoomName.value)
-  }
-
-  // Load saved volume from localStorage
-  const savedVolume = localStorage.getItem('musicVolume')
-  if (savedVolume) {
-    volume.value = parseFloat(savedVolume)
-  }
-  if (audioRef.value) {
-    audioRef.value.volume = volume.value
-  }
-})
-
-// Refresh queue and reconnect WebSocket when voice channel changes
-watch(currentRoomName, async (newRoom, oldRoom) => {
-  if (newRoom) {
-    await music.refreshQueue(newRoom)
-    await music.getBotStatus(newRoom)
-    // Reconnect WebSocket to new room
-    connectMusicWs(newRoom)
-  } else if (oldRoom) {
-    // Left voice channel, disconnect WebSocket
-    disconnectMusicWs()
-  }
+  // WebSocket connection is now handled by the store automatically
 })
 
 onUnmounted(() => {
   if (loginPollingInterval.value) {
     clearInterval(loginPollingInterval.value)
   }
-  disconnectMusicWs()
+  // WebSocket disconnection is now handled by the store automatically
 })
 
 async function startLogin(platform: 'qq' | 'netease' = 'qq') {
   showLoginSelect.value = false
   await music.getQRCode(platform)
-  
+
   // Start polling for login status
   loginPollingInterval.value = window.setInterval(async () => {
     const success = await music.pollLoginStatus()
@@ -298,13 +151,6 @@ async function handleStopBot() {
     await music.stopBot(currentRoomName.value)
   }
 }
-
-// Watch for audio element changes to apply volume
-watch(audioRef, (newAudio) => {
-  if (newAudio) {
-    newAudio.volume = volume.value
-  }
-})
 </script>
 
 <template>
@@ -426,7 +272,7 @@ watch(audioRef, (newAudio) => {
           <div class="volume-control">
             <Volume2 :size="16" class="volume-icon" />
             <Slider
-              :model-value="volume"
+              :model-value="music.volume"
               @update:model-value="handleVolumeChange"
               :min="0"
               :max="1"
@@ -434,7 +280,7 @@ watch(audioRef, (newAudio) => {
               :tooltips="false"
               class="volume-slider"
             />
-            <span class="volume-text">{{ Math.round(volume * 100) }}%</span>
+            <span class="volume-text">{{ Math.round(music.volume * 100) }}%</span>
           </div>
         </div>
       </div>
@@ -533,12 +379,6 @@ watch(audioRef, (newAudio) => {
           </div>
         </div>
       </Teleport>
-
-      <!-- Hidden audio element for client-side playback -->
-      <audio
-        ref="audioRef"
-        style="display: none;"
-      />
     </div>
   </div>
 </template>

@@ -3,6 +3,7 @@ import { ref, onMounted, watch } from 'vue'
 import { useAuthStore } from '../stores/auth'
 import { useChatStore } from '../stores/chat'
 import { useVoiceStore } from '../stores/voice'
+import { useMusicStore } from '../stores/music'
 import { useSwipe } from '../composables/useSwipe'
 import ServerList from '../components/ServerList.vue'
 import ChannelList from '../components/ChannelList.vue'
@@ -15,6 +16,8 @@ import { Music, Menu, X } from 'lucide-vue-next'
 const auth = useAuthStore()
 const chat = useChatStore()
 const voice = useVoiceStore()
+// Initialize music store early so WebSocket auto-connects when joining voice
+useMusicStore()
 
 const showMusicPanel = ref(false)
 const showMobileSidebar = ref(false)
