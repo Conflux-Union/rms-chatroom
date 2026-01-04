@@ -691,7 +691,7 @@ function closeInviteDialog() {
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border-radius: var(--radius-lg);
-  padding: 16px;
+  padding: 12px 8px;
   margin-bottom: 16px;
   border: 1px solid rgba(255, 255, 255, 0.15);
 }
@@ -705,8 +705,9 @@ function closeInviteDialog() {
 .voice-user {
   display: flex;
   flex-direction: column;
-  padding: 8px 0;
+  padding: 16px 16px;
   transition: all 0.2s ease, transform 0.3s ease;
+  border-radius: var(--radius-lg);
   position: relative;
   z-index: 1;
   background: transparent;
@@ -715,8 +716,8 @@ function closeInviteDialog() {
 .voice-user.speaking {
   background: rgba(16, 185, 129, 0.1);
   border-radius: 8px;
-  padding: 8px;
-  margin: 0 -8px;
+  padding: 16px 12px;
+  margin: 0px 4px;
 }
 
 .swipe-actions {
@@ -823,7 +824,7 @@ function closeInviteDialog() {
   height: 4px;
   -webkit-appearance: none;
   appearance: none;
-  background: rgba(255, 255, 255, 0.2);
+  background: rgba(80, 80, 80, 0.5);
   border-radius: 2px;
   cursor: pointer;
 }
