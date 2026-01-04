@@ -18,6 +18,14 @@ class ChannelCreate(BaseModel):
     type: str = "text"
 
 
+class ChannelUpdate(BaseModel):
+    name: str | None = None
+
+
+class ReorderRequest(BaseModel):
+    channel_ids: list[int]
+
+
 class ChannelResponse(BaseModel):
     id: int
     server_id: int
@@ -77,6 +85,59 @@ async def create_channel(
         type=channel.type.value,
         position=channel.position,
     )
+
+
+@router.patch("/{channel_id}", response_model=ChannelResponse)
+async def update_channel(
+    server_id: int,
+    channel_id: int,
+    payload: ChannelUpdate,
+    user: AdminUser,
+    db: AsyncSession = Depends(get_db),
+):
+    """Update channel properties (admin only)."""
+    result = await db.execute(
+        select(Channel).where(Channel.id == channel_id, Channel.server_id == server_id)
+    )
+    channel = result.scalar_one_or_none()
+    if not channel:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Channel not found")
+
+    if payload.name is not None:
+        channel.name = payload.name
+
+    await db.flush()
+
+    return ChannelResponse(id=channel.id, server_id=channel.server_id, name=channel.name, type=channel.type.value, position=channel.position)
+
+
+@router.post("/reorder", response_model=list[ChannelResponse])
+async def reorder_channels(
+    server_id: int,
+    payload: ReorderRequest,
+    user: AdminUser,
+    db: AsyncSession = Depends(get_db),
+):
+    """Reorder channels for a server. Accepts a full ordered list of channel IDs for the server."""
+    # Fetch all channels for server
+    result = await db.execute(select(Channel).where(Channel.server_id == server_id))
+    channels = result.scalars().all()
+    id_map = {c.id: c for c in channels}
+
+    if set(payload.channel_ids) != set(id_map.keys()):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="channel_ids must contain exactly all channel ids for the server")
+
+    for idx, cid in enumerate(payload.channel_ids):
+        id_map[cid].position = idx + 1
+
+    await db.flush()
+
+    sorted_channels = sorted(id_map.values(), key=lambda c: c.position)
+
+    return [
+        ChannelResponse(id=c.id, server_id=c.server_id, name=c.name, type=c.type.value, position=c.position)
+        for c in sorted_channels
+    ]
 
 
 @router.delete("/{channel_id}", status_code=status.HTTP_204_NO_CONTENT)

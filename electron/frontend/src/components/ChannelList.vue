@@ -93,6 +93,103 @@ function showUserContextMenu(event: MouseEvent, channelId: number, userId: strin
   userContextMenu.value = { show: true, x: event.clientX, y: event.clientY, channelId, userId }
 }
 
+// Edit mode (only when admin toggles it on)
+const editMode = ref(false)
+
+// Inline edit state
+const editingChannelId = ref<number | null>(null)
+const editedName = ref('')
+
+// Drag & drop state
+const dragSourceId = ref<number | null>(null)
+
+function startInlineEdit(channel: Channel) {
+  editingChannelId.value = channel.id
+  editedName.value = channel.name
+}
+
+async function saveInlineEdit(channel: Channel) {
+  if (!chat.currentServer || editingChannelId.value !== channel.id) {
+    editingChannelId.value = null
+    return
+  }
+  const name = editedName.value.trim()
+  if (!name || name === channel.name) {
+    editingChannelId.value = null
+    return
+  }
+  await chat.updateChannel(chat.currentServer.id, channel.id, { name })
+  editingChannelId.value = null
+}
+
+function cancelInlineEdit() {
+  editingChannelId.value = null
+  editedName.value = ''
+}
+
+function renameChannel(channel: Channel) {
+  // Trigger inline edit mode for the selected channel
+  startInlineEdit(channel)
+}
+
+async function moveChannel(channel: Channel, delta: number) {
+  if (!chat.currentServer) return
+  const type = channel.type
+  // Work only within the same type
+  const channels = [...(chat.currentServer.channels || [])]
+    .filter(c => c.type === type)
+    .sort((a, b) => a.position - b.position)
+
+  const idx = channels.findIndex(c => c.id === channel.id)
+  if (idx === -1) return
+
+  const newIdx = idx + delta
+  if (newIdx < 0 || newIdx >= channels.length) return
+
+  // Move the item in the array
+  const moved = channels.splice(idx, 1)[0]
+  if (!moved) return
+  channels.splice(newIdx, 0, moved)
+
+  const ids = channels.map(c => c.id)
+  await chat.reorderChannels(chat.currentServer.id, ids)
+}
+
+function onDragStart(event: DragEvent, channelId: number) {
+  dragSourceId.value = channelId
+  try {
+    event.dataTransfer?.setData('text/plain', String(channelId))
+  } catch (e) {
+    // ignore
+  }
+}
+
+function onDragOver(event: DragEvent) {
+  event.preventDefault()
+}
+
+async function onDrop(event: DragEvent, targetId: number, type: 'text' | 'voice') {
+  event.preventDefault()
+  const srcId = dragSourceId.value !== null ? dragSourceId.value : Number(event.dataTransfer?.getData('text/plain') || -1)
+  dragSourceId.value = null
+  if (!chat.currentServer || srcId === -1 || srcId === targetId) return
+
+  // operate only within same type
+  const channels = [...(chat.currentServer.channels || [])].filter(c => c.type === type).sort((a, b) => a.position - b.position)
+  const srcIdx = channels.findIndex(c => c.id === srcId)
+  const tgtIdx = channels.findIndex(c => c.id === targetId)
+  if (srcIdx === -1 || tgtIdx === -1) return
+
+  const moved = channels.splice(srcIdx, 1)[0]
+  if (!moved) {
+    dragSourceId.value = null
+    return
+  }
+  channels.splice(tgtIdx, 0, moved)
+  const ids = channels.map(c => c.id)
+  await chat.reorderChannels(chat.currentServer.id, ids)
+}
+
 async function muteVoiceUser() {
   if (!userContextMenu.value.channelId || !userContextMenu.value.userId) return
   await voice.muteParticipant(userContextMenu.value.userId, true)
@@ -118,6 +215,7 @@ async function deleteChannel() {
   <div class="channel-list" @click="hideContextMenu">
     <div class="server-header">
       <h2>{{ chat.currentServer?.name || '选择服务器' }}</h2>
+      <button v-if="auth.isAdmin" class="edit-toggle" @click.stop="editMode = !editMode">{{ editMode ? '退出编辑' : '编辑' }}</button>
     </div>
 
     <div class="channels">
@@ -132,9 +230,31 @@ async function deleteChannel() {
         :class="{ active: chat.currentChannel?.id === channel.id }"
         @click="selectChannel(channel)"
         @contextmenu="auth.isAdmin ? showContextMenu($event, channel.id) : undefined"
+        draggable="true"
+        @dragstart="auth.isAdmin && editMode ? onDragStart($event, channel.id) : undefined"
+        @dragover.prevent="auth.isAdmin && editMode ? onDragOver($event) : undefined"
+        @drop="auth.isAdmin && editMode ? onDrop($event, channel.id, 'text') : undefined"
       >
         <span class="channel-icon">#</span>
-        <span class="channel-name">{{ channel.name }}</span>
+        <template v-if="editingChannelId === channel.id">
+          <input
+            class="inline-edit"
+            v-model="editedName"
+            @keyup.enter="saveInlineEdit(channel)"
+            @keyup.esc="cancelInlineEdit"
+            @blur="saveInlineEdit(channel)"
+            @click.stop
+            autofocus
+          />
+        </template>
+        <template v-else>
+          <span class="channel-name" @dblclick.stop="auth.isAdmin && editMode ? startInlineEdit(channel) : undefined">{{ channel.name }}</span>
+        </template>
+        <div v-if="editMode" class="edit-actions" @click.stop>
+          <button class="small" @click="renameChannel(channel)">重命名</button>
+          <button class="small" @click="moveChannel(channel, -1)">↑</button>
+          <button class="small" @click="moveChannel(channel, 1)">↓</button>
+        </div>
       </div>
 
       <div class="channel-category">
@@ -151,12 +271,34 @@ async function deleteChannel() {
           :class="{ active: chat.currentChannel?.id === channel.id }"
           @click="selectChannel(channel)"
           @contextmenu="auth.isAdmin ? showContextMenu($event, channel.id) : undefined"
+          draggable="true"
+          @dragstart="auth.isAdmin && editMode ? onDragStart($event, channel.id) : undefined"
+          @dragover.prevent="auth.isAdmin && editMode ? onDragOver($event) : undefined"
+          @drop="auth.isAdmin && editMode ? onDrop($event, channel.id, 'voice') : undefined"
         >
           <Volume2 class="channel-icon" :size="18" />
-          <span class="channel-name">{{ channel.name }}</span>
+          <template v-if="editingChannelId === channel.id">
+            <input
+              class="inline-edit"
+              v-model="editedName"
+              @keyup.enter="saveInlineEdit(channel)"
+              @keyup.esc="cancelInlineEdit"
+              @blur="saveInlineEdit(channel)"
+              @click.stop
+              autofocus
+            />
+          </template>
+          <template v-else>
+            <span class="channel-name" @dblclick.stop="auth.isAdmin && editMode ? startInlineEdit(channel) : undefined">{{ channel.name }}</span>
+          </template>
           <span v-if="chat.getVoiceChannelUsers(channel.id).length > 0" class="user-count">
             {{ chat.getVoiceChannelUsers(channel.id).length }}
           </span>
+          <div v-if="editMode" class="edit-actions" @click.stop>
+            <button class="small" @click="renameChannel(channel)">重命名</button>
+            <button class="small" @click="moveChannel(channel, -1)">↑</button>
+            <button class="small" @click="moveChannel(channel, 1)">↓</button>
+          </div>
         </div>
         <div
           v-if="chat.getVoiceChannelUsers(channel.id).length > 0"
@@ -477,5 +619,53 @@ async function deleteChannel() {
 .voice-user-muted {
   font-size: 12px;
   margin-left: 4px;
+}
+
+.edit-toggle {
+  margin-left: 8px;
+  background: transparent;
+  border: 1px solid rgba(255,255,255,0.08);
+  color: var(--color-text-muted);
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.edit-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.edit-actions .small {
+  font-size: 12px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  border: none;
+  background: var(--surface-glass);
+  color: var(--color-text-main);
+  cursor: pointer;
+}
+
+.edit-actions .small:hover {
+  background: var(--surface-glass-strong);
+}
+
+.inline-edit {
+  flex: 1;
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(255,255,255,0.06);
+  background: var(--surface-glass-input);
+  color: var(--color-text-main);
+}
+
+.channel[draggable="true"] {
+  user-select: none;
+}
+
+.channel.drag-over {
+  outline: 2px dashed rgba(255,255,255,0.08);
 }
 </style>

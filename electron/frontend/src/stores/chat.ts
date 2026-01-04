@@ -81,6 +81,40 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
+  // Admin: update channel (rename etc.)
+  async function updateChannel(serverId: number, channelId: number, payload: { name?: string }) {
+    try {
+      const resp = await axios.patch(
+        `${API_BASE}/api/servers/${serverId}/channels/${channelId}`,
+        payload,
+        { headers: getAuthHeaders() }
+      )
+      // Refresh server channels
+      await fetchServer(serverId)
+      return resp.data
+    } catch (e) {
+      console.error('Failed to update channel:', e)
+      return null
+    }
+  }
+
+  // Admin: reorder channels by providing an ordered list of channel ids
+  async function reorderChannels(serverId: number, channelIds: number[]) {
+    try {
+      const resp = await axios.post(
+        `${API_BASE}/api/servers/${serverId}/channels/reorder`,
+        { channel_ids: channelIds },
+        { headers: getAuthHeaders() }
+      )
+      // Update local server channels (server response contains ordered channels)
+      await fetchServer(serverId)
+      return resp.data
+    } catch (e) {
+      console.error('Failed to reorder channels:', e)
+      return null
+    }
+  }
+
   async function deleteServer(serverId: number) {
     try {
       await axios.delete(`${API_BASE}/api/servers/${serverId}`, {
@@ -246,6 +280,8 @@ export const useChatStore = defineStore('chat', () => {
     fetchServer,
     createServer,
     createChannel,
+    updateChannel,
+    reorderChannels,
     deleteServer,
     deleteChannel,
     fetchMessages,
