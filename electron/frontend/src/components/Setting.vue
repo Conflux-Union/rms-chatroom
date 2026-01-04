@@ -2,6 +2,7 @@
 import { onMounted, onUnmounted, ref, computed, nextTick } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useVoiceStore } from '../stores/voice'
+import { Mic, Volume2 } from 'lucide-vue-next'
 
 const emit = defineEmits<{ (e: 'close'): void }>()
 
@@ -143,6 +144,98 @@ function onDocMouseDown(e: MouseEvent) {
   if (root && !root.contains(e.target as Node)) closeNoise()
 }
 
+/* ====== Device dropdowns (styled like noise dropdown) ====== */
+const inputDd = ref<HTMLElement | null>(null)
+const inputMenu = ref<HTMLElement | null>(null)
+const inputOpen = ref(false)
+const inputActiveIndex = ref(0)
+
+const outputDd = ref<HTMLElement | null>(null)
+const outputMenu = ref<HTMLElement | null>(null)
+const outputOpen = ref(false)
+const outputActiveIndex = ref(0)
+
+const inputOptions = computed(() => (voice.audioInputDevices || []).map(d => ({ value: d.deviceId, text: d.label || d.deviceId })))
+const outputOptions = computed(() => (voice.audioOutputDevices || []).map(d => ({ value: d.deviceId, text: d.label || d.deviceId })))
+
+const inputLabel = computed(() => {
+  if (!voice.selectedAudioInput) return '系统默认'
+  const found = (voice.audioInputDevices || []).find(d => d.deviceId === voice.selectedAudioInput)
+  return found?.label || voice.selectedAudioInput
+})
+const outputLabel = computed(() => {
+  if (!voice.selectedAudioOutput) return '系统默认'
+  const found = (voice.audioOutputDevices || []).find(d => d.deviceId === voice.selectedAudioOutput)
+  return found?.label || voice.selectedAudioOutput
+})
+
+function scrollInputActiveIntoView() {
+  const menu = inputMenu.value
+  if (!menu) return
+  const items = menu.querySelectorAll<HTMLElement>('.dd-item')
+  const el = items[inputActiveIndex.value]
+  el?.scrollIntoView({ block: 'nearest' })
+}
+function scrollOutputActiveIntoView() {
+  const menu = outputMenu.value
+  if (!menu) return
+  const items = menu.querySelectorAll<HTMLElement>('.dd-item')
+  const el = items[outputActiveIndex.value]
+  el?.scrollIntoView({ block: 'nearest' })
+}
+
+function openInput() {
+  if (inputOpen.value) return
+  inputOpen.value = true
+  const idx = inputOptions.value.findIndex(o => o.value === voice.selectedAudioInput)
+  inputActiveIndex.value = idx >= 0 ? idx : 0
+  nextTick(() => { inputMenu.value?.focus(); scrollInputActiveIntoView() })
+}
+function closeInput() { inputOpen.value = false }
+function toggleInput() { inputOpen.value ? closeInput() : openInput() }
+function selectInput(v: string) {
+  voice.setAudioInputDevice(v)
+  closeInput()
+}
+function onInputBtnKeydown(e: KeyboardEvent) {
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); openInput() }
+  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleInput() }
+  if (e.key === 'Escape') closeInput()
+}
+function onInputMenuKeydown(e: KeyboardEvent) {
+  if (!inputOpen.value) return
+  if (e.key === 'Escape') { e.preventDefault(); closeInput(); return }
+  if (e.key === 'ArrowDown') { e.preventDefault(); inputActiveIndex.value = Math.min(inputOptions.value.length - 1, inputActiveIndex.value + 1); scrollInputActiveIntoView(); return }
+  if (e.key === 'ArrowUp') { e.preventDefault(); inputActiveIndex.value = Math.max(0, inputActiveIndex.value - 1); scrollInputActiveIntoView(); return }
+  if (e.key === 'Enter') { e.preventDefault(); const opt = inputOptions.value[inputActiveIndex.value]; if (opt) selectInput(opt.value) }
+}
+
+function openOutput() {
+  if (outputOpen.value) return
+  outputOpen.value = true
+  const idx = outputOptions.value.findIndex(o => o.value === voice.selectedAudioOutput)
+  outputActiveIndex.value = idx >= 0 ? idx : 0
+  nextTick(() => { outputMenu.value?.focus(); scrollOutputActiveIntoView() })
+}
+function closeOutput() { outputOpen.value = false }
+function toggleOutput() { outputOpen.value ? closeOutput() : openOutput() }
+function selectOutput(v: string) {
+  voice.setAudioOutputDevice(v)
+  closeOutput()
+}
+function onOutputBtnKeydown(e: KeyboardEvent) {
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); openOutput() }
+  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleOutput() }
+  if (e.key === 'Escape') closeOutput()
+}
+function onOutputMenuKeydown(e: KeyboardEvent) {
+  if (!outputOpen.value) return
+  if (e.key === 'Escape') { e.preventDefault(); closeOutput(); return }
+  if (e.key === 'ArrowDown') { e.preventDefault(); outputActiveIndex.value = Math.min(outputOptions.value.length - 1, outputActiveIndex.value + 1); scrollOutputActiveIntoView(); return }
+  if (e.key === 'ArrowUp') { e.preventDefault(); outputActiveIndex.value = Math.max(0, outputActiveIndex.value - 1); scrollOutputActiveIntoView(); return }
+  if (e.key === 'Enter') { e.preventDefault(); const opt = outputOptions.value[outputActiveIndex.value]; if (opt) selectOutput(opt.value) }
+}
+
 /* ====== Your original hotkey logic (unchanged) ====== */
 function normalizeKeyName(k: string) {
   const map: Record<string, string> = {
@@ -218,6 +311,8 @@ function onKeyDown(e: KeyboardEvent) {
 }
 
 onMounted(async () => {
+  // enumerate devices so the settings page can show device dropdowns
+  await voice.enumerateDevices()
   await loadShortcuts()
   window.addEventListener('keydown', onKeyDown, true)
 
@@ -229,6 +324,106 @@ onUnmounted(() => {
   window.removeEventListener('keydown', onKeyDown, true)
   document.removeEventListener('mousedown', onDocMouseDown, true)
 })
+
+// Mic test state
+const micTestActive = ref(false)
+const micLevel = ref(0)
+let micTestStream: MediaStream | null = null
+let micAnalyzerNode: AnalyserNode | null = null
+let micProcessorInterval: number | null = null
+
+async function startMicTest() {
+  if (micTestActive.value) return
+  try {
+    micTestActive.value = true
+    const deviceId = voice.selectedAudioInput || undefined
+    micTestStream = await navigator.mediaDevices.getUserMedia({ audio: deviceId ? { deviceId: { exact: deviceId } } : true })
+    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)()
+    const source = ctx.createMediaStreamSource(micTestStream)
+    micAnalyzerNode = ctx.createAnalyser()
+    micAnalyzerNode.fftSize = 2048
+    source.connect(micAnalyzerNode)
+    const data = new Uint8Array(micAnalyzerNode.frequencyBinCount)
+    micProcessorInterval = window.setInterval(() => {
+      if (!micAnalyzerNode) return
+      micAnalyzerNode.getByteTimeDomainData(data)
+      let sum = 0
+      for (let i = 0; i < data.length; i++) {
+        const sample = data[i] ?? 128
+        const v = (sample - 128) / 128
+        sum += v * v
+      }
+      const rms = Math.sqrt(sum / data.length)
+      micLevel.value = Math.min(1, rms * 1.5)
+    }, 100)
+  } catch (e) {
+    micTestActive.value = false
+    micLevel.value = 0
+    console.log('Mic test failed', e)
+  }
+}
+
+function stopMicTest() {
+  if (!micTestActive.value) return
+  micTestActive.value = false
+  micLevel.value = 0
+  if (micProcessorInterval) { clearInterval(micProcessorInterval); micProcessorInterval = null }
+  try { micAnalyzerNode?.disconnect(); micAnalyzerNode = null } catch {}
+  if (micTestStream) { micTestStream.getTracks().forEach(t => t.stop()); micTestStream = null }
+}
+
+// Output test state
+const outputTestPlaying = ref(false)
+let testAudioEl: HTMLAudioElement | null = null
+let outputOscCtx: AudioContext | null = null
+let outputOscTimeout: number | null = null
+
+async function startOutputTest() {
+  if (outputTestPlaying.value) return
+  try {
+    outputTestPlaying.value = true
+    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)()
+    outputOscCtx = ctx
+    const osc = ctx.createOscillator()
+    const gain = ctx.createGain()
+    osc.type = 'sine'
+    osc.frequency.value = 880
+    gain.gain.value = 0.05
+    osc.connect(gain)
+
+    const dest = ctx.createMediaStreamDestination()
+    gain.connect(dest)
+
+    testAudioEl = document.createElement('audio')
+    testAudioEl.autoplay = true
+    testAudioEl.srcObject = dest.stream
+    ;(testAudioEl as any).playsInline = true
+    testAudioEl.style.display = 'none'
+    document.body.appendChild(testAudioEl)
+
+    const sinkId = voice.selectedAudioOutput || ''
+    if (sinkId && typeof (testAudioEl as any).setSinkId === 'function') {
+      try { await (testAudioEl as any).setSinkId(sinkId) } catch (e) { console.warn('setSinkId failed', e) }
+    }
+
+    osc.start()
+    outputOscTimeout = window.setTimeout(() => { stopOutputTest() }, 2000)
+  } catch (e) {
+    console.log('output test failed', e)
+    outputTestPlaying.value = false
+  }
+}
+
+function stopOutputTest() {
+  if (!outputTestPlaying.value) return
+  outputTestPlaying.value = false
+  if (outputOscTimeout) { clearTimeout(outputOscTimeout); outputOscTimeout = null }
+  try { outputOscCtx?.close(); outputOscCtx = null } catch {}
+  if (testAudioEl) {
+    try { testAudioEl.pause(); testAudioEl.srcObject = null; document.body.removeChild(testAudioEl) } catch {}
+    testAudioEl = null
+  }
+}
 </script>
 
 <template>
@@ -237,6 +432,129 @@ onUnmounted(() => {
       <div class="header">
         <div class="title">设置</div>
         <button class="close" @click="emit('close')">×</button>
+      </div>
+
+      <div class="row">
+        <div class="label">输入设备</div>
+        <div class="ctrl">
+          <div class="dd dd-flex"
+            ref="inputDd"
+            :class="{ open: inputOpen }"
+          >
+            <button
+              class="dd-btn"
+              type="button"
+              aria-haspopup="listbox"
+              :aria-expanded="inputOpen ? 'true' : 'false'"
+              @click="toggleInput()"
+              @keydown="onInputBtnKeydown"
+            >
+              <span class="dd-label"><Mic :size="14" /> {{ inputLabel }}</span>
+              <span class="dd-arrow" aria-hidden="true"></span>
+            </button>
+
+            <div
+              class="dd-menu"
+              role="listbox"
+              ref="inputMenu"
+              :tabindex="inputOpen ? 0 : -1"
+              :aria-hidden="inputOpen ? 'false' : 'true'"
+              @keydown="onInputMenuKeydown"
+            >
+              <div
+                class="dd-item"
+                role="option"
+                :class="{ selected: !voice.selectedAudioInput }"
+                @click="selectInput('')"
+              >
+                系统默认
+              </div>
+
+              <div
+                v-for="(opt, i) in inputOptions"
+                :key="opt.value"
+                class="dd-item"
+                role="option"
+                :aria-selected="opt.value === voice.selectedAudioInput ? 'true' : 'false'"
+                :class="{ active: i === inputActiveIndex, selected: opt.value === voice.selectedAudioInput }"
+                @mousemove="inputActiveIndex = i"
+                @click="selectInput(opt.value)"
+              >
+                {{ opt.text }}
+              </div>
+            </div>
+          </div>
+
+          <div class="inline-test">
+            <button class="btn" @click="micTestActive ? stopMicTest() : startMicTest()">{{ micTestActive ? '停止' : '测试' }}</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="label"></div>
+        <div class="ctrl">
+          <div class="mic-meter full">
+            <div class="mic-meter-bar" :style="{ width: (micLevel * 100) + '%' }"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="label">输出设备</div>
+        <div class="ctrl">
+          <div class="dd dd-flex"
+            ref="outputDd"
+            :class="{ open: outputOpen }"
+          >
+            <button
+              class="dd-btn"
+              type="button"
+              aria-haspopup="listbox"
+              :aria-expanded="outputOpen ? 'true' : 'false'"
+              @click="toggleOutput()"
+              @keydown="onOutputBtnKeydown"
+            >
+              <span class="dd-label"><Volume2 :size="14" /> {{ outputLabel }}</span>
+              <span class="dd-arrow" aria-hidden="true"></span>
+            </button>
+
+            <div
+              class="dd-menu"
+              role="listbox"
+              ref="outputMenu"
+              :tabindex="outputOpen ? 0 : -1"
+              :aria-hidden="outputOpen ? 'false' : 'true'"
+              @keydown="onOutputMenuKeydown"
+            >
+              <div
+                class="dd-item"
+                role="option"
+                :class="{ selected: !voice.selectedAudioOutput }"
+                @click="selectOutput('')"
+              >
+                系统默认
+              </div>
+
+              <div
+                v-for="(opt, i) in outputOptions"
+                :key="opt.value"
+                class="dd-item"
+                role="option"
+                :aria-selected="opt.value === voice.selectedAudioOutput ? 'true' : 'false'"
+                :class="{ active: i === outputActiveIndex, selected: opt.value === voice.selectedAudioOutput }"
+                @mousemove="outputActiveIndex = i"
+                @click="selectOutput(opt.value)"
+              >
+                {{ opt.text }}
+              </div>
+            </div>
+          </div>
+
+          <div class="inline-test">
+            <button class="btn" @click="outputTestPlaying ? stopOutputTest() : startOutputTest()">{{ outputTestPlaying ? '停止' : '播放' }}</button>
+          </div>
+        </div>
       </div>
 
       <div class="row">
@@ -268,11 +586,19 @@ onUnmounted(() => {
           <button class="btn" @click="save('toggleMic')">保存</button>
         </div>
       </div>
+
+      <!-- Device selection moved from VoicePanel -->
+      
+
       <div class="row">
         <div class="label">降噪模式</div>
 
         <div class="seg">
-          <div class="dd" ref="noiseDd" :class="{ open: noiseOpen }">
+          <div
+            class="dd"
+            ref="noiseDd"
+            :class="{ open: noiseOpen }"
+          >
             <button
               class="dd-btn"
               type="button"
@@ -372,6 +698,21 @@ onUnmounted(() => {
   gap: 8px;
   align-items: center;
 }
+.device-ctrl-column {
+  flex-direction: column;
+  gap: 8px;
+}
+.dd-fullwidth {
+  width: 100%;
+}
+.test-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin-top: 8px;
+}
+
 .ipt {
   flex: 1;
   padding: 10px 12px;
@@ -500,4 +841,21 @@ onUnmounted(() => {
   background: rgba(96, 165, 250, 0.22);
   font-weight: 600;
 }
+
+/* Mic meter (black/white) */
+.mic-meter {
+  height: 8px;
+  background: #000;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.mic-meter-bar {
+  height: 100%;
+  width: 0%;
+  background: #fff;
+  transition: width 0.08s linear;
+}
+
+.mic-meter.full { flex: 1 }
+.inline-test { white-space: nowrap }
 </style>
