@@ -113,6 +113,12 @@ const screenShareTooltip = computed(() => {
   border-radius: var(--radius-md);
   margin-bottom: 8px;
   border: 1px solid rgba(16, 185, 129, 0.3);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  box-sizing: border-box;
+  flex: 1;
+  width: 100%;
 }
 
 .voice-status {

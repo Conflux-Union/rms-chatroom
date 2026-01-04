@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { ref, computed, watch, onUnmounted } from 'vue'
+import { ref, computed, watch, onUnmounted, onMounted } from 'vue'
 import { useChatStore } from '../stores/chat'
 import { useAuthStore } from '../stores/auth'
 import { useVoiceStore } from '../stores/voice'
 import { Volume2, MicOff, Crown } from 'lucide-vue-next'
 import type { Channel } from '../types'
+import VoiceControls from '../components/VoiceControls.vue'
 
 const chat = useChatStore()
 const auth = useAuthStore()
@@ -93,6 +94,188 @@ function showUserContextMenu(event: MouseEvent, channelId: number, userId: strin
   userContextMenu.value = { show: true, x: event.clientX, y: event.clientY, channelId, userId }
 }
 
+// Edit mode (only when admin toggles it on)
+const editMode = ref(false)
+
+// Inline edit state
+const editingChannelId = ref<number | null>(null)
+const editedName = ref('')
+
+// Drag & drop state
+const dragSourceId = ref<number | null>(null)
+
+// Sidebar width state for a full-height right-edge resizer
+const width = ref<number>(300)
+
+function startResizing(e: MouseEvent) {
+  e.preventDefault()
+  document.body.style.userSelect = 'none'
+  const startX = e.clientX
+  const startW = width.value
+  function onMove(ev: MouseEvent) {
+    const dx = ev.clientX - startX
+    const newW = Math.min(520, Math.max(200, startW + dx))
+    width.value = newW
+  }
+  function onUp() {
+    document.removeEventListener('mousemove', onMove)
+    document.removeEventListener('mouseup', onUp)
+    document.body.style.userSelect = ''
+  }
+  document.addEventListener('mousemove', onMove)
+  document.addEventListener('mouseup', onUp)
+}
+
+onMounted(() => {
+  // no-op for now but keeps lifecycle symmetric
+})
+
+function startInlineEdit(channel: Channel) {
+  editingChannelId.value = channel.id
+  editedName.value = channel.name
+}
+
+async function saveInlineEdit(channel: Channel) {
+  if (!chat.currentServer || editingChannelId.value !== channel.id) {
+    editingChannelId.value = null
+    return
+  }
+  const name = editedName.value.trim()
+  if (!name || name === channel.name) {
+    editingChannelId.value = null
+    return
+  }
+  await chat.updateChannel(chat.currentServer.id, channel.id, { name })
+  editingChannelId.value = null
+}
+
+function cancelInlineEdit() {
+  editingChannelId.value = null
+  editedName.value = ''
+}
+
+function renameChannel(channel: Channel) {
+  startInlineEdit(channel)
+}
+
+// Clear editing state when leaving edit mode
+watch(editMode, (val) => {
+  if (!val) {
+    // blur active element so inputs commit and focus doesn't keep inline edit active
+    try { (document.activeElement as HTMLElement | null)?.blur() } catch {}
+    editingChannelId.value = null
+    editedName.value = ''
+  }
+})
+
+// function isFirstInType(channel: Channel) {
+//   if (!chat.currentServer) return false
+//   const same = (chat.currentServer.channels || []).filter(c => c.type === channel.type).sort((a, b) => a.position - b.position)
+//   if (same.length === 0) return false
+//   const first = same[0]
+//   return !!first && first.id === channel.id
+// }
+
+// function isLastInType(channel: Channel) {
+//   if (!chat.currentServer) return false
+//   const same = (chat.currentServer.channels || []).filter(c => c.type === channel.type).sort((a, b) => a.position - b.position)
+//   if (same.length === 0) return false
+//   const last = same[same.length - 1]
+//   return !!last && last.id === channel.id
+// }
+
+// async function moveChannel(channel: Channel, delta: number) {
+//   if (!chat.currentServer) return
+//   const all = [...(chat.currentServer.channels || [])].sort((a, b) => a.position - b.position)
+//   const type = channel.type
+//   const typeList = all.filter(c => c.type === type)
+//   const srcIdx = typeList.findIndex(c => c.id === channel.id)
+//   if (srcIdx === -1) return
+//   const newIdx = srcIdx + delta
+//   if (newIdx < 0 || newIdx >= typeList.length) return
+
+//   const moved = typeList.splice(srcIdx, 1)[0]
+//   if (!moved) return
+//   typeList.splice(newIdx, 0, moved)
+
+//   const newAll: typeof all = []
+//   let pos = 0
+//   for (const c of all) {
+//     if (c.type === type) {
+//       const r = typeList[pos++]
+//       if (r) newAll.push(r)
+//     } else {
+//       newAll.push(c)
+//     }
+//   }
+
+//   // Optimistic UI update
+//   try {
+//     if (chat.currentServer && (chat.currentServer as any).channels) {
+//       ;(chat.currentServer as any).channels = newAll
+//     }
+//   } catch (e) {
+//     console.warn('Optimistic channel update failed', e)
+//   }
+
+//   const ids = newAll.map(c => c.id)
+//   console.debug('moveChannel reorder ids:', ids)
+//   await chat.reorderChannels(chat.currentServer.id, ids)
+// }
+
+function onDragStart(event: DragEvent, channelId: number) {
+  if (!auth.isAdmin || !editMode.value) return
+  dragSourceId.value = channelId
+  try { event.dataTransfer?.setData('text/plain', String(channelId)) } catch {}
+}
+
+function onDragOver(event: DragEvent) {
+  if (!auth.isAdmin || !editMode.value) return
+  event.preventDefault()
+}
+
+async function onDrop(event: DragEvent, targetId: number, type: 'text' | 'voice') {
+  if (!auth.isAdmin || !editMode.value) return
+  event.preventDefault()
+  const srcId = dragSourceId.value !== null ? dragSourceId.value : Number(event.dataTransfer?.getData('text/plain') || -1)
+  dragSourceId.value = null
+  if (!chat.currentServer || srcId === -1 || srcId === targetId) return
+
+  const all = [...(chat.currentServer.channels || [])].sort((a, b) => a.position - b.position)
+  const typeList = all.filter(c => c.type === type)
+  const srcIdx = typeList.findIndex(c => c.id === srcId)
+  const tgtIdx = typeList.findIndex(c => c.id === targetId)
+  if (srcIdx === -1 || tgtIdx === -1) return
+
+  const moved = typeList.splice(srcIdx, 1)[0]
+  if (!moved) return
+  typeList.splice(tgtIdx, 0, moved)
+
+  const newAll: typeof all = []
+  let p = 0
+  for (const c of all) {
+    if (c.type === type) {
+      const r = typeList[p++]
+      if (r) newAll.push(r)
+    } else {
+      newAll.push(c)
+    }
+  }
+
+  // Optimistic UI update
+  try {
+    if (chat.currentServer && (chat.currentServer as any).channels) {
+      ;(chat.currentServer as any).channels = newAll
+    }
+  } catch (e) {
+    console.warn('Optimistic channel update failed', e)
+  }
+
+  const ids = newAll.map(c => c.id)
+  console.debug('onDrop reorder ids:', ids)
+  await chat.reorderChannels(chat.currentServer.id, ids)
+}
+
 async function muteVoiceUser() {
   if (!userContextMenu.value.channelId || !userContextMenu.value.userId) return
   await voice.muteParticipant(userContextMenu.value.userId, true)
@@ -115,66 +298,129 @@ async function deleteChannel() {
 </script>
 
 <template>
-  <div class="channel-list" @click="hideContextMenu">
-    <div class="server-header">
-      <h2>{{ chat.currentServer?.name || '选择服务器' }}</h2>
-    </div>
+  <div class="channel-list" @click="hideContextMenu" :style="{ width: width + 'px' }">
+    <div class="channel-list-content">
+      <!-- Right-edge resizer covers full height of the channel-list -->
+      <div class="resizer" @mousedown.stop.prevent="startResizing" title="拖拽调整侧栏宽度"></div>
 
-    <div class="channels">
-      <div class="channel-category">
-        <span class="category-name">文字频道</span>
-        <button v-if="auth.isAdmin" class="add-channel" @click="showCreate = true; newChannelType = 'text'">+</button>
-      </div>
-      <div
-        v-for="channel in textChannels"
-        :key="channel.id"
-        class="channel glow-effect"
-        :class="{ active: chat.currentChannel?.id === channel.id }"
-        @click="selectChannel(channel)"
-        @contextmenu="auth.isAdmin ? showContextMenu($event, channel.id) : undefined"
-      >
-        <span class="channel-icon">#</span>
-        <span class="channel-name">{{ channel.name }}</span>
+      <div class="server-header">
+        <h2 class="server-title">{{ chat.currentServer?.name || '选择服务器' }}</h2>
+        <div class="server-controls">
+          <button v-if="auth.isAdmin" class="edit-toggle" @click.stop="editMode = !editMode">{{ editMode ? '退出编辑' : '编辑' }}</button>
+        </div>
       </div>
 
-      <div class="channel-category">
-        <span class="category-name">语音频道</span>
-        <button v-if="auth.isAdmin" class="add-channel" @click="showCreate = true; newChannelType = 'voice'">+</button>
-      </div>
-      <div
-        v-for="channel in voiceChannels"
-        :key="channel.id"
-        class="voice-channel-wrapper"
-      >
+      <div class="channels">
+        <div class="channel-category">
+          <span class="category-name">文字频道</span>
+          <button v-if="auth.isAdmin" class="add-channel" @click="showCreate = true; newChannelType = 'text'">+</button>
+        </div>
         <div
+          v-for="channel in textChannels"
+          :key="channel.id"
           class="channel glow-effect"
           :class="{ active: chat.currentChannel?.id === channel.id }"
           @click="selectChannel(channel)"
           @contextmenu="auth.isAdmin ? showContextMenu($event, channel.id) : undefined"
+          :draggable="auth.isAdmin && editMode"
+          @dragstart="onDragStart($event, channel.id)"
+          @dragover="onDragOver($event)"
+          @drop="onDrop($event, channel.id, 'text')"
         >
-          <Volume2 class="channel-icon" :size="18" />
-          <span class="channel-name">{{ channel.name }}</span>
-          <span v-if="chat.getVoiceChannelUsers(channel.id).length > 0" class="user-count">
-            {{ chat.getVoiceChannelUsers(channel.id).length }}
-          </span>
+          <span class="channel-icon">#</span>
+          <span v-if="editMode" class="drag-handle" @dragstart="onDragStart($event, channel.id)" draggable="true">☰</span>
+          <template v-if="editingChannelId === channel.id">
+            <input
+              class="inline-edit custom-input"
+              v-model="editedName"
+              @keyup.enter="saveInlineEdit(channel)"
+              @keyup.esc="cancelInlineEdit"
+              @blur="saveInlineEdit(channel)"
+              @click.stop
+              autofocus
+            />
+          </template>
+          <template v-else>
+            <span class="channel-name" @dblclick.stop="auth.isAdmin && editMode ? startInlineEdit(channel) : undefined">{{ channel.name }}</span>
+          </template>
+          <div v-if="editMode" class="edit-actions" @click.stop>
+            <button v-if="editingChannelId !== channel.id" class="small" @click="renameChannel(channel)">重命名</button>
+            <!-- <button v-if="!isFirstInType(channel)" class="small" @click="moveChannel(channel, -1)">↑</button>
+            <button v-if="!isLastInType(channel)" class="small" @click="moveChannel(channel, 1)">↓</button> -->
+          </div>
+        </div>
+
+        <div class="channel-category">
+          <span class="category-name">语音频道</span>
+          <button v-if="auth.isAdmin" class="add-channel" @click="showCreate = true; newChannelType = 'voice'">+</button>
         </div>
         <div
-          v-if="chat.getVoiceChannelUsers(channel.id).length > 0"
-          class="voice-users-list"
+          v-for="channel in voiceChannels"
+          :key="channel.id"
+          class="voice-channel-wrapper"
         >
           <div
-            v-for="user in chat.getVoiceChannelUsers(channel.id)"
-            :key="user.id"
-            class="voice-user-item"
-            @contextmenu="auth.isAdmin ? showUserContextMenu($event, channel.id, user.id) : undefined"
+            class="channel glow-effect"
+            :class="{ active: chat.currentChannel?.id === channel.id }"
+            @click="selectChannel(channel)"
+            @contextmenu="auth.isAdmin ? showContextMenu($event, channel.id) : undefined"
+            :draggable="auth.isAdmin && editMode"
+            @dragstart="onDragStart($event, channel.id)"
+            @dragover="onDragOver($event)"
+            @drop="onDrop($event, channel.id, 'voice')"
           >
-            <div class="voice-user-avatar-wrapper">
-              <span class="voice-user-avatar">{{ user.name.charAt(0).toUpperCase() }}</span>
-              <Crown v-if="user.is_host" class="voice-user-host-badge" :size="10" />
+            <Volume2 class="channel-icon" :size="18" />
+            <template v-if="editingChannelId === channel.id">
+              <input
+                class="inline-edit custom-input"
+                v-model="editedName"
+                @keyup.enter="saveInlineEdit(channel)"
+                @keyup.esc="cancelInlineEdit"
+                @blur="saveInlineEdit(channel)"
+                @click.stop
+                autofocus
+              />
+            </template>
+            <template v-else>
+              <span class="channel-name" @dblclick.stop="auth.isAdmin && editMode ? startInlineEdit(channel) : undefined">{{ channel.name }}</span>
+            </template>
+            <span v-if="chat.getVoiceChannelUsers(channel.id).length > 0" class="user-count">
+              {{ chat.getVoiceChannelUsers(channel.id).length }}
+            </span>
+            <div v-if="editMode" class="edit-actions" @click.stop>
+              <button v-if="editingChannelId !== channel.id" class="small" @click="renameChannel(channel)">重命名</button>
+              <!-- <button v-if="!isFirstInType(channel)" class="small" @click="moveChannel(channel, -1)">↑</button>
+              <button v-if="!isLastInType(channel)" class="small" @click="moveChannel(channel, 1)">↓</button> -->
             </div>
-            <span class="voice-user-name">{{ user.name }}</span>
-            <MicOff v-if="user.is_muted" class="voice-user-muted" :size="12" />
           </div>
+          <div
+            v-if="chat.getVoiceChannelUsers(channel.id).length > 0"
+            class="voice-users-list"
+          >
+            <div
+              v-for="user in chat.getVoiceChannelUsers(channel.id)"
+              :key="user.id"
+              class="voice-user-item"
+              @contextmenu="auth.isAdmin ? showUserContextMenu($event, channel.id, user.id) : undefined"
+            >
+              <div class="voice-user-avatar-wrapper">
+                <span class="voice-user-avatar">{{ user.name.charAt(0).toUpperCase() }}</span>
+                <Crown v-if="user.is_host" class="voice-user-host-badge" :size="10" />
+              </div>
+              <span class="voice-user-name">{{ user.name }}</span>
+              <MicOff v-if="user.is_muted" class="voice-user-muted" :size="12" />
+            </div>
+          </div>
+          
+        </div>
+      </div>
+      
+      <div class="user-panel">
+        <span v-if="editMode" class="drag-hint">提示：可拖拽改变顺序</span>
+        <VoiceControls />
+        <div class="user-info">
+          <span class="username">{{ auth.user?.nickname || auth.user?.username }}</span>
+          <button class="logout-btn" @click="auth.logout()">退出</button>
         </div>
       </div>
     </div>
@@ -219,20 +465,103 @@ async function deleteChannel() {
 
 <style scoped>
 .channel-list {
-  width: 240px;
+  /* replaced browser resize with custom resizer */
+  position: relative;
+  overflow: auto;
+  min-width: 272px;
+  max-width: 360px;
+  border-right: 2px solid rgba(255, 166, 133, 0.50);
+  border-left: 2px solid rgba(128, 128, 128, 0.50);
+}
+
+.channel-list-content {
+  height: 100%;
+  width: 100%;
   display: flex;
   flex-direction: column;
-  border-right: 1px dashed rgba(128, 128, 128, 0.4);
-  min-height: 0;
+  align-content: space-around;
+  justify-content: space-between
+}
+
+/* vertical resizer on right edge */
+.resizer {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 10px;
+  cursor: col-resize;
+  z-index: 10;
+}
+
+/* ensure flex children can shrink without pushing action buttons */
+.channel {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  margin: 1px 8px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  color: var(--color-text-muted);
+  transition: all var(--transition-fast);
+  min-width: 0; /* important so flex children can shrink */
+}
+
+.channel-name {
+  font-size: 14px;
+  flex: 1;
   overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+/* remove marquee/automatic scrolling — we use ellipsis only */
+/* .channel-name.scrolling { animation: marquee 6s linear infinite; } */
+
+.inline-edit {
+  flex: 1;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(255,255,255,0.06);
+  background: var(--surface-glass-input);
+  color: var(--color-text-main);
+  min-width: 0; /* allow shrink */
+  outline: none;
+  box-shadow: none;
+}
+
+/* custom input appearance */
+.custom-input {
+  border-radius: 6px;
+  border: 1px solid rgba(255,255,255,0.08);
+  background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+}
+
+.custom-input:focus {
+  border-color: rgba(255,255,255,0.24);
+  background: var(--surface-glass-input-focus);
+}
+
+.edit-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-shrink: 0;
 }
 
 .server-header {
   padding: 12px 16px;
+  height: 48px;
   border-bottom: 1px dashed rgba(128, 128, 128, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
-.server-header h2 {
+.server-title {
   margin: 0;
   font-size: 16px;
   font-weight: 600;
@@ -240,12 +569,19 @@ async function deleteChannel() {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  max-width: 160px;
 }
 
-.channels {
-  flex: 1;
-  overflow-y: auto;
-  padding: 8px 0;
+.server-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.drag-hint {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  margin-bottom: 8px;
 }
 
 .channel-category {
@@ -305,6 +641,58 @@ async function deleteChannel() {
 
 .channel-name {
   font-size: 14px;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.drag-handle {
+  width: 28px;
+  height: 28px;
+  margin-left: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: grab;
+  color: var(--color-text-muted);
+  user-select: none;
+}
+
+.edit-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.edit-actions .small {
+  font-size: 12px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  border: none;
+  background-color: rgba(0, 0, 0, 0);
+  color: var(--color-text-main);
+  cursor: pointer;
+}
+
+.edit-actions .small:hover {
+  background: var(--surface-glass-strong);
+}
+
+.inline-edit {
+  flex: 1;
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(255,255,255,0.06);
+  background: var(--surface-glass-input);
+  color: var(--color-text-main);
+  min-width: 0; /* allow shrink */
+  outline: none;
+  margin-right: 8px;
+  box-shadow: none;
 }
 
 .create-modal {
@@ -316,6 +704,42 @@ async function deleteChannel() {
   justify-content: center;
   align-items: center;
   z-index: 1000;
+}
+
+.user-info {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  gap: 4px;
+  padding: 0px 8px;
+}
+
+.user-panel {
+  width: 100%; /* 左右撑满父父容器 */ 
+  margin-top: auto; /* 自动推到底部 */ 
+  display: flex; 
+  justify-content: space-between; 
+  border-top: 1px dashed rgba(128,128,128,0.4); 
+  padding: 8px; 
+  background: transparent;
+  flex-direction: column;
+  align-items: center;
+}
+
+.logout-btn {
+  background: transparent;
+  color: var(--color-text-muted);
+  border: none;
+  cursor: pointer;
+  padding: 4px 4px;
+  font-size: 12px;
+  transition: color var(--transition-fast);
+}
+
+.logout-btn:hover {
+  color: var(--color-primary);
 }
 
 .modal-content {
@@ -477,5 +901,15 @@ async function deleteChannel() {
 .voice-user-muted {
   font-size: 12px;
   margin-left: 4px;
+}
+
+.edit-toggle {
+  margin-left: 8px;
+  background: transparent;
+  border: 1px solid rgba(255,255,255,0.08);
+  color: var(--color-text-muted);
+  padding: 4px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
 }
 </style>

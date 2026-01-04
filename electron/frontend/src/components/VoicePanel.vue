@@ -379,7 +379,7 @@ function closeInviteDialog() {
           <span>{{ voice.hostModeHostName }} 正在主持</span>
         </div>
 
-        <div class="voice-controls">
+        <div class="voice-controlss">
           <button
             class="control-btn glow-effect"
             :class="{ active: voice.isMuted }"
@@ -581,6 +581,7 @@ function closeInviteDialog() {
   flex: 1;
   display: flex;
   flex-direction: column;
+  min-width: 740px;
   justify-content: center;
   align-items: center;
   padding: 24px;
@@ -892,8 +893,9 @@ function closeInviteDialog() {
   margin-left: 8px;
 }
 
-.voice-controls {
+.voice-controlss {
   display: flex;
+
   justify-content: center;
   gap: 12px;
 }

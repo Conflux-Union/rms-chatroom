@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { ref, onMounted, watch } from 'vue'
-import { useAuthStore } from '../stores/auth'
 import { useChatStore } from '../stores/chat'
 import { useVoiceStore } from '../stores/voice'
 import { useMusicStore } from '../stores/music'
@@ -9,11 +8,10 @@ import ServerList from '../components/ServerList.vue'
 import ChannelList from '../components/ChannelList.vue'
 import ChatArea from '../components/ChatArea.vue'
 import VoicePanel from '../components/VoicePanel.vue'
-import VoiceControls from '../components/VoiceControls.vue'
 import MusicPanel from '../components/MusicPanel.vue'
 import { Music, Menu, X } from 'lucide-vue-next'
 
-const auth = useAuthStore()
+// const auth = useAuthStore()
 const chat = useChatStore()
 const voice = useVoiceStore()
 // Initialize music store early so WebSocket auto-connects when joining voice
@@ -87,13 +85,13 @@ watch(
     <div class="sidebar-container" :class="{ 'mobile-open': showMobileSidebar }">
       <ServerList />
       <ChannelList />
-      <div class="user-panel">
+      <!-- <div class="user-panel">
         <VoiceControls />
         <div class="user-info">
           <span class="username">{{ auth.user?.nickname || auth.user?.username }}</span>
           <button class="logout-btn" @click="auth.logout()">退出</button>
         </div>
-      </div>
+      </div> -->
     </div>
 
     <div class="main-content">
@@ -203,15 +201,14 @@ watch(
   color: var(--color-text-muted);
 }
 
-.user-panel {
+/* .user-panel {
   position: fixed;
   bottom: 0;
-  left: 88px;
-  width: 224px;
+  margin: 8px;
   padding: 8px;
   border-top: 1px dashed rgba(128, 128, 128, 0.4);
   background: transparent;
-}
+} */
 
 .user-info {
   display: flex;
