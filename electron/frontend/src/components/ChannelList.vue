@@ -134,28 +134,35 @@ function renameChannel(channel: Channel) {
 
 async function moveChannel(channel: Channel, delta: number) {
   if (!chat.currentServer) return
+  // operate on full channel list (so backend receives complete ordering)
+  const all = [...(chat.currentServer.channels || [])].sort((a, b) => a.position - b.position)
   const type = channel.type
-  // Work only within the same type
-  const channels = [...(chat.currentServer.channels || [])]
-    .filter(c => c.type === type)
-    .sort((a, b) => a.position - b.position)
+  // indices in `all` that belong to this type
+  const typeIndices = all.map((c, i) => ({ c, i })).filter(x => x.c.type === type).map(x => x.i)
 
-  const idx = channels.findIndex(c => c.id === channel.id)
-  if (idx === -1) return
+  const srcAllIdx = all.findIndex(c => c.id === channel.id)
+  if (srcAllIdx === -1) return
+  const srcTypeIdx = typeIndices.indexOf(srcAllIdx)
+  if (srcTypeIdx === -1) return
 
-  const newIdx = idx + delta
-  if (newIdx < 0 || newIdx >= channels.length) return
+  const newTypeIdx = srcTypeIdx + delta
+  if (newTypeIdx < 0 || newTypeIdx >= typeIndices.length) return
 
-  // Move the item in the array
-  const moved = channels.splice(idx, 1)[0]
+  const moved = all.splice(srcAllIdx, 1)[0]
   if (!moved) return
-  channels.splice(newIdx, 0, moved)
 
-  const ids = channels.map(c => c.id)
+  let insertionAllIdx = typeIndices[newTypeIdx]
+  if (insertionAllIdx === undefined) return
+  // if source was before target in original array, removal shifts target left by 1
+  if (srcAllIdx < insertionAllIdx) insertionAllIdx--
+
+  all.splice(insertionAllIdx, 0, moved)
+  const ids = all.map(c => c.id)
   await chat.reorderChannels(chat.currentServer.id, ids)
 }
 
 function onDragStart(event: DragEvent, channelId: number) {
+  if (!auth.isAdmin || !editMode.value) return
   dragSourceId.value = channelId
   try {
     event.dataTransfer?.setData('text/plain', String(channelId))
@@ -165,28 +172,37 @@ function onDragStart(event: DragEvent, channelId: number) {
 }
 
 function onDragOver(event: DragEvent) {
+  if (!auth.isAdmin || !editMode.value) return
   event.preventDefault()
 }
 
 async function onDrop(event: DragEvent, targetId: number, type: 'text' | 'voice') {
+  if (!auth.isAdmin || !editMode.value) return
   event.preventDefault()
   const srcId = dragSourceId.value !== null ? dragSourceId.value : Number(event.dataTransfer?.getData('text/plain') || -1)
   dragSourceId.value = null
   if (!chat.currentServer || srcId === -1 || srcId === targetId) return
 
-  // operate only within same type
-  const channels = [...(chat.currentServer.channels || [])].filter(c => c.type === type).sort((a, b) => a.position - b.position)
-  const srcIdx = channels.findIndex(c => c.id === srcId)
-  const tgtIdx = channels.findIndex(c => c.id === targetId)
-  if (srcIdx === -1 || tgtIdx === -1) return
+  // full list
+  const all = [...(chat.currentServer.channels || [])].sort((a, b) => a.position - b.position)
+  const srcAllIdx = all.findIndex(c => c.id === srcId)
+  const tgtAllIdx = all.findIndex(c => c.id === targetId)
+  if (srcAllIdx === -1 || tgtAllIdx === -1) return
 
-  const moved = channels.splice(srcIdx, 1)[0]
-  if (!moved) {
-    dragSourceId.value = null
-    return
-  }
-  channels.splice(tgtIdx, 0, moved)
-  const ids = channels.map(c => c.id)
+  const srcChannel = all[srcAllIdx]
+  const tgtChannel = all[tgtAllIdx]
+  if (!srcChannel || !tgtChannel) return
+  // ensure same type
+  if (srcChannel.type !== type || tgtChannel.type !== type) return
+
+  const moved = all.splice(srcAllIdx, 1)[0]
+  if (!moved) return
+
+  let insertionAllIdx = tgtAllIdx
+  if (srcAllIdx < insertionAllIdx) insertionAllIdx--
+
+  all.splice(insertionAllIdx, 0, moved)
+  const ids = all.map(c => c.id)
   await chat.reorderChannels(chat.currentServer.id, ids)
 }
 
@@ -230,10 +246,10 @@ async function deleteChannel() {
         :class="{ active: chat.currentChannel?.id === channel.id }"
         @click="selectChannel(channel)"
         @contextmenu="auth.isAdmin ? showContextMenu($event, channel.id) : undefined"
-        draggable="true"
-        @dragstart="auth.isAdmin && editMode ? onDragStart($event, channel.id) : undefined"
-        @dragover.prevent="auth.isAdmin && editMode ? onDragOver($event) : undefined"
-        @drop="auth.isAdmin && editMode ? onDrop($event, channel.id, 'text') : undefined"
+        :draggable="auth.isAdmin && editMode"
+        @dragstart="onDragStart($event, channel.id)"
+        @dragover="onDragOver($event)"
+        @drop="onDrop($event, channel.id, 'text')"
       >
         <span class="channel-icon">#</span>
         <template v-if="editingChannelId === channel.id">
@@ -271,10 +287,10 @@ async function deleteChannel() {
           :class="{ active: chat.currentChannel?.id === channel.id }"
           @click="selectChannel(channel)"
           @contextmenu="auth.isAdmin ? showContextMenu($event, channel.id) : undefined"
-          draggable="true"
-          @dragstart="auth.isAdmin && editMode ? onDragStart($event, channel.id) : undefined"
-          @dragover.prevent="auth.isAdmin && editMode ? onDragOver($event) : undefined"
-          @drop="auth.isAdmin && editMode ? onDrop($event, channel.id, 'voice') : undefined"
+          :draggable="auth.isAdmin && editMode"
+          @dragstart="onDragStart($event, channel.id)"
+          @dragover="onDragOver($event)"
+          @drop="onDrop($event, channel.id, 'voice')"
         >
           <Volume2 class="channel-icon" :size="18" />
           <template v-if="editingChannelId === channel.id">

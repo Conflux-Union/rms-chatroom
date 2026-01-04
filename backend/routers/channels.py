@@ -118,21 +118,56 @@ async def reorder_channels(
     user: AdminUser,
     db: AsyncSession = Depends(get_db),
 ):
-    """Reorder channels for a server. Accepts a full ordered list of channel IDs for the server."""
-    # Fetch all channels for server
-    result = await db.execute(select(Channel).where(Channel.server_id == server_id))
+    """Reorder channels for a server. Accepts a full ordered list of channel IDs for the server.
+
+    If the provided list contains exactly all channel ids it will replace the global order.
+    If it contains a subset (commonly channels of a single type), we'll reorder those channels
+    among themselves and insert them at the position of the earliest of the moved channels,
+    preserving relative order of the other channels.
+    """
+    # Fetch all channels for server ordered by position
+    result = await db.execute(select(Channel).where(Channel.server_id == server_id).order_by(Channel.position))
     channels = result.scalars().all()
     id_map = {c.id: c for c in channels}
 
-    if set(payload.channel_ids) != set(id_map.keys()):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="channel_ids must contain exactly all channel ids for the server")
+    provided_ids = payload.channel_ids
+    provided_set = set(provided_ids)
+    existing_set = set(id_map.keys())
 
-    for idx, cid in enumerate(payload.channel_ids):
-        id_map[cid].position = idx + 1
+    if not provided_set.issubset(existing_set):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="channel_ids must refer to channels in the server")
+
+    # If full set provided, simply reorder according to payload
+    if provided_set == existing_set:
+        for idx, cid in enumerate(provided_ids):
+            id_map[cid].position = idx + 1
+
+    else:
+        # Partial reorder: remove provided channels from original ordered list
+        orig_list = list(channels)
+        # find original indices for provided ids
+        orig_indices = [i for i, c in enumerate(orig_list) if c.id in provided_set]
+        if not orig_indices:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No valid channel ids provided")
+        insert_at = min(orig_indices)
+
+        remaining = [c for c in orig_list if c.id not in provided_set]
+        # Build new ordered list by inserting provided channels (in given order) at insert_at
+        new_order: list[Channel] = []
+        new_order.extend(remaining[:insert_at])
+        for cid in provided_ids:
+            new_order.append(id_map[cid])
+        new_order.extend(remaining[insert_at:])
+
+        # Assign new positions sequentially
+        for idx, ch in enumerate(new_order):
+            ch.position = idx + 1
 
     await db.flush()
 
-    sorted_channels = sorted(id_map.values(), key=lambda c: c.position)
+    # Return updated list ordered by position
+    result = await db.execute(select(Channel).where(Channel.server_id == server_id).order_by(Channel.position))
+    sorted_channels = result.scalars().all()
 
     return [
         ChannelResponse(id=c.id, server_id=c.server_id, name=c.name, type=c.type.value, position=c.position)
