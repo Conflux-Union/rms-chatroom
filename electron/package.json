@@ -51,7 +51,13 @@
     },
     "files": [
       "**/*",
-      "../packages/electron-renderer/dist/**/*"
+      "!dist/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "../packages/electron-renderer/dist",
+        "to": "renderer-dist"
+      }
     ],
     "publish": [
       {

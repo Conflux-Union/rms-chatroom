@@ -3,6 +3,11 @@ import vue from '@vitejs/plugin-vue';
 import { resolve } from 'path';
 export default defineConfig({
     plugins: [vue()],
+    define: {
+        // Electron production needs absolute API URL
+        'import.meta.env.VITE_API_BASE': JSON.stringify('https://preview-chatroom.rms.net.cn'),
+        'import.meta.env.VITE_WS_BASE': JSON.stringify('wss://preview-chatroom.rms.net.cn'),
+    },
     resolve: {
         alias: {
             '@rms-discord/shared': resolve(__dirname, '../shared/src'),
