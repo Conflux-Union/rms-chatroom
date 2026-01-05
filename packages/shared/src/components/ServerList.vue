@@ -107,14 +107,14 @@ async function deleteServer() {
 .server-list {
   width: 80px;
   height: 100vh;
-  background: var(--surface-glass-dark);
-  border-right: 1px solid rgba(255, 255, 255, 0.011);
-  background-color: lab(62.08% 0 -0.01 / 0.292);
+  background: var(--surface-glass);
+  backdrop-filter: blur(var(--blur-strength));
+  -webkit-backdrop-filter: blur(var(--blur-strength));
+  border-right: 2px solid rgba(255, 166, 133, 0.50);
   display: flex;
   flex-direction: column;
   justify-content: space-between;
   padding: 20px 0;
-  backdrop-filter: blur(20px);
   position: relative;
   z-index: 1000000;
 }

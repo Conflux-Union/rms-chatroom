@@ -235,26 +235,12 @@ async function handleStopBot() {
 
       <!-- Now Playing -->
       <div v-if="music.currentSong" class="now-playing">
-        <img :src="music.currentSong.cover" alt="Cover" class="album-cover" />
-        <div class="song-details">
+        <div class="now-playing-top">
+          <img :src="music.currentSong.cover" alt="Cover" class="album-cover" />
           <div class="song-info">
             <div class="song-name">{{ music.currentSong.name }}</div>
             <div class="song-artist">{{ music.currentSong.artist }}</div>
           </div>
-          <!-- Progress Bar -->
-          <div class="progress-container">
-            <span class="time-current">{{ formatTime(music.positionMs) }}</span>
-            <Slider
-              v-model="progressValue"
-              :min="0"
-              :max="100"
-              :tooltips="false"
-              class="progress-slider"
-            />
-            <span class="time-total">{{ formatTime(music.durationMs) }}</span>
-          </div>
-        </div>
-        <div class="controls-wrapper">
           <div class="playback-controls">
             <button class="control-btn" @click="handleBotPrevious" title="上一首"><SkipBack :size="18" /></button>
             <button
@@ -269,19 +255,32 @@ async function handleStopBot() {
             </button>
             <button class="control-btn" @click="handleBotSkip" title="下一首"><SkipForward :size="18" /></button>
           </div>
-          <div class="volume-control">
-            <Volume2 :size="16" class="volume-icon" />
-            <Slider
-              :model-value="music.volume"
-              @update:model-value="handleVolumeChange"
-              :min="0"
-              :max="1"
-              :step="0.01"
-              :tooltips="false"
-              class="volume-slider"
-            />
-            <span class="volume-text">{{ Math.round(music.volume * 100) }}%</span>
-          </div>
+        </div>
+        <!-- Progress Bar - Full Width -->
+        <div class="progress-container">
+          <span class="time-current">{{ formatTime(music.positionMs) }}</span>
+          <Slider
+            v-model="progressValue"
+            :min="0"
+            :max="100"
+            :tooltips="false"
+            class="progress-slider"
+          />
+          <span class="time-total">{{ formatTime(music.durationMs) }}</span>
+        </div>
+        <!-- Volume Control - Full Width -->
+        <div class="volume-control">
+          <Volume2 :size="16" class="volume-icon" />
+          <Slider
+            :model-value="music.volume"
+            @update:model-value="handleVolumeChange"
+            :min="0"
+            :max="1"
+            :step="0.01"
+            :tooltips="false"
+            class="volume-slider"
+          />
+          <span class="volume-text">{{ Math.round(music.volume * 100) }}%</span>
         </div>
       </div>
 
@@ -592,30 +591,29 @@ async function handleStopBot() {
   border-radius: 16px;
   padding: 16px;
   display: flex;
-  align-items: center;
-  gap: 16px;
+  flex-direction: column;
+  gap: 12px;
   margin-bottom: 16px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   flex-shrink: 0;
 }
 
+.now-playing-top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
 .album-cover {
-  width: 64px;
-  height: 64px;
+  width: 56px;
+  height: 56px;
   border-radius: 8px;
   object-fit: cover;
   flex-shrink: 0;
 }
 
-.song-details {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
 .song-info {
+  flex: 1;
   min-width: 0;
 }
 
@@ -635,31 +633,25 @@ async function handleStopBot() {
   text-overflow: ellipsis;
 }
 
-/* Progress Bar */
+/* Progress Bar - Full Width */
 .progress-container {
   display: flex;
   align-items: center;
   gap: 8px;
+  width: 100%;
 }
 
 .time-current,
 .time-total {
   font-size: 11px;
   color: var(--color-text-muted);
-  min-width: 32px;
+  min-width: 36px;
   text-align: center;
+  flex-shrink: 0;
 }
 
 .progress-slider {
   flex: 1;
-}
-
-/* Controls wrapper */
-.controls-wrapper {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  align-items: center;
 }
 
 /* Loading spinner */
@@ -700,15 +692,12 @@ async function handleStopBot() {
   background: var(--color-gradient-primary);
 }
 
-/* Volume Control */
+/* Volume Control - Full Width */
 .volume-control {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 12px;
-  background: rgba(255, 255, 255, 0.05);
-  border-radius: 20px;
-  min-width: 140px;
+  width: 100%;
 }
 
 .volume-icon {
@@ -723,7 +712,7 @@ async function handleStopBot() {
 .volume-text {
   font-size: 11px;
   color: var(--color-text-muted);
-  min-width: 32px;
+  min-width: 36px;
   text-align: right;
   flex-shrink: 0;
 }

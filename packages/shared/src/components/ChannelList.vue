@@ -471,7 +471,6 @@ async function deleteChannel() {
   min-width: 272px;
   max-width: 360px;
   border-right: 2px solid rgba(255, 166, 133, 0.50);
-  border-left: 2px solid rgba(128, 128, 128, 0.50);
 }
 
 .channel-list-content {

@@ -176,7 +176,12 @@ function createWindow() {
 
   win.setMenuBarVisibility(false);
 
-  const distDir = path.join(__dirname, "..", "packages", "electron-renderer", "dist");
+  // In development: electron/index.js -> ../packages/electron-renderer/dist
+  // In production (packaged): resources/app/index.js -> resources/renderer-dist
+  const isDev = !app.isPackaged;
+  const distDir = isDev
+    ? path.join(__dirname, "..", "packages", "electron-renderer", "dist")
+    : path.join(process.resourcesPath, "renderer-dist");
   const indexHtml = path.join(distDir, "index.html");
   win.loadFile(indexHtml);
 

@@ -6,6 +6,14 @@ import { Mic, Volume2 } from 'lucide-vue-next'
 
 const emit = defineEmits<{ (e: 'close'): void }>()
 
+// Internal visibility for animation
+const visible = ref(false)
+
+function handleClose() {
+  visible.value = false
+  setTimeout(() => emit('close'), 250)
+}
+
 declare global {
   interface Window {
     hotkey?: {
@@ -311,6 +319,9 @@ function onKeyDown(e: KeyboardEvent) {
 }
 
 onMounted(async () => {
+  // Trigger enter animation
+  nextTick(() => { visible.value = true })
+
   // enumerate devices so the settings page can show device dropdowns
   await voice.enumerateDevices()
   await loadShortcuts()
@@ -427,12 +438,14 @@ function stopOutputTest() {
 </script>
 
 <template>
-  <div class="settings-mask" @click.self="emit('close')">
-    <div class="settings-panel">
-      <div class="header">
-        <div class="title">设置</div>
-        <button class="close" @click="emit('close')">×</button>
-      </div>
+  <Teleport to="body">
+    <Transition name="settings-modal">
+      <div v-if="visible" class="settings-mask" @click.self="handleClose">
+        <div class="settings-panel">
+          <div class="header">
+            <div class="title">设置</div>
+            <button class="close" @click="handleClose">×</button>
+          </div>
 
       <div class="row">
         <div class="label">输入设备</div>
@@ -637,61 +650,72 @@ function stopOutputTest() {
       </div>
       <div v-if="tip" class="tip">状态: {{ tip }}</div>
       <div class="footer">
-        <button class="btn ghost" @click="stopCapture(); emit('close')">关闭</button>
+        <button class="btn ghost" @click="stopCapture(); handleClose()">关闭</button>
       </div>
     </div>
   </div>
+    </Transition>
+  </Teleport>
 </template>
 
 <style scoped>
 .settings-mask {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0);
+  background: rgba(0, 0, 0, 0.3);
   display: flex;
   align-items: center;
   justify-content: center;
-  transform: translateY(-50%);
-  left: 50vw;
-  top: 50vh;
-  transform: translate(-50%, -50%);
   z-index: 100000;
-  width: 500px;
 }
 .settings-panel {
   width: 520px;
-  background: rgba(20, 20, 22, 0.95);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 14px;
-  padding: 16px;
-  color: #fff;
+  max-height: 90vh;
+  overflow-y: auto;
+  background: var(--surface-glass);
+  backdrop-filter: blur(var(--blur-strength));
+  -webkit-backdrop-filter: blur(var(--blur-strength));
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  color: var(--color-text-main);
+  box-shadow: var(--shadow-lg);
 }
 .header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 12px;
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
 }
 .title {
-  font-size: 18px;
+  font-size: 20px;
   font-weight: 700;
+  color: var(--color-text-main);
 }
 .close {
   width: 32px;
   height: 32px;
-  border-radius: 10px;
+  border-radius: var(--radius-sm);
   border: none;
-  background: rgba(255, 255, 255, 0.08);
-  color: #fff;
+  background: rgba(0, 0, 0, 0.08);
+  color: var(--color-text-main);
+  font-size: 18px;
   cursor: pointer;
+  transition: all var(--transition-fast);
+}
+.close:hover {
+  background: rgba(0, 0, 0, 0.15);
 }
 .row {
-  margin-top: 12px;
+  margin-top: 16px;
 }
 .label {
   font-size: 13px;
-  opacity: 0.85;
-  margin-bottom: 6px;
+  font-weight: 500;
+  color: var(--color-text-muted);
+  margin-bottom: 8px;
 }
 .ctrl {
   display: flex;
@@ -715,74 +739,109 @@ function stopOutputTest() {
 
 .ipt {
   flex: 1;
-  padding: 10px 12px;
-  border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  background: rgba(255, 255, 255, 0.06);
-  color: #fff;
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  background: var(--surface-glass-input);
+  color: var(--color-text-main);
   cursor: pointer;
+  transition: all var(--transition-fast);
+}
+.ipt:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  background: var(--surface-glass-input-focus);
 }
 .ipt.capturing {
-  outline: 2px solid rgba(96, 165, 250, 0.8);
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
 }
 .btn {
-  padding: 10px 10px;
-  border-radius: 10px;
+  padding: 10px 16px;
+  border-radius: var(--radius-sm);
   border: none;
-  background: rgba(255, 255, 255, 0.12);
-  color: #fff;
+  background: var(--color-gradient-primary);
+  color: white;
+  font-weight: 500;
   cursor: pointer;
+  transition: all var(--transition-fast);
+  box-shadow: var(--shadow-glow);
+}
+.btn:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.05);
 }
 .btn.ghost {
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.08);
+  color: var(--color-text-main);
+  box-shadow: none;
+}
+.btn.ghost:hover {
+  background: rgba(0, 0, 0, 0.12);
 }
 .tip {
-  margin-top: 12px;
-  font-size: 12px;
-  opacity: 0.85;
+  margin-top: 16px;
+  padding: 10px 14px;
+  font-size: 13px;
+  color: var(--color-text-muted);
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: var(--radius-sm);
 }
 .footer {
-  margin-top: 14px;
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
   display: flex;
   justify-content: flex-end;
 }
 
-/* ====== 自定义下拉样式（暗色，跟面板一致） ====== */
+/* Custom dropdown */
 .dd {
   width: 100%;
   position: relative;
 }
+.dd-flex {
+  flex: 1;
+}
 
 .dd-btn {
   width: 100%;
-  padding: 10px 12px;
-  border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  background: rgba(255, 255, 255, 0.06);
-  color: #fff;
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  background: var(--surface-glass-input);
+  color: var(--color-text-main);
   cursor: pointer;
-
+  transition: all var(--transition-fast);
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
 }
 
+.dd-btn:hover {
+  background: var(--surface-glass-input-focus);
+}
+
 .dd-btn:focus {
-  outline: 2px solid rgba(96, 165, 250, 0.8);
+  outline: none;
+  border-color: var(--color-primary);
 }
 
 .dd-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .dd-arrow {
-  width: 10px;
-  height: 10px;
-  border-right: 2px solid rgba(255, 255, 255, 0.65);
-  border-bottom: 2px solid rgba(255, 255, 255, 0.65);
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid var(--color-text-muted);
+  border-bottom: 2px solid var(--color-text-muted);
   transform: rotate(45deg);
   transition: transform 0.18s ease;
   flex: 0 0 auto;
@@ -795,20 +854,18 @@ function stopOutputTest() {
 .dd-menu {
   position: absolute;
   left: 0;
-  top: calc(100% + 8px);
+  top: calc(100% + 6px);
   width: 100%;
   z-index: 60;
-
-  background: rgba(20, 20, 22, 0.98);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 12px;
+  background: var(--surface-glass-strong);
+  backdrop-filter: blur(var(--blur-strength));
+  -webkit-backdrop-filter: blur(var(--blur-strength));
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: var(--radius-md);
   padding: 6px;
-
   max-height: 240px;
   overflow: auto;
-
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
-
+  box-shadow: var(--shadow-md);
   opacity: 0;
   transform: translateY(-6px) scale(0.98);
   pointer-events: none;
@@ -822,40 +879,64 @@ function stopOutputTest() {
 }
 
 .dd-item {
-  padding: 6px 10px;
-  font-size: 12px;
-  border-radius: 10px;
+  padding: 8px 12px;
+  font-size: 13px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   user-select: none;
+  color: var(--color-text-main);
+  transition: background var(--transition-fast);
 }
 
 .dd-item:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.06);
 }
 
 .dd-item.active {
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0.08);
 }
 
 .dd-item.selected {
-  background: rgba(96, 165, 250, 0.22);
+  background: rgba(252, 121, 97, 0.15);
+  color: var(--color-primary);
   font-weight: 600;
 }
 
-/* Mic meter (black/white) */
+/* Mic meter */
 .mic-meter {
   height: 8px;
-  background: #000;
-  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: var(--radius-pill);
   overflow: hidden;
 }
 .mic-meter-bar {
   height: 100%;
   width: 0%;
-  background: #fff;
+  background: var(--color-gradient-primary);
   transition: width 0.08s linear;
 }
 
 .mic-meter.full { flex: 1 }
 .inline-test { white-space: nowrap }
+
+/* Modal transition */
+.settings-modal-enter-active,
+.settings-modal-leave-active {
+  transition: opacity 0.25s ease;
+}
+.settings-modal-enter-active .settings-panel,
+.settings-modal-leave-active .settings-panel {
+  transition: transform 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.25s ease;
+}
+
+.settings-modal-enter-from,
+.settings-modal-leave-to {
+  opacity: 0;
+}
+.settings-modal-enter-from .settings-panel {
+  transform: scale(0.9) translateY(20px);
+}
+.settings-modal-leave-to .settings-panel {
+  transform: scale(0.95) translateY(-10px);
+}
 </style>
