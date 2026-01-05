@@ -355,6 +355,7 @@ jobs:
           # Electron apps
           if [ -d artifacts/electron-linux ]; then
             cp artifacts/electron-linux/*.AppImage release-assets/ 2>/dev/null || true
+            cp artifacts/electron-linux/*.deb release-assets/ 2>/dev/null || true
           fi
           if [ -d artifacts/electron-macos ]; then
             cp artifacts/electron-macos/*.dmg release-assets/ 2>/dev/null || true
