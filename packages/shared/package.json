@@ -1,0 +1,32 @@
+{
+  "name": "@rms-discord/shared",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./components/*": "./src/components/*",
+    "./composables/*": "./src/composables/*",
+    "./stores/*": "./src/stores/*",
+    "./types/*": "./src/types/*",
+    "./views/*": "./src/views/*",
+    "./assets/*": "./src/assets/*",
+    "./style.css": "./src/style.css"
+  },
+  "dependencies": {
+    "@vueform/slider": "^2.1.10",
+    "axios": "^1.13.2",
+    "livekit-client": "^2.16.0",
+    "lucide-vue-next": "^0.555.0",
+    "pinia": "^3.0.4",
+    "vue": "^3.5.26",
+    "vue-router": "^4.6.4"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "typescript": "~5.9.3",
+    "vite": "^7.2.4"
+  }
+}

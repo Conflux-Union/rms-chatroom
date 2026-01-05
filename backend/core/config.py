@@ -19,7 +19,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "host": "0.0.0.0",
     "port": 8000,
     "debug": True,
-    "frontend_dist_path": "../frontend/dist",
+    "frontend_dist_path": "../packages/web/dist",
     "cors_origins": ["http://localhost:5173", "http://127.0.0.1:5173"],
     "deploy_token": "",
     "livekit_host": "ws://localhost:7880",
@@ -57,7 +57,7 @@ class Settings(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8000
     debug: bool = True
-    frontend_dist_path: str = "../frontend/dist"
+    frontend_dist_path: str = "../packages/web/dist"
     cors_origins: list[str] = ["http://localhost:5173"]
     deploy_token: str = ""
     livekit_host: str = "ws://localhost:7880"

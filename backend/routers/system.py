@@ -26,7 +26,7 @@ MAX_BACKUPS = 3
 PROTECTED_PATTERNS = {
     "backend/config.json",
     "backend/.venv",
-    "frontend/.env",
+    ".env",
     "discord.db",
     ".backup",
     ".git",
@@ -45,10 +45,10 @@ def _verify_token(token: str) -> bool:
 def _create_backup() -> Path | None:
     """Create a backup of current source code."""
     BACKUP_DIR.mkdir(exist_ok=True)
-    
+
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     backup_path = BACKUP_DIR / f"backup_{timestamp}"
-    
+
     try:
         # Backup backend (excluding .venv and __pycache__)
         backend_src = PROJECT_ROOT / "backend"
@@ -58,21 +58,18 @@ def _create_backup() -> Path | None:
             backend_dst,
             ignore=shutil.ignore_patterns(".venv", "__pycache__", "*.pyc", "*.db"),
         )
-        
-        # Backup frontend src (excluding node_modules and dist)
-        frontend_src = PROJECT_ROOT / "frontend"
-        frontend_dst = backup_path / "frontend"
-        shutil.copytree(
-            frontend_src,
-            frontend_dst,
-            ignore=shutil.ignore_patterns("node_modules", "dist", ".vite"),
-        )
-        
+
+        # Backup web dist (the pre-built frontend)
+        web_dist_src = PROJECT_ROOT / "packages" / "web" / "dist"
+        if web_dist_src.exists():
+            web_dist_dst = backup_path / "packages" / "web" / "dist"
+            shutil.copytree(web_dist_src, web_dist_dst)
+
         # Cleanup old backups
         backups = sorted(BACKUP_DIR.glob("backup_*"), reverse=True)
         for old_backup in backups[MAX_BACKUPS:]:
             shutil.rmtree(old_backup, ignore_errors=True)
-        
+
         return backup_path
     except Exception:
         return None
@@ -103,59 +100,18 @@ async def _install_backend_deps() -> dict[str, Any]:
     backend_dir = PROJECT_ROOT / "backend"
     venv_pip = backend_dir / ".venv" / "bin" / "pip"
     requirements = backend_dir / "requirements.txt"
-    
+
     if not requirements.exists():
         return {"success": False, "error": "requirements.txt not found"}
-    
+
     if not venv_pip.exists():
         return {"success": False, "error": ".venv/bin/pip not found"}
-    
+
     returncode, stdout, stderr = await _run_command(
         [str(venv_pip), "install", "-r", "requirements.txt"],
         backend_dir,
     )
-    
-    return {
-        "success": returncode == 0,
-        "returncode": returncode,
-        "stdout": stdout[-2000:] if len(stdout) > 2000 else stdout,
-        "stderr": stderr[-2000:] if len(stderr) > 2000 else stderr,
-    }
 
-
-async def _install_frontend_deps() -> dict[str, Any]:
-    """Install frontend npm dependencies."""
-    frontend_dir = PROJECT_ROOT / "frontend"
-    
-    if not (frontend_dir / "package.json").exists():
-        return {"success": False, "error": "package.json not found"}
-    
-    returncode, stdout, stderr = await _run_command(
-        ["npm", "install"],
-        frontend_dir,
-    )
-    
-    return {
-        "success": returncode == 0,
-        "returncode": returncode,
-        "stdout": stdout[-2000:] if len(stdout) > 2000 else stdout,
-        "stderr": stderr[-2000:] if len(stderr) > 2000 else stderr,
-    }
-
-
-async def _build_frontend() -> dict[str, Any]:
-    """Build frontend assets."""
-    frontend_dir = PROJECT_ROOT / "frontend"
-    
-    if not (frontend_dir / "package.json").exists():
-        return {"success": False, "error": "Frontend not found"}
-    
-    # Run npm run build
-    returncode, stdout, stderr = await _run_command(
-        ["npm", "run", "build"],
-        frontend_dir,
-    )
-    
     return {
         "success": returncode == 0,
         "returncode": returncode,
@@ -170,9 +126,12 @@ async def update_system(
     file: UploadFile = File(..., description="Tar.gz archive of source code"),
 ) -> dict[str, Any]:
     """
-    Update system with new source code.
-    
-    Expects a tar.gz archive containing the project structure.
+    Update system with new source code and pre-built frontend.
+
+    Expects a tar.gz archive containing:
+    - backend/ source code
+    - packages/web/dist/ pre-built frontend
+
     Protected files (config.json, .venv, *.db) will not be overwritten.
     """
     # Verify token
@@ -181,38 +140,36 @@ async def update_system(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid deploy token",
         )
-    
+
     # Verify file type
     if not file.filename or not file.filename.endswith((".tar.gz", ".tgz")):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="File must be a .tar.gz archive",
         )
-    
+
     result: dict[str, Any] = {
         "backup": None,
         "extracted_files": 0,
         "skipped_files": [],
         "backend_deps": None,
-        "frontend_deps": None,
-        "build": None,
         "restart": None,
     }
-    
+
     # Create backup
     backup_path = _create_backup()
     if backup_path:
         result["backup"] = str(backup_path.relative_to(PROJECT_ROOT))
-    
+
     # Extract to temp directory first
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp_path = Path(tmpdir)
         archive_path = tmp_path / "upload.tar.gz"
-        
+
         # Save uploaded file
         content = await file.read()
         archive_path.write_bytes(content)
-        
+
         # Extract archive
         try:
             with tarfile.open(archive_path, "r:gz") as tar:
@@ -222,52 +179,40 @@ async def update_system(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Failed to extract archive: {e}",
             )
-        
+
         extracted_root = tmp_path / "extracted"
-        
+
         # Find the actual root (might be nested in a directory)
         contents = list(extracted_root.iterdir())
         if len(contents) == 1 and contents[0].is_dir():
             extracted_root = contents[0]
-        
+
         # Copy files to project, respecting protected paths
         for src_file in extracted_root.rglob("*"):
             if not src_file.is_file():
                 continue
-            
+
             rel_path = str(src_file.relative_to(extracted_root))
-            
+
             if _is_protected(rel_path):
                 result["skipped_files"].append(rel_path)
                 continue
-            
+
             dst_file = PROJECT_ROOT / rel_path
             dst_file.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(src_file, dst_file)
             result["extracted_files"] += 1
-    
+
     # Install backend dependencies
     result["backend_deps"] = await _install_backend_deps()
     if not result["backend_deps"]["success"]:
         result["restart"] = {"scheduled": False, "reason": "Backend deps install failed"}
         return result
-    
-    # Install frontend dependencies
-    result["frontend_deps"] = await _install_frontend_deps()
-    if not result["frontend_deps"]["success"]:
-        result["restart"] = {"scheduled": False, "reason": "Frontend deps install failed"}
-        return result
-    
-    # Build frontend
-    result["build"] = await _build_frontend()
-    if not result["build"]["success"]:
-        result["restart"] = {"scheduled": False, "reason": "Frontend build failed"}
-        return result
-    
-    # Schedule restart after response is sent (only if all steps succeeded)
+
+    # Schedule restart after response is sent
     result["restart"] = {"scheduled": True, "method": "systemd", "delay": 2}
     asyncio.get_event_loop().call_later(2, _schedule_restart)
-    
+
     return result
 
 

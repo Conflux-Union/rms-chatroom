@@ -51,8 +51,7 @@
     },
     "files": [
       "**/*",
-      "!frontend/node_modules",
-      "!frontend/src"
+      "../packages/electron-renderer/dist/**/*"
     ],
     "publish": [
       {

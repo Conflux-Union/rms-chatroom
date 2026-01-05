@@ -1,6 +1,17 @@
 {
-  "dependencies": {
-    "vue": "^3.5.26",
-    "vue-tsc": "^3.2.1"
+  "name": "rms-discord",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev:web": "pnpm --filter @rms-discord/web dev",
+    "dev:electron": "pnpm --filter @rms-discord/electron-renderer dev",
+    "build:web": "pnpm --filter @rms-discord/web build",
+    "build:electron": "pnpm --filter @rms-discord/electron-renderer build",
+    "electron:start": "cd electron && npm start",
+    "electron:build": "pnpm build:electron && cd electron && npm run build"
+  },
+  "devDependencies": {
+    "typescript": "~5.9.3"
   }
 }
