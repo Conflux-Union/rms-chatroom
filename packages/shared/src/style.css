@@ -21,7 +21,7 @@ html, body {
 }
 
 body.bg-loaded {
-  background-image: url('/img/bg.webp');
+  background-image: url('/bg.webp');
 }
 
 #app {

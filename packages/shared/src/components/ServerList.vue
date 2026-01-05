@@ -107,9 +107,6 @@ async function deleteServer() {
 .server-list {
   width: 80px;
   height: 100vh;
-  background: var(--surface-glass);
-  backdrop-filter: blur(var(--blur-strength));
-  -webkit-backdrop-filter: blur(var(--blur-strength));
   border-right: 2px solid rgba(255, 166, 133, 0.50);
   display: flex;
   flex-direction: column;
