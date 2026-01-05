@@ -176,7 +176,7 @@ function createWindow() {
 
   win.setMenuBarVisibility(false);
 
-  const distDir = path.join(__dirname, "frontend", "dist");
+  const distDir = path.join(__dirname, "..", "packages", "electron-renderer", "dist");
   const indexHtml = path.join(distDir, "index.html");
   win.loadFile(indexHtml);
 
