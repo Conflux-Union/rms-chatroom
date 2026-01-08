@@ -13,7 +13,5 @@ qqmusic-api-python>=0.3.0
 pyncm>=1.8.0
 qrcode[pil]>=8.0
 av>=16.0.0
-# 语音识别服务依赖
 flask>=2.3.0
-alibabacloud_nls20180518>=1.0.0
 websocket-client>=1.6.0
