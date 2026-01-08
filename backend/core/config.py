@@ -26,6 +26,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "livekit_internal_host": "ws://127.0.0.1:7880",
     "livekit_api_key": "rms_discord",
     "livekit_api_secret": "rmsdiscordsecretkey123456",
+    "voice_server_url": "http://localhost:8001",  # 语音识别服务器端口
 }
 
 
@@ -64,6 +65,7 @@ class Settings(BaseSettings):
     livekit_internal_host: str = "ws://127.0.0.1:7880"
     livekit_api_key: str = "rms_discord"
     livekit_api_secret: str = "rmsdiscordsecretkey123456"
+    voice_server_url: str = "http://localhost:8001"  # 语音识别服务器端口
 
 
 def _env_overrides() -> dict[str, Any]:
