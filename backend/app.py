@@ -15,7 +15,7 @@ from .core.config import get_settings
 
 logger = logging.getLogger(__name__)
 from .core.database import init_db
-from .routers import auth, servers, channels, messages, files, system, music, bug_report, app_update
+from .routers import auth, servers, channels, messages, files, system, music, bug_report, app_update, voice_recognition
 from .websocket import chat, voice, music as music_ws
 
 
@@ -67,6 +67,7 @@ app.include_router(system.router)
 app.include_router(music.router)
 app.include_router(bug_report.router)
 app.include_router(app_update.router)
+app.include_router(voice_recognition.router)
 
 # WebSocket routes
 app.include_router(chat.router)
