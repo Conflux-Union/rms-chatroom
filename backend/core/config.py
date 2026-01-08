@@ -27,6 +27,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "livekit_api_key": "rms_discord",
     "livekit_api_secret": "rmsdiscordsecretkey123456",
     "voice_server_url": "http://localhost:8001",  # 语音识别服务器端口
+    "voice_service_url": "http://localhost:5000",  # 独立语音转文字服务地址
+    "voice_callback_base_url": "http://localhost:8000/api/voice-recognition/callback",  # 回调地址
 }
 
 
@@ -65,7 +67,9 @@ class Settings(BaseSettings):
     livekit_internal_host: str = "ws://127.0.0.1:7880"
     livekit_api_key: str = "rms_discord"
     livekit_api_secret: str = "rmsdiscordsecretkey123456"
-    voice_server_url: str = "http://localhost:8001"  # 语音识别服务器端口
+    voice_server_url: str = "http://api.hurrybili1016hjh.cc/alivoice/"  # 语音识别服务器端口
+    voice_service_url: str = "http://api.hurrybili1016hjh.cc/alivoice/"  # 独立语音转文字服务地址
+    voice_callback_base_url: str = "http://localhost:8000/api/voice-recognition/callback"  # 回调地址
 
 
 def _env_overrides() -> dict[str, Any]:

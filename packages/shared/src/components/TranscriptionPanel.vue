@@ -1,0 +1,708 @@
+<script setup lang="ts">
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { useAuthStore } from '../stores/auth'
+import { useChatStore } from '../stores/chat'
+import { MessageSquare, Loader, ChevronUp, ChevronDown, User, Clock } from 'lucide-vue-next'
+
+const API_BASE = import.meta.env.VITE_API_BASE || ''
+
+const auth = useAuthStore()
+const chat = useChatStore()
+
+// Props
+interface Props {
+  isExpanded: boolean
+}
+const props = defineProps<Props>()
+
+// Emits
+const emit = defineEmits<{
+  'toggle-expand': []
+}>()
+
+// State
+const transcriptionResults = ref<Array<{
+  id: string
+  speaker: string
+  text: string
+  timestamp: Date
+  confidence?: number
+}>>([])
+
+const summaryProgress = ref(0)
+const summaryResult = ref('')
+const summaryLoading = ref(false)
+const sessionId = ref<string | null>(null)
+const isTranscribing = ref(false)
+const error = ref('')
+const scrollContainer = ref<HTMLElement | null>(null)
+
+// WebSocket connection
+let websocket: WebSocket | null = null
+let eventSource: EventSource | null = null
+
+// Computed
+const hasTranscriptionTask = computed(() => 
+  transcriptionResults.value.length > 0 || isTranscribing.value
+)
+
+const hasPermission = computed(() => 
+  (auth.user?.permission_level ?? 0) > 3
+)
+
+// Methods
+function scrollToBottom() {
+  if (scrollContainer.value) {
+    scrollContainer.value.scrollTop = scrollContainer.value.scrollHeight
+  }
+}
+
+function connectWebSocket() {
+  if (!sessionId.value || !chat.currentChannel) return
+  
+  const wsUrl = `${API_BASE.replace('http', 'ws')}/ws/transcription/${chat.currentChannel.id}/${sessionId.value}?token=${auth.token}`
+  
+  websocket = new WebSocket(wsUrl)
+  
+  websocket.onopen = () => {
+    console.log('Transcription WebSocket connected')
+  }
+  
+  websocket.onmessage = (event) => {
+    try {
+      const data = JSON.parse(event.data)
+      
+      if (data.type === 'transcription_result') {
+        // Add new transcription result
+        transcriptionResults.value.push({
+          id: data.id || Date.now().toString(),
+          speaker: data.speaker || '未知',
+          text: data.text,
+          timestamp: new Date(data.timestamp),
+          confidence: data.confidence
+        })
+        
+        // Auto scroll to bottom
+        setTimeout(scrollToBottom, 50)
+      } else if (data.type === 'session_ended') {
+        isTranscribing.value = false
+        sessionId.value = null
+      } else if (data.type === 'error') {
+        error.value = data.message
+        isTranscribing.value = false
+      }
+    } catch (e) {
+      console.error('Failed to parse WebSocket message:', e)
+    }
+  }
+  
+  websocket.onerror = (err) => {
+    console.error('WebSocket error:', err)
+    error.value = '实时连接出现错误'
+  }
+  
+  websocket.onclose = () => {
+    console.log('Transcription WebSocket disconnected')
+    websocket = null
+  }
+}
+
+function connectSummarySSE() {
+  if (!sessionId.value || !chat.currentChannel) return
+  
+  const sseUrl = `${API_BASE}/api/voice-recognition/summary/stream/${sessionId.value}?token=${auth.token}`
+  
+  eventSource = new EventSource(sseUrl)
+  
+  eventSource.onopen = () => {
+    console.log('Summary SSE connected')
+    summaryLoading.value = true
+    summaryProgress.value = 0
+  }
+  
+  eventSource.onmessage = (event) => {
+    try {
+      const data = JSON.parse(event.data)
+      
+      if (data.type === 'progress') {
+        summaryProgress.value = data.progress
+      } else if (data.type === 'summary') {
+        summaryResult.value = data.content
+        summaryLoading.value = false
+        summaryProgress.value = 100
+        eventSource?.close()
+        eventSource = null
+      } else if (data.type === 'error') {
+        error.value = data.message
+        summaryLoading.value = false
+        eventSource?.close()
+        eventSource = null
+      }
+    } catch (e) {
+      console.error('Failed to parse SSE message:', e)
+    }
+  }
+  
+  eventSource.onerror = () => {
+    console.error('SSE connection error')
+    summaryLoading.value = false
+    eventSource?.close()
+    eventSource = null
+  }
+}
+
+async function startTranscription() {
+  if (!chat.currentChannel || isTranscribing.value || !hasPermission.value) return
+  
+  try {
+    error.value = ''
+    
+    const response = await fetch(
+      `${API_BASE}/api/voice-recognition/session`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${auth.token}`,
+        },
+        body: JSON.stringify({
+          channel_id: chat.currentChannel.id,
+          language: 'zh-cn'
+        })
+      }
+    )
+    
+    if (!response.ok) {
+      const err = await response.json()
+      throw new Error(err.detail || '启动转录失败')
+    }
+    
+    const data = await response.json()
+    sessionId.value = data.session_id
+    isTranscribing.value = true
+    
+    // Connect WebSocket for real-time results
+    connectWebSocket()
+    
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : '启动转录失败'
+    console.error('Failed to start transcription:', e)
+    throw e // Re-throw to parent component
+  }
+}
+
+async function stopTranscription() {
+  if (!sessionId.value || !hasPermission.value) return
+  
+  try {
+    const response = await fetch(
+      `${API_BASE}/api/voice-recognition/session/${sessionId.value}/stop`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${auth.token}`,
+        }
+      }
+    )
+    
+    if (response.ok) {
+      isTranscribing.value = false
+      
+      // Start summary generation
+      if (transcriptionResults.value.length > 0) {
+        connectSummarySSE()
+      }
+      
+      // Close WebSocket
+      if (websocket) {
+        websocket.close()
+        websocket = null
+      }
+    }
+  } catch (e) {
+    console.error('Failed to stop transcription:', e)
+    error.value = '停止转录失败'
+    throw e // Re-throw to parent component
+  }
+}
+
+function clearResults() {
+  transcriptionResults.value = []
+  summaryResult.value = ''
+  summaryProgress.value = 0
+  summaryLoading.value = false
+  error.value = ''
+  sessionId.value = null
+  isTranscribing.value = false
+  
+  // Close connections
+  if (websocket) {
+    websocket.close()
+    websocket = null
+  }
+  if (eventSource) {
+    eventSource.close()
+    eventSource = null
+  }
+}
+
+function formatTime(date: Date): string {
+  return date.toLocaleTimeString('zh-CN', {
+    hour12: false,
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit'
+  })
+}
+
+// Lifecycle
+onMounted(() => {
+  // Auto scroll to bottom when new results arrive
+  watch(() => transcriptionResults.value.length, () => {
+    setTimeout(scrollToBottom, 50)
+  })
+})
+
+onUnmounted(() => {
+  // Clean up connections
+  if (websocket) {
+    websocket.close()
+  }
+  if (eventSource) {
+    eventSource.close()
+  }
+})
+
+// Expose methods for parent component
+defineExpose({
+  startTranscription,
+  stopTranscription,
+  clearResults,
+  hasTranscriptionTask
+})
+</script>
+
+<template>
+  <div class="transcription-panel" :class="{ expanded: props.isExpanded }">
+    <!-- Panel Header -->
+    <div class="panel-header" @click="emit('toggle-expand')">
+      <MessageSquare :size="16" />
+      <span class="header-title">语音转文字</span>
+      <div class="header-status">
+        <span v-if="isTranscribing" class="status recording">录制中</span>
+        <span v-else-if="hasTranscriptionTask" class="status has-content">有内容</span>
+        <span v-else class="status empty">暂无任务</span>
+      </div>
+      <button class="expand-toggle">
+        <ChevronUp v-if="props.isExpanded" :size="16" />
+        <ChevronDown v-else :size="16" />
+      </button>
+    </div>
+
+    <!-- Panel Content -->
+    <div v-if="props.isExpanded" class="panel-content">
+      <!-- Error Display -->
+      <div v-if="error" class="error-message">
+        {{ error }}
+        <button class="error-dismiss" @click="error = ''">×</button>
+      </div>
+
+      <!-- Empty State -->
+      <div v-if="!hasTranscriptionTask" class="empty-state">
+        <MessageSquare :size="48" class="empty-icon" />
+        <p class="empty-text">当前没有语音转文字任务</p>
+        <p class="empty-hint">点击下方按钮开始录制</p>
+      </div>
+
+      <!-- Transcription Results -->
+      <div v-else class="transcription-content">
+        <div class="results-section">
+          <div class="section-header">
+            <h4>实时转录结果</h4>
+            <button v-if="!isTranscribing" class="clear-btn" @click="clearResults">
+              清除
+            </button>
+          </div>
+          
+          <div ref="scrollContainer" class="results-container">
+            <div
+              v-for="result in transcriptionResults"
+              :key="result.id"
+              class="result-item"
+            >
+              <div class="result-header">
+                <div class="speaker-info">
+                  <User :size="14" />
+                  <span class="speaker-name">{{ result.speaker }}</span>
+                </div>
+                <div class="result-time">
+                  <Clock :size="12" />
+                  <span class="time-text">{{ formatTime(result.timestamp) }}</span>
+                </div>
+              </div>
+              <div class="result-text">{{ result.text }}</div>
+              <div v-if="result.confidence" class="result-confidence">
+                置信度: {{ Math.round(result.confidence * 100) }}%
+              </div>
+            </div>
+            
+            <!-- Loading indicator for active transcription -->
+            <div v-if="isTranscribing" class="transcribing-indicator">
+              <Loader :size="16" class="spinner" />
+              <span>正在识别语音...</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Summary Section -->
+        <div v-if="summaryLoading || summaryResult" class="summary-section">
+          <div class="section-header">
+            <h4>内容总结</h4>
+          </div>
+          
+          <div v-if="summaryLoading" class="summary-loading">
+            <div class="loading-header">
+              <Loader :size="16" class="spinner" />
+              <span>正在生成总结...</span>
+            </div>
+            <div class="progress-bar">
+              <div class="progress-fill" :style="{ width: summaryProgress + '%' }"></div>
+            </div>
+            <div class="progress-text">{{ summaryProgress }}%</div>
+          </div>
+          
+          <div v-else-if="summaryResult" class="summary-result">
+            {{ summaryResult }}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<style scoped>
+.transcription-panel {
+  background: var(--surface-glass);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-radius: var(--radius-lg);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  margin-top: 12px;
+  overflow: hidden;
+  transition: all 0.3s ease;
+}
+
+.transcription-panel.expanded {
+  max-height: 400px;
+}
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  cursor: pointer;
+  transition: background 0.2s ease;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.panel-header:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.header-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-text-main);
+}
+
+.header-status {
+  margin-left: auto;
+}
+
+.status {
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-weight: 500;
+}
+
+.status.recording {
+  background: var(--color-error, #ef4444);
+  color: #fff;
+}
+
+.status.has-content {
+  background: var(--color-success, #10b981);
+  color: #fff;
+}
+
+.status.empty {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--color-text-muted);
+}
+
+.expand-toggle {
+  background: none;
+  border: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+
+.expand-toggle:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--color-text-main);
+}
+
+.panel-content {
+  max-height: 350px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.error-message {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: var(--radius-md);
+  margin: 12px 16px;
+  font-size: 13px;
+  color: var(--color-error, #ef4444);
+}
+
+.error-dismiss {
+  background: none;
+  border: none;
+  color: var(--color-error, #ef4444);
+  cursor: pointer;
+  font-size: 16px;
+  padding: 0 4px;
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+  text-align: center;
+}
+
+.empty-icon {
+  color: var(--color-text-muted);
+  margin-bottom: 16px;
+  opacity: 0.6;
+}
+
+.empty-text {
+  color: var(--color-text-main);
+  font-size: 16px;
+  font-weight: 500;
+  margin: 0 0 8px 0;
+}
+
+.empty-hint {
+  color: var(--color-text-muted);
+  font-size: 13px;
+  margin: 0;
+}
+
+.transcription-content {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.results-section {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px 8px;
+}
+
+.section-header h4 {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-main);
+  margin: 0;
+}
+
+.clear-btn {
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 4px 8px;
+  font-size: 12px;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.clear-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+  color: var(--color-text-main);
+}
+
+.results-container {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 16px 12px;
+  scroll-behavior: smooth;
+}
+
+.result-item {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  margin-bottom: 8px;
+  border-left: 3px solid var(--color-primary, #6366f1);
+}
+
+.result-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.speaker-info {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.speaker-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-primary, #6366f1);
+}
+
+.result-time {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.time-text {
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
+
+.result-text {
+  font-size: 14px;
+  line-height: 1.4;
+  color: var(--color-text-main);
+  word-wrap: break-word;
+}
+
+.result-confidence {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  margin-top: 4px;
+}
+
+.transcribing-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  background: rgba(16, 185, 129, 0.1);
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  color: var(--color-success, #10b981);
+}
+
+.summary-section {
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  margin-top: 8px;
+}
+
+.summary-loading {
+  padding: 0 16px 16px;
+}
+
+.loading-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  font-size: 13px;
+  color: var(--color-primary, #6366f1);
+}
+
+.progress-bar {
+  width: 100%;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.progress-fill {
+  height: 100%;
+  background: var(--color-primary, #6366f1);
+  transition: width 0.3s ease;
+  border-radius: 2px;
+}
+
+.progress-text {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
+.summary-result {
+  padding: 0 16px 16px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--color-text-main);
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: var(--radius-md);
+  margin: 0 16px 16px;
+  padding: 12px;
+  word-wrap: break-word;
+}
+
+.spinner {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Scrollbar styling */
+.results-container::-webkit-scrollbar {
+  width: 6px;
+}
+
+.results-container::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+}
+
+.results-container::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 3px;
+}
+
+.results-container::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.5);
+}
+</style>

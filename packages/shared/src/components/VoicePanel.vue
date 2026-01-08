@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch, nextTick } from 'vue'
+import { ref, computed, onMounted, watch, nextTick, Transition } from 'vue'
 import { useChatStore } from '../stores/chat'
 import { useVoiceStore } from '../stores/voice'
 import { useAuthStore } from '../stores/auth'
-import { Volume2, VolumeX, Mic, MicOff, Phone, AlertTriangle, Crown, Link, Copy, Check, UserX, Monitor, MonitorOff } from 'lucide-vue-next'
+import { Volume2, VolumeX, Mic, MicOff, Phone, AlertTriangle, Crown, Link, Copy, Check, UserX, Monitor, MonitorOff, MessageSquare } from 'lucide-vue-next'
+import TranscriptionPanel from './TranscriptionPanel.vue'
 
 // Detect iOS devices
 const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
@@ -24,6 +25,18 @@ const inviteError = ref('')
 
 onMounted(() => {
   voice.enumerateDevices()
+  
+  // Check transcription lock status when channel changes
+  if (chat.currentChannel) {
+    checkTranscriptionLock()
+  }
+})
+
+// Watch for channel changes to update transcription lock status
+watch(() => chat.currentChannel, (newChannel) => {
+  if (newChannel) {
+    checkTranscriptionLock()
+  }
 })
 
 // Host mode computed
@@ -32,6 +45,15 @@ const isCurrentUserHost = computed(() =>
 )
 const hostButtonDisabled = computed(() => 
   voice.hostModeEnabled && !isCurrentUserHost.value
+)
+
+// Transcription computed
+const canUseTranscription = computed(() => 
+  (auth.user?.permission_level ?? 0) > 3
+)
+
+const transcriptionButtonDisabled = computed(() => 
+  transcriptionLocked.value && !transcriptionActive.value
 )
 
 // Volume warning dialog state
@@ -53,6 +75,14 @@ const contextMenu = ref<{ show: boolean; x: number; y: number; participantId: st
 const screenShareExpanded = ref(true)
 const screenShareContainer = ref<HTMLElement | null>(null)
 const localScreenShareContainer = ref<HTMLElement | null>(null)
+
+// Transcription state
+const transcriptionExpanded = ref(false)
+const transcriptionPanel = ref<InstanceType<typeof TranscriptionPanel> | null>(null)
+const transcriptionLocked = ref(false)
+const transcriptionActive = ref(false)
+const longPressTimer = ref<number | null>(null)
+const LONG_PRESS_DURATION = 1000 // 1 second for long press
 
 // Computed: first remote screen share (show one at a time)
 const activeRemoteScreenShare = computed(() => {
@@ -233,6 +263,85 @@ function closeInviteDialog() {
   inviteError.value = ''
   inviteCopied.value = false
 }
+
+// Transcription methods
+async function checkTranscriptionLock() {
+  if (!chat.currentChannel) return
+  
+  try {
+    const response = await fetch(
+      `${API_BASE}/api/voice-recognition/status`,
+      {
+        headers: {
+          Authorization: `Bearer ${auth.token}`,
+        },
+      }
+    )
+    
+    if (response.ok) {
+      const data = await response.json()
+      transcriptionLocked.value = data.locked && data.channel_id !== chat.currentChannel.id
+    }
+  } catch (e) {
+    console.error('Failed to check transcription lock:', e)
+  }
+}
+
+function toggleTranscriptionPanel() {
+  transcriptionExpanded.value = !transcriptionExpanded.value
+}
+
+function handleTranscriptionMouseDown() {
+  if (!canUseTranscription.value || transcriptionButtonDisabled.value) return
+  
+  if (!transcriptionActive.value && !transcriptionPanel.value?.hasTranscriptionTask) {
+    // First click or no existing task - start immediately
+    startTranscription()
+  } else {
+    // Set up long press for stop
+    longPressTimer.value = window.setTimeout(() => {
+      stopTranscription()
+      longPressTimer.value = null
+    }, LONG_PRESS_DURATION)
+  }
+}
+
+function handleTranscriptionMouseUp() {
+  if (longPressTimer.value) {
+    clearTimeout(longPressTimer.value)
+    longPressTimer.value = null
+  }
+}
+
+function handleTranscriptionMouseLeave() {
+  if (longPressTimer.value) {
+    clearTimeout(longPressTimer.value)
+    longPressTimer.value = null
+  }
+}
+
+async function startTranscription() {
+  if (!transcriptionPanel.value) return
+  
+  try {
+    await transcriptionPanel.value.startTranscription()
+    transcriptionActive.value = true
+    transcriptionExpanded.value = true // Auto-expand panel
+  } catch (e) {
+    console.error('Failed to start transcription:', e)
+  }
+}
+
+async function stopTranscription() {
+  if (!transcriptionPanel.value) return
+  
+  try {
+    await transcriptionPanel.value.stopTranscription()
+    transcriptionActive.value = false
+  } catch (e) {
+    console.error('Failed to stop transcription:', e)
+  }
+}
 </script>
 
 <template>
@@ -298,78 +407,179 @@ function closeInviteDialog() {
       </div>
 
       <div v-else class="voice-connected">
-        <div class="voice-users">
-          <div
-            v-for="participant in voice.participants"
-            :key="participant.id"
-            class="voice-user-wrapper"
-            :class="{ swiped: swipedUserId === participant.id && !participant.isLocal && auth.isAdmin }"
-          >
-            <div
-              class="voice-user"
-              :class="{ speaking: participant.isSpeaking }"
-              @touchstart="!participant.isLocal && auth.isAdmin ? handleTouchStart($event, participant.id) : null"
-              @touchmove="!participant.isLocal && auth.isAdmin ? handleTouchMove($event, participant.id) : null"
-              @touchend="handleTouchEnd"
-              @contextmenu="!participant.isLocal && auth.isAdmin ? showContextMenu($event, participant.id) : null"
-            >
-              <div class="user-info">
-                <div class="user-avatar">
-                  {{ participant.name.charAt(0).toUpperCase() }}
+        <!-- 主要内容区域：用户和转录面板并排 -->
+        <div class="voice-main-content" :class="{ 'has-transcription': canUseTranscription && transcriptionExpanded }">
+          <!-- 左侧：语音用户列表 -->
+          <div class="voice-users-container">
+            <div class="voice-users-header">
+              <h4>语音用户 ({{ voice.participants.length }})</h4>
+              <button
+                v-if="canUseTranscription"
+                class="transcription-toggle-btn"
+                @click="toggleTranscriptionPanel"
+                :class="{ 'expanded': transcriptionExpanded }"
+                title="展开/收起语音转文字面板"
+              >
+                {{ transcriptionExpanded ? '‹' : '›' }}
+              </button>
+            </div>
+            <div class="voice-users">
+              <div
+                v-for="participant in voice.participants"
+                :key="participant.id"
+                class="voice-user-wrapper"
+                :class="{ swiped: swipedUserId === participant.id && !participant.isLocal && auth.isAdmin }"
+              >
+                <div
+                  class="voice-user"
+                  :class="{ speaking: participant.isSpeaking }"
+                  @touchstart="!participant.isLocal && auth.isAdmin ? handleTouchStart($event, participant.id) : null"
+                  @touchmove="!participant.isLocal && auth.isAdmin ? handleTouchMove($event, participant.id) : null"
+                  @touchend="handleTouchEnd"
+                  @contextmenu="!participant.isLocal && auth.isAdmin ? showContextMenu($event, participant.id) : null"
+                >
+                  <div class="user-info">
+                    <div class="user-avatar">
+                      {{ participant.name.charAt(0).toUpperCase() }}
+                    </div>
+                    <span class="user-name">
+                      {{ participant.name }}
+                      <span v-if="participant.isLocal" class="local-tag">(你)</span>
+                    </span>
+                    <MicOff v-if="participant.isMuted" class="status-icon" :size="14" />
+                    <Mic v-if="participant.isSpeaking" class="speaking-icon" :size="14" />
+                  </div>
+                  <div v-if="!participant.isLocal" class="volume-control">
+                    <!-- iOS: show mute toggle (volume control not supported) -->
+                    <template v-if="isIOS">
+                      <Volume2 class="volume-icon" :size="14" />
+                      <input
+                        type="range"
+                        class="volume-slider"
+                        min="0"
+                        max="300"
+                        :value="participant.volume"
+                        @input="handleVolumeChange(participant.id, $event)"
+                      />
+                      <span class="volume-value">{{ participant.volume }}%</span>
+                    </template>
+                    <!-- Non-iOS: show volume slider -->
+                    <template v-else>
+                      <Volume2 class="volume-icon" :size="14" />
+                      <input
+                        type="range"
+                        class="volume-slider"
+                        min="0"
+                        max="100"
+                        :value="participant.volume"
+                        @input="handleVolumeChange(participant.id, $event)"
+                      />
+                      <span class="volume-value">{{ participant.volume }}%</span>
+                    </template>
+                  </div>
                 </div>
-                <span class="user-name">
-                  {{ participant.name }}
-                  <span v-if="participant.isLocal" class="local-tag">(你)</span>
-                </span>
-                <MicOff v-if="participant.isMuted" class="status-icon" :size="14" />
-                <Mic v-if="participant.isSpeaking" class="speaking-icon" :size="14" />
-              </div>
-              <div v-if="!participant.isLocal" class="volume-control">
-                <!-- iOS: show mute toggle (volume control not supported) -->
-                <template v-if="isIOS">
-                  <Volume2 class="volume-icon" :size="14" />
-                  <input
-                    type="range"
-                    class="volume-slider"
-                    min="0"
-                    max="300"
-                    :value="participant.volume"
-                    @input="handleVolumeChange(participant.id, $event)"
-                  />
-                  <span class="volume-value">{{ participant.volume }}%</span>
-                </template>
-                <!-- Non-iOS: show volume slider -->
-                <template v-else>
-                  <Volume2 class="volume-icon" :size="14" />
-                  <input
-                    type="range"
-                    class="volume-slider"
-                    min="0"
-                    max="100"
-                    :value="participant.volume"
-                    @input="handleVolumeChange(participant.id, $event)"
-                  />
-                  <span class="volume-value">{{ participant.volume }}%</span>
-                </template>
+                <!-- Swipe action buttons -->
+                <div v-if="!participant.isLocal && auth.isAdmin" class="swipe-actions">
+                  <button 
+                    class="swipe-action-btn"
+                    @click="muteParticipant(participant.id)"
+                  >
+                    <MicOff :size="18" />
+                    <span>静音</span>
+                  </button>
+                  <button 
+                    class="swipe-action-btn kick"
+                    @click="kickParticipant(participant.id)"
+                  >
+                    <UserX :size="18" />
+                    <span>踢出</span>
+                  </button>
+                </div>
               </div>
             </div>
-            <!-- Swipe action buttons -->
-            <div v-if="!participant.isLocal && auth.isAdmin" class="swipe-actions">
-              <button 
-                class="swipe-action-btn"
-                @click="muteParticipant(participant.id)"
+
+            <!-- 语音控制按钮（移到用户容器内） -->
+            <div class="voice-controlss">
+              <button
+                class="control-btn glow-effect"
+                :class="{ active: voice.isMuted }"
+                @click="voice.toggleMute()"
+                :title="voice.isMuted ? '取消静音' : '静音'"
               >
-                <MicOff :size="18" />
-                <span>静音</span>
+                <MicOff v-if="voice.isMuted" :size="20" />
+                <Mic v-else :size="20" />
               </button>
-              <button 
-                class="swipe-action-btn kick"
-                @click="kickParticipant(participant.id)"
+              <button
+                class="control-btn glow-effect"
+                :class="{ active: voice.isDeafened }"
+                @click="voice.toggleDeafen()"
+                :title="voice.isDeafened ? '打开扬声器' : '关闭扬声器'"
               >
-                <UserX :size="18" />
-                <span>踢出</span>
+                <VolumeX v-if="voice.isDeafened" :size="20" />
+                <Volume2 v-else :size="20" />
+              </button>
+              <button
+                v-if="auth.isAdmin"
+                class="control-btn glow-effect"
+                :class="{ 
+                  'host-mode-active': voice.hostModeEnabled && isCurrentUserHost,
+                  'host-mode-disabled': hostButtonDisabled 
+                }"
+                :disabled="hostButtonDisabled"
+                @click="voice.toggleHostMode()"
+                :title="hostButtonDisabled ? '其他用户正在主持' : (voice.hostModeEnabled ? '关闭主持人模式' : '开启主持人模式')"
+              >
+                <Crown :size="20" />
+              </button>
+              <button
+                v-if="auth.isAdmin"
+                class="control-btn glow-effect invite-btn"
+                @click="createInviteLink"
+                title="创建邀请链接"
+              >
+                <Link :size="20" />
+              </button>
+              <button
+                v-if="canUseTranscription"
+                class="control-btn glow-effect"
+                :class="{ 
+                  'transcription-active': transcriptionActive,
+                  'transcription-disabled': transcriptionButtonDisabled 
+                }"
+                :disabled="transcriptionButtonDisabled"
+                @mousedown="handleTranscriptionMouseDown"
+                @mouseup="handleTranscriptionMouseUp"
+                @mouseleave="handleTranscriptionMouseLeave"
+                :title="transcriptionActive ? '长按停止转录' : (transcriptionButtonDisabled ? '其他频道正在使用' : '开始语音转文字')"
+              >
+                <MessageSquare :size="20" />
+              </button>
+              <button
+                class="control-btn glow-effect"
+                :class="{ 'screen-share-active': voice.isScreenSharing }"
+                @click="voice.toggleScreenShare()"
+                :title="voice.isScreenSharing ? '停止共享屏幕' : '共享屏幕'"
+              >
+                <MonitorOff v-if="voice.isScreenSharing" :size="20" />
+                <Monitor v-else :size="20" />
+              </button>
+              <button
+                class="control-btn disconnect glow-effect"
+                @click="voice.disconnect()"
+                title="断开连接"
+              >
+                <Phone :size="20" />
               </button>
             </div>
+          </div>
+          
+          <!-- 右侧：转录面板（仅在展开时显示）-->
+          <div v-if="canUseTranscription && transcriptionExpanded" class="transcription-panel-container">
+            <TranscriptionPanel
+              ref="transcriptionPanel"
+              :is-expanded="true"
+              @toggle-expand="toggleTranscriptionPanel"
+            />
           </div>
         </div>
 
@@ -377,64 +587,6 @@ function closeInviteDialog() {
         <div v-if="voice.hostModeEnabled" class="host-mode-banner">
           <Crown :size="14" />
           <span>{{ voice.hostModeHostName }} 正在主持</span>
-        </div>
-
-        <div class="voice-controlss">
-          <button
-            class="control-btn glow-effect"
-            :class="{ active: voice.isMuted }"
-            @click="voice.toggleMute()"
-            :title="voice.isMuted ? '取消静音' : '静音'"
-          >
-            <MicOff v-if="voice.isMuted" :size="20" />
-            <Mic v-else :size="20" />
-          </button>
-          <button
-            class="control-btn glow-effect"
-            :class="{ active: voice.isDeafened }"
-            @click="voice.toggleDeafen()"
-            :title="voice.isDeafened ? '打开扬声器' : '关闭扬声器'"
-          >
-            <VolumeX v-if="voice.isDeafened" :size="20" />
-            <Volume2 v-else :size="20" />
-          </button>
-          <button
-            v-if="auth.isAdmin"
-            class="control-btn glow-effect"
-            :class="{ 
-              'host-mode-active': voice.hostModeEnabled && isCurrentUserHost,
-              'host-mode-disabled': hostButtonDisabled 
-            }"
-            :disabled="hostButtonDisabled"
-            @click="voice.toggleHostMode()"
-            :title="hostButtonDisabled ? '其他用户正在主持' : (voice.hostModeEnabled ? '关闭主持人模式' : '开启主持人模式')"
-          >
-            <Crown :size="20" />
-          </button>
-          <button
-            v-if="auth.isAdmin"
-            class="control-btn glow-effect invite-btn"
-            @click="createInviteLink"
-            title="创建邀请链接"
-          >
-            <Link :size="20" />
-          </button>
-          <button
-            class="control-btn glow-effect"
-            :class="{ 'screen-share-active': voice.isScreenSharing }"
-            @click="voice.toggleScreenShare()"
-            :title="voice.isScreenSharing ? '停止共享屏幕' : '共享屏幕'"
-          >
-            <MonitorOff v-if="voice.isScreenSharing" :size="20" />
-            <Monitor v-else :size="20" />
-          </button>
-          <button
-            class="control-btn disconnect glow-effect"
-            @click="voice.disconnect()"
-            title="断开连接"
-          >
-            <Phone :size="20" />
-          </button>
         </div>
 
         <!-- Screen Share Display -->
@@ -580,13 +732,16 @@ function closeInviteDialog() {
 .voice-content {
   flex: 1;
   display: flex;
-  flex-direction: column;
-  min-width: 740px;
-  justify-content: center;
   align-items: center;
+  justify-content: center;
   padding: 24px;
   min-height: 0;
   overflow-y: auto;
+}
+
+.voice-content:has(.voice-connect) {
+  justify-content: center;
+  align-items: center;
 }
 
 .device-selection {
@@ -654,6 +809,8 @@ function closeInviteDialog() {
 
 .voice-connect {
   text-align: center;
+  align-self: center;
+  justify-self: center;
 }
 
 .voice-connect p {
@@ -686,7 +843,97 @@ function closeInviteDialog() {
 
 .voice-connected {
   width: 100%;
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+  flex: 1; /* 占满剩余空间 */
+}
+
+/* 主要内容区域：水平布局 */
+.voice-main-content {
+  display: flex;
+  flex-direction: row;
+  gap: 16px;
+  align-items: center; /* 垂直居中对齐 */
+  justify-content: center; /* 水平居中对齐 */
+  width: 100%;
+  height: 100%; /* 占满父容器高度 */
+}
+
+/* 当转录面板展开时，保持居中但左右分布 */
+.voice-main-content.has-transcription {
+  justify-content: center;
+  align-items: center; /* 保持垂直居中 */
+}
+
+/* 用户容器 */
+.voice-users-container {
+  flex: 0 0 400px;
+  display: flex;
+  flex-direction: column;
+  transition: none; /* 移除可能导致抽搐的过渡效果 */
+}
+
+/* 当没有转录面板时，用户容器独占空间 */
+.voice-main-content:not(.has-transcription) .voice-users-container {
+  flex: 1 1 auto;
   max-width: 400px;
+}
+
+/* 用户列表标题 */
+.voice-users-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  margin-bottom: 8px;
+  background: var(--surface-glass);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-radius: var(--radius-lg);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.voice-users-header h4 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text-main);
+}
+
+/* 展开/收起按钮 */
+.transcription-toggle-btn {
+  background: var(--surface-glass);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  color: var(--color-text-main);
+  font-size: 14px;
+  font-weight: bold;
+  padding: 4px 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-width: 24px;
+  text-align: center;
+}
+
+.transcription-toggle-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.transcription-toggle-btn.expanded {
+  background: var(--color-primary, #6366f1);
+  color: white;
+  border-color: var(--color-primary, #6366f1);
+}
+
+/* 转录面板容器 */
+.transcription-panel-container {
+  width: 400px;
+  min-height: 300px;
+  max-height: 75vh;
+  opacity: 1;
+  visibility: visible;
 }
 
 .voice-users {
@@ -895,9 +1142,9 @@ function closeInviteDialog() {
 
 .voice-controlss {
   display: flex;
-
   justify-content: center;
   gap: 12px;
+  margin-top: 12px;
 }
 
 .control-btn {
@@ -1072,6 +1319,38 @@ function closeInviteDialog() {
 
 .control-btn.screen-share-active:hover {
   filter: brightness(1.1);
+}
+
+/* Transcription Button */
+.control-btn.transcription-active {
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  border-color: #f59e0b;
+  color: white;
+  animation: pulse-transcription 2s infinite;
+}
+
+.control-btn.transcription-active:hover {
+  filter: brightness(1.1);
+}
+
+.control-btn.transcription-disabled {
+  background: var(--surface-glass);
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.control-btn.transcription-disabled:hover {
+  transform: none;
+  background: var(--surface-glass);
+}
+
+@keyframes pulse-transcription {
+  0%, 100% { 
+    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.5);
+  }
+  50% { 
+    box-shadow: 0 0 0 8px rgba(245, 158, 11, 0);
+  }
 }
 
 /* Screen Share Section */
@@ -1330,6 +1609,22 @@ function closeInviteDialog() {
   }
 
   .voice-connected {
+    max-width: 100%;
+  }
+
+  /* 移动端时改为垂直布局 */
+  .voice-main-content {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .voice-users-container {
+    flex: 1 1 auto;
+  }
+
+  .transcription-panel-container {
+    flex: 1 1 auto;
+    min-width: 0;
     max-width: 100%;
   }
 
