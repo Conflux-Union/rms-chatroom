@@ -69,7 +69,7 @@ class Settings(BaseSettings):
     livekit_api_secret: str = "rmsdiscordsecretkey123456"
     voice_server_url: str = "http://api.hurrybili1016hjh.cc:5000"  # 语音识别服务器端口
     voice_service_url: str = "http://api.hurrybili1016hjh.cc:5000"  # 独立语音转文字服务地址
-    voice_callback_base_url: str = "http://preview-chatroom.rms.net.cn/voice-recognition/callback"  # 回调地址
+    voice_callback_base_url: str = "http://preview-chatroom.rms.net.cn/api/voice-recognition/callback"  # 回调地址
 
 
 def _env_overrides() -> dict[str, Any]:

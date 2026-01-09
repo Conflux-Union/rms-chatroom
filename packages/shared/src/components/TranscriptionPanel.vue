@@ -42,13 +42,24 @@ let websocket: WebSocket | null = null
 let eventSource: EventSource | null = null
 
 // Computed
-const hasTranscriptionTask = computed(() => 
-  transcriptionResults.value.length > 0 || isTranscribing.value
-)
+const hasTranscriptionTask = computed(() => {
+  const result = transcriptionResults.value.length > 0 || isTranscribing.value
+  console.log('[TranscriptionPanel] hasTranscriptionTask computed:', {
+    resultsCount: transcriptionResults.value.length,
+    isTranscribing: isTranscribing.value,
+    hasTask: result
+  })
+  return result
+})
 
-const hasPermission = computed(() => 
-  (auth.user?.permission_level ?? 0) > 3
-)
+const hasPermission = computed(() => {
+  const result = (auth.user?.permission_level ?? 0) > 3
+  console.log('[TranscriptionPanel] hasPermission computed:', {
+    permission_level: auth.user?.permission_level,
+    hasPermission: result
+  })
+  return result
+})
 
 // Methods
 function scrollToBottom() {
@@ -58,21 +69,37 @@ function scrollToBottom() {
 }
 
 function connectWebSocket() {
-  if (!sessionId.value || !chat.currentChannel) return
+  console.log('[TranscriptionPanel] connectWebSocket called')
+  console.log('[TranscriptionPanel] - Session ID:', sessionId.value)
+  console.log('[TranscriptionPanel] - Current channel:', chat.currentChannel?.id)
+  
+  if (!sessionId.value || !chat.currentChannel) {
+    console.warn('[TranscriptionPanel] Cannot connect WebSocket - missing session or channel')
+    return
+  }
   
   const wsUrl = `${API_BASE.replace('http', 'ws')}/ws/transcription/${chat.currentChannel.id}/${sessionId.value}?token=${auth.token}`
+  console.log('[TranscriptionPanel] Connecting to WebSocket')
+  console.log('[TranscriptionPanel] - URL:', wsUrl.replace(/token=.+$/, 'token=***'))
   
   websocket = new WebSocket(wsUrl)
   
   websocket.onopen = () => {
-    console.log('Transcription WebSocket connected')
+    console.log('[TranscriptionPanel] ✅ WebSocket connected successfully')
   }
   
   websocket.onmessage = (event) => {
+    console.log('[TranscriptionPanel] WebSocket message received:', event.data)
     try {
       const data = JSON.parse(event.data)
+      console.log('[TranscriptionPanel] Parsed message:', data)
       
       if (data.type === 'transcription_result') {
+        console.log('[TranscriptionPanel] New transcription result')
+        console.log('[TranscriptionPanel] - Speaker:', data.speaker)
+        console.log('[TranscriptionPanel] - Text:', data.text)
+        console.log('[TranscriptionPanel] - Confidence:', data.confidence)
+        
         // Add new transcription result
         transcriptionResults.value.push({
           id: data.id || Date.now().toString(),
@@ -82,27 +109,36 @@ function connectWebSocket() {
           confidence: data.confidence
         })
         
+        console.log('[TranscriptionPanel] Total results:', transcriptionResults.value.length)
+        
         // Auto scroll to bottom
         setTimeout(scrollToBottom, 50)
       } else if (data.type === 'session_ended') {
+        console.log('[TranscriptionPanel] Session ended notification received')
         isTranscribing.value = false
         sessionId.value = null
       } else if (data.type === 'error') {
+        console.error('[TranscriptionPanel] Error from WebSocket:', data.message)
         error.value = data.message
         isTranscribing.value = false
+      } else {
+        console.log('[TranscriptionPanel] Unknown message type:', data.type)
       }
     } catch (e) {
-      console.error('Failed to parse WebSocket message:', e)
+      console.error('[TranscriptionPanel] Failed to parse WebSocket message:', e)
+      console.error('[TranscriptionPanel] Raw message:', event.data)
     }
   }
   
   websocket.onerror = (err) => {
-    console.error('WebSocket error:', err)
-    error.value = '实时连接出现错误'
+    console.error('[TranscriptionPanel] ❌ WebSocket error:', err)
   }
   
-  websocket.onclose = () => {
-    console.log('Transcription WebSocket disconnected')
+  websocket.onclose = (event) => {
+    console.log('[TranscriptionPanel] WebSocket closed')
+    console.log('[TranscriptionPanel] - Code:', event.code)
+    console.log('[TranscriptionPanel] - Reason:', event.reason)
+    console.log('[TranscriptionPanel] - Was clean:', event.wasClean)
     websocket = null
   }
 }
@@ -152,75 +188,136 @@ function connectSummarySSE() {
 }
 
 async function startTranscription() {
-  if (!chat.currentChannel || isTranscribing.value || !hasPermission.value) return
+  console.log('[TranscriptionPanel] startTranscription called')
+  console.log('[TranscriptionPanel] - Current channel:', chat.currentChannel?.id)
+  console.log('[TranscriptionPanel] - Is transcribing:', isTranscribing.value)
+  console.log('[TranscriptionPanel] - Has permission:', hasPermission.value)
+  console.log('[TranscriptionPanel] - User permission level:', auth.user?.permission_level)
+  
+  if (!chat.currentChannel || isTranscribing.value || !hasPermission.value) {
+    console.warn('[TranscriptionPanel] Conditions not met for starting transcription')
+    console.warn('[TranscriptionPanel] - Channel exists:', !!chat.currentChannel)
+    console.warn('[TranscriptionPanel] - Not already transcribing:', !isTranscribing.value)
+    console.warn('[TranscriptionPanel] - Has permission:', hasPermission.value)
+    return
+  }
   
   try {
     error.value = ''
     
-    const response = await fetch(
-      `${API_BASE}/api/voice-recognition/session`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${auth.token}`,
-        },
-        body: JSON.stringify({
-          channel_id: chat.currentChannel.id,
-          language: 'zh-cn'
-        })
-      }
-    )
+    const requestBody = {
+      channel_id: chat.currentChannel.id,
+      language: 'zh-cn'
+    }
+    const requestUrl = `${API_BASE}/api/voice-recognition/session`
+    
+    console.log('[TranscriptionPanel] Sending POST request')
+    console.log('[TranscriptionPanel] - URL:', requestUrl)
+    console.log('[TranscriptionPanel] - Body:', requestBody)
+    console.log('[TranscriptionPanel] - Token (first 20 chars):', auth.token?.substring(0, 20) + '...')
+    
+    const response = await fetch(requestUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${auth.token}`,
+      },
+      body: JSON.stringify(requestBody)
+    })
+    
+    console.log('[TranscriptionPanel] Response received')
+    console.log('[TranscriptionPanel] - Status:', response.status)
+    console.log('[TranscriptionPanel] - OK:', response.ok)
     
     if (!response.ok) {
       const err = await response.json()
+      console.error('[TranscriptionPanel] ❌ Error response:', err)
       throw new Error(err.detail || '启动转录失败')
     }
     
     const data = await response.json()
+    console.log('[TranscriptionPanel] ✅ Success response:', data)
+    
     sessionId.value = data.session_id
     isTranscribing.value = true
     
+    console.log('[TranscriptionPanel] - Session ID:', sessionId.value)
+    console.log('[TranscriptionPanel] - Is transcribing:', isTranscribing.value)
+    
     // Connect WebSocket for real-time results
+    console.log('[TranscriptionPanel] Connecting WebSocket...')
     connectWebSocket()
     
   } catch (e) {
     error.value = e instanceof Error ? e.message : '启动转录失败'
-    console.error('Failed to start transcription:', e)
+    console.error('[TranscriptionPanel] ❌ Failed to start transcription:', e)
+    console.error('[TranscriptionPanel] Error details:', {
+      message: e instanceof Error ? e.message : String(e),
+      stack: e instanceof Error ? e.stack : undefined,
+      error: e
+    })
     throw e // Re-throw to parent component
   }
 }
 
 async function stopTranscription() {
-  if (!sessionId.value || !hasPermission.value) return
+  console.log('[TranscriptionPanel] stopTranscription called')
+  console.log('[TranscriptionPanel] - Session ID:', sessionId.value)
+  console.log('[TranscriptionPanel] - Has permission:', hasPermission.value)
+  
+  if (!sessionId.value || !hasPermission.value) {
+    console.warn('[TranscriptionPanel] Conditions not met for stopping transcription')
+    console.warn('[TranscriptionPanel] - Has session ID:', !!sessionId.value)
+    console.warn('[TranscriptionPanel] - Has permission:', hasPermission.value)
+    return
+  }
   
   try {
-    const response = await fetch(
-      `${API_BASE}/api/voice-recognition/session/${sessionId.value}/stop`,
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${auth.token}`,
-        }
+    const requestUrl = `${API_BASE}/api/voice-recognition/session/${sessionId.value}/stop`
+    console.log('[TranscriptionPanel] Sending POST request to stop')
+    console.log('[TranscriptionPanel] - URL:', requestUrl)
+    
+    const response = await fetch(requestUrl, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${auth.token}`,
       }
-    )
+    })
+    
+    console.log('[TranscriptionPanel] Stop response received')
+    console.log('[TranscriptionPanel] - Status:', response.status)
+    console.log('[TranscriptionPanel] - OK:', response.ok)
     
     if (response.ok) {
       isTranscribing.value = false
+      console.log('[TranscriptionPanel] ✅ Transcription stopped successfully')
+      console.log('[TranscriptionPanel] - Results count:', transcriptionResults.value.length)
       
       // Start summary generation
       if (transcriptionResults.value.length > 0) {
+        console.log('[TranscriptionPanel] Starting summary generation...')
         connectSummarySSE()
+      } else {
+        console.log('[TranscriptionPanel] No results to summarize')
       }
       
       // Close WebSocket
       if (websocket) {
+        console.log('[TranscriptionPanel] Closing WebSocket connection')
         websocket.close()
         websocket = null
       }
+    } else {
+      const errorText = await response.text()
+      console.error('[TranscriptionPanel] ❌ Failed to stop, response not OK')
+      console.error('[TranscriptionPanel] Error response:', errorText)
     }
   } catch (e) {
-    console.error('Failed to stop transcription:', e)
+    console.error('[TranscriptionPanel] ❌ Failed to stop transcription:', e)
+    console.error('[TranscriptionPanel] Error details:', {
+      message: e instanceof Error ? e.message : String(e),
+      stack: e instanceof Error ? e.stack : undefined
+    })
     error.value = '停止转录失败'
     throw e // Re-throw to parent component
   }
@@ -257,18 +354,52 @@ function formatTime(date: Date): string {
 
 // Lifecycle
 onMounted(() => {
+  console.log('[TranscriptionPanel] Component mounted - Initial state report')
+  console.log('[TranscriptionPanel] - API_BASE:', API_BASE)
+  console.log('[TranscriptionPanel] - User:', auth.user)
+  console.log('[TranscriptionPanel] - Has permission:', hasPermission.value)
+  console.log('[TranscriptionPanel] - Permission level:', auth.user?.permission_level)
+  console.log('[TranscriptionPanel] - Current channel:', chat.currentChannel)
+  console.log('[TranscriptionPanel] - Is expanded:', props.isExpanded)
+  console.log('[TranscriptionPanel] - Has transcription task:', hasTranscriptionTask.value)
+  console.log('[TranscriptionPanel] - Is transcribing:', isTranscribing.value)
+  console.log('[TranscriptionPanel] - Session ID:', sessionId.value)
+  console.log('[TranscriptionPanel] - Token exists:', !!auth.token)
+  console.log('[TranscriptionPanel] - Environment:', {
+    VITE_API_BASE: import.meta.env.VITE_API_BASE,
+    MODE: import.meta.env.MODE,
+    DEV: import.meta.env.DEV,
+    PROD: import.meta.env.PROD
+  })
+  
   // Auto scroll to bottom when new results arrive
   watch(() => transcriptionResults.value.length, () => {
     setTimeout(scrollToBottom, 50)
   })
+  
+  // Periodic status check every 30 seconds
+  setInterval(() => {
+    console.log('[TranscriptionPanel] Periodic status check')
+    console.log('[TranscriptionPanel] - Is transcribing:', isTranscribing.value)
+    console.log('[TranscriptionPanel] - Session ID:', sessionId.value)
+    console.log('[TranscriptionPanel] - Results count:', transcriptionResults.value.length)
+    console.log('[TranscriptionPanel] - WebSocket connected:', websocket?.readyState === WebSocket.OPEN)
+    console.log('[TranscriptionPanel] - Error:', error.value)
+  }, 30000)
 })
 
 onUnmounted(() => {
+  console.log('[TranscriptionPanel] Component unmounting - cleanup')
+  console.log('[TranscriptionPanel] - Active session:', sessionId.value)
+  console.log('[TranscriptionPanel] - Was transcribing:', isTranscribing.value)
+  
   // Clean up connections
   if (websocket) {
+    console.log('[TranscriptionPanel] Closing WebSocket on unmount')
     websocket.close()
   }
   if (eventSource) {
+    console.log('[TranscriptionPanel] Closing EventSource on unmount')
     eventSource.close()
   }
 })
