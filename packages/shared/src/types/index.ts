@@ -39,6 +39,20 @@ export interface Message {
   content: string
   created_at: string
   attachments?: Attachment[]
+  // Message management fields
+  is_deleted?: boolean
+  deleted_by?: number
+  deleted_by_username?: string
+  edited_at?: string
+}
+
+export interface MuteRecord {
+  id: number
+  scope: 'global' | 'server' | 'channel'
+  server_id?: number
+  channel_id?: number
+  muted_until?: string  // ISO datetime or null for permanent
+  reason?: string
 }
 
 export interface VoiceUser {
