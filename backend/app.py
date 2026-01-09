@@ -30,8 +30,6 @@ async def lifespan(app: FastAPI):
     music.set_ws_broadcast(music_ws.broadcast_music_state)
     # Set up callback for late joiners to get current playback state
     music_ws.set_get_room_playback_state(music.get_room_playback_state)
-    yield
-
 
 app = FastAPI(title="RMS ChatRoom", lifespan=lifespan)
 
