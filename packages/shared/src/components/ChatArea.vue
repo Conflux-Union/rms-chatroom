@@ -495,7 +495,10 @@ function handleClickOutside(event: MouseEvent) {
         <div class="message-content">
           <div class="message-header">
             <span class="message-author">{{ msg.username }}</span>
-            <span class="message-time">{{ formatTime(msg.created_at) }}</span>
+            <span class="message-time">
+              {{ formatTime(msg.created_at) }}
+              <span v-if="msg.edited_at" class="edited-indicator">(已编辑于 {{ formatTime(msg.edited_at) }})</span>
+            </span>
             <button
               v-if="!msg.is_deleted"
               class="message-menu-btn"
@@ -532,9 +535,6 @@ function handleClickOutside(event: MouseEvent) {
           <div v-else>
             <div v-if="msg.content" class="message-text">
               {{ msg.content }}
-              <span v-if="msg.edited_at" class="edited-badge" :title="`编辑于 ${formatTime(msg.edited_at)}`">
-                (已编辑)
-              </span>
             </div>
             <!-- Attachments -->
             <div v-if="msg.attachments?.length" class="message-attachments">
@@ -817,6 +817,13 @@ function handleClickOutside(event: MouseEvent) {
 .message-time {
   font-size: 12px;
   color: var(--color-text-muted);
+}
+
+.edited-indicator {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  font-style: italic;
+  margin-left: 4px;
 }
 
 .message-text {
