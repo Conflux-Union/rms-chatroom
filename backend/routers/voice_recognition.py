@@ -24,6 +24,18 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/voice-recognition", tags=["voice-recognition"])
 
 
+def _get_voice_service_url() -> str:
+    """统一获取语音服务地址，配置为空时回退到本地默认服务。"""
+    try:
+        settings = get_settings()
+        base = getattr(settings, 'voice_service_url', '') or 'http://localhost:5000'
+        base = str(base).strip().rstrip('/')
+        logger.info(f"[VoiceRouter] Using voice_service_url={base}")
+        return base
+    except Exception:
+        return 'http://localhost:5000'
+
+
 class VoiceSessionCreate(BaseModel):
     """创建语音识别会话的请求模型"""
     room_config: Dict[str, Any] = Field(..., description="房间配置")
@@ -491,7 +503,7 @@ async def start_realtime_transcription(
         settings = get_settings()
         
         # 调用独立语音服务启动转录
-        voice_service_url = getattr(settings, 'voice_service_url', 'http://localhost:5000')
+        voice_service_url = _get_voice_service_url()
         
         # 构建请求数据
         transcription_data = {
@@ -550,7 +562,7 @@ async def push_audio_data(
     """向指定会话推送音频数据"""
     try:
         settings = get_settings()
-        voice_service_url = getattr(settings, 'voice_service_url', 'http://localhost:5000')
+        voice_service_url = _get_voice_service_url()
         
         # 转发到独立语音服务
         response = requests.post(
@@ -606,7 +618,7 @@ async def stream_sentences(
     """流式获取转录句子"""
     try:
         settings = get_settings()
-        voice_service_url = getattr(settings, 'voice_service_url', 'http://localhost:5000')
+        voice_service_url = _get_voice_service_url()
         
         # 构建查询参数
         params = {
@@ -651,7 +663,7 @@ async def sentences_server_sent_events(
     async def event_generator():
         try:
             settings = get_settings()
-            voice_service_url = getattr(settings, 'voice_service_url', 'http://localhost:5000')
+            voice_service_url = _get_voice_service_url()
             last_timestamp = 0
             
             while True:

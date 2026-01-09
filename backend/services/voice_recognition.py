@@ -36,9 +36,21 @@ EXECUTOR = ThreadPoolExecutor(max_workers=10)
 def get_voice_service_config():
     """获取语音服务配置"""
     settings = get_settings()
+    # 若未配置则使用合理默认，避免出现以 '/' 开头的相对路径导致 Invalid URL
+    base_url = (settings.voice_service_url or "http://localhost:5000").rstrip('/')
+    # 回调地址未配置时，回退到当前后端的 host:port
+    callback_base_url = (
+        settings.voice_callback_base_url
+        or f"http://{settings.host}:{settings.port}/api/voice-recognition/callback"
+    )
+    # 记录当前生效的配置，便于排查线上环境
+    try:
+        logger.info(f"[VoiceConfig] base_url={base_url}, callback_base_url={callback_base_url}")
+    except Exception:
+        pass
     return {
-        "base_url": settings.voice_service_url,
-        "callback_base_url": settings.voice_callback_base_url,
+        "base_url": base_url,
+        "callback_base_url": callback_base_url,
         "timeout": 30,
         "max_retries": 3
     }
@@ -312,10 +324,11 @@ class VoiceServiceClient:
     """独立语音服务客户端封装"""
     
     def __init__(self, base_url: str = "http://localhost:5000", timeout: int = 30):
-        self.base_url = base_url.rstrip('/')
+        # 如果上层传入空字符串，回退到默认值
+        self.base_url = (base_url or "http://localhost:5000").rstrip('/')
         self.timeout = timeout
         self.session = requests.Session()
-        
+    
     async def start_transcription(self, callback_url: str, room_config: Dict[str, Any], voice_config: Dict[str, Any]) -> Dict[str, Any]:
         """启动转录任务"""
         try:
@@ -419,8 +432,9 @@ class VoiceRecognitionService:
         self.active_sessions = ACTIVE_SESSIONS
         self.voice_client = get_voice_client()
         config = get_voice_service_config()
-        self.callback_base_url = config["callback_base_url"]
-    
+        # 若为空则兜底，确保形成绝对 URL
+        self.callback_base_url = (config.get("callback_base_url") or f"http://{get_settings().host}:{get_settings().port}/api/voice-recognition/callback")
+
     async def create_session(self, room_config: Dict[str, Any], voice_config: Dict[str, Any]) -> Dict[str, Any]:
         """创建语音识别会话"""
         async with _voice_service_lock:
