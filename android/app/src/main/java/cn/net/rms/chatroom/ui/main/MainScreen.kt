@@ -209,14 +209,20 @@ fun MainScreen(
                             authToken = authState.token,
                             currentUserId = authState.user?.id,
                             currentUserPermission = authState.user?.permissionLevel,
-                            onSendMessage = { mainViewModel.sendMessage(it) },
+                            lastReadMessageId = mainState.lastReadMessageId,
+                            showContinueReading = mainState.showContinueReading,
+                            onSendMessage = { content, attachmentIds -> mainViewModel.sendMessage(content, attachmentIds) },
+                            onUploadFile = { uri -> mainViewModel.uploadFile(uri) },
                             onRefresh = { mainViewModel.refreshMessages() },
                             onReconnect = { mainViewModel.reconnectWebSocket() },
                             onEditMessage = { messageId, content -> mainViewModel.editMessage(messageId, content) },
                             onDeleteMessage = { messageId -> mainViewModel.deleteMessage(messageId) },
                             onMuteUser = { userId, scope, mutedUntil, serverId, channelId, reason ->
                                 mainViewModel.muteUser(userId, scope, mutedUntil, serverId, channelId, reason)
-                            }
+                            },
+                            onSaveReadPosition = { messageId -> mainViewModel.saveReadPosition(messageId) },
+                            onDismissContinueReading = { mainViewModel.dismissContinueReading() },
+                            onGetMessageIndex = { messageId -> mainViewModel.getMessageIndexById(messageId) }
                         )
                     }
 

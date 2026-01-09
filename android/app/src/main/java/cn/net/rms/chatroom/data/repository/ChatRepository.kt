@@ -1,17 +1,25 @@
 package cn.net.rms.chatroom.data.repository
 
 import android.util.Log
+import android.content.Context
+import android.net.Uri
 import cn.net.rms.chatroom.data.api.ApiService
 import cn.net.rms.chatroom.data.api.CreateChannelRequest
 import cn.net.rms.chatroom.data.api.CreateServerRequest
 import cn.net.rms.chatroom.data.api.SendMessageBody
+import dagger.hilt.android.qualifiers.ApplicationContext
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.MultipartBody
+import okhttp3.RequestBody.Companion.toRequestBody
 import cn.net.rms.chatroom.data.local.MessageDao
 import cn.net.rms.chatroom.data.local.MessageEntity
+import cn.net.rms.chatroom.data.local.SettingsPreferences
 import cn.net.rms.chatroom.data.model.Channel
 import cn.net.rms.chatroom.data.model.ChannelType
 import cn.net.rms.chatroom.data.model.Message
 import cn.net.rms.chatroom.data.model.Server
 import cn.net.rms.chatroom.data.model.VoiceUser
+import cn.net.rms.chatroom.data.model.AttachmentResponse
 import cn.net.rms.chatroom.data.websocket.ChatWebSocket
 import cn.net.rms.chatroom.data.websocket.ConnectionState
 import cn.net.rms.chatroom.data.websocket.WebSocketEvent
@@ -28,11 +36,13 @@ import javax.inject.Singleton
 
 @Singleton
 class ChatRepository @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val api: ApiService,
     private val authRepository: AuthRepository,
     private val webSocket: ChatWebSocket,
     private val messageDao: MessageDao,
-    private val notificationHelper: NotificationHelper
+    private val notificationHelper: NotificationHelper,
+    private val settingsPreferences: SettingsPreferences
 ) {
     companion object {
         private const val TAG = "ChatRepository"
@@ -233,14 +243,14 @@ class ChatRepository @Inject constructor(
         }
     }
 
-    suspend fun sendMessage(channelId: Long, content: String): Result<Message> {
+    suspend fun sendMessage(channelId: Long, content: String, attachmentIds: List<Long> = emptyList()): Result<Message> {
         return try {
             val token = authRepository.getToken()
                 ?: return Result.failure(AuthException("未登录，请先登录"))
             val message = api.sendMessage(
                 authRepository.getAuthHeader(token),
                 channelId,
-                SendMessageBody(content)
+                SendMessageBody(content, attachmentIds)
             )
             _messages.value = _messages.value + message
             // Cache sent message
@@ -250,6 +260,49 @@ class ChatRepository @Inject constructor(
             Log.e(TAG, "sendMessage failed", e)
             Result.failure(e.toAuthException())
         }
+    }
+
+    suspend fun uploadFile(channelId: Long, uri: Uri): Result<AttachmentResponse> {
+        return try {
+            val token = authRepository.getToken()
+                ?: return Result.failure(AuthException("未登录，请先登录"))
+
+            val contentResolver = context.contentResolver
+            val mimeType = contentResolver.getType(uri) ?: "application/octet-stream"
+            val fileName = getFileName(uri) ?: "file"
+
+            val inputStream = contentResolver.openInputStream(uri)
+                ?: return Result.failure(Exception("无法读取文件"))
+
+            val bytes = inputStream.use { it.readBytes() }
+            val requestBody = bytes.toRequestBody(mimeType.toMediaTypeOrNull())
+            val part = MultipartBody.Part.createFormData("file", fileName, requestBody)
+
+            val response = api.uploadFile(authRepository.getAuthHeader(token), channelId, part)
+            Result.success(response)
+        } catch (e: Exception) {
+            Log.e(TAG, "uploadFile failed", e)
+            Result.failure(e.toAuthException())
+        }
+    }
+
+    private fun getFileName(uri: Uri): String? {
+        var name: String? = null
+        if (uri.scheme == "content") {
+            val cursor = context.contentResolver.query(uri, null, null, null, null)
+            cursor?.use {
+                if (it.moveToFirst()) {
+                    val index = it.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                    if (index >= 0) {
+                        name = it.getString(index)
+                    }
+                }
+            }
+        }
+        if (name == null) {
+            name = uri.path?.substringAfterLast('/')
+        }
+        return name
     }
 
     fun addMessage(message: Message) {
@@ -485,5 +538,14 @@ class ChatRepository @Inject constructor(
             Log.e(TAG, "getUserMutes failed", e)
             Result.failure(e.toAuthException())
         }
+    }
+
+    // Read position tracking
+    suspend fun getLastReadMessageId(channelId: Long): Long? {
+        return settingsPreferences.getLastReadMessageId(channelId)
+    }
+
+    suspend fun setLastReadMessageId(channelId: Long, messageId: Long) {
+        settingsPreferences.setLastReadMessageId(channelId, messageId)
     }
 }
