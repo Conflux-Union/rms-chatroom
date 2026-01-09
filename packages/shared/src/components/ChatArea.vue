@@ -360,7 +360,8 @@ function canMute(message: Message) {
 }
 
 // Message grouping: Discord-style consecutive message merging
-const MESSAGE_GROUP_THRESHOLD_MINUTES = 7
+const MESSAGE_GROUP_ADJACENT_THRESHOLD_MINUTES = 1
+const MESSAGE_GROUP_TOTAL_THRESHOLD_MINUTES = 7
 
 function shouldGroupWithPrevious(index: number): boolean {
   if (index === 0) return false
@@ -374,12 +375,39 @@ function shouldGroupWithPrevious(index: number): boolean {
   // Previous message is deleted, don't group (keep visual separation)
   if (prevMsg.is_deleted) return false
 
-  // Time gap exceeds threshold, don't group
   const currentTime = new Date(currentMsg.created_at).getTime()
   const prevTime = new Date(prevMsg.created_at).getTime()
   const diffMinutes = (currentTime - prevTime) / 1000 / 60
 
-  return diffMinutes <= MESSAGE_GROUP_THRESHOLD_MINUTES
+  // Adjacent messages must be within 1 minute
+  if (diffMinutes > MESSAGE_GROUP_ADJACENT_THRESHOLD_MINUTES) return false
+
+  // Find the first message in this group (walk backwards)
+  let firstMsgIndex = index - 1
+  while (firstMsgIndex > 0) {
+    const msg = chat.messages[firstMsgIndex]
+    const prevMsgInChain = chat.messages[firstMsgIndex - 1]
+
+    // Different user breaks the chain
+    if (msg.user_id !== prevMsgInChain.user_id) break
+    // Deleted message breaks the chain
+    if (prevMsgInChain.is_deleted) break
+
+    const msgTime = new Date(msg.created_at).getTime()
+    const prevMsgTime = new Date(prevMsgInChain.created_at).getTime()
+    const chainDiff = (msgTime - prevMsgTime) / 1000 / 60
+
+    // Gap > 1 minute breaks the chain
+    if (chainDiff > MESSAGE_GROUP_ADJACENT_THRESHOLD_MINUTES) break
+
+    firstMsgIndex--
+  }
+
+  // Check total time from first message in group
+  const firstMsgTime = new Date(chat.messages[firstMsgIndex].created_at).getTime()
+  const totalDiffMinutes = (currentTime - firstMsgTime) / 1000 / 60
+
+  return totalDiffMinutes <= MESSAGE_GROUP_TOTAL_THRESHOLD_MINUTES
 }
 
 // Edit message functions

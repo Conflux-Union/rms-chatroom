@@ -1478,7 +1478,8 @@ private fun formatTimestamp(timestamp: String): String {
 }
 
 // Message grouping: Discord-style consecutive message merging
-private const val MESSAGE_GROUP_THRESHOLD_MINUTES = 7L
+private const val MESSAGE_GROUP_ADJACENT_THRESHOLD_MINUTES = 1L
+private const val MESSAGE_GROUP_TOTAL_THRESHOLD_MINUTES = 7L
 
 private fun shouldGroupWithPrevious(messages: List<Message>, index: Int): Boolean {
     if (index == 0) return false
@@ -1499,7 +1500,40 @@ private fun shouldGroupWithPrevious(messages: List<Message>, index: Int): Boolea
         val currentTime = Instant.parse(currentTimestamp)
         val prevTime = Instant.parse(prevTimestamp)
         val diffMinutes = java.time.Duration.between(prevTime, currentTime).toMinutes()
-        diffMinutes <= MESSAGE_GROUP_THRESHOLD_MINUTES
+
+        // Adjacent messages must be within 1 minute
+        if (diffMinutes > MESSAGE_GROUP_ADJACENT_THRESHOLD_MINUTES) return false
+
+        // Find the first message in this group (walk backwards)
+        var firstMsgIndex = index - 1
+        while (firstMsgIndex > 0) {
+            val msg = messages[firstMsgIndex]
+            val prevMsgInChain = messages[firstMsgIndex - 1]
+
+            // Different user breaks the chain
+            if (msg.userId != prevMsgInChain.userId) break
+            // Deleted message breaks the chain
+            if (prevMsgInChain.isDeleted) break
+
+            val msgTimestamp = if (msg.createdAt.endsWith("Z")) msg.createdAt else "${msg.createdAt}Z"
+            val prevMsgTimestamp = if (prevMsgInChain.createdAt.endsWith("Z")) prevMsgInChain.createdAt else "${prevMsgInChain.createdAt}Z"
+            val msgTime = Instant.parse(msgTimestamp)
+            val prevMsgTime = Instant.parse(prevMsgTimestamp)
+            val chainDiff = java.time.Duration.between(prevMsgTime, msgTime).toMinutes()
+
+            // Gap > 1 minute breaks the chain
+            if (chainDiff > MESSAGE_GROUP_ADJACENT_THRESHOLD_MINUTES) break
+
+            firstMsgIndex--
+        }
+
+        // Check total time from first message in group
+        val firstMsg = messages[firstMsgIndex]
+        val firstMsgTimestamp = if (firstMsg.createdAt.endsWith("Z")) firstMsg.createdAt else "${firstMsg.createdAt}Z"
+        val firstMsgTime = Instant.parse(firstMsgTimestamp)
+        val totalDiffMinutes = java.time.Duration.between(firstMsgTime, currentTime).toMinutes()
+
+        totalDiffMinutes <= MESSAGE_GROUP_TOTAL_THRESHOLD_MINUTES
     } catch (e: Exception) {
         false
     }
