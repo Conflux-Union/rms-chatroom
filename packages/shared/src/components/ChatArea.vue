@@ -1,12 +1,17 @@
 <script setup lang="ts">
 import { ref, watch, nextTick, onUnmounted, computed } from 'vue'
 import { useChatStore } from '../stores/chat'
+import { useAuthStore } from '../stores/auth'
 import { useWebSocket } from '../composables/useWebSocket'
-import { Paperclip, Send, Upload, X, Image, Video, Music, FileText, File } from 'lucide-vue-next'
+import { Paperclip, Send, Upload, X, Image, Video, Music, FileText, File, MoreVertical } from 'lucide-vue-next'
 import FilePreview from './FilePreview.vue'
-import type { Attachment } from '../types'
+import type { Attachment, Message } from '../types'
+import axios from 'axios'
+
+const API_BASE = import.meta.env.VITE_API_BASE || ''
 
 const chat = useChatStore()
+const auth = useAuthStore()
 const messageInput = ref('')
 const messagesContainer = ref<HTMLElement | null>(null)
 const fileInput = ref<HTMLInputElement | null>(null)
@@ -18,15 +23,54 @@ const uploadProgress = ref<Map<string, number>>(new Map())
 const isUploading = ref(false)
 const isDragging = ref(false)
 
+// Context menu state
+const contextMenu = ref<{
+  visible: boolean
+  x: number
+  y: number
+  message: Message | null
+}>({
+  visible: false,
+  x: 0,
+  y: 0,
+  message: null,
+})
+
+// Edit message state
+const editingMessage = ref<{ id: number; content: string } | null>(null)
+
+// Mute dialog state
+const muteDialog = ref<{
+  visible: boolean
+  userId: number | null
+  username: string
+  scope: 'global' | 'server' | 'channel'
+  duration: 'permanent' | '10m' | '1h' | '1d' | 'custom'
+  customMinutes: number
+  reason: string
+}>({
+  visible: false,
+  userId: null,
+  username: '',
+  scope: 'channel',
+  duration: 'permanent',
+  customMinutes: 60,
+  reason: '',
+})
+
+// Mute status
+const isMuted = ref(false)
+const muteReason = ref('')
+
 let ws: ReturnType<typeof useWebSocket> | null = null
 
 function connectWebSocket(channelId: number) {
   if (ws) {
     ws.disconnect()
   }
-  
+
   ws = useWebSocket(`/ws/chat/${channelId}`)
-  
+
   ws.onMessage((data) => {
     if (data.type === 'message') {
       chat.addMessage({
@@ -37,11 +81,34 @@ function connectWebSocket(channelId: number) {
         content: data.content,
         created_at: data.created_at,
         attachments: data.attachments || [],
+        is_deleted: false,
+        deleted_by: null,
+        deleted_by_username: null,
+        edited_at: null,
       })
       scrollToBottom()
+    } else if (data.type === 'message_deleted') {
+      // Update message to show as deleted
+      const message = chat.messages.find(m => m.id === data.message_id)
+      if (message) {
+        message.is_deleted = true
+        message.deleted_by = data.deleted_by
+        message.deleted_by_username = data.deleted_by_username
+      }
+    } else if (data.type === 'message_edited') {
+      // Update message content
+      const message = chat.messages.find(m => m.id === data.message_id)
+      if (message) {
+        message.content = data.content
+        message.edited_at = data.edited_at
+      }
+    } else if (data.type === 'error' && data.code === 'muted') {
+      // User is muted
+      isMuted.value = true
+      muteReason.value = data.message || 'You are muted'
     }
   })
-  
+
   ws.connect()
 }
 
@@ -51,6 +118,7 @@ watch(
     if (channel && channel.type === 'text') {
       await chat.fetchMessages(channel.id)
       connectWebSocket(channel.id)
+      await checkMuteStatus()
       await nextTick()
       scrollToBottom()
     }
@@ -193,14 +261,208 @@ function getAttachmentIconComponent(att: Attachment) {
   if (att.content_type === 'application/pdf') return FileText
   return File
 }
+
+// Context menu functions
+function showContextMenu(event: MouseEvent, message: Message) {
+  event.preventDefault()
+  contextMenu.value = {
+    visible: true,
+    x: event.clientX,
+    y: event.clientY,
+    message,
+  }
+}
+
+function hideContextMenu() {
+  contextMenu.value.visible = false
+  contextMenu.value.message = null
+}
+
+function isOwnMessage(message: Message) {
+  return message.user_id === auth.user?.id
+}
+
+function canEdit(message: Message) {
+  return isOwnMessage(message) && !message.is_deleted
+}
+
+function canDelete(message: Message) {
+  if (message.is_deleted) return false
+  if (auth.isAdmin) return true
+  if (!isOwnMessage(message)) return false
+
+  // Check 2-minute time limit for non-admin users
+  const messageTime = new Date(message.created_at.endsWith('Z') ? message.created_at : message.created_at + 'Z')
+  const now = new Date()
+  const diffMinutes = (now.getTime() - messageTime.getTime()) / 1000 / 60
+  return diffMinutes <= 2
+}
+
+function canMute(message: Message) {
+  return auth.isAdmin && !isOwnMessage(message)
+}
+
+// Edit message functions
+function startEdit(message: Message) {
+  editingMessage.value = {
+    id: message.id,
+    content: message.content,
+  }
+  hideContextMenu()
+}
+
+function cancelEdit() {
+  editingMessage.value = null
+}
+
+async function saveEdit() {
+  if (!editingMessage.value || !chat.currentChannel) return
+
+  const content = editingMessage.value.content.trim()
+  if (!content) {
+    alert('消息内容不能为空')
+    return
+  }
+
+  try {
+    await axios.patch(
+      `${API_BASE}/api/channels/${chat.currentChannel.id}/messages/${editingMessage.value.id}`,
+      { content },
+      { headers: { Authorization: `Bearer ${auth.token}` } }
+    )
+    editingMessage.value = null
+  } catch (error: any) {
+    alert(error.response?.data?.detail || '编辑消息失败')
+  }
+}
+
+// Delete message function
+async function deleteMessage(message: Message) {
+  if (!chat.currentChannel) return
+
+  if (!confirm('确定要撤回这条消息吗？')) return
+
+  try {
+    await axios.delete(
+      `${API_BASE}/api/channels/${chat.currentChannel.id}/messages/${message.id}`,
+      { headers: { Authorization: `Bearer ${auth.token}` } }
+    )
+    hideContextMenu()
+  } catch (error: any) {
+    alert(error.response?.data?.detail || '撤回消息失败')
+  }
+}
+
+// Mute functions
+function showMuteDialog(message: Message) {
+  muteDialog.value = {
+    visible: true,
+    userId: message.user_id,
+    username: message.username,
+    scope: 'channel',
+    duration: 'permanent',
+    customMinutes: 60,
+    reason: '',
+  }
+  hideContextMenu()
+}
+
+function hideMuteDialog() {
+  muteDialog.value.visible = false
+  muteDialog.value.userId = null
+}
+
+async function confirmMute() {
+  if (!muteDialog.value.userId || !chat.currentChannel) return
+
+  let mutedUntil: string | null = null
+  if (muteDialog.value.duration !== 'permanent') {
+    let minutes = 0
+    switch (muteDialog.value.duration) {
+      case '10m': minutes = 10; break
+      case '1h': minutes = 60; break
+      case '1d': minutes = 1440; break
+      case 'custom': minutes = muteDialog.value.customMinutes; break
+    }
+    const until = new Date()
+    until.setMinutes(until.getMinutes() + minutes)
+    mutedUntil = until.toISOString()
+  }
+
+  const payload: any = {
+    user_id: muteDialog.value.userId,
+    scope: muteDialog.value.scope,
+    reason: muteDialog.value.reason || null,
+    muted_until: mutedUntil,
+  }
+
+  // Add server_id or channel_id based on scope
+  if (muteDialog.value.scope === 'server' && chat.currentChannel.server_id) {
+    payload.server_id = chat.currentChannel.server_id
+  } else if (muteDialog.value.scope === 'channel') {
+    payload.channel_id = chat.currentChannel.id
+  }
+
+  try {
+    await axios.post(`${API_BASE}/api/mute`, payload, {
+      headers: { Authorization: `Bearer ${auth.token}` },
+    })
+    alert('禁言成功')
+    hideMuteDialog()
+  } catch (error: any) {
+    alert(error.response?.data?.detail || '禁言失败')
+  }
+}
+
+// Check mute status
+async function checkMuteStatus() {
+  if (!auth.user) return
+
+  try {
+    const resp = await axios.get(`${API_BASE}/api/mute/user/${auth.user.id}`, {
+      headers: { Authorization: `Bearer ${auth.token}` },
+    })
+
+    const mutes = resp.data
+    const currentChannel = chat.currentChannel
+    if (!currentChannel) return
+
+    // Check if user is muted in current context
+    const activeMute = mutes.find((mute: any) => {
+      if (mute.scope === 'global') return true
+      if (mute.scope === 'server' && mute.server_id === currentChannel.server_id) return true
+      if (mute.scope === 'channel' && mute.channel_id === currentChannel.id) return true
+      return false
+    })
+
+    if (activeMute) {
+      isMuted.value = true
+      muteReason.value = activeMute.reason || '你已被禁言'
+    } else {
+      isMuted.value = false
+      muteReason.value = ''
+    }
+  } catch (error) {
+    console.error('Failed to check mute status:', error)
+  }
+}
+
+// Close context menu when clicking outside
+function handleClickOutside(event: MouseEvent) {
+  if (contextMenu.value.visible) {
+    hideContextMenu()
+  }
+}
+
 </script>
 
 <template>
-  <div 
+  <div
     class="chat-area"
     @dragover="handleDragOver"
     @dragleave="handleDragLeave"
     @drop="handleDrop"
+    @click="handleClickOutside"
   >
     <!-- Drag overlay -->
     <div v-if="isDragging" class="drag-overlay">
@@ -222,15 +484,54 @@ function getAttachmentIconComponent(att: Attachment) {
           <div class="message-header">
             <span class="message-author">{{ msg.username }}</span>
             <span class="message-time">{{ formatTime(msg.created_at) }}</span>
+            <button
+              v-if="!msg.is_deleted"
+              class="message-menu-btn"
+              @click="showContextMenu($event, msg)"
+              title="更多选项"
+            >
+              <MoreVertical :size="16" />
+            </button>
           </div>
-          <div v-if="msg.content" class="message-text">{{ msg.content }}</div>
-          <!-- Attachments -->
-          <div v-if="msg.attachments?.length" class="message-attachments">
-            <FilePreview
-              v-for="att in msg.attachments"
-              :key="att.id"
-              :attachment="att"
-            />
+
+          <!-- Deleted message placeholder -->
+          <div v-if="msg.is_deleted" class="message-deleted">
+            <span v-if="msg.deleted_by === auth.user?.id">你撤回了一条消息</span>
+            <span v-else-if="msg.deleted_by_username">{{ msg.deleted_by_username }}撤回了一条消息</span>
+            <span v-else>管理员撤回了一条消息</span>
+          </div>
+
+          <!-- Edit mode -->
+          <div v-else-if="editingMessage && editingMessage.id === msg.id" class="message-edit">
+            <textarea
+              v-model="editingMessage.content"
+              class="edit-textarea"
+              @keydown.enter.exact.prevent="saveEdit"
+              @keydown.esc="cancelEdit"
+            ></textarea>
+            <div class="edit-actions">
+              <button class="edit-btn save" @click="saveEdit">保存</button>
+              <button class="edit-btn cancel" @click="cancelEdit">取消</button>
+              <span class="edit-hint">Enter 保存 • Esc 取消</span>
+            </div>
+          </div>
+
+          <!-- Normal message display -->
+          <div v-else>
+            <div v-if="msg.content" class="message-text">
+              {{ msg.content }}
+              <span v-if="msg.edited_at" class="edited-badge" :title="`编辑于 ${formatTime(msg.edited_at)}`">
+                (已编辑)
+              </span>
+            </div>
+            <!-- Attachments -->
+            <div v-if="msg.attachments?.length" class="message-attachments">
+              <FilePreview
+                v-for="att in msg.attachments"
+                :key="att.id"
+                :attachment="att"
+              />
+            </div>
           </div>
         </div>
       </div>
@@ -267,23 +568,105 @@ function getAttachmentIconComponent(att: Attachment) {
 
     <div class="chat-input">
       <input type="file" ref="fileInput" @change="handleFileSelect" multiple hidden />
-      <button class="attach-btn" @click="triggerFileSelect" title="添加附件">
+      <button class="attach-btn" @click="triggerFileSelect" title="添加附件" :disabled="isMuted">
         <Paperclip :size="20" />
       </button>
       <input
         v-model="messageInput"
-        :placeholder="`发送消息到 #${chat.currentChannel?.name || ''}`"
+        :placeholder="isMuted ? muteReason : `发送消息到 #${chat.currentChannel?.name || ''}`"
         @keyup.enter="sendMessage"
         class="message-input"
+        :disabled="isMuted"
       />
-      <button 
-        class="send-btn" 
-        @click="sendMessage" 
-        :disabled="!canSend"
-        :class="{ active: canSend }"
+      <button
+        class="send-btn"
+        @click="sendMessage"
+        :disabled="!canSend || isMuted"
+        :class="{ active: canSend && !isMuted }"
       >
         <Send :size="20" />
       </button>
+    </div>
+
+    <!-- Context Menu -->
+    <div
+      v-if="contextMenu.visible && contextMenu.message"
+      class="context-menu"
+      :style="{ left: contextMenu.x + 'px', top: contextMenu.y + 'px' }"
+      @click.stop
+    >
+      <button
+        v-if="canEdit(contextMenu.message)"
+        class="context-menu-item"
+        @click="startEdit(contextMenu.message)"
+      >
+        编辑消息
+      </button>
+      <button
+        v-if="canDelete(contextMenu.message)"
+        class="context-menu-item"
+        @click="deleteMessage(contextMenu.message)"
+      >
+        撤回消息
+      </button>
+      <button
+        v-if="canMute(contextMenu.message)"
+        class="context-menu-item"
+        @click="showMuteDialog(contextMenu.message)"
+      >
+        禁言用户
+      </button>
+    </div>
+
+    <!-- Mute Dialog -->
+    <div v-if="muteDialog.visible" class="modal-overlay" @click="hideMuteDialog">
+      <div class="modal-content" @click.stop>
+        <h3 class="modal-title">禁言用户: {{ muteDialog.username }}</h3>
+
+        <div class="form-group">
+          <label>禁言范围</label>
+          <select v-model="muteDialog.scope" class="form-select">
+            <option value="channel">当前频道</option>
+            <option value="server">当前服务器</option>
+            <option value="global">全局禁言</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>禁言时长</label>
+          <select v-model="muteDialog.duration" class="form-select">
+            <option value="permanent">永久</option>
+            <option value="10m">10分钟</option>
+            <option value="1h">1小时</option>
+            <option value="1d">1天</option>
+            <option value="custom">自定义</option>
+          </select>
+        </div>
+
+        <div v-if="muteDialog.duration === 'custom'" class="form-group">
+          <label>自定义时长（分钟）</label>
+          <input
+            v-model.number="muteDialog.customMinutes"
+            type="number"
+            min="1"
+            class="form-input"
+          />
+        </div>
+
+        <div class="form-group">
+          <label>禁言原因（可选）</label>
+          <textarea
+            v-model="muteDialog.reason"
+            class="form-textarea"
+            placeholder="输入禁言原因..."
+          ></textarea>
+        </div>
+
+        <div class="modal-actions">
+          <button class="modal-btn cancel" @click="hideMuteDialog">取消</button>
+          <button class="modal-btn confirm" @click="confirmMute">确认禁言</button>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -386,6 +769,32 @@ function getAttachmentIconComponent(att: Attachment) {
   align-items: baseline;
   gap: 8px;
   margin-bottom: 4px;
+  position: relative;
+}
+
+.message-menu-btn {
+  position: absolute;
+  right: 0;
+  top: 0;
+  background: none;
+  border: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  padding: 4px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-fast);
+}
+
+.message:hover .message-menu-btn {
+  display: flex;
+}
+
+.message-menu-btn:hover {
+  background: var(--surface-glass-input);
+  color: var(--color-text-main);
 }
 
 .message-author {
@@ -603,6 +1012,220 @@ function getAttachmentIconComponent(att: Attachment) {
   .chat-input input {
     padding: 10px 14px;
     font-size: 15px;
+  }
+}
+
+/* Context Menu */
+.context-menu {
+  position: fixed;
+  background: var(--surface-glass);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-md);
+  padding: 4px;
+  min-width: 150px;
+  box-shadow: var(--shadow-lg);
+  z-index: 1000;
+}
+
+.context-menu-item {
+  width: 100%;
+  padding: 8px 12px;
+  background: none;
+  border: none;
+  color: var(--color-text-main);
+  text-align: left;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  transition: all var(--transition-fast);
+}
+
+.context-menu-item:hover {
+  background: var(--surface-glass-input);
+}
+
+/* Message Deleted */
+.message-deleted {
+  color: var(--color-text-muted);
+  font-style: italic;
+  font-size: 13px;
+}
+
+/* Message Edit */
+.message-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.edit-textarea {
+  width: 100%;
+  min-height: 60px;
+  padding: 8px 12px;
+  background: var(--surface-glass-input);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: var(--radius-md);
+  color: var(--color-text-main);
+  font-size: 14px;
+  font-family: inherit;
+  resize: vertical;
+}
+
+.edit-textarea:focus {
+  outline: none;
+  border-color: var(--color-accent);
+}
+
+.edit-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.edit-btn {
+  padding: 6px 12px;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.edit-btn.save {
+  background: var(--color-accent);
+  color: white;
+}
+
+.edit-btn.save:hover {
+  opacity: 0.9;
+}
+
+.edit-btn.cancel {
+  background: var(--surface-glass-input);
+  color: var(--color-text-main);
+}
+
+.edit-btn.cancel:hover {
+  background: var(--surface-glass-input-focus);
+}
+
+.edit-hint {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  margin-left: auto;
+}
+
+/* Edited Badge */
+.edited-badge {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  margin-left: 4px;
+}
+
+/* Modal Overlay */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+}
+
+.modal-content {
+  background: var(--surface-glass);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  min-width: 400px;
+  max-width: 90vw;
+  box-shadow: var(--shadow-xl);
+}
+
+.modal-title {
+  margin: 0 0 20px 0;
+  color: var(--color-text-main);
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.form-group {
+  margin-bottom: 16px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--color-text-main);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.form-select,
+.form-input,
+.form-textarea {
+  width: 100%;
+  padding: 8px 12px;
+  background: var(--surface-glass-input);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: var(--radius-md);
+  color: var(--color-text-main);
+  font-size: 14px;
+  font-family: inherit;
+}
+
+.form-select:focus,
+.form-input:focus,
+.form-textarea:focus {
+  outline: none;
+  border-color: var(--color-accent);
+}
+
+.form-textarea {
+  min-height: 80px;
+  resize: vertical;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  margin-top: 20px;
+}
+
+.modal-btn {
+  padding: 8px 16px;
+  border: none;
+  border-radius: var(--radius-md);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.modal-btn.cancel {
+  background: var(--surface-glass-input);
+  color: var(--color-text-main);
+}
+
+.modal-btn.cancel:hover {
+  background: var(--surface-glass-input-focus);
+}
+
+.modal-btn.confirm {
+  background: var(--color-accent);
+  color: white;
+}
+
+.modal-btn.confirm:hover {
+  opacity: 0.9;
+}
+
+@media (max-width: 768px) {
+  .modal-content {
+    min-width: 0;
+    width: 90vw;
   }
 }
 </style>

@@ -57,7 +57,16 @@ data class Message(
     val content: String,
     @SerializedName("created_at")
     val createdAt: String,
-    val attachments: List<Attachment>? = null
+    val attachments: List<Attachment>? = null,
+    // Message management fields
+    @SerializedName("is_deleted")
+    val isDeleted: Boolean = false,
+    @SerializedName("deleted_by")
+    val deletedBy: Long? = null,
+    @SerializedName("deleted_by_username")
+    val deletedByUsername: String? = null,
+    @SerializedName("edited_at")
+    val editedAt: String? = null
 )
 
 data class VoiceUser(
@@ -302,4 +311,59 @@ data class AttachmentResponse(
     val contentType: String,
     val size: Long,
     val url: String
+)
+
+// Message moderation models
+enum class MuteScope {
+    @SerializedName("global")
+    GLOBAL,
+    @SerializedName("server")
+    SERVER,
+    @SerializedName("channel")
+    CHANNEL
+}
+
+data class MuteRecord(
+    val id: Long,
+    @SerializedName("user_id")
+    val userId: Long,
+    val scope: MuteScope,
+    @SerializedName("server_id")
+    val serverId: Long? = null,
+    @SerializedName("channel_id")
+    val channelId: Long? = null,
+    @SerializedName("muted_until")
+    val mutedUntil: String? = null,
+    @SerializedName("muted_by")
+    val mutedBy: Long,
+    val reason: String? = null,
+    @SerializedName("created_at")
+    val createdAt: String
+)
+
+data class MuteCreateRequest(
+    @SerializedName("user_id")
+    val userId: Long,
+    val scope: String,  // "global", "server", or "channel"
+    @SerializedName("server_id")
+    val serverId: Long? = null,
+    @SerializedName("channel_id")
+    val channelId: Long? = null,
+    @SerializedName("muted_until")
+    val mutedUntil: String? = null,
+    val reason: String? = null
+)
+
+data class MuteResponse(
+    val id: Long,
+    @SerializedName("user_id")
+    val userId: Long,
+    val scope: String,
+    @SerializedName("muted_until")
+    val mutedUntil: String?,
+    val reason: String?
+)
+
+data class MessageEditRequest(
+    val content: String
 )
