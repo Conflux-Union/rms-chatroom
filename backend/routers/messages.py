@@ -42,6 +42,10 @@ class MessageResponse(BaseModel):
     content: str
     created_at: datetime
     attachments: list[AttachmentResponse] = []
+    # New fields for message management
+    is_deleted: bool = False
+    deleted_by: int | None = None
+    edited_at: datetime | None = None
 
     class Config:
         from_attributes = True
@@ -68,6 +72,9 @@ def _message_to_response(msg: Message) -> MessageResponse:
         content=msg.content,
         created_at=msg.created_at,
         attachments=[_attachment_to_response(att) for att in msg.attachments],
+        is_deleted=msg.is_deleted,
+        deleted_by=msg.deleted_by,
+        edited_at=msg.edited_at,
     )
 
 
@@ -90,7 +97,10 @@ async def get_messages(
 
     query = (
         select(Message)
-        .where(Message.channel_id == channel_id)
+        .where(
+            Message.channel_id == channel_id,
+            Message.is_deleted == False  # Filter out deleted messages
+        )
         .options(selectinload(Message.attachments))
     )
     if before:
@@ -161,3 +171,108 @@ async def create_message(
     await db.refresh(message)
 
     return _message_to_response(message)
+
+
+class MessageEdit(BaseModel):
+    content: str
+
+
+@router.patch("/{message_id}", response_model=MessageResponse)
+async def edit_message(
+    channel_id: int,
+    message_id: int,
+    payload: MessageEdit,
+    user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+):
+    """Edit a message. Only the author can edit their own messages."""
+    if not payload.content.strip():
+        raise HTTPException(status_code=400, detail="Content cannot be empty")
+
+    result = await db.execute(
+        select(Message)
+        .where(Message.id == message_id, Message.channel_id == channel_id)
+        .options(selectinload(Message.attachments))
+    )
+    message = result.scalar_one_or_none()
+    if not message:
+        raise HTTPException(status_code=404, detail="Message not found")
+
+    if message.is_deleted:
+        raise HTTPException(status_code=400, detail="Cannot edit deleted message")
+
+    # Only the author can edit
+    if message.user_id != user["id"]:
+        raise HTTPException(status_code=403, detail="Can only edit own messages")
+
+    # Update content
+    message.content = payload.content.strip()
+    message.edited_at = datetime.utcnow()
+
+    # Extract data before commit (to avoid lazy loading issues)
+    content = message.content
+    edited_at = message.edited_at
+
+    await db.commit()
+    await db.refresh(message)
+
+    # Broadcast edit event via WebSocket
+    from ..websocket.manager import chat_manager
+    await chat_manager.broadcast_to_channel(channel_id, {
+        "type": "message_edited",
+        "message_id": message_id,
+        "content": content,
+        "edited_at": edited_at.isoformat(),
+    })
+
+    return _message_to_response(message)
+
+
+@router.delete("/{message_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_message(
+    channel_id: int,
+    message_id: int,
+    user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete (recall) a message. Users can delete own messages within 2 minutes, admins can delete any."""
+    # Query message
+    result = await db.execute(
+        select(Message).where(Message.id == message_id, Message.channel_id == channel_id)
+    )
+    message = result.scalar_one_or_none()
+    if not message:
+        raise HTTPException(status_code=404, detail="Message not found")
+
+    if message.is_deleted:
+        raise HTTPException(status_code=400, detail="Message already deleted")
+
+    is_admin = user.get("permission_level", 0) >= 3
+    is_owner = message.user_id == user["id"]
+
+    # Permission check
+    if not is_admin and not is_owner:
+        raise HTTPException(status_code=403, detail="Cannot delete others' messages")
+
+    # Non-admins need to check 2-minute limit
+    if not is_admin:
+        elapsed = (datetime.utcnow() - message.created_at).total_seconds()
+        if elapsed > 120:
+            raise HTTPException(status_code=403, detail="Can only delete messages within 2 minutes")
+
+    # Soft delete
+    message.is_deleted = True
+    message.deleted_at = datetime.utcnow()
+    message.deleted_by = user["id"]
+    await db.commit()
+
+    # Broadcast delete event via WebSocket
+    from ..websocket.manager import chat_manager
+    await chat_manager.broadcast_to_channel(channel_id, {
+        "type": "message_deleted",
+        "message_id": message_id,
+        "deleted_by": user["id"],
+        "deleted_by_username": user.get("nickname") or user["username"],
+    })
+
+    return None
