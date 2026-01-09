@@ -282,12 +282,14 @@ fun ChatScreen(
                                 .fillMaxSize()
                                 .padding(horizontal = 16.dp),
                             state = listState,
-                            verticalArrangement = Arrangement.spacedBy(16.dp),
                             contentPadding = PaddingValues(vertical = 16.dp)
                         ) {
-                            items(messages, key = { it.id }) { message ->
+                            items(messages.size, key = { messages[it].id }) { index ->
+                                val message = messages[index]
+                                val isGrouped = shouldGroupWithPrevious(messages, index)
                                 MessageItem(
                                     message = message,
+                                    isGrouped = isGrouped,
                                     authToken = authToken,
                                     currentUserId = currentUserId,
                                     currentUserPermission = currentUserPermission,
@@ -581,6 +583,7 @@ private fun ConnectionBanner(
 @Composable
 private fun MessageItem(
     message: Message,
+    isGrouped: Boolean = false,
     authToken: String?,
     currentUserId: Long?,
     currentUserPermission: Int?,
@@ -590,6 +593,7 @@ private fun MessageItem(
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .padding(top = if (isGrouped) 2.dp else 16.dp)
             .combinedClickable(
                 interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
                 indication = null,
@@ -599,52 +603,59 @@ private fun MessageItem(
             ),
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        // Avatar
-        Box(
-            modifier = Modifier
-                .size(40.dp)
-                .clip(CircleShape)
-                .background(TiColor),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = message.username.take(1).uppercase(),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = Color.White
-            )
+        // Avatar: show for first message in group, placeholder for grouped messages
+        if (isGrouped) {
+            // Invisible placeholder to maintain alignment
+            Spacer(modifier = Modifier.size(40.dp))
+        } else {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(TiColor),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = message.username.take(1).uppercase(),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
+                )
+            }
         }
 
         Column(modifier = Modifier.weight(1f)) {
-            // Username and timestamp
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Text(
-                    text = message.username,
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    color = TextPrimary
-                )
+            // Username and timestamp: hidden for grouped messages
+            if (!isGrouped) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = message.username,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = TextPrimary
+                    )
 
-                Text(
-                    text = formatTimestamp(message.createdAt),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = TextMuted
-                )
+                    Text(
+                        text = formatTimestamp(message.createdAt),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = TextMuted
+                    )
+                }
+
+                // Edited indicator on new line
+                if (message.editedAt != null) {
+                    Text(
+                        text = "(已编辑于 ${formatTimestamp(message.editedAt)})",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = TextMuted
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(4.dp))
             }
-
-            // Edited indicator on new line
-            if (message.editedAt != null) {
-                Text(
-                    text = "(已编辑于 ${formatTimestamp(message.editedAt)})",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = TextMuted
-                )
-            }
-
-            Spacer(modifier = Modifier.height(4.dp))
 
             // Message content or deleted placeholder
             if (message.isDeleted) {
@@ -1463,6 +1474,34 @@ private fun formatTimestamp(timestamp: String): String {
         formatter.format(instant)
     } catch (e: Exception) {
         timestamp
+    }
+}
+
+// Message grouping: Discord-style consecutive message merging
+private const val MESSAGE_GROUP_THRESHOLD_MINUTES = 7L
+
+private fun shouldGroupWithPrevious(messages: List<Message>, index: Int): Boolean {
+    if (index == 0) return false
+
+    val currentMsg = messages[index]
+    val prevMsg = messages[index - 1]
+
+    // Different user, don't group
+    if (currentMsg.userId != prevMsg.userId) return false
+
+    // Previous message is deleted, don't group
+    if (prevMsg.isDeleted) return false
+
+    // Time gap exceeds threshold, don't group
+    return try {
+        val currentTimestamp = if (currentMsg.createdAt.endsWith("Z")) currentMsg.createdAt else "${currentMsg.createdAt}Z"
+        val prevTimestamp = if (prevMsg.createdAt.endsWith("Z")) prevMsg.createdAt else "${prevMsg.createdAt}Z"
+        val currentTime = Instant.parse(currentTimestamp)
+        val prevTime = Instant.parse(prevTimestamp)
+        val diffMinutes = java.time.Duration.between(prevTime, currentTime).toMinutes()
+        diffMinutes <= MESSAGE_GROUP_THRESHOLD_MINUTES
+    } catch (e: Exception) {
+        false
     }
 }
 

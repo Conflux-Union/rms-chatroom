@@ -359,6 +359,29 @@ function canMute(message: Message) {
   return auth.isAdmin && !isOwnMessage(message)
 }
 
+// Message grouping: Discord-style consecutive message merging
+const MESSAGE_GROUP_THRESHOLD_MINUTES = 7
+
+function shouldGroupWithPrevious(index: number): boolean {
+  if (index === 0) return false
+
+  const currentMsg = chat.messages[index]
+  const prevMsg = chat.messages[index - 1]
+
+  // Different user, don't group
+  if (currentMsg.user_id !== prevMsg.user_id) return false
+
+  // Previous message is deleted, don't group (keep visual separation)
+  if (prevMsg.is_deleted) return false
+
+  // Time gap exceeds threshold, don't group
+  const currentTime = new Date(currentMsg.created_at).getTime()
+  const prevTime = new Date(prevMsg.created_at).getTime()
+  const diffMinutes = (currentTime - prevTime) / 1000 / 60
+
+  return diffMinutes <= MESSAGE_GROUP_THRESHOLD_MINUTES
+}
+
 // Edit message functions
 function startEdit(message: Message) {
   editingMessage.value = {
@@ -552,14 +575,21 @@ function handleClickOutside(event: MouseEvent) {
 
     <div class="messages" ref="messagesContainer">
       <div
-        v-for="msg in chat.messages"
+        v-for="(msg, index) in chat.messages"
         :key="msg.id"
         class="message"
+        :class="{ 'message-grouped': shouldGroupWithPrevious(index) }"
         @contextmenu="!msg.is_deleted && showContextMenu($event, msg)"
       >
-        <div class="message-avatar">{{ msg.username.charAt(0).toUpperCase() }}</div>
+        <!-- Avatar: hidden placeholder for grouped messages to maintain alignment -->
+        <div class="message-avatar" :class="{ 'avatar-hidden': shouldGroupWithPrevious(index) }">
+          <template v-if="!shouldGroupWithPrevious(index)">
+            {{ msg.username.charAt(0).toUpperCase() }}
+          </template>
+        </div>
         <div class="message-content">
-          <div class="message-header">
+          <!-- Header: hidden for grouped messages -->
+          <div v-if="!shouldGroupWithPrevious(index)" class="message-header">
             <span class="message-author">{{ msg.username }}</span>
             <span class="message-time">
               {{ formatTime(msg.created_at) }}
@@ -574,6 +604,15 @@ function handleClickOutside(event: MouseEvent) {
               <MoreVertical :size="16" />
             </button>
           </div>
+          <!-- Grouped message: show menu button on hover -->
+          <button
+            v-else-if="!msg.is_deleted"
+            class="message-menu-btn grouped-menu-btn"
+            @click="showContextMenu($event, msg)"
+            title="更多选项"
+          >
+            <MoreVertical :size="16" />
+          </button>
 
           <!-- Deleted message placeholder -->
           <div v-if="msg.is_deleted" class="message-deleted">
@@ -852,6 +891,29 @@ function handleClickOutside(event: MouseEvent) {
 .message-menu-btn:hover {
   background: var(--surface-glass-input);
   color: var(--color-text-main);
+}
+
+/* Grouped messages (Discord-style consecutive message merging) */
+.message-grouped {
+  margin-bottom: 2px;
+  padding-top: 0;
+}
+
+.message-grouped .message-content {
+  position: relative;
+}
+
+.avatar-hidden {
+  visibility: hidden;
+  width: 40px;
+  height: 0;
+  margin-right: 16px;
+}
+
+.grouped-menu-btn {
+  position: absolute;
+  right: 0;
+  top: 0;
 }
 
 .message-author {
