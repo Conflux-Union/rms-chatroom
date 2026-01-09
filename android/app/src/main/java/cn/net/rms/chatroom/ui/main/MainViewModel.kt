@@ -315,6 +315,46 @@ class MainViewModel @Inject constructor(
         }
     }
 
+    // Message management methods
+    fun editMessage(messageId: Long, content: String) {
+        val channelId = _state.value.currentChannel?.id ?: return
+        viewModelScope.launch {
+            chatRepository.editMessage(channelId, messageId, content)
+                .onFailure { e ->
+                    _state.value = _state.value.copy(error = "编辑失败: ${e.message}")
+                }
+        }
+    }
+
+    fun deleteMessage(messageId: Long) {
+        val channelId = _state.value.currentChannel?.id ?: return
+        viewModelScope.launch {
+            chatRepository.deleteMessage(channelId, messageId)
+                .onFailure { e ->
+                    _state.value = _state.value.copy(error = "撤回失败: ${e.message}")
+                }
+        }
+    }
+
+    fun muteUser(
+        userId: Long,
+        scope: String,
+        mutedUntil: String?,
+        serverId: Long?,
+        channelId: Long?,
+        reason: String?
+    ) {
+        viewModelScope.launch {
+            chatRepository.createMute(userId, scope, mutedUntil, serverId, channelId, reason)
+                .onSuccess {
+                    _state.value = _state.value.copy(error = "禁言成功")
+                }
+                .onFailure { e ->
+                    _state.value = _state.value.copy(error = "禁言失败: ${e.message}")
+                }
+        }
+    }
+
     override fun onCleared() {
         super.onCleared()
         stopVoiceUsersPolling()

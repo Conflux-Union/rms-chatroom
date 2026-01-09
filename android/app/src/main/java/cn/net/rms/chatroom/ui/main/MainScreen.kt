@@ -207,9 +207,16 @@ fun MainScreen(
                             isLoading = mainState.isMessagesLoading,
                             connectionState = connectionState,
                             authToken = authState.token,
+                            currentUserId = authState.user?.id,
+                            currentUserPermission = authState.user?.permissionLevel,
                             onSendMessage = { mainViewModel.sendMessage(it) },
                             onRefresh = { mainViewModel.refreshMessages() },
-                            onReconnect = { mainViewModel.reconnectWebSocket() }
+                            onReconnect = { mainViewModel.reconnectWebSocket() },
+                            onEditMessage = { messageId, content -> mainViewModel.editMessage(messageId, content) },
+                            onDeleteMessage = { messageId -> mainViewModel.deleteMessage(messageId) },
+                            onMuteUser = { userId, scope, mutedUntil, serverId, channelId, reason ->
+                                mainViewModel.muteUser(userId, scope, mutedUntil, serverId, channelId, reason)
+                            }
                         )
                     }
 
