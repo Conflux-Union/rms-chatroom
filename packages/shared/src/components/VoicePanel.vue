@@ -24,16 +24,42 @@ const inviteLoading = ref(false)
 const inviteError = ref('')
 
 onMounted(() => {
+  console.log('[VoicePanel] Component mounted - Initial state report')
+  console.log('[VoicePanel] - API_BASE:', API_BASE)
+  console.log('[VoicePanel] - User:', auth.user)
+  console.log('[VoicePanel] - User permission level:', auth.user?.permission_level)
+  console.log('[VoicePanel] - Can use transcription:', canUseTranscription.value)
+  console.log('[VoicePanel] - Current channel:', chat.currentChannel)
+  console.log('[VoicePanel] - Token exists:', !!auth.token)
+  console.log('[VoicePanel] - Token preview:', auth.token?.substring(0, 20) + '...')
+  
   voice.enumerateDevices()
   
   // Check transcription lock status when channel changes
   if (chat.currentChannel) {
+    console.log('[VoicePanel] Checking transcription lock on mount')
     checkTranscriptionLock()
+  } else {
+    console.warn('[VoicePanel] No current channel on mount')
   }
+  
+  // Periodic status check every 30 seconds
+  setInterval(() => {
+    console.log('[VoicePanel] Periodic status check')
+    console.log('[VoicePanel] - Connected to voice:', voice.isConnected)
+    console.log('[VoicePanel] - Current channel:', chat.currentChannel?.id)
+    console.log('[VoicePanel] - Transcription active:', transcriptionActive.value)
+    console.log('[VoicePanel] - Transcription locked:', transcriptionLocked.value)
+    console.log('[VoicePanel] - Transcription expanded:', transcriptionExpanded.value)
+  }, 30000)
 })
 
 // Watch for channel changes to update transcription lock status
-watch(() => chat.currentChannel, (newChannel) => {
+watch(() => chat.currentChannel, (newChannel, oldChannel) => {
+  console.log('[VoicePanel] Channel changed')
+  console.log('[VoicePanel] - Old channel:', oldChannel?.id, oldChannel?.name)
+  console.log('[VoicePanel] - New channel:', newChannel?.id, newChannel?.name)
+  
   if (newChannel) {
     checkTranscriptionLock()
   }
@@ -48,13 +74,24 @@ const hostButtonDisabled = computed(() =>
 )
 
 // Transcription computed
-const canUseTranscription = computed(() => 
-  (auth.user?.permission_level ?? 0) > 3
-)
+const canUseTranscription = computed(() => {
+  const result = (auth.user?.permission_level ?? 0) > 3
+  console.log('[VoicePanel] canUseTranscription computed:', {
+    permission_level: auth.user?.permission_level,
+    result: result
+  })
+  return result
+})
 
-const transcriptionButtonDisabled = computed(() => 
-  transcriptionLocked.value && !transcriptionActive.value
-)
+const transcriptionButtonDisabled = computed(() => {
+  const result = transcriptionLocked.value && !transcriptionActive.value
+  console.log('[VoicePanel] transcriptionButtonDisabled computed:', {
+    locked: transcriptionLocked.value,
+    active: transcriptionActive.value,
+    disabled: result
+  })
+  return result
+})
 
 // Volume warning dialog state
 const showVolumeWarning = ref(false)
@@ -266,24 +303,47 @@ function closeInviteDialog() {
 
 // Transcription methods
 async function checkTranscriptionLock() {
-  if (!chat.currentChannel) return
+  console.log('[Transcription] Checking transcription lock status')
+  console.log('[Transcription] - Current channel:', chat.currentChannel?.id)
+  
+  if (!chat.currentChannel) {
+    console.log('[Transcription] No current channel, skipping lock check')
+    return
+  }
+  
+  const checkUrl = `${API_BASE}/api/voice-recognition/status`
+  console.log('[Transcription] - Checking URL:', checkUrl)
   
   try {
-    const response = await fetch(
-      `${API_BASE}/api/voice-recognition/status`,
-      {
-        headers: {
-          Authorization: `Bearer ${auth.token}`,
-        },
-      }
-    )
+    const response = await fetch(checkUrl, {
+      headers: {
+        Authorization: `Bearer ${auth.token}`,
+      },
+    })
+    
+    console.log('[Transcription] - Response status:', response.status)
     
     if (response.ok) {
       const data = await response.json()
+      console.log('[Transcription] - Lock status data:', data)
       transcriptionLocked.value = data.locked && data.channel_id !== chat.currentChannel.id
+      console.log('[Transcription] - Locked for this channel:', transcriptionLocked.value)
+      
+      if (data.locked) {
+        console.log('[Transcription] - Currently locked by channel:', data.channel_id)
+        console.log('[Transcription] - This channel:', chat.currentChannel.id)
+      }
+    } else {
+      console.warn('[Transcription] Failed to get lock status, response not OK')
+      const errorText = await response.text()
+      console.warn('[Transcription] Error response:', errorText)
     }
   } catch (e) {
-    console.error('Failed to check transcription lock:', e)
+    console.error('[Transcription] ❌ Failed to check transcription lock:', e)
+    console.error('[Transcription] Error details:', {
+      message: e instanceof Error ? e.message : String(e),
+      stack: e instanceof Error ? e.stack : undefined
+    })
   }
 }
 
@@ -292,14 +352,27 @@ function toggleTranscriptionPanel() {
 }
 
 function handleTranscriptionMouseDown() {
-  if (!canUseTranscription.value || transcriptionButtonDisabled.value) return
+  console.log('[Transcription] Mouse down event triggered')
+  console.log('[Transcription] - canUseTranscription:', canUseTranscription.value)
+  console.log('[Transcription] - transcriptionButtonDisabled:', transcriptionButtonDisabled.value)
+  console.log('[Transcription] - transcriptionActive:', transcriptionActive.value)
+  console.log('[Transcription] - transcriptionLocked:', transcriptionLocked.value)
+  console.log('[Transcription] - hasTranscriptionTask:', transcriptionPanel.value?.hasTranscriptionTask)
+  
+  if (!canUseTranscription.value || transcriptionButtonDisabled.value) {
+    console.log('[Transcription] Button disabled, ignoring click')
+    return
+  }
   
   if (!transcriptionActive.value && !transcriptionPanel.value?.hasTranscriptionTask) {
     // First click or no existing task - start immediately
+    console.log('[Transcription] Starting new transcription session')
     startTranscription()
   } else {
     // Set up long press for stop
+    console.log('[Transcription] Setting up long press to stop (1s)')
     longPressTimer.value = window.setTimeout(() => {
+      console.log('[Transcription] Long press detected, stopping transcription')
       stopTranscription()
       longPressTimer.value = null
     }, LONG_PRESS_DURATION)
@@ -321,25 +394,56 @@ function handleTranscriptionMouseLeave() {
 }
 
 async function startTranscription() {
-  if (!transcriptionPanel.value) return
+  console.log('[Transcription] startTranscription called')
+  console.log('[Transcription] - Panel ref exists:', !!transcriptionPanel.value)
+  console.log('[Transcription] - Current channel:', chat.currentChannel?.id)
+  console.log('[Transcription] - User ID:', auth.user?.id)
+  console.log('[Transcription] - API_BASE:', API_BASE)
+  
+  if (!transcriptionPanel.value) {
+    console.error('[Transcription] Panel ref not available')
+    return
+  }
   
   try {
+    console.log('[Transcription] Calling panel.startTranscription()...')
     await transcriptionPanel.value.startTranscription()
     transcriptionActive.value = true
     transcriptionExpanded.value = true // Auto-expand panel
+    console.log('[Transcription] ✅ Transcription started successfully')
+    console.log('[Transcription] - Active:', transcriptionActive.value)
+    console.log('[Transcription] - Expanded:', transcriptionExpanded.value)
   } catch (e) {
-    console.error('Failed to start transcription:', e)
+    console.error('[Transcription] ❌ Failed to start transcription:', e)
+    console.error('[Transcription] Error details:', {
+      message: e instanceof Error ? e.message : String(e),
+      stack: e instanceof Error ? e.stack : undefined
+    })
   }
 }
 
 async function stopTranscription() {
-  if (!transcriptionPanel.value) return
+  console.log('[Transcription] stopTranscription called')
+  console.log('[Transcription] - Panel ref exists:', !!transcriptionPanel.value)
+  console.log('[Transcription] - Active before stop:', transcriptionActive.value)
+  
+  if (!transcriptionPanel.value) {
+    console.error('[Transcription] Panel ref not available')
+    return
+  }
   
   try {
+    console.log('[Transcription] Calling panel.stopTranscription()...')
     await transcriptionPanel.value.stopTranscription()
     transcriptionActive.value = false
+    console.log('[Transcription] ✅ Transcription stopped successfully')
+    console.log('[Transcription] - Active:', transcriptionActive.value)
   } catch (e) {
-    console.error('Failed to stop transcription:', e)
+    console.error('[Transcription] ❌ Failed to stop transcription:', e)
+    console.error('[Transcription] Error details:', {
+      message: e instanceof Error ? e.message : String(e),
+      stack: e instanceof Error ? e.stack : undefined
+    })
   }
 }
 </script>
