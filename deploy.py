@@ -65,7 +65,6 @@ EXCLUDE_PATTERNS = {
     "*.db",
     "*.sqlite",
     "*.sqlite3",
-    "config.json",
     ".env",
 }
 
