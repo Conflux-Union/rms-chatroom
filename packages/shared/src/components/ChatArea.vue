@@ -837,7 +837,16 @@ function handleClickOutside(event: MouseEvent) {
 .message {
   display: flex;
   padding: 4px 0;
-  margin-bottom: 16px;
+}
+
+/* Non-grouped messages have larger top margin */
+.message:not(.message-grouped) {
+  margin-top: 16px;
+}
+
+/* First message doesn't need top margin */
+.message:first-child {
+  margin-top: 0;
 }
 
 .message-avatar {
@@ -895,7 +904,7 @@ function handleClickOutside(event: MouseEvent) {
 
 /* Grouped messages (Discord-style consecutive message merging) */
 .message-grouped {
-  margin-bottom: 2px;
+  margin-top: 2px;
   padding-top: 0;
 }
 
