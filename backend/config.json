@@ -10,7 +10,7 @@
     "http://localhost:5173",
     "http://127.0.0.1:5173"
   ],
-  "voice_server_url": "http://localhost:8001",
-  "voice_service_url": "http://api.hurrybili1016hjh.cc:5000",
+  "voice_server_url": "http://api.hurrybili1016hjh.cc:5000",
+  "voice_service_url": "http://localhost:8001",
   "voice_callback_base_url": "http://preview-chatroom.rms.net.cn/api/voice-recognition/callback"
 }
