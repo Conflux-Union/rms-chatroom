@@ -1,12 +1,20 @@
 <script setup lang="ts">
 import { RouterView } from 'vue-router'
+import { NConfigProvider, NMessageProvider, NDialogProvider } from 'naive-ui'
 import { useGlowEffect } from '@rms-discord/shared'
+import { themeOverrides } from '@rms-discord/shared/naive-ui'
 import VersionBadge from '@rms-discord/shared/components/VersionBadge.vue'
 
 useGlowEffect()
 </script>
 
 <template>
-  <RouterView />
-  <VersionBadge />
+  <NConfigProvider :theme-overrides="themeOverrides">
+    <NMessageProvider>
+      <NDialogProvider>
+        <RouterView />
+        <VersionBadge />
+      </NDialogProvider>
+    </NMessageProvider>
+  </NConfigProvider>
 </template>

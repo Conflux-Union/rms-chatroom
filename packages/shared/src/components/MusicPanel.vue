@@ -2,9 +2,8 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useMusicStore, type Song } from '../stores/music'
 import { useVoiceStore } from '../stores/voice'
+import { NSlider, NSelect } from 'naive-ui'
 import { Music, Bot, SkipBack, Pause, Play, SkipForward, Plus, Trash2, X, Search, Loader2, Volume2 } from 'lucide-vue-next'
-import Slider from '@vueform/slider'
-import '@vueform/slider/themes/default.css'
 
 const music = useMusicStore()
 const voice = useVoiceStore()
@@ -259,26 +258,25 @@ async function handleStopBot() {
         <!-- Progress Bar - Full Width -->
         <div class="progress-container">
           <span class="time-current">{{ formatTime(music.positionMs) }}</span>
-          <Slider
-            v-model="progressValue"
+          <NSlider
+            v-model:value="progressValue"
             :min="0"
             :max="100"
-            :tooltips="false"
-            class="progress-slider"
+            :tooltip="false"
+            :step="0.1"
           />
           <span class="time-total">{{ formatTime(music.durationMs) }}</span>
         </div>
         <!-- Volume Control - Full Width -->
         <div class="volume-control">
           <Volume2 :size="16" class="volume-icon" />
-          <Slider
-            :model-value="music.volume"
-            @update:model-value="handleVolumeChange"
+          <NSlider
+            :value="music.volume * 100"
+            @update:value="(v: number) => handleVolumeChange(v / 100)"
             :min="0"
-            :max="1"
-            :step="0.01"
-            :tooltips="false"
-            class="volume-slider"
+            :max="100"
+            :step="1"
+            :tooltip="false"
           />
           <span class="volume-text">{{ Math.round(music.volume * 100) }}%</span>
         </div>
@@ -333,7 +331,7 @@ async function handleStopBot() {
         <div v-if="showSearch" class="search-overlay" @click.self="showSearch = false">
           <div class="search-dialog">
             <div class="search-header">
-              <input 
+              <input
                 v-model="searchInput"
                 type="text"
                 placeholder="搜索歌曲..."
@@ -341,11 +339,15 @@ async function handleStopBot() {
                 @keyup.enter="handleSearch"
                 autofocus
               />
-              <select v-model="music.searchPlatform" class="platform-selector">
-                <option value="all">全部</option>
-                <option value="qq">QQ音乐</option>
-                <option value="netease">网易云</option>
-              </select>
+              <NSelect
+                v-model:value="music.searchPlatform"
+                :options="[
+                  { label: 'All', value: 'all' },
+                  { label: 'QQ Music', value: 'qq' },
+                  { label: 'NetEase', value: 'netease' },
+                ]"
+                style="width: 120px"
+              />
               <button class="search-btn" @click="handleSearch" :disabled="music.isSearching">
                 <span v-if="music.isSearching">...</span>
                 <Search v-else :size="18" />
@@ -569,21 +571,6 @@ async function handleStopBot() {
   background: #e60026;
 }
 
-.platform-selector {
-  background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 8px;
-  padding: 8px 12px;
-  color: var(--color-text-main);
-  font-size: 14px;
-  cursor: pointer;
-}
-
-.platform-selector:focus {
-  outline: none;
-  border-color: var(--color-primary);
-}
-
 /* Now Playing */
 .now-playing {
   background: var(--surface-glass);
@@ -717,45 +704,10 @@ async function handleStopBot() {
   flex-shrink: 0;
 }
 
-/* Customize Slider component */
-:deep(.slider-connect) {
-  background: var(--color-primary, #6366f1);
-}
-
-:deep(.slider-tooltip) {
-  display: none;
-}
-
-:deep(.slider-base) {
-  background: rgba(255, 255, 255, 0.1);
-  height: 4px;
-  border-radius: 2px;
-}
-
-:deep(.slider-origin) {
-  background: transparent;
-}
-
-:deep(.slider-handle) {
-  width: 12px;
-  height: 12px;
-  background: #fff;
-  border: none;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
-  top: 50%;
-  transform: translateY(-50%);
-}
-
-:deep(.slider-handle:hover) {
-  transform: translateY(-50%) scale(1.2);
-}
-
-:deep(.slider-horizontal) {
-  height: 4px;
-}
-
-:deep(.slider-horizontal .slider-handle) {
-  right: -6px;
+/* Naive UI Slider customization */
+.progress-container :deep(.n-slider),
+.volume-control :deep(.n-slider) {
+  flex: 1;
 }
 
 /* Empty State */
