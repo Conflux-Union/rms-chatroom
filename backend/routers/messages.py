@@ -72,6 +72,9 @@ def _message_to_response(msg: Message) -> MessageResponse:
         content=msg.content,
         created_at=msg.created_at,
         attachments=[_attachment_to_response(att) for att in msg.attachments],
+        is_deleted=msg.is_deleted,
+        deleted_by=msg.deleted_by,
+        edited_at=msg.edited_at,
     )
 
 
@@ -203,6 +206,11 @@ async def edit_message(
     # Update content
     message.content = payload.content.strip()
     message.edited_at = datetime.utcnow()
+
+    # Extract data before commit (to avoid lazy loading issues)
+    content = message.content
+    edited_at = message.edited_at
+
     await db.commit()
     await db.refresh(message)
 
@@ -211,8 +219,8 @@ async def edit_message(
     await chat_manager.broadcast_to_channel(channel_id, {
         "type": "message_edited",
         "message_id": message_id,
-        "content": message.content,
-        "edited_at": message.edited_at.isoformat(),
+        "content": content,
+        "edited_at": edited_at.isoformat(),
     })
 
     return _message_to_response(message)
