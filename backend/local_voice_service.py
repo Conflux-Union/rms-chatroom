@@ -23,8 +23,8 @@ class TrainRequest(BaseModel):
 async def health():
     return {"status": "ok", "timestamp": datetime.now().isoformat()}
 
-@app.post("/trainsction")
-async def trainsction(req: TrainRequest):
+@app.post("/transcription")
+async def transcription(req: TrainRequest):
     # create a fake session and return accepted
     session_id = str(uuid.uuid4())
     SESSIONS[session_id] = {

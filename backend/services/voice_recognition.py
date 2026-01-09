@@ -340,7 +340,7 @@ class VoiceServiceClient:
                 "voice_config": voice_config
             }
             
-            url = f"{self.base_url}/trainsction"
+            url = f"{self.base_url}/transcription"
             logger.info(f"[VoiceServiceClient] Attempting to start transcription at {url}")
             logger.debug(f"[VoiceServiceClient] Request data: {data}")
             
