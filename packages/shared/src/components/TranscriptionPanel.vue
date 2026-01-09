@@ -2,7 +2,8 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useAuthStore } from '../stores/auth'
 import { useChatStore } from '../stores/chat'
-import { MessageSquare, Loader, ChevronUp, ChevronDown, User, Clock } from 'lucide-vue-next'
+import { MessageSquare, ChevronUp, ChevronDown, User, Clock } from 'lucide-vue-next'
+import { NAlert, NProgress, NSpin, NButton } from 'naive-ui'
 
 const API_BASE = import.meta.env.VITE_API_BASE || ''
 
@@ -509,11 +510,16 @@ defineExpose({
 
     <!-- Panel Content -->
     <div v-if="props.isExpanded" class="panel-content">
-      <!-- Error Display -->
-      <div v-if="error" class="error-message">
+      <!-- Error Display (NAlert) -->
+      <NAlert
+        v-if="error"
+        type="error"
+        closable
+        style="margin: 12px 16px"
+        @close="error = ''"
+      >
         {{ error }}
-        <button class="error-dismiss" @click="error = ''">×</button>
-      </div>
+      </NAlert>
 
       <!-- Empty State -->
       <div v-if="!hasTranscriptionTask" class="empty-state">
@@ -527,11 +533,11 @@ defineExpose({
         <div class="results-section">
           <div class="section-header">
             <h4>实时转录结果</h4>
-            <button v-if="!isTranscribing" class="clear-btn" @click="clearResults">
+            <NButton v-if="!isTranscribing" size="tiny" quaternary @click="clearResults">
               清除
-            </button>
+            </NButton>
           </div>
-          
+
           <div ref="scrollContainer" class="results-container">
             <div
               v-for="result in transcriptionResults"
@@ -553,10 +559,10 @@ defineExpose({
                 置信度: {{ Math.round(result.confidence * 100) }}%
               </div>
             </div>
-            
-            <!-- Loading indicator for active transcription -->
+
+            <!-- Loading indicator for active transcription (NSpin) -->
             <div v-if="isTranscribing" class="transcribing-indicator">
-              <Loader :size="16" class="spinner" />
+              <NSpin size="small" />
               <span>正在识别语音...</span>
             </div>
           </div>
@@ -567,18 +573,20 @@ defineExpose({
           <div class="section-header">
             <h4>内容总结</h4>
           </div>
-          
+
           <div v-if="summaryLoading" class="summary-loading">
             <div class="loading-header">
-              <Loader :size="16" class="spinner" />
+              <NSpin size="small" />
               <span>正在生成总结...</span>
             </div>
-            <div class="progress-bar">
-              <div class="progress-fill" :style="{ width: summaryProgress + '%' }"></div>
-            </div>
-            <div class="progress-text">{{ summaryProgress }}%</div>
+            <NProgress
+              type="line"
+              :percentage="summaryProgress"
+              :show-indicator="true"
+              indicator-placement="inside"
+            />
           </div>
-          
+
           <div v-else-if="summaryResult" class="summary-result">
             {{ summaryResult }}
           </div>
@@ -672,28 +680,6 @@ defineExpose({
   flex-direction: column;
 }
 
-.error-message {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 8px 16px;
-  background: rgba(239, 68, 68, 0.15);
-  border: 1px solid rgba(239, 68, 68, 0.3);
-  border-radius: var(--radius-md);
-  margin: 12px 16px;
-  font-size: 13px;
-  color: var(--color-error, #ef4444);
-}
-
-.error-dismiss {
-  background: none;
-  border: none;
-  color: var(--color-error, #ef4444);
-  cursor: pointer;
-  font-size: 16px;
-  padding: 0 4px;
-}
-
 .empty-state {
   display: flex;
   flex-direction: column;
@@ -748,22 +734,6 @@ defineExpose({
   font-weight: 600;
   color: var(--color-text-main);
   margin: 0;
-}
-
-.clear-btn {
-  background: rgba(255, 255, 255, 0.1);
-  border: none;
-  border-radius: var(--radius-sm);
-  padding: 4px 8px;
-  font-size: 12px;
-  color: var(--color-text-muted);
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.clear-btn:hover {
-  background: rgba(255, 255, 255, 0.2);
-  color: var(--color-text-main);
 }
 
 .results-container {
@@ -853,28 +823,6 @@ defineExpose({
   color: var(--color-primary, #6366f1);
 }
 
-.progress-bar {
-  width: 100%;
-  height: 4px;
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 2px;
-  overflow: hidden;
-  margin-bottom: 8px;
-}
-
-.progress-fill {
-  height: 100%;
-  background: var(--color-primary, #6366f1);
-  transition: width 0.3s ease;
-  border-radius: 2px;
-}
-
-.progress-text {
-  font-size: 12px;
-  color: var(--color-text-muted);
-  text-align: center;
-}
-
 .summary-result {
   padding: 0 16px 16px;
   font-size: 14px;
@@ -885,14 +833,6 @@ defineExpose({
   margin: 0 16px 16px;
   padding: 12px;
   word-wrap: break-word;
-}
-
-.spinner {
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
 }
 
 /* Scrollbar styling */

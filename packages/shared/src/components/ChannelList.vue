@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { ref, computed, watch, onUnmounted, onMounted } from 'vue'
+import { ref, computed, watch, onUnmounted, onMounted, nextTick } from 'vue'
 import { useChatStore } from '../stores/chat'
 import { useAuthStore } from '../stores/auth'
 import { useVoiceStore } from '../stores/voice'
 import { Volume2, MicOff, Crown } from 'lucide-vue-next'
+import { NDropdown, NModal, NInput, NButton, NSpace } from 'naive-ui'
+import type { DropdownOption } from 'naive-ui'
 import type { Channel } from '../types'
 import VoiceControls from '../components/VoiceControls.vue'
 
@@ -13,14 +15,25 @@ const voice = useVoiceStore()
 const showCreate = ref(false)
 const newChannelName = ref('')
 const newChannelType = ref<'text' | 'voice'>('text')
-const contextMenu = ref<{ show: boolean; x: number; y: number; channelId: number | null }>({
+// Channel context menu state (NDropdown)
+const channelDropdown = ref<{ show: boolean; x: number; y: number; channelId: number | null }>({
   show: false, x: 0, y: 0, channelId: null
 })
 
-// Voice user context menu state
-const userContextMenu = ref<{ show: boolean; x: number; y: number; channelId: number | null; userId: string | null }>({
+// Voice user context menu state (NDropdown)
+const userDropdown = ref<{ show: boolean; x: number; y: number; channelId: number | null; userId: string | null }>({
   show: false, x: 0, y: 0, channelId: null, userId: null
 })
+
+// Dropdown options
+const channelDropdownOptions: DropdownOption[] = [
+  { label: '删除频道', key: 'delete', props: { style: { color: 'var(--color-danger)' } } }
+]
+
+const userDropdownOptions: DropdownOption[] = [
+  { label: '静音麦克风', key: 'mute' },
+  { label: '踢出频道', key: 'kick', props: { style: { color: 'var(--color-danger)' } } }
+]
 
 // Refresh interval for voice channel users
 let voiceUsersInterval: ReturnType<typeof setInterval> | null = null
@@ -78,20 +91,36 @@ async function createChannel() {
   showCreate.value = false
 }
 
-function showContextMenu(event: MouseEvent, channelId: number) {
+function showChannelContextMenu(event: MouseEvent, channelId: number) {
   event.preventDefault()
-  contextMenu.value = { show: true, x: event.clientX, y: event.clientY, channelId }
+  channelDropdown.value = { show: true, x: event.clientX, y: event.clientY, channelId }
 }
 
-function hideContextMenu() {
-  contextMenu.value = { show: false, x: 0, y: 0, channelId: null }
-  userContextMenu.value = { show: false, x: 0, y: 0, channelId: null, userId: null }
+function hideAllDropdowns() {
+  channelDropdown.value = { show: false, x: 0, y: 0, channelId: null }
+  userDropdown.value = { show: false, x: 0, y: 0, channelId: null, userId: null }
 }
 
 function showUserContextMenu(event: MouseEvent, channelId: number, userId: string) {
   event.preventDefault()
   event.stopPropagation()
-  userContextMenu.value = { show: true, x: event.clientX, y: event.clientY, channelId, userId }
+  userDropdown.value = { show: true, x: event.clientX, y: event.clientY, channelId, userId }
+}
+
+async function handleChannelDropdownSelect(key: string) {
+  if (key === 'delete') {
+    await deleteChannel()
+  }
+  channelDropdown.value.show = false
+}
+
+async function handleUserDropdownSelect(key: string) {
+  if (key === 'mute') {
+    await muteVoiceUser()
+  } else if (key === 'kick') {
+    await kickVoiceUser()
+  }
+  userDropdown.value.show = false
 }
 
 // Edit mode (only when admin toggles it on)
@@ -277,28 +306,28 @@ async function onDrop(event: DragEvent, targetId: number, type: 'text' | 'voice'
 }
 
 async function muteVoiceUser() {
-  if (!userContextMenu.value.channelId || !userContextMenu.value.userId) return
-  await voice.muteParticipant(userContextMenu.value.userId, true)
-  hideContextMenu()
+  if (!userDropdown.value.channelId || !userDropdown.value.userId) return
+  await voice.muteParticipant(userDropdown.value.userId, true)
+  hideAllDropdowns()
 }
 
 async function kickVoiceUser() {
-  if (!userContextMenu.value.channelId || !userContextMenu.value.userId) return
-  await voice.kickParticipant(userContextMenu.value.userId)
-  hideContextMenu()
+  if (!userDropdown.value.channelId || !userDropdown.value.userId) return
+  await voice.kickParticipant(userDropdown.value.userId)
+  hideAllDropdowns()
 }
 
 async function deleteChannel() {
-  if (!contextMenu.value.channelId || !chat.currentServer) return
+  if (!channelDropdown.value.channelId || !chat.currentServer) return
   if (confirm('确定要删除此频道吗？')) {
-    await chat.deleteChannel(chat.currentServer.id, contextMenu.value.channelId)
+    await chat.deleteChannel(chat.currentServer.id, channelDropdown.value.channelId)
   }
-  hideContextMenu()
+  hideAllDropdowns()
 }
 </script>
 
 <template>
-  <div class="channel-list" @click="hideContextMenu" :style="{ width: width + 'px' }">
+  <div class="channel-list" @click="hideAllDropdowns" :style="{ width: width + 'px' }">
     <div class="channel-list-content">
       <!-- Right-edge resizer covers full height of the channel-list -->
       <div class="resizer" @mousedown.stop.prevent="startResizing" title="拖拽调整侧栏宽度"></div>
@@ -321,7 +350,7 @@ async function deleteChannel() {
           class="channel glow-effect"
           :class="{ active: chat.currentChannel?.id === channel.id }"
           @click="selectChannel(channel)"
-          @contextmenu="auth.isAdmin ? showContextMenu($event, channel.id) : undefined"
+          @contextmenu="auth.isAdmin ? showChannelContextMenu($event, channel.id) : undefined"
           :draggable="auth.isAdmin && editMode"
           @dragstart="onDragStart($event, channel.id)"
           @dragover="onDragOver($event)"
@@ -363,7 +392,7 @@ async function deleteChannel() {
             class="channel glow-effect"
             :class="{ active: chat.currentChannel?.id === channel.id }"
             @click="selectChannel(channel)"
-            @contextmenu="auth.isAdmin ? showContextMenu($event, channel.id) : undefined"
+            @contextmenu="auth.isAdmin ? showChannelContextMenu($event, channel.id) : undefined"
             :draggable="auth.isAdmin && editMode"
             @dragstart="onDragStart($event, channel.id)"
             @dragover="onDragOver($event)"
@@ -425,41 +454,50 @@ async function deleteChannel() {
       </div>
     </div>
 
-    <!-- Channel Context Menu -->
-    <div
-      v-if="contextMenu.show && auth.isAdmin"
-      class="context-menu"
-      :style="{ left: contextMenu.x + 'px', top: contextMenu.y + 'px' }"
-      @click.stop
-    >
-      <div class="context-menu-item delete" @click="deleteChannel">删除频道</div>
-    </div>
+    <!-- Channel Context Menu (NDropdown) -->
+    <NDropdown
+      placement="bottom-start"
+      trigger="manual"
+      :x="channelDropdown.x"
+      :y="channelDropdown.y"
+      :options="channelDropdownOptions"
+      :show="channelDropdown.show && auth.isAdmin"
+      @select="handleChannelDropdownSelect"
+      @clickoutside="channelDropdown.show = false"
+    />
 
-    <!-- Voice User Context Menu -->
-    <div
-      v-if="userContextMenu.show && auth.isAdmin"
-      class="context-menu"
-      :style="{ left: userContextMenu.x + 'px', top: userContextMenu.y + 'px' }"
-      @click.stop
-    >
-      <div class="context-menu-item" @click="muteVoiceUser">静音麦克风</div>
-      <div class="context-menu-item delete" @click="kickVoiceUser">踢出频道</div>
-    </div>
+    <!-- Voice User Context Menu (NDropdown) -->
+    <NDropdown
+      placement="bottom-start"
+      trigger="manual"
+      :x="userDropdown.x"
+      :y="userDropdown.y"
+      :options="userDropdownOptions"
+      :show="userDropdown.show && auth.isAdmin"
+      @select="handleUserDropdownSelect"
+      @clickoutside="userDropdown.show = false"
+    />
 
-    <div v-if="showCreate" class="create-modal" @click.self="showCreate = false">
-      <div class="modal-content">
-        <h3>创建{{ newChannelType === 'text' ? '文字' : '语音' }}频道</h3>
-        <input
-          v-model="newChannelName"
-          placeholder="频道名称"
-          @keyup.enter="createChannel"
-        />
-        <div class="modal-actions">
-          <button class="glow-effect" @click="showCreate = false">取消</button>
-          <button class="primary glow-effect" @click="createChannel">创建</button>
-        </div>
-      </div>
-    </div>
+    <!-- Create Channel Modal -->
+    <NModal
+      v-model:show="showCreate"
+      preset="card"
+      :title="'创建' + (newChannelType === 'text' ? '文字' : '语音') + '频道'"
+      style="width: 360px"
+      :segmented="{ content: true, footer: 'soft' }"
+    >
+      <NInput
+        v-model:value="newChannelName"
+        placeholder="频道名称"
+        @keyup.enter="createChannel"
+      />
+      <template #footer>
+        <NSpace justify="end">
+          <NButton @click="showCreate = false">取消</NButton>
+          <NButton type="primary" @click="createChannel">创建</NButton>
+        </NSpace>
+      </template>
+    </NModal>
   </div>
 </template>
 
@@ -694,17 +732,6 @@ async function deleteChannel() {
   box-shadow: none;
 }
 
-.create-modal {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.6);
-  backdrop-filter: blur(10px);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  z-index: 1000;
-}
-
 .user-info {
   display: flex;
   flex-direction: row;
@@ -739,101 +766,6 @@ async function deleteChannel() {
 
 .logout-btn:hover {
   color: var(--color-primary);
-}
-
-.modal-content {
-  background: var(--surface-glass-strong);
-  backdrop-filter: blur(var(--blur-strength));
-  -webkit-backdrop-filter: blur(var(--blur-strength));
-  padding: 24px;
-  border-radius: var(--radius-lg);
-  width: 300px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-}
-
-.modal-content h3 {
-  margin: 0 0 16px;
-  color: var(--color-text-main);
-}
-
-.modal-content input {
-  width: 100%;
-  padding: 12px 16px;
-  border: 1px solid transparent;
-  border-radius: var(--radius-md);
-  background: var(--surface-glass-input);
-  color: var(--color-text-main);
-  margin-bottom: 16px;
-  box-sizing: border-box;
-  transition: all var(--transition-fast);
-}
-
-.modal-content input:focus {
-  background: var(--surface-glass-input-focus);
-  border-color: rgba(255, 255, 255, 0.5);
-}
-
-.modal-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-}
-
-.modal-actions button {
-  padding: 10px 20px;
-  border: none;
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  background: var(--surface-glass);
-  color: var(--color-text-main);
-  transition: all var(--transition-fast);
-}
-
-.modal-actions button.primary {
-  background: var(--color-gradient-primary);
-  color: white;
-  box-shadow: var(--shadow-glow);
-}
-
-.modal-actions button:hover {
-  transform: translateY(-2px);
-}
-
-.modal-actions button.primary:hover {
-  filter: brightness(1.1);
-}
-
-.context-menu {
-  position: fixed;
-  background: var(--surface-glass-strong);
-  backdrop-filter: blur(var(--blur-strength));
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: var(--radius-md);
-  padding: 6px;
-  min-width: 140px;
-  z-index: 1001;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-}
-
-.context-menu-item {
-  padding: 8px 12px;
-  cursor: pointer;
-  border-radius: var(--radius-sm);
-  color: var(--color-text-main);
-  font-size: 14px;
-  transition: background var(--transition-fast);
-}
-
-.context-menu-item:hover {
-  background: var(--surface-glass);
-}
-
-.context-menu-item.delete {
-  color: var(--color-danger);
-}
-
-.context-menu-item.delete:hover {
-  background: rgba(237, 66, 69, 0.2);
 }
 
 .voice-channel-wrapper {
