@@ -43,22 +43,11 @@ let eventSource: EventSource | null = null
 
 // Computed
 const hasTranscriptionTask = computed(() => {
-  const result = transcriptionResults.value.length > 0 || isTranscribing.value
-  console.log('[TranscriptionPanel] hasTranscriptionTask computed:', {
-    resultsCount: transcriptionResults.value.length,
-    isTranscribing: isTranscribing.value,
-    hasTask: result
-  })
-  return result
+  return transcriptionResults.value.length > 0 || isTranscribing.value
 })
 
 const hasPermission = computed(() => {
-  const result = (auth.user?.permission_level ?? 0) >= 3
-  console.log('[TranscriptionPanel] hasPermission computed:', {
-    permission_level: auth.user?.permission_level,
-    hasPermission: result
-  })
-  return result
+  return (auth.user?.permission_level ?? 0) >= 3
 })
 
 // Methods
@@ -69,37 +58,25 @@ function scrollToBottom() {
 }
 
 function connectWebSocket() {
-  console.log('[TranscriptionPanel] connectWebSocket called')
-  console.log('[TranscriptionPanel] - Session ID:', sessionId.value)
-  console.log('[TranscriptionPanel] - Current channel:', chat.currentChannel?.id)
-  
   if (!sessionId.value || !chat.currentChannel) {
-    console.warn('[TranscriptionPanel] Cannot connect WebSocket - missing session or channel')
     return
   }
-  
+
   const wsUrl = `${API_BASE.replace('http', 'ws')}/ws/transcription/${chat.currentChannel.id}/${sessionId.value}?token=${auth.token}`
-  console.log('[TranscriptionPanel] Connecting to WebSocket')
-  console.log('[TranscriptionPanel] - URL:', wsUrl.replace(/token=.+$/, 'token=***'))
-  
+
   websocket = new WebSocket(wsUrl)
-  
+
   websocket.onopen = () => {
-    console.log('[TranscriptionPanel] ✅ WebSocket connected successfully')
+    if (import.meta.env.DEV) {
+      console.log('[TranscriptionPanel] WebSocket connected')
+    }
   }
-  
+
   websocket.onmessage = (event) => {
-    console.log('[TranscriptionPanel] WebSocket message received:', event.data)
     try {
       const data = JSON.parse(event.data)
-      console.log('[TranscriptionPanel] Parsed message:', data)
-      
+
       if (data.type === 'transcription_result') {
-        console.log('[TranscriptionPanel] New transcription result')
-        console.log('[TranscriptionPanel] - Speaker:', data.speaker)
-        console.log('[TranscriptionPanel] - Text:', data.text)
-        console.log('[TranscriptionPanel] - Confidence:', data.confidence)
-        
         // Add new transcription result
         transcriptionResults.value.push({
           id: data.id || Date.now().toString(),
@@ -108,58 +85,53 @@ function connectWebSocket() {
           timestamp: new Date(data.timestamp),
           confidence: data.confidence
         })
-        
-        console.log('[TranscriptionPanel] Total results:', transcriptionResults.value.length)
-        
+
         // Auto scroll to bottom
         setTimeout(scrollToBottom, 50)
       } else if (data.type === 'session_ended') {
-        console.log('[TranscriptionPanel] Session ended notification received')
         isTranscribing.value = false
         sessionId.value = null
       } else if (data.type === 'error') {
-        console.error('[TranscriptionPanel] Error from WebSocket:', data.message)
         error.value = data.message
         isTranscribing.value = false
-      } else {
-        console.log('[TranscriptionPanel] Unknown message type:', data.type)
       }
     } catch (e) {
-      console.error('[TranscriptionPanel] Failed to parse WebSocket message:', e)
-      console.error('[TranscriptionPanel] Raw message:', event.data)
+      if (import.meta.env.DEV) {
+        console.error('[TranscriptionPanel] Failed to parse WebSocket message:', e)
+      }
     }
   }
-  
+
   websocket.onerror = (err) => {
-    console.error('[TranscriptionPanel] ❌ WebSocket error:', err)
+    if (import.meta.env.DEV) {
+      console.error('[TranscriptionPanel] WebSocket error:', err)
+    }
   }
-  
+
   websocket.onclose = (event) => {
-    console.log('[TranscriptionPanel] WebSocket closed')
-    console.log('[TranscriptionPanel] - Code:', event.code)
-    console.log('[TranscriptionPanel] - Reason:', event.reason)
-    console.log('[TranscriptionPanel] - Was clean:', event.wasClean)
+    if (import.meta.env.DEV) {
+      console.log('[TranscriptionPanel] WebSocket closed:', event.code, event.reason)
+    }
     websocket = null
   }
 }
 
 function connectSummarySSE() {
   if (!sessionId.value || !chat.currentChannel) return
-  
+
   const sseUrl = `${API_BASE}/api/voice-recognition/summary/stream/${sessionId.value}?token=${auth.token}`
-  
+
   eventSource = new EventSource(sseUrl)
-  
+
   eventSource.onopen = () => {
-    console.log('Summary SSE connected')
     summaryLoading.value = true
     summaryProgress.value = 0
   }
-  
+
   eventSource.onmessage = (event) => {
     try {
       const data = JSON.parse(event.data)
-      
+
       if (data.type === 'progress') {
         summaryProgress.value = data.progress
       } else if (data.type === 'summary') {
@@ -175,12 +147,16 @@ function connectSummarySSE() {
         eventSource = null
       }
     } catch (e) {
-      console.error('Failed to parse SSE message:', e)
+      if (import.meta.env.DEV) {
+        console.error('[TranscriptionPanel] Failed to parse SSE message:', e)
+      }
     }
   }
-  
+
   eventSource.onerror = () => {
-    console.error('SSE connection error')
+    if (import.meta.env.DEV) {
+      console.error('[TranscriptionPanel] SSE connection error')
+    }
     summaryLoading.value = false
     eventSource?.close()
     eventSource = null
@@ -190,7 +166,6 @@ function connectSummarySSE() {
 async function requestVoiceHelp() {
   try {
     const helpUrl = `${API_BASE}/api/voice-recognition/help`
-    console.log('[TranscriptionPanel] Requesting voice help from', helpUrl)
 
     const resp = await fetch(helpUrl, {
       method: 'GET',

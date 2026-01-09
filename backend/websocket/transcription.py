@@ -300,7 +300,7 @@ class AliVoiceClient:
             data['ffmpeg_path'] = ffmpeg_path
             
         logger.info(f"Starting transcription with {len(audio_tracks)} audio tracks")
-        response = self._make_request('POST', 'trainsction', json=data)
+        response = self._make_request('POST', 'transcription', json=data)
         return response.json()
     
     def stop_transcription(self, session_id: str) -> Dict[str, Any]:

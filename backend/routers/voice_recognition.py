@@ -24,18 +24,6 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/voice-recognition", tags=["voice-recognition"])
 
 
-def _get_voice_service_url() -> str:
-    """统一获取语音服务地址，配置为空时回退到本地默认服务。"""
-    try:
-        settings = get_settings()
-        base = getattr(settings, 'voice_service_url', '') or 'http://localhost:5000'
-        base = str(base).strip().rstrip('/')
-        logger.info(f"[VoiceRouter] Using voice_service_url={base}")
-        return base
-    except Exception:
-        return 'http://localhost:5000'
-
-
 class VoiceSessionCreate(BaseModel):
     """创建语音识别会话的请求模型"""
     room_config: Dict[str, Any] = Field(..., description="房间配置")
@@ -179,7 +167,8 @@ async def create_voice_session(
 @router.get("/sessions")
 async def list_voice_sessions(
     user: CurrentUser,
-_: None = Depends(require_permission(2))):
+    _: None = Depends(require_permission(2))
+):
     """获取所有语音识别会话"""
     try:
         result = await voice_service.get_sessions()
@@ -199,7 +188,8 @@ _: None = Depends(require_permission(2))):
 @router.get("/sessions/{session_id}")
 async def get_voice_session(
     session_id: str,
-    user: CurrentUser,  _: None = Depends(require_permission(1))# 普通用户也可查看
+    user: CurrentUser,
+    _: None = Depends(require_permission(1))  # 普通用户也可查看
 ):
     """获取语音识别会话详情"""
     try:
@@ -249,7 +239,8 @@ async def get_voice_session_results(
 async def manage_voice_speaker(
     session_id: str,
     speaker_action: SpeakerAction,
-    user: CurrentUser,  _: None = Depends(require_permission(2))# 需要管理员权限
+    user: CurrentUser,
+    _: None = Depends(require_permission(2))  # 需要管理员权限
 ):
     """管理说话人状态"""
     try:
@@ -277,7 +268,8 @@ async def manage_voice_speaker(
 @router.delete("/sessions/{session_id}")
 async def stop_voice_session(
     session_id: str,
-    user: CurrentUser,  _: None = Depends(require_permission(2))# 需要管理员权限
+    user: CurrentUser,
+    _: None = Depends(require_permission(2))  # 需要管理员权限
 ):
     """停止语音识别会话"""
     try:
@@ -301,7 +293,8 @@ async def stop_voice_session(
 @router.get("/status")
 async def get_voice_service_status(
     user: CurrentUser,
-_: None = Depends(require_permission(2))):
+    _: None = Depends(require_permission(2))
+):
     """获取语音服务器状态"""
     try:
         result = await voice_service.get_system_status()
@@ -380,7 +373,8 @@ async def check_voice_service_availability(
 @router.post("/livekit/bot-token", response_model=LiveKitBotTokenResponse)
 async def generate_livekit_bot_token(
     request: LiveKitBotTokenRequest,
-    user: CurrentUser,  _: None = Depends(require_permission(2))# 需要管理员权限
+    user: CurrentUser,
+    _: None = Depends(require_permission(2))  # 需要管理员权限
 ):
     """生成LiveKit Bot访问令牌"""
     try:
@@ -422,7 +416,8 @@ async def generate_livekit_bot_token(
 @router.get("/livekit/status")
 async def get_livekit_status(
     user: CurrentUser,
-_: None = Depends(require_permission(2))):
+    _: None = Depends(require_permission(2))
+):
     """获取LiveKit服务状态"""
     try:
         from ..websocket.transcription import LIVEKIT_AVAILABLE
@@ -448,7 +443,8 @@ _: None = Depends(require_permission(2))):
 
 @router.post("/test/callback-server")
 async def test_callback_server(
-    user: CurrentUser,  _: None = Depends(require_permission(2))# 需要管理员权限
+    user: CurrentUser,
+    _: None = Depends(require_permission(2))  # 需要管理员权限
 ):
     """测试回调服务器功能（用于开发调试）"""
     try:
@@ -503,7 +499,9 @@ async def start_realtime_transcription(
         settings = get_settings()
         
         # 调用独立语音服务启动转录
-        voice_service_url = _get_voice_service_url()
+        from ..services.voice_recognition import get_voice_service_config
+        voice_config_data = get_voice_service_config()
+        voice_service_url = voice_config_data['base_url']
         
         # 构建请求数据
         transcription_data = {
@@ -520,7 +518,7 @@ async def start_realtime_transcription(
         
         # 发送到语音服务
         response = requests.post(
-            f"{voice_service_url}/trainsction",
+            f"{voice_service_url}/transcription",
             json=transcription_data,
             timeout=30
         )
@@ -561,8 +559,9 @@ async def push_audio_data(
 ):
     """向指定会话推送音频数据"""
     try:
-        settings = get_settings()
-        voice_service_url = _get_voice_service_url()
+        from ..services.voice_recognition import get_voice_service_config
+        voice_config_data = get_voice_service_config()
+        voice_service_url = voice_config_data['base_url']
         
         # 转发到独立语音服务
         response = requests.post(
@@ -617,8 +616,9 @@ async def stream_sentences(
 ):
     """流式获取转录句子"""
     try:
-        settings = get_settings()
-        voice_service_url = _get_voice_service_url()
+        from ..services.voice_recognition import get_voice_service_config
+        voice_config_data = get_voice_service_config()
+        voice_service_url = voice_config_data['base_url']
         
         # 构建查询参数
         params = {
@@ -662,8 +662,9 @@ async def sentences_server_sent_events(
     """Server-Sent Events 实时推送转录句子"""
     async def event_generator():
         try:
-            settings = get_settings()
-            voice_service_url = _get_voice_service_url()
+            from ..services.voice_recognition import get_voice_service_config
+            voice_config_data = get_voice_service_config()
+            voice_service_url = voice_config_data['base_url']
             last_timestamp = 0
             
             while True:
@@ -745,8 +746,9 @@ async def transcription_callback(request: dict):
 async def voice_recognition_help():
     """Return help information for the voice transcription (voice-tran) feature."""
     try:
-        settings = get_settings()
-        voice_service_url = _get_voice_service_url()
+        from ..services.voice_recognition import get_voice_service_config
+        voice_config_data = get_voice_service_config()
+        voice_service_url = voice_config_data['base_url']
         
         # 尝试连接语音服务检查可用性
         service_status = "未知"
@@ -805,7 +807,7 @@ async def voice_recognition_help():
                 "voice_service_url": voice_service_url,
                 "service_status": service_status,
                 "service_error": service_error,
-                "callback_base_url": getattr(settings, 'voice_callback_base_url', None)
+                "callback_base_url": voice_config_data.get('callback_base_url')
             }
         }
     except Exception as e:
