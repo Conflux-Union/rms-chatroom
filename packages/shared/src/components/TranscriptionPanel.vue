@@ -206,10 +206,21 @@ async function startTranscription() {
     error.value = ''
     
     const requestBody = {
-      channel_id: chat.currentChannel.id,
-      language: 'zh-cn'
-    }
-    const requestUrl = `${API_BASE}/api/voice-recognition/session`
+      room_config: {
+        room_id: `server_${chat.currentChannel.server_id}_channel_${chat.currentChannel.id}`,
+        type: 'livekit',
+        name: chat.currentChannel.name || `channel_${chat.currentChannel.id}`,
+        server_id: chat.currentChannel.server_id,
+        channel_id: chat.currentChannel.id,
+        livekit_room_name: `voice_${chat.currentChannel.id}`
+      },
+      voice_config: {
+        language: 'zh-CN',
+        sample_rate: 16000
+      }
+     }
+    // Backend expects POST /api/voice-recognition/sessions
+    const requestUrl = `${API_BASE}/api/voice-recognition/sessions`
     
     console.log('[TranscriptionPanel] Sending POST request')
     console.log('[TranscriptionPanel] - URL:', requestUrl)
@@ -275,12 +286,13 @@ async function stopTranscription() {
   }
   
   try {
-    const requestUrl = `${API_BASE}/api/voice-recognition/session/${sessionId.value}/stop`
-    console.log('[TranscriptionPanel] Sending POST request to stop')
+    // Backend expects DELETE /api/voice-recognition/sessions/{session_id}
+    const requestUrl = `${API_BASE}/api/voice-recognition/sessions/${sessionId.value}`
+    console.log('[TranscriptionPanel] Sending DELETE request to stop')
     console.log('[TranscriptionPanel] - URL:', requestUrl)
     
     const response = await fetch(requestUrl, {
-      method: 'POST',
+      method: 'DELETE',
       headers: {
         Authorization: `Bearer ${auth.token}`,
       }
