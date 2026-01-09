@@ -187,6 +187,30 @@ function connectSummarySSE() {
   }
 }
 
+async function requestVoiceHelp() {
+  try {
+    const helpUrl = `${API_BASE}/api/voice-recognition/help`
+    console.log('[TranscriptionPanel] Requesting voice help from', helpUrl)
+
+    const resp = await fetch(helpUrl, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${auth.token}`
+      }
+    })
+
+    if (resp.ok) {
+      const data = await resp.json()
+      console.log('[TranscriptionPanel] Voice help received:', data)
+    } else {
+      const text = await resp.text()
+      console.warn('[TranscriptionPanel] Failed to fetch voice help:', resp.status, text)
+    }
+  } catch (err) {
+    console.error('[TranscriptionPanel] Error fetching voice help:', err)
+  }
+}
+
 async function startTranscription() {
   console.log('[TranscriptionPanel] startTranscription called')
   console.log('[TranscriptionPanel] - Current channel:', chat.currentChannel?.id)
@@ -241,9 +265,30 @@ async function startTranscription() {
     console.log('[TranscriptionPanel] - OK:', response.ok)
     
     if (!response.ok) {
-      const err = await response.json()
-      console.error('[TranscriptionPanel] ❌ Error response:', err)
-      throw new Error(err.detail || '启动转录失败')
+      let errMsg = 'Failed to start transcription'
+      try {
+        const err = await response.json()
+        console.error('[TranscriptionPanel] ❌ Error response:', err)
+        errMsg = err.detail || JSON.stringify(err)
+      } catch (parseErr) {
+        console.error('[TranscriptionPanel] ❌ Failed to parse error response:', parseErr)
+      }
+
+      // Map common backend errors to user-friendly messages
+      if (/Invalid URL|No scheme supplied|trainsction/.test(String(errMsg))) {
+        error.value = 'Server misconfiguration: transcription service URL is invalid. Please contact the administrator.'
+      } else if (/Connection refused|Failed to establish a new connection|Max retries exceeded/.test(String(errMsg))) {
+        error.value = 'Transcription service unreachable. Please try again later or contact the administrator.'
+      } else {
+        error.value = errMsg
+      }
+
+      console.error('[TranscriptionPanel] ❌ Failed to start transcription:', errMsg)
+
+      // 请求 help 并在控制台打印（在所有请求之后）
+      await requestVoiceHelp()
+
+      return false
     }
     
     const data = await response.json()
@@ -259,17 +304,33 @@ async function startTranscription() {
     console.log('[TranscriptionPanel] Connecting WebSocket...')
     connectWebSocket()
 
+    // 在所有请求之后请求 help 并打印（用户点击后）
+    await requestVoiceHelp()
+
     return true
     
   } catch (e) {
-    error.value = e instanceof Error ? e.message : '启动转录失败'
+    const raw = e instanceof Error ? e.message : String(e)
     console.error('[TranscriptionPanel] ❌ Failed to start transcription:', e)
     console.error('[TranscriptionPanel] Error details:', {
-      message: e instanceof Error ? e.message : String(e),
+      message: raw,
       stack: e instanceof Error ? e.stack : undefined,
       error: e
     })
-    throw e // Re-throw to parent component
+
+    if (/Invalid URL|No scheme supplied|trainsction/.test(raw)) {
+      error.value = 'Server misconfiguration: transcription service URL is invalid. Please contact the administrator.'
+    } else if (/Connection refused|Failed to establish a new connection|Max retries exceeded/.test(raw)) {
+      error.value = 'Transcription service unreachable. Please try again later or contact the administrator.'
+    } else {
+      error.value = e instanceof Error ? e.message : '启动转录失败'
+    }
+
+    // 在异常路径也尝试请求 help 并打印，保证在所有请求之后执行
+    await requestVoiceHelp()
+
+    // Do not re-throw when backend is unreachable or misconfigured; return false so UI can react.
+    return false
   }
 }
 
@@ -306,7 +367,7 @@ async function stopTranscription() {
       isTranscribing.value = false
       console.log('[TranscriptionPanel] ✅ Transcription stopped successfully')
       console.log('[TranscriptionPanel] - Results count:', transcriptionResults.value.length)
-      
+
       // Start summary generation
       if (transcriptionResults.value.length > 0) {
         console.log('[TranscriptionPanel] Starting summary generation...')
@@ -314,7 +375,7 @@ async function stopTranscription() {
       } else {
         console.log('[TranscriptionPanel] No results to summarize')
       }
-      
+
       // Close WebSocket
       if (websocket) {
         console.log('[TranscriptionPanel] Closing WebSocket connection')
@@ -322,11 +383,18 @@ async function stopTranscription() {
         websocket = null
       }
 
+      // 在停止操作后请求 help 并打印
+      await requestVoiceHelp()
+
       return true
     } else {
       const errorText = await response.text()
       console.error('[TranscriptionPanel] ❌ Failed to stop, response not OK')
       console.error('[TranscriptionPanel] Error response:', errorText)
+
+      // 请求 help 并打印（出错时也执行）
+      await requestVoiceHelp()
+
       return false
     }
   } catch (e) {
@@ -335,8 +403,19 @@ async function stopTranscription() {
       message: e instanceof Error ? e.message : String(e),
       stack: e instanceof Error ? e.stack : undefined
     })
-    error.value = '停止转录失败'
-    throw e // Re-throw to parent component
+    const raw = e instanceof Error ? e.message : String(e)
+    if (/Invalid URL|No scheme supplied|trainsction/.test(raw)) {
+      error.value = 'Server misconfiguration: transcription service URL is invalid. Please contact the administrator.'
+    } else if (/Connection refused|Failed to establish a new connection|Max retries exceeded/.test(raw)) {
+      error.value = 'Transcription service unreachable. Please try again later or contact the administrator.'
+    } else {
+      error.value = '停止转录失败'
+    }
+
+    // 在异常路径也尝试请求 help 并打印
+    await requestVoiceHelp()
+
+    return false
   }
 }
 

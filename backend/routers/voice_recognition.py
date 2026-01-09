@@ -727,3 +727,29 @@ async def transcription_callback(request: dict):
     except Exception as e:
         logger.exception(f"Error processing transcription callback: {e}")
         raise HTTPException(status_code=500, detail="处理回调失败")
+
+
+@router.get("/help")
+async def voice_recognition_help():
+    """Return help information for the voice transcription (voice-tran) feature."""
+    try:
+        help_text = (
+            "Voice Transcription (voice-tran) Help:\n"
+            "- What it does: converts live voice in a voice channel to text and optionally generates a short summary.\n"
+            "- How to start: open a voice channel, click the transcription button in the voice panel to create a transcription session.\n"
+            "- Permissions: users with appropriate permission level can use the button; server administrators can view and manage global locks.\n"
+            "- Behavior: starting a session will request a transcription service and attach a WebSocket for real-time results. The session_id is returned on success.\n"
+            "- Troubleshooting: if you see errors like 'Connection refused' or 'Invalid URL', the server's transcription service (voice_service_url) may be misconfigured or unreachable. Verify voice_service_url in backend config or environment variables.\n"
+            "- Local services: the project also includes a local voice server (voice_server_url) used for hosting realtime voice components; this is separate from the transcription engine.\n"
+            "- Contact: if issues persist, collect the front-end error message and backend logs and contact the administrator."
+        )
+
+        return {
+            "success": True,
+            "feature": "voice-tran",
+            "title": "Voice Transcription Help",
+            "help": help_text
+        }
+    except Exception as e:
+        logger.exception(f"Error returning voice help: {e}")
+        return {"success": False, "error": str(e)}
