@@ -113,6 +113,11 @@ class VoiceRepository @Inject constructor(
     }
 
     suspend fun joinVoice(channelId: Long): Result<Unit> {
+        // Leave current channel if already connected
+        if (isConnected.value) {
+            leaveVoice()
+        }
+
         _error.value = null
         return try {
             // Get token from server

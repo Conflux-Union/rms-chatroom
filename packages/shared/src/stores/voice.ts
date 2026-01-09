@@ -543,7 +543,12 @@ export const useVoiceStore = defineStore('voice', () => {
   loopMuteGlobalAudio()
 
   async function joinVoice(channel: Channel): Promise<boolean> {
-    if (isConnecting.value || isConnected.value) return false
+    if (isConnecting.value) return false
+
+    // Leave current channel if already connected
+    if (isConnected.value) {
+      disconnect()
+    }
 
     // CRITICAL: Activate AudioContext IMMEDIATELY in user gesture call stack (iOS requirement)
     // This must happen BEFORE any async operations
