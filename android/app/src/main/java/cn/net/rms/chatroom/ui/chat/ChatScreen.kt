@@ -63,6 +63,9 @@ import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Block
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -139,9 +142,14 @@ fun ChatScreen(
     isLoading: Boolean = false,
     connectionState: ConnectionState = ConnectionState.CONNECTED,
     authToken: String? = null,
+    currentUserId: Long? = null,
+    currentUserPermission: Int? = null,
     onSendMessage: (String) -> Unit,
     onRefresh: () -> Unit = {},
-    onReconnect: () -> Unit = {}
+    onReconnect: () -> Unit = {},
+    onEditMessage: (Long, String) -> Unit = { _, _ -> },
+    onDeleteMessage: (Long) -> Unit = {},
+    onMuteUser: (Long, String, String?, Long?, Long?, String?) -> Unit = { _, _, _, _, _, _ -> }
 ) {
     val listState = rememberLazyListState()
     var messageText by remember { mutableStateOf("") }
@@ -151,6 +159,10 @@ fun ChatScreen(
     var isRefreshing by remember { mutableStateOf(false) }
     val context = LocalContext.current
     var attachmentPreview by remember { mutableStateOf<AttachmentPreview?>(null) }
+    var selectedMessage by remember { mutableStateOf<Message?>(null) }
+    var showMessageMenu by remember { mutableStateOf(false) }
+    var showEditDialog by remember { mutableStateOf(false) }
+    var showMuteDialog by remember { mutableStateOf(false) }
 
     // Auto-scroll to bottom when new messages arrive
     LaunchedEffect(messages.size) {
@@ -234,6 +246,8 @@ fun ChatScreen(
                                 MessageItem(
                                     message = message,
                                     authToken = authToken,
+                                    currentUserId = currentUserId,
+                                    currentUserPermission = currentUserPermission,
                                     onAttachmentClick = { attachment ->
                                         handleAttachmentClick(
                                             context = context,
@@ -241,6 +255,10 @@ fun ChatScreen(
                                             authToken = authToken,
                                             onPreview = { preview -> attachmentPreview = preview }
                                         )
+                                    },
+                                    onLongClick = { msg ->
+                                        selectedMessage = msg
+                                        showMessageMenu = true
                                     }
                                 )
                             }
@@ -273,6 +291,62 @@ fun ChatScreen(
             authToken = authToken,
             onDismiss = { attachmentPreview = null }
         )
+
+        // Message context menu
+        if (showMessageMenu && selectedMessage != null) {
+            MessageContextMenu(
+                message = selectedMessage!!,
+                currentUserId = currentUserId,
+                currentUserPermission = currentUserPermission,
+                onDismiss = { showMessageMenu = false },
+                onEdit = {
+                    showMessageMenu = false
+                    showEditDialog = true
+                },
+                onDelete = {
+                    showMessageMenu = false
+                    onDeleteMessage(selectedMessage!!.id)
+                    selectedMessage = null
+                },
+                onMute = {
+                    showMessageMenu = false
+                    showMuteDialog = true
+                }
+            )
+        }
+
+        // Edit message dialog
+        if (showEditDialog && selectedMessage != null) {
+            EditMessageDialog(
+                message = selectedMessage!!,
+                onDismiss = {
+                    showEditDialog = false
+                    selectedMessage = null
+                },
+                onConfirm = { newContent ->
+                    onEditMessage(selectedMessage!!.id, newContent)
+                    showEditDialog = false
+                    selectedMessage = null
+                }
+            )
+        }
+
+        // Mute user dialog
+        if (showMuteDialog && selectedMessage != null) {
+            MuteUserDialog(
+                userId = selectedMessage!!.userId,
+                username = selectedMessage!!.username,
+                onDismiss = {
+                    showMuteDialog = false
+                    selectedMessage = null
+                },
+                onConfirm = { scope, mutedUntil, serverId, channelId, reason ->
+                    onMuteUser(selectedMessage!!.userId, scope, mutedUntil, serverId, channelId, reason)
+                    showMuteDialog = false
+                    selectedMessage = null
+                }
+            )
+        }
     }
 }
 
@@ -367,10 +441,21 @@ private fun ConnectionBanner(
 private fun MessageItem(
     message: Message,
     authToken: String?,
-    onAttachmentClick: (Attachment) -> Unit
+    currentUserId: Long?,
+    currentUserPermission: Int?,
+    onAttachmentClick: (Attachment) -> Unit,
+    onLongClick: (Message) -> Unit
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(
+                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                indication = null,
+                onClickLabel = "Long press for options",
+                onClick = {},
+                onLongClick = { onLongClick(message) }
+            ),
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         // Avatar
@@ -407,27 +492,49 @@ private fun MessageItem(
                     style = MaterialTheme.typography.labelSmall,
                     color = TextMuted
                 )
+
+                // Edited indicator
+                if (message.editedAt != null) {
+                    Text(
+                        text = "(已编辑)",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = TextMuted
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(4.dp))
 
-            // Message content
-            if (message.content.isNotBlank()) {
+            // Message content or deleted placeholder
+            if (message.isDeleted) {
                 Text(
-                    text = message.content,
+                    text = when {
+                        message.deletedBy == currentUserId -> "你撤回了一条消息"
+                        message.deletedByUsername != null -> "${message.deletedByUsername}撤回了一条消息"
+                        else -> "管理员撤回了一条消息"
+                    },
                     style = MaterialTheme.typography.bodyMedium,
-                    color = TextSecondary
+                    color = TextMuted,
+                    fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
                 )
-            }
+            } else {
+                if (message.content.isNotBlank()) {
+                    Text(
+                        text = message.content,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = TextSecondary
+                    )
+                }
 
-            // Attachments
-            message.attachments?.forEach { attachment ->
-                Spacer(modifier = Modifier.height(8.dp))
-                AttachmentItem(
-                    attachment = attachment,
-                    authToken = authToken,
-                    onAttachmentClick = onAttachmentClick
-                )
+                // Attachments
+                message.attachments?.forEach { attachment ->
+                    Spacer(modifier = Modifier.height(8.dp))
+                    AttachmentItem(
+                        attachment = attachment,
+                        authToken = authToken,
+                        onAttachmentClick = onAttachmentClick
+                    )
+                }
             }
         }
     }
@@ -1017,5 +1124,256 @@ private fun formatTimestamp(timestamp: String): String {
         formatter.format(instant)
     } catch (e: Exception) {
         timestamp
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun MessageContextMenu(
+    message: Message,
+    currentUserId: Long?,
+    currentUserPermission: Int?,
+    onDismiss: () -> Unit,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit,
+    onMute: () -> Unit
+) {
+    val isOwnMessage = message.userId == currentUserId
+    val isAdmin = (currentUserPermission ?: 0) >= 3
+    val canEdit = isOwnMessage && !message.isDeleted
+    val canDelete = !message.isDeleted && (isOwnMessage || isAdmin)
+    val canMute = isAdmin && !isOwnMessage
+
+    androidx.compose.material3.ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = SurfaceDarker
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 16.dp)
+        ) {
+            if (canEdit) {
+                MenuOption(
+                    text = "编辑消息",
+                    icon = androidx.compose.material.icons.Icons.Default.Edit,
+                    onClick = onEdit
+                )
+            }
+
+            if (canDelete) {
+                MenuOption(
+                    text = "撤回消息",
+                    icon = androidx.compose.material.icons.Icons.Default.Delete,
+                    onClick = onDelete,
+                    isDestructive = true
+                )
+            }
+
+            if (canMute) {
+                MenuOption(
+                    text = "禁言用户",
+                    icon = androidx.compose.material.icons.Icons.Default.Block,
+                    onClick = onMute,
+                    isDestructive = true
+                )
+            }
+
+            if (!canEdit && !canDelete && !canMute) {
+                Text(
+                    text = "无可用操作",
+                    modifier = Modifier.padding(16.dp),
+                    color = TextMuted,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun MenuOption(
+    text: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    onClick: () -> Unit,
+    isDestructive: Boolean = false
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 24.dp, vertical = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = if (isDestructive) DiscordRed else TextPrimary,
+            modifier = Modifier.size(24.dp)
+        )
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodyLarge,
+            color = if (isDestructive) DiscordRed else TextPrimary
+        )
+    }
+}
+
+@Composable
+private fun EditMessageDialog(
+    message: Message,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit
+) {
+    var editedContent by remember { mutableStateOf(message.content) }
+
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("编辑消息") },
+        text = {
+            TextField(
+                value = editedContent,
+                onValueChange = { editedContent = it },
+                modifier = Modifier.fillMaxWidth(),
+                placeholder = { Text("输入消息内容") },
+                colors = TextFieldDefaults.colors(
+                    focusedContainerColor = SurfaceLighter,
+                    unfocusedContainerColor = SurfaceLighter,
+                    focusedIndicatorColor = Color.Transparent,
+                    unfocusedIndicatorColor = Color.Transparent,
+                    cursorColor = TiColor
+                ),
+                shape = RoundedCornerShape(8.dp),
+                minLines = 3,
+                maxLines = 8
+            )
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { if (editedContent.isNotBlank()) onConfirm(editedContent.trim()) },
+                enabled = editedContent.isNotBlank() && editedContent.trim() != message.content
+            ) {
+                Text("保存", color = TiColor)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("取消", color = TextMuted)
+            }
+        },
+        containerColor = SurfaceDarker
+    )
+}
+
+@Composable
+private fun MuteUserDialog(
+    userId: Long,
+    username: String,
+    onDismiss: () -> Unit,
+    onConfirm: (scope: String, mutedUntil: String?, serverId: Long?, channelId: Long?, reason: String?) -> Unit
+) {
+    var selectedScope by remember { mutableStateOf("channel") }
+    var selectedDuration by remember { mutableStateOf("10m") }
+    var reason by remember { mutableStateOf("") }
+
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("禁言用户: $username") },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                // Scope selection
+                Text("禁言范围", style = MaterialTheme.typography.labelLarge, color = TextPrimary)
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    RadioOption("当前频道", "channel", selectedScope) { selectedScope = it }
+                    RadioOption("当前服务器", "server", selectedScope) { selectedScope = it }
+                    RadioOption("全局", "global", selectedScope) { selectedScope = it }
+                }
+
+                // Duration selection
+                Text("禁言时长", style = MaterialTheme.typography.labelLarge, color = TextPrimary)
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    RadioOption("10分钟", "10m", selectedDuration) { selectedDuration = it }
+                    RadioOption("1小时", "1h", selectedDuration) { selectedDuration = it }
+                    RadioOption("1天", "1d", selectedDuration) { selectedDuration = it }
+                    RadioOption("永久", "permanent", selectedDuration) { selectedDuration = it }
+                }
+
+                // Reason input
+                Text("原因（可选）", style = MaterialTheme.typography.labelLarge, color = TextPrimary)
+                TextField(
+                    value = reason,
+                    onValueChange = { reason = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = { Text("输入禁言原因") },
+                    colors = TextFieldDefaults.colors(
+                        focusedContainerColor = SurfaceLighter,
+                        unfocusedContainerColor = SurfaceLighter,
+                        focusedIndicatorColor = Color.Transparent,
+                        unfocusedIndicatorColor = Color.Transparent,
+                        cursorColor = TiColor
+                    ),
+                    shape = RoundedCornerShape(8.dp),
+                    maxLines = 3
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    val mutedUntil = when (selectedDuration) {
+                        "10m" -> java.time.Instant.now().plusSeconds(600).toString()
+                        "1h" -> java.time.Instant.now().plusSeconds(3600).toString()
+                        "1d" -> java.time.Instant.now().plusSeconds(86400).toString()
+                        else -> null
+                    }
+                    onConfirm(selectedScope, mutedUntil, null, null, reason.ifBlank { null })
+                }
+            ) {
+                Text("确认", color = DiscordRed)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("取消", color = TextMuted)
+            }
+        },
+        containerColor = SurfaceDarker
+    )
+}
+
+@Composable
+private fun RadioOption(
+    label: String,
+    value: String,
+    selectedValue: String,
+    onSelect: (String) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onSelect(value) }
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        androidx.compose.material3.RadioButton(
+            selected = selectedValue == value,
+            onClick = { onSelect(value) },
+            colors = androidx.compose.material3.RadioButtonDefaults.colors(
+                selectedColor = TiColor,
+                unselectedColor = TextMuted
+            )
+        )
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = TextPrimary
+        )
     }
 }
