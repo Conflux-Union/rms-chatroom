@@ -150,15 +150,40 @@ class AudioHandler:
             
             # 获取会话
             session = ACTIVE_SESSIONS.get(self.session_id)
-            if not session or not session.ali_client:
+            if not session:
+                logger.warning(f"AudioHandler: session {self.session_id} not found")
                 return
+            
+            # 将音频数据编码为base64
+            import base64
+            audio_b64 = base64.b64encode(audio_data).decode('utf-8')
+            
+            # 推送到配置的语音服务
+            import requests
+            try:
+                # 获取语音服务配置
+                config = get_voice_service_config()
+                voice_service_url = config['base_url']
                 
-            # 推送到阿里云语音识别
-            session.ali_client.push_audio_data(
-                self.session_id,
-                audio_data,
-                stream_index=0
-            )
+                response = requests.post(
+                    f"{voice_service_url}/streams/push",
+                    json={
+                        "session_id": self.session_id,
+                        "stream_index": 0,
+                        "audio_data": audio_b64,
+                        "speaker_id": speaker_id
+                    },
+                    timeout=5
+                )
+                
+                if response.status_code != 200:
+                    logger.warning(f"AudioHandler: failed to push audio for session {self.session_id} to voice service {voice_service_url}: {response.status_code}")
+                    logger.debug(f"AudioHandler: response content: {response.text}")
+                else:
+                    logger.debug(f"AudioHandler: successfully pushed audio for session {self.session_id} to voice service {voice_service_url}")
+                    
+            except Exception as e:
+                logger.warning(f"AudioHandler: error pushing audio for session {self.session_id} to voice service: {e}")
             
             # 更新说话人信息
             if speaker_id not in session.speakers:
@@ -170,7 +195,7 @@ class AudioHandler:
                 session.speakers[speaker_id]['last_activity'] = datetime.now().isoformat()
                 
         except Exception as e:
-            logger.exception(f"Error processing audio: {e}")
+            logger.exception(f"AudioHandler: error processing audio: {e}")
 
 
 def create_bot_for_room(session_id: str, room_config: Dict[str, Any]) -> Optional[WebRTCBot]:
@@ -250,195 +275,8 @@ def create_bot_for_room(session_id: str, room_config: Dict[str, Any]) -> Optiona
 
 
 async def initialize_session_async(session_id: str):
-    """异步初始化会话"""
-    try:
-        session = ACTIVE_SESSIONS[session_id]
-        room_config = session.config['room_config']
-        voice_config = session.config['voice_config']
-        
-        logger.info(f"Initializing session {session_id}")
-        
-        # 1. 创建阿里云客户端
-        session.ali_client = AliVoiceClient()
-        
-        # 2. 创建回调服务器
-        callback_port = 9000 + (hash(session_id) % 1000)  # 使用9000-9999端口范围
-        session.callback_server = CallbackServer(port=callback_port)
-        
-        def handle_voice_result(result):
-            session.results.append({
-                'timestamp': datetime.now().isoformat(),
-                'data': result
-            })
-            session.last_activity = datetime.now()
-            logger.info(f"Received voice result for {session_id}: {result.get('text', '')[:50]}...")
-            
-            # 通知 WebSocket 管理器广播结果
-            try:
-                # 动态导入避免循环依赖
-                from ..websocket.transcription import broadcast_transcription_result
-                asyncio.create_task(
-                    broadcast_transcription_result(session_id, result)
-                )
-            except ImportError:
-                logger.warning("WebSocket transcription manager not available")
-            except Exception as e:
-                logger.exception(f"Error notifying transcription manager: {e}")
-        
-        session.callback_server.add_result_handler(handle_voice_result)
-        session.callback_server.start()
-        
-        # 3. 启动阿里云语音识别
-        try:
-            transcription_result = session.ali_client.start_transcription(
-                callback_url=session.callback_server.get_callback_url(),
-                audio_tracks=['stream://realtime']
-            )
-            logger.info(f"Transcription started: {transcription_result}")
-        except Exception as e:
-            logger.error(f"Failed to start transcription: {e}")
-            session.status = 'error'
-            return
-        
-        # 4. 创建并启动Bot
-        bot = create_bot_for_room(session_id, room_config)
-        if bot:
-            session.bot_instance = bot
-            BOT_INSTANCES[session_id] = bot
-            bot.connected = True
-            bot.start_audio_capture()
-            
-            session.status = 'active'
-            logger.info(f"Session {session_id} initialized successfully")
-        else:
-            session.status = 'error'
-            logger.error(f"Failed to create bot for session {session_id}")
-            
-    except Exception as e:
-        logger.exception(f"Error initializing session {session_id}: {e}")
-        if session_id in ACTIVE_SESSIONS:
-            ACTIVE_SESSIONS[session_id].status = 'error'
-
-
-class VoiceServiceClient:
-    """独立语音服务客户端封装"""
-    
-    def __init__(self, base_url: str = "http://localhost:5000", timeout: int = 30):
-        # 如果上层传入空字符串，回退到默认值
-        self.base_url = (base_url or "http://localhost:5000").rstrip('/')
-        self.timeout = timeout
-        self.session = requests.Session()
-        logger.info(f"[VoiceServiceClient] Initialized with base_url={self.base_url}, timeout={timeout}")
-    
-    async def start_transcription(self, callback_url: str, room_config: Dict[str, Any], voice_config: Dict[str, Any]) -> Dict[str, Any]:
-        """启动转录任务"""
-        try:
-            data = {
-                "callback_url": callback_url,
-                "audio_tracks": ["stream://realtime"],
-                "room_config": room_config,
-                "voice_config": voice_config
-            }
-            
-            url = f"{self.base_url}/transcription"
-            logger.info(f"[VoiceServiceClient] Attempting to start transcription at {url}")
-            logger.debug(f"[VoiceServiceClient] Request data: {data}")
-            
-            response = self.session.post(
-                url,
-                json=data,
-                timeout=self.timeout
-            )
-            
-            logger.info(f"[VoiceServiceClient] Response status: {response.status_code}")
-            response.raise_for_status()
-            return response.json()
-            
-        except requests.ConnectionError as e:
-            error_msg = f"无法连接到语音服务 {self.base_url}: {str(e)}"
-            logger.error(f"[VoiceServiceClient] {error_msg}")
-            return {"success": False, "error": error_msg}
-        except requests.Timeout as e:
-            error_msg = f"连接语音服务 {self.base_url} 超时: {str(e)}"
-            logger.error(f"[VoiceServiceClient] {error_msg}")
-            return {"success": False, "error": error_msg}
-        except requests.RequestException as e:
-            error_msg = f"语音服务请求失败: {str(e)}"
-            logger.exception(f"[VoiceServiceClient] {error_msg}")
-            return {"success": False, "error": error_msg}
-    
-    async def stop_transcription(self, session_id: str) -> Dict[str, Any]:
-        """停止转录任务"""
-        try:
-            data = {"session_id": session_id}
-            response = self.session.post(
-                f"{self.base_url}/stoptran",
-                json=data,
-                timeout=self.timeout
-            )
-            response.raise_for_status()
-            return response.json()
-            
-        except requests.RequestException as e:
-            logger.exception(f"Error stopping transcription: {e}")
-            return {"success": False, "error": str(e)}
-    
-    async def get_sentences(self, session_id: str, speaker_id: Optional[str] = None, include_unassigned: bool = True) -> Dict[str, Any]:
-        """获取转录句子"""
-        try:
-            params = {
-                "session_id": session_id,
-                "include_unassigned": str(include_unassigned).lower()
-            }
-            if speaker_id:
-                params["speaker_id"] = speaker_id
-                
-            response = self.session.get(
-                f"{self.base_url}/sentences",
-                params=params,
-                timeout=self.timeout
-            )
-            response.raise_for_status()
-            return response.json()
-            
-        except requests.RequestException as e:
-            logger.exception(f"Error getting sentences: {e}")
-            return {"success": False, "error": str(e)}
-    
-    async def manage_speaker(self, session_id: str, action: str, speaker_id: str, timestamp_ms: Optional[int] = None) -> Dict[str, Any]:
-        """管理说话人状态"""
-        try:
-            endpoint = f"/speaker{action}"  # speakerstart 或 speakerstop
-            data = {
-                "session_id": session_id,
-                "speaker_id": speaker_id
-            }
-            if timestamp_ms is not None:
-                data["timestamp_ms"] = timestamp_ms
-            else:
-                data["timestamp_ms"] = int(datetime.now().timestamp() * 1000)
-                
-            response = self.session.post(
-                f"{self.base_url}{endpoint}",
-                json=data,
-                timeout=self.timeout
-            )
-            response.raise_for_status()
-            return response.json()
-            
-        except requests.RequestException as e:
-            logger.exception(f"Error managing speaker: {e}")
-            return {"success": False, "error": str(e)}
-
-
-# 全局语音服务客户端
-def get_voice_client():
-    """获取语音服务客户端实例"""
-    config = get_voice_service_config()
-    return VoiceServiceClient(config["base_url"], config["timeout"])
-
-
-voice_client = get_voice_client()
+    """异步初始化会话 - 已弃用，保留以兼容旧代码"""
+    logger.warning(f"initialize_session_async is deprecated for session {session_id}")
 
 
 class VoiceRecognitionService:
@@ -446,7 +284,6 @@ class VoiceRecognitionService:
     
     def __init__(self):
         self.active_sessions = ACTIVE_SESSIONS
-        self.voice_client = get_voice_client()
         config = get_voice_service_config()
         # 若为空则兜底，确保形成绝对 URL
         self.callback_base_url = (config.get("callback_base_url") or f"http://{get_settings().host}:{get_settings().port}/api/voice-recognition/callback")
@@ -463,29 +300,74 @@ class VoiceRecognitionService:
                     return {
                         "success": False,
                         "error": f"语音识别服务正在被房间 {_current_active_room} 使用",
-                        "busy": True
+                        "busy": True,
+                        "active_room_id": _current_active_room
                     }
                 
-                # 生成会话ID
+                # 生成会话ID - 但我们将使用真正语音服务返回的TaskId
                 session_id = str(uuid.uuid4())
+                
+                # 调用真正的语音服务启动转录任务
+                callback_url = f"{self.callback_base_url}?session_id={session_id}"
+                
+                # 构建请求数据给真正的阿里云语音服务
+                transcription_data = {
+                    "callback_url": callback_url,
+                    "audio_tracks": ["stream://realtime"],  # 实时音频流
+                    "room_config": room_config,
+                    "voice_config": voice_config
+                }
+                
+                # 调用真正的语音服务 (端口5000)
+                import requests
+                try:
+                    voice_config = get_voice_service_config()
+                    voice_service_url = voice_config["url"]  # 真正的阿里云语音服务
+                    response = requests.post(
+                        f"{voice_service_url}/transcription",
+                        json=transcription_data,
+                        timeout=30
+                    )
+                    
+                    if response.status_code != 202:
+                        error_msg = f"真正语音服务启动失败: HTTP {response.status_code}"
+                        try:
+                            error_detail = response.json()
+                            if error_detail.get('error'):
+                                error_msg = error_detail['error']
+                        except:
+                            pass
+                        
+                        logger.error(f"Failed to start real voice service: {error_msg}")
+                        return {
+                            "success": False,
+                            "error": error_msg
+                        }
+                    
+                    # 成功启动转录任务
+                    result = response.json()
+                    logger.info(f"Started real voice service transcription: {result}")
+                    
+                except requests.ConnectionError as e:
+                    error_msg = f"无法连接到真正的语音服务 (port 5000): {str(e)}"
+                    logger.error(error_msg)
+                    return {
+                        "success": False,
+                        "error": error_msg
+                    }
+                except requests.RequestException as e:
+                    error_msg = f"调用真正语音服务失败: {str(e)}"
+                    logger.error(error_msg)
+                    return {
+                        "success": False,
+                        "error": error_msg
+                    }
                 
                 # 创建会话对象
                 session = VoiceSession(session_id, room_id, {
                     'room_config': room_config,
                     'voice_config': voice_config
                 })
-                
-                # 启动独立语音服务的转录任务
-                callback_url = f"{self.callback_base_url}?session_id={session_id}"
-                transcription_result = await self.voice_client.start_transcription(
-                    callback_url, room_config, voice_config
-                )
-                
-                if not transcription_result.get("success", True):  # 202状态码表示accepted
-                    return {
-                        "success": False,
-                        "error": transcription_result.get("error", "启动转录服务失败")
-                    }
                 
                 # 保存会话
                 self.active_sessions[session_id] = session
@@ -499,7 +381,7 @@ class VoiceRecognitionService:
                         BOT_INSTANCES[session_id] = bot
                         session.bot_instance = bot
                 
-                logger.info(f"Created voice recognition session {session_id} for room {room_id}")
+                logger.info(f"Created voice recognition session {session_id} for room {room_id} using real voice service")
                 
                 return {
                     "success": True,
@@ -577,16 +459,32 @@ class VoiceRecognitionService:
                     "error": "Session not found"
                 }
             
-            # 从独立语音服务获取句子
-            sentences_result = await self.voice_client.get_sentences(session_id)
-            
-            if not sentences_result.get('success', True):
-                return {
-                    "success": False,
-                    "error": sentences_result.get('error', '获取结果失败')
-                }
-            
-            sentences = sentences_result.get('sentences', [])
+            # 从真正的语音服务获取句子
+            import requests
+            try:
+                voice_config = get_voice_service_config()
+                voice_service_url = voice_config["url"]  # 真正的阿里云语音服务
+                response = requests.get(
+                    f"{voice_service_url}/sentences",
+                    params={
+                        "session_id": session_id,
+                        "include_unassigned": "true"
+                    },
+                    timeout=10
+                )
+                
+                if response.status_code != 200:
+                    return {
+                        "success": False,
+                        "error": f"获取结果失败: HTTP {response.status_code}"
+                    }
+                
+                sentences_result = response.json()
+                sentences = sentences_result.get('sentences', [])
+                
+            except Exception as e:
+                logger.warning(f"Failed to get sentences from real voice service: {e}")
+                sentences = []
             
             # 分页处理
             total = len(sentences)
@@ -680,8 +578,19 @@ class VoiceRecognitionService:
                 
                 session = self.active_sessions[session_id]
                 
-                # 停止独立语音服务的转录任务
-                stop_result = await self.voice_client.stop_transcription(session_id)
+                # 停止真正的语音服务的转录任务
+                import requests
+                try:
+                    voice_config = get_voice_service_config()
+                    voice_service_url = voice_config["url"]  # 真正的阿里云语音服务
+                    stop_response = requests.post(
+                        f"{voice_service_url}/stoptran",
+                        json={"session_id": session_id},
+                        timeout=10
+                    )
+                    logger.info(f"Stopped real voice service transcription for session {session_id}: {stop_response.status_code}")
+                except Exception as e:
+                    logger.warning(f"Failed to stop real voice service for session {session_id}: {e}")
                 
                 # 停止Bot（如果存在）
                 bot = BOT_INSTANCES.get(session_id)
@@ -720,10 +629,12 @@ class VoiceRecognitionService:
             active_count = len(self.active_sessions)
             bot_count = len(BOT_INSTANCES)
             
-            # 健康检查 - ping独立语音服务
+            # 健康检查 - ping真正的语音服务
             health_status = "unknown"
             try:
-                response = requests.get(f"{voice_client.base_url}/health", timeout=5)
+                voice_config = get_voice_service_config()
+                voice_service_url = voice_config["url"]  # 真正的阿里云语音服务
+                response = requests.get(f"{voice_service_url}/health", timeout=5)
                 health_status = "healthy" if response.status_code == 200 else "unhealthy"
             except:
                 health_status = "unreachable"
@@ -738,7 +649,8 @@ class VoiceRecognitionService:
                 "stats": {
                     "active_sessions": active_count,
                     "active_bots": bot_count,
-                    "voice_service_health": health_status
+                    "voice_service_health": health_status,
+                    "real_voice_service_url": voice_config["url"]
                 },
                 "timestamp": datetime.now().isoformat()
             }
