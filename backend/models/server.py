@@ -15,6 +15,12 @@ class ChannelType(str, Enum):
     VOICE = "voice"
 
 
+class MuteScope(str, Enum):
+    GLOBAL = "global"      # Global mute (all servers)
+    SERVER = "server"      # Server-level mute (all channels in server)
+    CHANNEL = "channel"    # Channel-level mute (specific channel only)
+
+
 class Server(Base):
     __tablename__ = "servers"
 
@@ -57,6 +63,14 @@ class Message(Base):
     username: Mapped[str] = mapped_column(String(100), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+
+    # Message recall/deletion fields
+    is_deleted: Mapped[bool] = mapped_column(default=False, index=True)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    deleted_by: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    # Message editing field
+    edited_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     channel: Mapped["Channel"] = relationship("Channel", back_populates="messages")
     attachments: Mapped[list["Attachment"]] = relationship(
@@ -109,3 +123,29 @@ class VoiceInvite(Base):
     used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     channel: Mapped["Channel"] = relationship("Channel")
+
+
+class MuteRecord(Base):
+    """User mute records with three scopes: global, server, or channel."""
+    __tablename__ = "mute_records"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    scope: Mapped[MuteScope] = mapped_column(SAEnum(MuteScope), nullable=False)
+
+    # Nullable foreign keys for scope targeting
+    server_id: Mapped[int | None] = mapped_column(
+        ForeignKey("servers.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    channel_id: Mapped[int | None] = mapped_column(
+        ForeignKey("channels.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+
+    muted_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)  # NULL = permanent mute
+    muted_by: Mapped[int] = mapped_column(Integer, nullable=False)
+    reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    # Relationships
+    server: Mapped["Server | None"] = relationship("Server")
+    channel: Mapped["Channel | None"] = relationship("Channel")
