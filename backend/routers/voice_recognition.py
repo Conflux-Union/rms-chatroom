@@ -17,7 +17,7 @@ import logging
 import json
 
 from .deps import get_current_user, require_permission, CurrentUser
-from ..services.voice_recognition import voice_service
+from ..services.voice_recognition import voice_service, get_voice_service_config
 from ..core.config import get_settings
 
 logger = logging.getLogger(__name__)
@@ -140,13 +140,13 @@ async def create_voice_session(
             error_msg = result.get('error', '创建语音识别会话失败')
             
             # 如果是服务繁忙，返回409状态码
-            if 'busy' in error_msg or '正在被' in error_msg or '已有活跃' in error_msg:
+            if result.get('busy') or 'busy' in error_msg or '正在被' in error_msg or '已有活跃' in error_msg:
                 raise HTTPException(
                     status_code=409, 
                     detail={
                         'message': error_msg,
-                        'busy_room_id': result.get('busy_room_id'),
-                        'existing_session_id': result.get('existing_session_id'),
+                        'active_room_id': result.get('active_room_id'),
+                        'busy': True,
                         'error_type': 'service_busy'
                     }
                 )
@@ -495,57 +495,49 @@ async def start_realtime_transcription(
 ):
     """启动实时语音转录"""
     try:
-        # 获取设置
-        settings = get_settings()
-        
-        # 调用独立语音服务启动转录
-        from ..services.voice_recognition import get_voice_service_config
-        voice_config_data = get_voice_service_config()
-        voice_service_url = voice_config_data['base_url']
-        
-        # 构建请求数据
-        transcription_data = {
-            "callback_url": request.callback_url,
-            "audio_tracks": ["stream://realtime"],  # 实时音频流
-            "room_config": {
-                "room_id": request.room_id,
-                "livekit_room_name": request.livekit_room_name,
-                "created_by": user.get("id"),
-                "created_by_name": user.get("nickname") or user.get("username")
-            },
-            "voice_config": request.voice_config
+        # 构建房间配置
+        room_config = {
+            "room_id": request.room_id,
+            "livekit_room_name": request.livekit_room_name,
+            "created_by": user.get("id"),
+            "created_by_name": user.get("nickname") or user.get("username")
         }
         
-        # 发送到语音服务
-        response = requests.post(
-            f"{voice_service_url}/transcription",
-            json=transcription_data,
-            timeout=30
+        # 通过本地语音服务创建会话（包含全局锁检查）
+        session_result = await voice_service.create_session(
+            room_config,
+            request.voice_config
         )
         
-        if response.status_code == 202:
-            result = response.json()
+        # 检查创建结果
+        if not session_result.get('success'):
+            error_msg = session_result.get('error', '创建语音识别会话失败')
             
-            # 创建本地会话记录
-            session_result = await voice_service.create_session(
-                transcription_data["room_config"],
-                request.voice_config
-            )
+            # 如果是服务繁忙，返回409状态码
+            if session_result.get('busy') or 'busy' in error_msg or '正在被' in error_msg:
+                raise HTTPException(
+                    status_code=409, 
+                    detail={
+                        'message': error_msg,
+                        'busy': True,
+                        'error_type': 'service_busy'
+                    }
+                )
+            else:
+                raise HTTPException(status_code=500, detail=error_msg)
+        
+        logger.info(f"Created realtime transcription session {session_result.get('session_id')} for user {user.get('id')}")
+        
+        return {
+            "success": True,
+            "message": "实时转录已启动",
+            "session_id": session_result.get("session_id"),
+            "room_id": request.room_id,
+            "status": "started"
+        }
             
-            return {
-                "success": True,
-                "message": "实时转录已启动",
-                "session_id": session_result.get("session_id"),
-                "room_id": request.room_id,
-                "status": "started"
-            }
-        else:
-            error_msg = response.json().get('error', '启动转录失败')
-            raise HTTPException(status_code=500, detail=error_msg)
-            
-    except requests.RequestException as e:
-        logger.exception(f"Error connecting to voice service: {e}")
-        raise HTTPException(status_code=503, detail="语音服务不可用")
+    except HTTPException:
+        raise
     except Exception as e:
         logger.exception(f"Error starting realtime transcription: {e}")
         raise HTTPException(status_code=500, detail="启动实时转录失败")
@@ -560,10 +552,14 @@ async def push_audio_data(
     """向指定会话推送音频数据"""
     try:
         from ..services.voice_recognition import get_voice_service_config
+        logger.info(f"Received audio push request: session_id={request.session_id}, "
+                    f"stream_index={request.stream_index}, "
+                    f"audio_data_size={len(request.audio_data) if request.audio_data else 0}, "
+                    f"speaker_id={request.speaker_id}")
+
         voice_config_data = get_voice_service_config()
         voice_service_url = voice_config_data['base_url']
         
-        # 转发到独立语音服务
         response = requests.post(
             f"{voice_service_url}/streams/push",
             json={
@@ -574,8 +570,11 @@ async def push_audio_data(
             timeout=10
         )
         
+        logger.info(f"Real voice service response: status={response.status_code}")
+        
         if response.status_code == 200:
             result = response.json()
+            logger.info(f"Audio push successful: {result}")
             
             # 如果提供了说话人ID，同时注册说话人开始事件
             if request.speaker_id:
@@ -589,12 +588,17 @@ async def push_audio_data(
                         },
                         timeout=5
                     )
+                    logger.info(f"Speaker start response: {speaker_response.status_code}")
                 except Exception as e:
                     logger.warning(f"Failed to register speaker start: {e}")
             
             return result
         else:
-            error_msg = response.json().get('error', '推送音频数据失败')
+            try:
+                error_msg = response.json().get('error', '推送音频数据失败')
+            except:
+                error_msg = f"推送音频数据失败 (HTTP {response.status_code})"
+            logger.error(f"Audio push failed: {error_msg}")
             raise HTTPException(status_code=response.status_code, detail=error_msg)
             
     except requests.RequestException as e:
@@ -616,9 +620,8 @@ async def stream_sentences(
 ):
     """流式获取转录句子"""
     try:
-        from ..services.voice_recognition import get_voice_service_config
-        voice_config_data = get_voice_service_config()
-        voice_service_url = voice_config_data['base_url']
+        voice_config = get_voice_service_config()
+        voice_service_url = voice_config["url"]  # 真正的阿里云语音服务
         
         # 构建查询参数
         params = {
@@ -630,7 +633,7 @@ async def stream_sentences(
         if last_timestamp:
             params["last_timestamp"] = str(last_timestamp)
         
-        # 从独立语音服务获取句子
+        # 从真正的语音服务获取句子
         response = requests.get(
             f"{voice_service_url}/sentences",
             params=params,
@@ -640,11 +643,11 @@ async def stream_sentences(
         if response.status_code == 200:
             return response.json()
         else:
-            error_msg = response.json().get('error', '获取句子失败')
+            error_msg = response.json().get('error', '获取句子失败') if response.status_code != 500 else f'获取句子失败 (HTTP {response.status_code})'
             raise HTTPException(status_code=response.status_code, detail=error_msg)
             
     except requests.RequestException as e:
-        logger.exception(f"Error connecting to voice service: {e}")
+        logger.exception(f"Error connecting to real voice service: {e}")
         raise HTTPException(status_code=503, detail="语音服务不可用")
     except Exception as e:
         logger.exception(f"Error getting sentences: {e}")
@@ -813,3 +816,38 @@ async def voice_recognition_help():
     except Exception as e:
         logger.exception(f"Error returning voice help: {e}")
         return {"success": False, "error": str(e)}
+
+
+@router.get("/debug/sessions")
+async def debug_voice_sessions(
+    user: CurrentUser,
+    _: None = Depends(require_permission(2))
+):
+    """调试端点：显示当前语音识别会话状态"""
+    try:
+        from ..services.voice_recognition import voice_service, get_voice_service_config, ACTIVE_SESSIONS
+        
+        # 获取本地状态
+        local_status = await voice_service.get_system_status()
+        
+        # 获取独立语音服务状态
+        voice_config_data = get_voice_service_config()
+        voice_service_url = voice_config_data['base_url']
+        
+        try:
+            response = requests.get(f"{voice_service_url}/debug/sessions", timeout=5)
+            remote_status = response.json() if response.status_code == 200 else {"error": f"HTTP {response.status_code}"}
+        except Exception as e:
+            remote_status = {"error": str(e)}
+        
+        return {
+            "success": True,
+            "local_sessions": [session.to_dict() for session in ACTIVE_SESSIONS.values()],
+            "local_status": local_status,
+            "remote_status": remote_status,
+            "voice_service_url": voice_service_url
+        }
+        
+    except Exception as e:
+        logger.exception(f"Error getting debug info: {e}")
+        raise HTTPException(status_code=500, detail="获取调试信息失败")
