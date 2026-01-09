@@ -276,9 +276,11 @@ async function startTranscription() {
 
       // Map common backend errors to user-friendly messages
       if (/Invalid URL|No scheme supplied|trainsction/.test(String(errMsg))) {
-        error.value = 'Server misconfiguration: transcription service URL is invalid. Please contact the administrator.'
-      } else if (/Connection refused|Failed to establish a new connection|Max retries exceeded/.test(String(errMsg))) {
-        error.value = 'Transcription service unreachable. Please try again later or contact the administrator.'
+        error.value = '服务器配置错误：语音转录服务 URL 无效，请联系管理员检查 voice_service_url 配置。'
+      } else if (/Connection refused|Failed to establish a new connection|Max retries exceeded|无法连接到语音服务|连接语音服务.*超时/.test(String(errMsg))) {
+        error.value = '语音转录服务不可用或无法连接，请稍后重试或联系管理员检查服务状态。'
+      } else if (/语音服务请求失败|语音服务不可用/.test(String(errMsg))) {
+        error.value = '语音服务请求失败：' + errMsg
       } else {
         error.value = errMsg
       }
@@ -319,9 +321,11 @@ async function startTranscription() {
     })
 
     if (/Invalid URL|No scheme supplied|trainsction/.test(raw)) {
-      error.value = 'Server misconfiguration: transcription service URL is invalid. Please contact the administrator.'
-    } else if (/Connection refused|Failed to establish a new connection|Max retries exceeded/.test(raw)) {
-      error.value = 'Transcription service unreachable. Please try again later or contact the administrator.'
+      error.value = '服务器配置错误：语音转录服务 URL 无效，请联系管理员检查 voice_service_url 配置。'
+    } else if (/Connection refused|Failed to establish a new connection|Max retries exceeded|无法连接到语音服务|连接语音服务.*超时/.test(raw)) {
+      error.value = '语音转录服务不可用或无法连接，请稍后重试或联系管理员检查服务状态。'
+    } else if (/语音服务请求失败|语音服务不可用/.test(raw)) {
+      error.value = '语音服务请求失败：' + raw
     } else {
       error.value = e instanceof Error ? e.message : '启动转录失败'
     }
@@ -405,9 +409,11 @@ async function stopTranscription() {
     })
     const raw = e instanceof Error ? e.message : String(e)
     if (/Invalid URL|No scheme supplied|trainsction/.test(raw)) {
-      error.value = 'Server misconfiguration: transcription service URL is invalid. Please contact the administrator.'
-    } else if (/Connection refused|Failed to establish a new connection|Max retries exceeded/.test(raw)) {
-      error.value = 'Transcription service unreachable. Please try again later or contact the administrator.'
+      error.value = '服务器配置错误：语音转录服务 URL 无效，请联系管理员检查 voice_service_url 配置。'
+    } else if (/Connection refused|Failed to establish a new connection|Max retries exceeded|无法连接到语音服务|连接语音服务.*超时/.test(raw)) {
+      error.value = '语音转录服务不可用或无法连接，请稍后重试或联系管理员检查服务状态。'
+    } else if (/语音服务请求失败|语音服务不可用/.test(raw)) {
+      error.value = '语音服务请求失败：' + raw
     } else {
       error.value = '停止转录失败'
     }

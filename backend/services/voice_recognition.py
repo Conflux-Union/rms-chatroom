@@ -328,6 +328,7 @@ class VoiceServiceClient:
         self.base_url = (base_url or "http://localhost:5000").rstrip('/')
         self.timeout = timeout
         self.session = requests.Session()
+        logger.info(f"[VoiceServiceClient] Initialized with base_url={self.base_url}, timeout={timeout}")
     
     async def start_transcription(self, callback_url: str, room_config: Dict[str, Any], voice_config: Dict[str, Any]) -> Dict[str, Any]:
         """启动转录任务"""
@@ -339,17 +340,32 @@ class VoiceServiceClient:
                 "voice_config": voice_config
             }
             
+            url = f"{self.base_url}/trainsction"
+            logger.info(f"[VoiceServiceClient] Attempting to start transcription at {url}")
+            logger.debug(f"[VoiceServiceClient] Request data: {data}")
+            
             response = self.session.post(
-                f"{self.base_url}/trainsction",
+                url,
                 json=data,
                 timeout=self.timeout
             )
+            
+            logger.info(f"[VoiceServiceClient] Response status: {response.status_code}")
             response.raise_for_status()
             return response.json()
             
+        except requests.ConnectionError as e:
+            error_msg = f"无法连接到语音服务 {self.base_url}: {str(e)}"
+            logger.error(f"[VoiceServiceClient] {error_msg}")
+            return {"success": False, "error": error_msg}
+        except requests.Timeout as e:
+            error_msg = f"连接语音服务 {self.base_url} 超时: {str(e)}"
+            logger.error(f"[VoiceServiceClient] {error_msg}")
+            return {"success": False, "error": error_msg}
         except requests.RequestException as e:
-            logger.exception(f"Error starting transcription: {e}")
-            return {"success": False, "error": str(e)}
+            error_msg = f"语音服务请求失败: {str(e)}"
+            logger.exception(f"[VoiceServiceClient] {error_msg}")
+            return {"success": False, "error": error_msg}
     
     async def stop_transcription(self, session_id: str) -> Dict[str, Any]:
         """停止转录任务"""
