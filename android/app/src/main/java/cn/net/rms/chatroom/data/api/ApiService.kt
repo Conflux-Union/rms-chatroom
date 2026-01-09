@@ -286,6 +286,41 @@ interface ApiService {
         @Part file: MultipartBody.Part
     ): AttachmentResponse
 
+    // Message Management
+    @PATCH("api/channels/{channelId}/messages/{messageId}")
+    suspend fun editMessage(
+        @Header("Authorization") token: String,
+        @Path("channelId") channelId: Long,
+        @Path("messageId") messageId: Long,
+        @Body body: MessageEditRequest
+    ): Message
+
+    @DELETE("api/channels/{channelId}/messages/{messageId}")
+    suspend fun deleteMessage(
+        @Header("Authorization") token: String,
+        @Path("channelId") channelId: Long,
+        @Path("messageId") messageId: Long
+    )
+
+    // Mute Management
+    @POST("api/mute")
+    suspend fun createMute(
+        @Header("Authorization") token: String,
+        @Body body: MuteCreateRequest
+    ): MuteResponse
+
+    @DELETE("api/mute/{muteId}")
+    suspend fun removeMute(
+        @Header("Authorization") token: String,
+        @Path("muteId") muteId: Long
+    )
+
+    @GET("api/mute/user/{userId}")
+    suspend fun getUserMutes(
+        @Header("Authorization") token: String,
+        @Path("userId") userId: Long
+    ): List<MuteRecord>
+
     // Bug Report
     @Multipart
     @POST("api/bug/report")

@@ -79,6 +79,14 @@ class ChatRepository @Inject constructor(
                         // Show notification if app is in background
                         showMessageNotificationIfNeeded(event.message)
                     }
+                    is WebSocketEvent.MessageDeleted -> {
+                        Log.d(TAG, "Message deleted: ${event.messageId}")
+                        updateMessageDeleted(event.messageId, event.deletedBy, event.deletedByUsername)
+                    }
+                    is WebSocketEvent.MessageEdited -> {
+                        Log.d(TAG, "Message edited: ${event.messageId}")
+                        updateMessageEdited(event.messageId, event.content, event.editedAt)
+                    }
                     is WebSocketEvent.Connected -> {
                         Log.d(TAG, "WebSocket connected to channel ${event.channelId}")
                     }
@@ -86,7 +94,7 @@ class ChatRepository @Inject constructor(
                         Log.d(TAG, "WebSocket disconnected")
                     }
                     is WebSocketEvent.Error -> {
-                        Log.e(TAG, "WebSocket error: ${event.error}")
+                        Log.e(TAG, "WebSocket error: ${event.error}, code: ${event.code}")
                     }
                     is WebSocketEvent.UserJoined -> {
                         Log.d(TAG, "User joined: ${event.user.username}")
@@ -375,6 +383,106 @@ class ChatRepository @Inject constructor(
             Result.success(Unit)
         } catch (e: Exception) {
             Log.e(TAG, "deleteServer failed", e)
+            Result.failure(e.toAuthException())
+        }
+    }
+
+    // Message management methods
+    suspend fun editMessage(channelId: Long, messageId: Long, content: String): Result<Message> {
+        return try {
+            val token = authRepository.getToken()
+                ?: return Result.failure(AuthException("未登录，请先登录"))
+            val message = api.editMessage(
+                authRepository.getAuthHeader(token),
+                channelId,
+                messageId,
+                cn.net.rms.chatroom.data.model.MessageEditRequest(content)
+            )
+            updateMessageEdited(messageId, content, message.editedAt ?: "")
+            Result.success(message)
+        } catch (e: Exception) {
+            Log.e(TAG, "editMessage failed", e)
+            Result.failure(e.toAuthException())
+        }
+    }
+
+    suspend fun deleteMessage(channelId: Long, messageId: Long): Result<Unit> {
+        return try {
+            val token = authRepository.getToken()
+                ?: return Result.failure(AuthException("未登录，请先登录"))
+            api.deleteMessage(authRepository.getAuthHeader(token), channelId, messageId)
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e(TAG, "deleteMessage failed", e)
+            Result.failure(e.toAuthException())
+        }
+    }
+
+    private fun updateMessageDeleted(messageId: Long, deletedBy: Long, deletedByUsername: String) {
+        _messages.value = _messages.value.map { message ->
+            if (message.id == messageId) {
+                message.copy(
+                    isDeleted = true,
+                    deletedBy = deletedBy,
+                    deletedByUsername = deletedByUsername
+                )
+            } else {
+                message
+            }
+        }
+    }
+
+    private fun updateMessageEdited(messageId: Long, content: String, editedAt: String) {
+        _messages.value = _messages.value.map { message ->
+            if (message.id == messageId) {
+                message.copy(
+                    content = content,
+                    editedAt = editedAt
+                )
+            } else {
+                message
+            }
+        }
+    }
+
+    // Mute management methods
+    suspend fun createMute(
+        userId: Long,
+        scope: String,
+        mutedUntil: String?,
+        serverId: Long?,
+        channelId: Long?,
+        reason: String?
+    ): Result<cn.net.rms.chatroom.data.model.MuteResponse> {
+        return try {
+            val token = authRepository.getToken()
+                ?: return Result.failure(AuthException("未登录，请先登录"))
+            val response = api.createMute(
+                authRepository.getAuthHeader(token),
+                cn.net.rms.chatroom.data.model.MuteCreateRequest(
+                    userId = userId,
+                    scope = scope,
+                    serverId = serverId,
+                    channelId = channelId,
+                    mutedUntil = mutedUntil,
+                    reason = reason
+                )
+            )
+            Result.success(response)
+        } catch (e: Exception) {
+            Log.e(TAG, "createMute failed", e)
+            Result.failure(e.toAuthException())
+        }
+    }
+
+    suspend fun getUserMutes(userId: Long): Result<List<cn.net.rms.chatroom.data.model.MuteRecord>> {
+        return try {
+            val token = authRepository.getToken()
+                ?: return Result.failure(AuthException("未登录，请先登录"))
+            val mutes = api.getUserMutes(authRepository.getAuthHeader(token), userId)
+            Result.success(mutes)
+        } catch (e: Exception) {
+            Log.e(TAG, "getUserMutes failed", e)
             Result.failure(e.toAuthException())
         }
     }

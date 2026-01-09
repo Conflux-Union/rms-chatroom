@@ -61,6 +61,18 @@ async def chat_websocket(websocket: WebSocket, channel_id: int, token: str | Non
                 continue
 
             if msg.get("type") == "message":
+                # Check if user is muted before processing message
+                from ..services.moderation import check_user_muted
+                async with async_session_maker() as db:
+                    is_muted, reason = await check_user_muted(user["id"], channel_id, db)
+                    if is_muted:
+                        await websocket.send_json({
+                            "type": "error",
+                            "code": "muted",
+                            "message": reason or "You are muted",
+                        })
+                        continue
+
                 content = (msg.get("content") or "").strip()
                 attachment_ids = msg.get("attachment_ids") or []
 
