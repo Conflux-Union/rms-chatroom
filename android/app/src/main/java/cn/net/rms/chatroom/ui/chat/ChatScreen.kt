@@ -1,5 +1,8 @@
 package cn.net.rms.chatroom.ui.chat
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -11,7 +14,6 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.net.Uri
 import android.os.Environment
 import android.widget.Toast
 import androidx.annotation.OptIn
@@ -48,6 +50,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -56,6 +59,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Download
@@ -73,6 +77,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -88,6 +93,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -111,6 +117,7 @@ import me.saket.telephoto.zoomable.coil.ZoomableAsyncImage
 import me.saket.telephoto.zoomable.rememberZoomableImageState
 import cn.net.rms.chatroom.BuildConfig
 import cn.net.rms.chatroom.R
+import cn.net.rms.chatroom.data.model.AttachmentResponse
 import cn.net.rms.chatroom.data.model.Attachment
 import cn.net.rms.chatroom.data.model.Message
 import cn.net.rms.chatroom.data.websocket.ConnectionState
@@ -127,6 +134,7 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
 import okhttp3.Request
 
@@ -146,12 +154,18 @@ fun ChatScreen(
     authToken: String? = null,
     currentUserId: Long? = null,
     currentUserPermission: Int? = null,
-    onSendMessage: (String) -> Unit,
+    lastReadMessageId: Long? = null,
+    showContinueReading: Boolean = false,
+    onSendMessage: (String, List<Long>) -> Unit,
+    onUploadFile: suspend (Uri) -> Result<AttachmentResponse>,
     onRefresh: () -> Unit = {},
     onReconnect: () -> Unit = {},
     onEditMessage: (Long, String) -> Unit = { _, _ -> },
     onDeleteMessage: (Long) -> Unit = {},
-    onMuteUser: (Long, String, String?, Long?, Long?, String?) -> Unit = { _, _, _, _, _, _ -> }
+    onMuteUser: (Long, String, String?, Long?, Long?, String?) -> Unit = { _, _, _, _, _, _ -> },
+    onSaveReadPosition: (Long) -> Unit = {},
+    onDismissContinueReading: () -> Unit = {},
+    onGetMessageIndex: (Long) -> Int = { -1 }
 ) {
     val listState = rememberLazyListState()
     var messageText by remember { mutableStateOf("") }
@@ -165,6 +179,22 @@ fun ChatScreen(
     var showMessageMenu by remember { mutableStateOf(false) }
     var showEditDialog by remember { mutableStateOf(false) }
     var showMuteDialog by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+
+    // File upload state
+    var pendingFiles by remember { mutableStateOf<List<Uri>>(emptyList()) }
+    var uploadedAttachments by remember { mutableStateOf<List<AttachmentResponse>>(emptyList()) }
+    var isUploading by remember { mutableStateOf(false) }
+    var uploadProgress by remember { mutableStateOf<Map<Uri, Float>>(emptyMap()) }
+
+    // File picker launcher
+    val filePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenMultipleDocuments()
+    ) { uris ->
+        if (uris.isNotEmpty()) {
+            pendingFiles = pendingFiles + uris
+        }
+    }
 
     // Auto-scroll to bottom when new messages arrive
     LaunchedEffect(messages.size) {
@@ -186,6 +216,17 @@ fun ChatScreen(
         if (sendingState == SendingState.SENT) {
             delay(500)
             sendingState = SendingState.IDLE
+        }
+    }
+
+    // Save read position when scrolling stops
+    LaunchedEffect(listState.isScrollInProgress) {
+        if (!listState.isScrollInProgress && messages.isNotEmpty()) {
+            val lastVisibleIndex = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index
+            if (lastVisibleIndex != null && lastVisibleIndex < messages.size) {
+                val lastVisibleMessage = messages[lastVisibleIndex]
+                onSaveReadPosition(lastVisibleMessage.id)
+            }
         }
     }
 
@@ -269,20 +310,69 @@ fun ChatScreen(
                 }
             }
 
+            // Pending files preview
+            if (pendingFiles.isNotEmpty() || uploadedAttachments.isNotEmpty()) {
+                PendingFilesPreview(
+                    context = context,
+                    pendingFiles = pendingFiles,
+                    uploadedAttachments = uploadedAttachments,
+                    uploadProgress = uploadProgress,
+                    isUploading = isUploading,
+                    onRemovePending = { uri ->
+                        pendingFiles = pendingFiles.filter { it != uri }
+                    },
+                    onRemoveUploaded = { id ->
+                        uploadedAttachments = uploadedAttachments.filter { it.id != id }
+                    }
+                )
+            }
+
             // Message input
             MessageInput(
                 value = messageText,
                 onValueChange = { messageText = it },
                 sendingState = sendingState,
                 isConnected = connectionState == ConnectionState.CONNECTED,
+                hasAttachments = pendingFiles.isNotEmpty() || uploadedAttachments.isNotEmpty(),
+                isUploading = isUploading,
+                onAttachClick = {
+                    filePickerLauncher.launch(arrayOf("*/*"))
+                },
                 onSend = {
-                    if (messageText.isNotBlank() && connectionState == ConnectionState.CONNECTED) {
-                        sendingState = SendingState.SENDING
-                        val content = messageText.trim()
-                        messageText = ""
-                        keyboardController?.hide()
-                        onSendMessage(content)
-                        sendingState = SendingState.SENT
+                    val hasContent = messageText.isNotBlank()
+                    val hasAttachments = pendingFiles.isNotEmpty() || uploadedAttachments.isNotEmpty()
+                    if ((hasContent || hasAttachments) && connectionState == ConnectionState.CONNECTED && !isUploading) {
+                        scope.launch {
+                            sendingState = SendingState.SENDING
+
+                            // Upload pending files first
+                            if (pendingFiles.isNotEmpty()) {
+                                isUploading = true
+                                for (uri in pendingFiles) {
+                                    val result = onUploadFile(uri)
+                                    result.onSuccess { attachment ->
+                                        uploadedAttachments = uploadedAttachments + attachment
+                                    }.onFailure { e ->
+                                        Toast.makeText(context, "上传失败: ${e.message}", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                                pendingFiles = emptyList()
+                                isUploading = false
+                            }
+
+                            // Send message with attachments
+                            val attachmentIds = uploadedAttachments.map { it.id }
+                            val content = messageText.trim()
+
+                            if (content.isNotBlank() || attachmentIds.isNotEmpty()) {
+                                keyboardController?.hide()
+                                onSendMessage(content, attachmentIds)
+                                messageText = ""
+                                uploadedAttachments = emptyList()
+                            }
+
+                            sendingState = SendingState.SENT
+                        }
                     }
                 }
             )
@@ -293,6 +383,54 @@ fun ChatScreen(
             authToken = authToken,
             onDismiss = { attachmentPreview = null }
         )
+
+        // Continue reading button
+        AnimatedVisibility(
+            visible = showContinueReading && lastReadMessageId != null && messages.isNotEmpty(),
+            enter = fadeIn() + slideInVertically(),
+            exit = fadeOut() + slideOutVertically(),
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(16.dp)
+        ) {
+            Surface(
+                onClick = {
+                    val index = onGetMessageIndex(lastReadMessageId ?: 0)
+                    if (index >= 0) {
+                        scope.launch {
+                            listState.animateScrollToItem(index)
+                        }
+                    }
+                    onDismissContinueReading()
+                },
+                shape = RoundedCornerShape(20.dp),
+                color = TiColor,
+                shadowElevation = 4.dp
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "继续阅读",
+                        color = Color.White,
+                        style = MaterialTheme.typography.labelMedium
+                    )
+                    IconButton(
+                        onClick = { onDismissContinueReading() },
+                        modifier = Modifier.size(16.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "关闭",
+                            tint = Color.White,
+                            modifier = Modifier.size(12.dp)
+                        )
+                    }
+                }
+            }
+        }
 
         // Message context menu
         if (showMessageMenu && selectedMessage != null) {
@@ -1030,11 +1168,197 @@ private fun formatFileSize(bytes: Long): String {
 }
 
 @Composable
+private fun PendingFilesPreview(
+    context: Context,
+    pendingFiles: List<Uri>,
+    uploadedAttachments: List<AttachmentResponse>,
+    uploadProgress: Map<Uri, Float>,
+    isUploading: Boolean,
+    onRemovePending: (Uri) -> Unit,
+    onRemoveUploaded: (Long) -> Unit
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = SurfaceDarker
+    ) {
+        LazyRow(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            // Pending files (not yet uploaded)
+            items(pendingFiles) { uri ->
+                PendingFileItem(
+                    context = context,
+                    uri = uri,
+                    progress = uploadProgress[uri],
+                    isUploading = isUploading,
+                    onRemove = { onRemovePending(uri) }
+                )
+            }
+            // Uploaded attachments
+            items(uploadedAttachments) { attachment ->
+                UploadedAttachmentItem(
+                    attachment = attachment,
+                    onRemove = { onRemoveUploaded(attachment.id) }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PendingFileItem(
+    context: Context,
+    uri: Uri,
+    progress: Float?,
+    isUploading: Boolean,
+    onRemove: () -> Unit
+) {
+    val fileName = remember(uri) {
+        var name: String? = null
+        if (uri.scheme == "content") {
+            val cursor = context.contentResolver.query(uri, null, null, null, null)
+            cursor?.use {
+                if (it.moveToFirst()) {
+                    val index = it.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                    if (index >= 0) {
+                        name = it.getString(index)
+                    }
+                }
+            }
+        }
+        name ?: uri.lastPathSegment ?: "file"
+    }
+
+    Surface(
+        modifier = Modifier.width(120.dp),
+        shape = RoundedCornerShape(8.dp),
+        color = SurfaceLighter
+    ) {
+        Column(
+            modifier = Modifier.padding(8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Box(modifier = Modifier.fillMaxWidth()) {
+                Icon(
+                    imageVector = Icons.Default.InsertDriveFile,
+                    contentDescription = null,
+                    tint = TiColor,
+                    modifier = Modifier
+                        .size(32.dp)
+                        .align(Alignment.Center)
+                )
+                if (!isUploading) {
+                    IconButton(
+                        onClick = onRemove,
+                        modifier = Modifier
+                            .size(20.dp)
+                            .align(Alignment.TopEnd)
+                            .background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Remove",
+                            tint = Color.White,
+                            modifier = Modifier.size(12.dp)
+                        )
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = fileName,
+                style = MaterialTheme.typography.labelSmall,
+                color = TextPrimary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            if (progress != null) {
+                Spacer(modifier = Modifier.height(4.dp))
+                LinearProgressIndicator(
+                    progress = { progress },
+                    modifier = Modifier.fillMaxWidth(),
+                    color = TiColor
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun UploadedAttachmentItem(
+    attachment: AttachmentResponse,
+    onRemove: () -> Unit
+) {
+    val icon = when {
+        attachment.contentType.startsWith("image/") -> Icons.Default.Image
+        attachment.contentType.startsWith("video/") -> Icons.Default.Movie
+        attachment.contentType.startsWith("audio/") -> Icons.Default.MusicNote
+        attachment.contentType == "application/pdf" -> Icons.Default.PictureAsPdf
+        else -> Icons.Default.InsertDriveFile
+    }
+
+    Surface(
+        modifier = Modifier.width(120.dp),
+        shape = RoundedCornerShape(8.dp),
+        color = SurfaceLighter
+    ) {
+        Column(
+            modifier = Modifier.padding(8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Box(modifier = Modifier.fillMaxWidth()) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = TiColor,
+                    modifier = Modifier
+                        .size(32.dp)
+                        .align(Alignment.Center)
+                )
+                IconButton(
+                    onClick = onRemove,
+                    modifier = Modifier
+                        .size(20.dp)
+                        .align(Alignment.TopEnd)
+                        .background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "Remove",
+                        tint = Color.White,
+                        modifier = Modifier.size(12.dp)
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = attachment.filename,
+                style = MaterialTheme.typography.labelSmall,
+                color = TextPrimary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = formatFileSize(attachment.size),
+                style = MaterialTheme.typography.labelSmall,
+                color = TextMuted
+            )
+        }
+    }
+}
+
+@Composable
 private fun MessageInput(
     value: String,
     onValueChange: (String) -> Unit,
     sendingState: SendingState,
     isConnected: Boolean,
+    hasAttachments: Boolean,
+    isUploading: Boolean,
+    onAttachClick: () -> Unit,
     onSend: () -> Unit
 ) {
     Surface(
@@ -1046,8 +1370,21 @@ private fun MessageInput(
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+            // Attach button
+            IconButton(
+                onClick = onAttachClick,
+                enabled = isConnected && !isUploading,
+                modifier = Modifier.size(40.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.AttachFile,
+                    contentDescription = "添加附件",
+                    tint = if (isConnected && !isUploading) TiColor else TextMuted
+                )
+            }
+
             TextField(
                 value = value,
                 onValueChange = onValueChange,
@@ -1080,22 +1417,22 @@ private fun MessageInput(
 
             // Send button
             AnimatedVisibility(
-                visible = value.isNotBlank(),
+                visible = value.isNotBlank() || hasAttachments,
                 enter = fadeIn() + slideInVertically(),
                 exit = fadeOut() + slideOutVertically()
             ) {
                 IconButton(
                     onClick = onSend,
-                    enabled = isConnected && sendingState != SendingState.SENDING,
+                    enabled = isConnected && sendingState != SendingState.SENDING && !isUploading,
                     modifier = Modifier
                         .size(40.dp)
                         .background(
-                            if (isConnected) TiColor else TiColor.copy(alpha = 0.5f),
+                            if (isConnected && !isUploading) TiColor else TiColor.copy(alpha = 0.5f),
                             CircleShape
                         )
                 ) {
-                    when (sendingState) {
-                        SendingState.SENDING -> {
+                    when {
+                        sendingState == SendingState.SENDING || isUploading -> {
                             CircularProgressIndicator(
                                 modifier = Modifier.size(20.dp),
                                 strokeWidth = 2.dp,

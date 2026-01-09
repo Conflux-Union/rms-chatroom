@@ -1,5 +1,6 @@
 package cn.net.rms.chatroom.ui.main
 
+import android.net.Uri
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -8,6 +9,7 @@ import cn.net.rms.chatroom.data.model.ChannelType
 import cn.net.rms.chatroom.data.model.Server
 import cn.net.rms.chatroom.data.model.VoiceUser
 import cn.net.rms.chatroom.data.api.AppUpdateResponse
+import cn.net.rms.chatroom.data.model.AttachmentResponse
 import cn.net.rms.chatroom.data.repository.BugReportRepository
 import cn.net.rms.chatroom.data.repository.ChatRepository
 import cn.net.rms.chatroom.data.repository.UpdateRepository
@@ -34,7 +36,9 @@ data class MainState(
     val bugReportId: String? = null,
     val updateInfo: AppUpdateResponse? = null,
     val isDownloading: Boolean = false,
-    val downloadComplete: Boolean = false
+    val downloadComplete: Boolean = false,
+    val lastReadMessageId: Long? = null,
+    val showContinueReading: Boolean = false
 )
 
 @HiltViewModel
@@ -120,13 +124,31 @@ class MainViewModel @Inject constructor(
         chatRepository.disconnectFromChannel()
 
         chatRepository.setCurrentChannel(channel)
-        _state.value = _state.value.copy(currentChannel = channel)
+        _state.value = _state.value.copy(
+            currentChannel = channel,
+            lastReadMessageId = null,
+            showContinueReading = false
+        )
 
         // Load messages for text channels
         if (channel.type == ChannelType.TEXT) {
             loadMessages(channel.id)
             // Connect WebSocket for real-time messages
             chatRepository.connectToChannel(channel.id)
+            // Load last read position
+            loadLastReadPosition(channel.id)
+        }
+    }
+
+    private fun loadLastReadPosition(channelId: Long) {
+        viewModelScope.launch {
+            val lastReadId = chatRepository.getLastReadMessageId(channelId)
+            if (lastReadId != null) {
+                _state.value = _state.value.copy(
+                    lastReadMessageId = lastReadId,
+                    showContinueReading = true
+                )
+            }
         }
     }
 
@@ -174,14 +196,20 @@ class MainViewModel @Inject constructor(
         }
     }
 
-    fun sendMessage(content: String) {
+    fun sendMessage(content: String, attachmentIds: List<Long> = emptyList()) {
         val channelId = _state.value.currentChannel?.id ?: return
         viewModelScope.launch {
-            chatRepository.sendMessage(channelId, content)
+            chatRepository.sendMessage(channelId, content, attachmentIds)
                 .onFailure { e ->
                     _state.value = _state.value.copy(error = "发送失败: ${e.message}")
                 }
         }
+    }
+
+    suspend fun uploadFile(uri: Uri): Result<AttachmentResponse> {
+        val channelId = _state.value.currentChannel?.id
+            ?: return Result.failure(Exception("未选择频道"))
+        return chatRepository.uploadFile(channelId, uri)
     }
 
     fun reconnectWebSocket() {
@@ -190,6 +218,21 @@ class MainViewModel @Inject constructor(
 
     fun clearError() {
         _state.value = _state.value.copy(error = null)
+    }
+
+    fun saveReadPosition(messageId: Long) {
+        val channelId = _state.value.currentChannel?.id ?: return
+        viewModelScope.launch {
+            chatRepository.setLastReadMessageId(channelId, messageId)
+        }
+    }
+
+    fun dismissContinueReading() {
+        _state.value = _state.value.copy(showContinueReading = false)
+    }
+
+    fun getMessageIndexById(messageId: Long): Int {
+        return messages.value.indexOfFirst { it.id == messageId }
     }
 
     fun submitBugReport() {

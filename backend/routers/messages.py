@@ -153,6 +153,7 @@ async def create_message(
     await db.flush()
 
     # Link attachments to message
+    attachments: list[Attachment] = []
     if payload.attachment_ids:
         att_result = await db.execute(
             select(Attachment).where(
@@ -162,15 +163,25 @@ async def create_message(
                 Attachment.message_id.is_(None),  # Only unlinked attachments
             )
         )
-        attachments = att_result.scalars().all()
+        attachments = list(att_result.scalars().all())
         for att in attachments:
             att.message_id = message.id
-        message.attachments = list(attachments)
 
     await db.flush()
-    await db.refresh(message)
 
-    return _message_to_response(message)
+    # Build response directly without accessing ORM relationship
+    return MessageResponse(
+        id=message.id,
+        channel_id=message.channel_id,
+        user_id=message.user_id,
+        username=message.username,
+        content=message.content,
+        created_at=message.created_at,
+        attachments=[_attachment_to_response(att) for att in attachments],
+        is_deleted=message.is_deleted,
+        deleted_by=message.deleted_by,
+        edited_at=message.edited_at,
+    )
 
 
 class MessageEdit(BaseModel):
