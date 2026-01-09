@@ -53,7 +53,7 @@ const hasTranscriptionTask = computed(() => {
 })
 
 const hasPermission = computed(() => {
-  const result = (auth.user?.permission_level ?? 0) > 3
+  const result = (auth.user?.permission_level ?? 0) >= 4
   console.log('[TranscriptionPanel] hasPermission computed:', {
     permission_level: auth.user?.permission_level,
     hasPermission: result

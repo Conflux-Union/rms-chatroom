@@ -75,7 +75,7 @@ const hostButtonDisabled = computed(() =>
 
 // Transcription computed
 const canUseTranscription = computed(() => {
-  const result = (auth.user?.permission_level ?? 0) > 3
+  const result = (auth.user?.permission_level ?? 0) >= 4
   console.log('[VoicePanel] canUseTranscription computed:', {
     permission_level: auth.user?.permission_level,
     result: result
@@ -326,13 +326,16 @@ async function checkTranscriptionLock() {
     if (response.ok) {
       const data = await response.json()
       console.log('[Transcription] - Lock status data:', data)
-      transcriptionLocked.value = data.locked && data.channel_id !== chat.currentChannel.id
-      console.log('[Transcription] - Locked for this channel:', transcriptionLocked.value)
       
-      if (data.locked) {
-        console.log('[Transcription] - Currently locked by channel:', data.channel_id)
-        console.log('[Transcription] - This channel:', chat.currentChannel.id)
-      }
+      // Check if global_lock exists and is locked
+      const isGlobalLocked = data.global_lock?.is_locked || false
+      const lockedRoomId = data.global_lock?.active_room_id || null
+      
+      transcriptionLocked.value = isGlobalLocked && lockedRoomId !== chat.currentChannel.id
+      console.log('[Transcription] - Locked for this channel:', transcriptionLocked.value)
+      console.log('[Transcription] - Global locked:', isGlobalLocked)
+      console.log('[Transcription] - Locked room ID:', lockedRoomId)
+      console.log('[Transcription] - Current channel ID:', chat.currentChannel.id)
     } else {
       console.warn('[Transcription] Failed to get lock status, response not OK')
       const errorText = await response.text()
@@ -400,6 +403,13 @@ async function startTranscription() {
   console.log('[Transcription] - User ID:', auth.user?.id)
   console.log('[Transcription] - API_BASE:', API_BASE)
   
+  // Auto-expand panel BEFORE starting transcription
+  transcriptionExpanded.value = true
+  console.log('[Transcription] - Panel expanded:', transcriptionExpanded.value)
+  
+  // Wait for next tick to ensure panel is rendered
+  await nextTick()
+  
   if (!transcriptionPanel.value) {
     console.error('[Transcription] Panel ref not available')
     return
@@ -409,7 +419,6 @@ async function startTranscription() {
     console.log('[Transcription] Calling panel.startTranscription()...')
     await transcriptionPanel.value.startTranscription()
     transcriptionActive.value = true
-    transcriptionExpanded.value = true // Auto-expand panel
     console.log('[Transcription] ✅ Transcription started successfully')
     console.log('[Transcription] - Active:', transcriptionActive.value)
     console.log('[Transcription] - Expanded:', transcriptionExpanded.value)
