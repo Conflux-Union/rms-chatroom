@@ -53,7 +53,7 @@ const hasTranscriptionTask = computed(() => {
 })
 
 const hasPermission = computed(() => {
-  const result = (auth.user?.permission_level ?? 0) >= 4
+  const result = (auth.user?.permission_level ?? 0) >= 3
   console.log('[TranscriptionPanel] hasPermission computed:', {
     permission_level: auth.user?.permission_level,
     hasPermission: result
@@ -199,7 +199,7 @@ async function startTranscription() {
     console.warn('[TranscriptionPanel] - Channel exists:', !!chat.currentChannel)
     console.warn('[TranscriptionPanel] - Not already transcribing:', !isTranscribing.value)
     console.warn('[TranscriptionPanel] - Has permission:', hasPermission.value)
-    return
+    return false
   }
   
   try {
@@ -247,6 +247,8 @@ async function startTranscription() {
     // Connect WebSocket for real-time results
     console.log('[TranscriptionPanel] Connecting WebSocket...')
     connectWebSocket()
+
+    return true
     
   } catch (e) {
     error.value = e instanceof Error ? e.message : '启动转录失败'
@@ -269,7 +271,7 @@ async function stopTranscription() {
     console.warn('[TranscriptionPanel] Conditions not met for stopping transcription')
     console.warn('[TranscriptionPanel] - Has session ID:', !!sessionId.value)
     console.warn('[TranscriptionPanel] - Has permission:', hasPermission.value)
-    return
+    return false
   }
   
   try {
@@ -307,10 +309,13 @@ async function stopTranscription() {
         websocket.close()
         websocket = null
       }
+
+      return true
     } else {
       const errorText = await response.text()
       console.error('[TranscriptionPanel] ❌ Failed to stop, response not OK')
       console.error('[TranscriptionPanel] Error response:', errorText)
+      return false
     }
   } catch (e) {
     console.error('[TranscriptionPanel] ❌ Failed to stop transcription:', e)
