@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, nextTick, onUnmounted, computed } from 'vue'
+import { ref, watch, nextTick, onMounted, onUnmounted, computed } from 'vue'
 import { useChatStore } from '../stores/chat'
 import { useAuthStore } from '../stores/auth'
 import { useWebSocket } from '../composables/useWebSocket'
@@ -126,10 +126,16 @@ watch(
   { immediate: true }
 )
 
+onMounted(() => {
+  // Close context menu on click outside
+  document.addEventListener('click', hideContextMenu)
+})
+
 onUnmounted(() => {
   if (ws) {
     ws.disconnect()
   }
+  document.removeEventListener('click', hideContextMenu)
 })
 
 function scrollToBottom() {
@@ -265,6 +271,7 @@ function getAttachmentIconComponent(att: Attachment) {
 // Context menu functions
 function showContextMenu(event: MouseEvent, message: Message) {
   event.preventDefault()
+  event.stopPropagation() // Prevent event from bubbling to document click listener
   contextMenu.value = {
     visible: true,
     x: event.clientX,
@@ -478,7 +485,12 @@ function handleClickOutside(event: MouseEvent) {
     </div>
 
     <div class="messages" ref="messagesContainer">
-      <div v-for="msg in chat.messages" :key="msg.id" class="message">
+      <div
+        v-for="msg in chat.messages"
+        :key="msg.id"
+        class="message"
+        @contextmenu="!msg.is_deleted && showContextMenu($event, msg)"
+      >
         <div class="message-avatar">{{ msg.username.charAt(0).toUpperCase() }}</div>
         <div class="message-content">
           <div class="message-header">
