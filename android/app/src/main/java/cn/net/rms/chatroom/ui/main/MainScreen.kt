@@ -43,6 +43,9 @@ fun MainScreen(
     val mainState by mainViewModel.state.collectAsState()
     val authState by authViewModel.state.collectAsState()
     val voiceChannelUsers by mainViewModel.voiceChannelUsers.collectAsState()
+    val isVoiceConnected by mainViewModel.isVoiceConnected.collectAsState()
+    val voiceChannelName by mainViewModel.voiceChannelName.collectAsState()
+    val isVoiceMuted by mainViewModel.isVoiceMuted.collectAsState()
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     var showMusicPanel by remember { mutableStateOf(false) }
@@ -126,7 +129,12 @@ fun MainScreen(
                         },
                         onDeleteChannel = { channelId ->
                             mainViewModel.deleteChannel(channelId)
-                        }
+                        },
+                        isVoiceConnected = isVoiceConnected,
+                        voiceChannelName = voiceChannelName,
+                        isVoiceMuted = isVoiceMuted,
+                        onToggleMute = { mainViewModel.toggleVoiceMute() },
+                        onDisconnectVoice = { mainViewModel.disconnectVoice() }
                     )
                 }
             }

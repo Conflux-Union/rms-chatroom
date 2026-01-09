@@ -13,6 +13,7 @@ import cn.net.rms.chatroom.data.model.AttachmentResponse
 import cn.net.rms.chatroom.data.repository.BugReportRepository
 import cn.net.rms.chatroom.data.repository.ChatRepository
 import cn.net.rms.chatroom.data.repository.UpdateRepository
+import cn.net.rms.chatroom.data.repository.VoiceRepository
 import cn.net.rms.chatroom.data.websocket.ConnectionState
 import cn.net.rms.chatroom.data.websocket.WebSocketEvent
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -45,7 +46,8 @@ data class MainState(
 class MainViewModel @Inject constructor(
     private val chatRepository: ChatRepository,
     private val bugReportRepository: BugReportRepository,
-    private val updateRepository: UpdateRepository
+    private val updateRepository: UpdateRepository,
+    private val voiceRepository: VoiceRepository
 ) : ViewModel() {
     companion object {
         private const val TAG = "MainViewModel"
@@ -57,6 +59,11 @@ class MainViewModel @Inject constructor(
     val messages = chatRepository.messages
     val connectionState: StateFlow<ConnectionState> = chatRepository.connectionState
     val voiceChannelUsers: StateFlow<Map<Long, List<VoiceUser>>> = chatRepository.voiceChannelUsers
+
+    // Voice status for sidebar widget
+    val isVoiceConnected: StateFlow<Boolean> = voiceRepository.isConnected
+    val voiceChannelName: StateFlow<String?> = voiceRepository.currentChannelName
+    val isVoiceMuted: StateFlow<Boolean> = voiceRepository.isMuted
 
     private var voiceUsersPollingJob: Job? = null
 
@@ -396,6 +403,16 @@ class MainViewModel @Inject constructor(
                     _state.value = _state.value.copy(error = "禁言失败: ${e.message}")
                 }
         }
+    }
+
+    // Voice control methods for sidebar widget
+    fun toggleVoiceMute() {
+        val newMuted = !voiceRepository.isMuted.value
+        voiceRepository.setMuted(newMuted)
+    }
+
+    fun disconnectVoice() {
+        voiceRepository.leaveVoice()
     }
 
     override fun onCleared() {

@@ -23,6 +23,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -45,7 +46,13 @@ fun ChannelListColumn(
     voiceChannelUsers: Map<Long, List<VoiceUser>> = emptyMap(),
     isAdmin: Boolean = false,
     onCreateChannel: (name: String, type: String) -> Unit = { _, _ -> },
-    onDeleteChannel: (channelId: Long) -> Unit = {}
+    onDeleteChannel: (channelId: Long) -> Unit = {},
+    // Voice status widget parameters
+    isVoiceConnected: Boolean = false,
+    voiceChannelName: String? = null,
+    isVoiceMuted: Boolean = false,
+    onToggleMute: () -> Unit = {},
+    onDisconnectVoice: () -> Unit = {}
 ) {
     var showCreateDialog by remember { mutableStateOf(false) }
     var createChannelType by remember { mutableStateOf("text") }
@@ -144,6 +151,15 @@ fun ChannelListColumn(
                 }
             }
         }
+
+        // Voice status widget (shown when connected to voice)
+        VoiceStatusWidget(
+            isConnected = isVoiceConnected,
+            channelName = voiceChannelName,
+            isMuted = isVoiceMuted,
+            onToggleMute = onToggleMute,
+            onDisconnect = onDisconnectVoice
+        )
 
         // User panel at bottom
         UserPanel(
@@ -533,6 +549,105 @@ private fun UserPanel(
                     tint = TextMuted,
                     modifier = Modifier.size(18.dp)
                 )
+            }
+        }
+    }
+}
+
+@Composable
+private fun VoiceStatusWidget(
+    isConnected: Boolean,
+    channelName: String?,
+    isMuted: Boolean,
+    onToggleMute: () -> Unit,
+    onDisconnect: () -> Unit
+) {
+    AnimatedVisibility(
+        visible = isConnected,
+        enter = expandVertically(),
+        exit = shrinkVertically()
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 4.dp),
+            color = Color(0xFF1A3D2E),
+            shape = RoundedCornerShape(8.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(8.dp)
+            ) {
+                // Status info
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.VolumeUp,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                        tint = VoiceConnected
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "通话中",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = VoiceConnected
+                        )
+                        Text(
+                            text = channelName ?: "",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextMuted,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Control buttons
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Mute button
+                    IconButton(
+                        onClick = onToggleMute,
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .background(if (isMuted) VoiceMuted else SurfaceLighter)
+                    ) {
+                        Icon(
+                            imageVector = if (isMuted) Icons.Default.MicOff else Icons.Default.Mic,
+                            contentDescription = if (isMuted) "取消静音" else "静音",
+                            modifier = Modifier.size(20.dp),
+                            tint = if (isMuted) Color.White else TextPrimary
+                        )
+                    }
+
+                    // Disconnect button
+                    IconButton(
+                        onClick = onDisconnect,
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .background(VoiceMuted)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Phone,
+                            contentDescription = "离开语音",
+                            modifier = Modifier
+                                .size(20.dp)
+                                .rotate(135f),
+                            tint = Color.White
+                        )
+                    }
+                }
             }
         }
     }

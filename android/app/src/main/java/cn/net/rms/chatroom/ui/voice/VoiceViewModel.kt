@@ -236,9 +236,10 @@ class VoiceViewModel @Inject constructor(
 
     fun joinVoice() {
         val channelId = _channelId.value ?: return
+        val channelName = _channelName.value
         viewModelScope.launch {
             _isLoading.value = true
-            voiceRepository.joinVoice(channelId)
+            voiceRepository.joinVoice(channelId, channelName)
             _isLoading.value = false
         }
     }
