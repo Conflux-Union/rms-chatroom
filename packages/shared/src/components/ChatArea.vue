@@ -13,6 +13,7 @@ import {
   NInputNumber,
   NButton,
   NSpace,
+  NProgress,
   useDialog,
 } from 'naive-ui'
 import { Paperclip, Send, Upload, X, Image, Video, Music, FileText, File, MoreVertical } from 'lucide-vue-next'
@@ -623,9 +624,14 @@ function handleClickOutside(event: MouseEvent) {
         <div class="file-info">
           <span class="file-name">{{ file.name }}</span>
           <span class="file-size">{{ formatFileSize(file.size) }}</span>
-          <div v-if="uploadProgress.get(file.name)" class="progress-bar">
-            <div class="progress-fill" :style="{ width: uploadProgress.get(file.name) + '%' }"></div>
-          </div>
+          <NProgress
+            v-if="uploadProgress.get(file.name)"
+            type="line"
+            :percentage="uploadProgress.get(file.name)"
+            :show-indicator="false"
+            :height="3"
+            style="margin-top: 4px"
+          />
         </div>
         <button class="remove-btn" @click="removePendingFile(index)" :disabled="isUploading">
           <X :size="16" />
@@ -927,20 +933,6 @@ function handleClickOutside(event: MouseEvent) {
 .pending-file .file-size {
   font-size: 11px;
   color: var(--color-text-muted);
-}
-
-.progress-bar {
-  height: 3px;
-  background: rgba(255, 255, 255, 0.2);
-  border-radius: 2px;
-  overflow: hidden;
-  margin-top: 4px;
-}
-
-.progress-fill {
-  height: 100%;
-  background: var(--color-accent);
-  transition: width 0.2s;
 }
 
 .remove-btn {

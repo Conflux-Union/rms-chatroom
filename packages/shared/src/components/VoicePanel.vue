@@ -4,6 +4,8 @@ import { useChatStore } from '../stores/chat'
 import { useVoiceStore } from '../stores/voice'
 import { useAuthStore } from '../stores/auth'
 import { Volume2, VolumeX, Mic, MicOff, Phone, AlertTriangle, Crown, Link, Copy, Check, UserX, Monitor, MonitorOff, MessageSquare } from 'lucide-vue-next'
+import { NModal, NButton, NSpace, NInput, NDropdown, NSpin } from 'naive-ui'
+import type { DropdownOption } from 'naive-ui'
 import TranscriptionPanel from './TranscriptionPanel.vue'
 
 // Detect iOS devices
@@ -115,10 +117,18 @@ const swipedUserId = ref<string | null>(null)
 const touchStartX = ref(0)
 const touchCurrentX = ref(0)
 
-// Desktop context menu state
-const contextMenu = ref<{ show: boolean; x: number; y: number; participantId: string }>({
+// Desktop context menu state (NDropdown)
+const participantDropdown = ref<{ show: boolean; x: number; y: number; participantId: string }>({
   show: false, x: 0, y: 0, participantId: ''
 })
+
+// Dropdown options for participant context menu
+const participantDropdownOptions: DropdownOption[] = [
+  { label: '静音麦克风', key: 'mute', icon: () => h(MicOff, { size: 14 }) },
+  { label: '踢出频道', key: 'kick', props: { style: { color: 'var(--color-error, #ef4444)' } } }
+]
+
+import { h } from 'vue'
 
 // Screen share state
 const screenShareExpanded = ref(true)
@@ -190,29 +200,26 @@ async function muteParticipant(participantId: string) {
 async function kickParticipant(participantId: string) {
   await voice.kickParticipant(participantId)
   swipedUserId.value = null
-  hideContextMenu()
+  hideParticipantDropdown()
 }
 
-function showContextMenu(event: MouseEvent, participantId: string) {
+function showParticipantContextMenu(event: MouseEvent, participantId: string) {
   event.preventDefault()
   event.stopPropagation()
-  contextMenu.value = { show: true, x: event.clientX, y: event.clientY, participantId }
+  participantDropdown.value = { show: true, x: event.clientX, y: event.clientY, participantId }
 }
 
-function hideContextMenu() {
-  contextMenu.value = { show: false, x: 0, y: 0, participantId: '' }
+function hideParticipantDropdown() {
+  participantDropdown.value = { show: false, x: 0, y: 0, participantId: '' }
 }
 
-async function contextMuteParticipant() {
-  if (!contextMenu.value.participantId) return
-  await voice.muteParticipant(contextMenu.value.participantId, true)
-  hideContextMenu()
-}
-
-async function contextKickParticipant() {
-  if (!contextMenu.value.participantId) return
-  await voice.kickParticipant(contextMenu.value.participantId)
-  hideContextMenu()
+async function handleParticipantDropdownSelect(key: string) {
+  if (key === 'mute') {
+    await voice.muteParticipant(participantDropdown.value.participantId, true)
+  } else if (key === 'kick') {
+    await voice.kickParticipant(participantDropdown.value.participantId)
+  }
+  hideParticipantDropdown()
 }
 
 async function joinVoice() {
@@ -470,7 +477,7 @@ async function stopTranscription() {
 </script>
 
 <template>
-  <div class="voice-panel" @click="hideContextMenu">
+  <div class="voice-panel" @click="hideParticipantDropdown">
     <div class="voice-header">
       <Volume2 class="channel-icon" :size="20" />
       <span class="channel-name">{{ chat.currentChannel?.name }}</span>
@@ -561,7 +568,7 @@ async function stopTranscription() {
                   @touchstart="!participant.isLocal && auth.isAdmin ? handleTouchStart($event, participant.id) : null"
                   @touchmove="!participant.isLocal && auth.isAdmin ? handleTouchMove($event, participant.id) : null"
                   @touchend="handleTouchEnd"
-                  @contextmenu="!participant.isLocal && auth.isAdmin ? showContextMenu($event, participant.id) : null"
+                  @contextmenu="!participant.isLocal && auth.isAdmin ? showParticipantContextMenu($event, participant.id) : null"
                 >
                   <div class="user-info">
                     <div class="user-avatar">
@@ -744,73 +751,82 @@ async function stopTranscription() {
       </div>
     </div>
 
-    <!-- Invite Link Dialog -->
-    <Teleport to="body">
-      <div v-if="showInviteDialog" class="invite-overlay" @click.self="closeInviteDialog">
-        <div class="invite-dialog">
-          <Link class="invite-icon" :size="48" />
-          <h3 class="invite-title">邀请访客</h3>
-          
-          <div v-if="inviteLoading" class="invite-loading">
-            <div class="loading-spinner"></div>
-            <p>正在生成链接...</p>
-          </div>
-          
-          <div v-else-if="inviteError" class="invite-error">
-            <p>{{ inviteError }}</p>
-          </div>
-          
-          <div v-else-if="inviteUrl" class="invite-content">
-            <p class="invite-note">此链接仅可使用一次，访客离开后无法再次加入。</p>
-            <div class="invite-url-box">
-              <input type="text" class="invite-url-input" :value="inviteUrl" readonly />
-              <button class="invite-copy-btn" @click="copyInviteLink" :title="inviteCopied ? '已复制' : '复制链接'">
-                <Check v-if="inviteCopied" :size="18" />
-                <Copy v-else :size="18" />
-              </button>
-            </div>
-          </div>
-          
-          <div class="invite-actions">
-            <button class="invite-btn-close" @click="closeInviteDialog">关闭</button>
-          </div>
-        </div>
-      </div>
-    </Teleport>
-
-    <!-- Volume Warning Dialog -->
-    <Teleport to="body">
-      <div v-if="showVolumeWarning" class="volume-warning-overlay" @click.self="closeVolumeWarning">
-        <div class="volume-warning-dialog">
-          <AlertTriangle class="warning-icon" :size="48" />
-          <h3 class="warning-title">高音量警告</h3>
-          <p class="warning-message">
-            高音量可能损害您的听力和音频设备。
-          </p>
-          <div class="warning-actions">
-            <button class="warning-btn cancel" @click="closeVolumeWarning">取消</button>
-            <button class="warning-btn confirm" @click="confirmVolumeWarning">我已了解</button>
-          </div>
-        </div>
-      </div>
-    </Teleport>
-
-    <!-- Desktop Context Menu -->
-    <div
-      v-if="contextMenu.show && auth.isAdmin"
-      class="context-menu"
-      :style="{ left: contextMenu.x + 'px', top: contextMenu.y + 'px' }"
-      @click.stop
+    <!-- Invite Link Dialog (NModal) -->
+    <NModal
+      v-model:show="showInviteDialog"
+      preset="card"
+      title="邀请访客"
+      style="width: 440px"
+      :segmented="{ content: true, footer: 'soft' }"
     >
-      <div class="context-menu-item" @click="contextMuteParticipant">
-        <MicOff :size="14" />
-        <span>静音麦克风</span>
+      <template #header-extra>
+        <Link class="invite-icon" :size="24" />
+      </template>
+
+      <div v-if="inviteLoading" class="invite-loading">
+        <NSpin size="medium" />
+        <p>正在生成链接...</p>
       </div>
-      <div class="context-menu-item delete" @click="contextKickParticipant">
-        <UserX :size="14" />
-        <span>踢出频道</span>
+
+      <div v-else-if="inviteError" class="invite-error">
+        <p>{{ inviteError }}</p>
       </div>
-    </div>
+
+      <div v-else-if="inviteUrl" class="invite-content">
+        <p class="invite-note">此链接仅可使用一次，访客离开后无法再次加入。</p>
+        <NSpace>
+          <NInput :value="inviteUrl" readonly style="flex: 1; font-family: monospace;" />
+          <NButton @click="copyInviteLink" :type="inviteCopied ? 'success' : 'primary'">
+            <template #icon>
+              <Check v-if="inviteCopied" :size="18" />
+              <Copy v-else :size="18" />
+            </template>
+          </NButton>
+        </NSpace>
+      </div>
+
+      <template #footer>
+        <NSpace justify="end">
+          <NButton @click="closeInviteDialog">关闭</NButton>
+        </NSpace>
+      </template>
+    </NModal>
+
+    <!-- Volume Warning Dialog (NModal) -->
+    <NModal
+      v-model:show="showVolumeWarning"
+      preset="card"
+      title="高音量警告"
+      style="width: 400px"
+      :segmented="{ content: true, footer: 'soft' }"
+    >
+      <template #header-extra>
+        <AlertTriangle class="warning-icon" :size="24" style="color: var(--color-warning, #f59e0b);" />
+      </template>
+
+      <p class="warning-message">
+        高音量可能损害您的听力和音频设备。
+      </p>
+
+      <template #footer>
+        <NSpace justify="end">
+          <NButton @click="closeVolumeWarning">取消</NButton>
+          <NButton type="warning" @click="confirmVolumeWarning">我已了解</NButton>
+        </NSpace>
+      </template>
+    </NModal>
+
+    <!-- Participant Context Menu (NDropdown) -->
+    <NDropdown
+      placement="bottom-start"
+      trigger="manual"
+      :x="participantDropdown.x"
+      :y="participantDropdown.y"
+      :options="participantDropdownOptions"
+      :show="participantDropdown.show && auth.isAdmin"
+      @select="handleParticipantDropdownSelect"
+      @clickoutside="participantDropdown.show = false"
+    />
   </div>
 </template>
 
@@ -1346,82 +1362,11 @@ async function stopTranscription() {
   border: 1px solid rgba(245, 158, 11, 0.3);
 }
 
-/* Volume Warning Dialog Styles */
-.volume-warning-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.7);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  z-index: 9999;
-  backdrop-filter: blur(4px);
-}
-
-.volume-warning-dialog {
-  background: var(--surface-glass-strong, rgba(30, 30, 40, 0.95));
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: var(--radius-lg, 16px);
-  padding: 24px;
-  max-width: 400px;
-  text-align: center;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
-}
-
-.warning-icon {
-  font-size: 48px;
-  margin-bottom: 16px;
-}
-
-.warning-title {
-  color: var(--color-warning, #f59e0b);
-  font-size: 20px;
-  font-weight: 600;
-  margin: 0 0 12px 0;
-}
-
 .warning-message {
   color: var(--color-text-muted, #9ca3af);
   font-size: 14px;
   line-height: 1.5;
-  margin: 0 0 20px 0;
-}
-
-.warning-actions {
-  display: flex;
-  gap: 12px;
-  justify-content: center;
-}
-
-.warning-btn {
-  padding: 10px 20px;
-  border-radius: var(--radius-md, 8px);
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  border: none;
-}
-
-.warning-btn.cancel {
-  background: rgba(255, 255, 255, 0.1);
-  color: var(--color-text-main, #fff);
-}
-
-.warning-btn.cancel:hover {
-  background: rgba(255, 255, 255, 0.2);
-}
-
-.warning-btn.confirm {
-  background: var(--color-warning, #f59e0b);
-  color: #000;
-}
-
-.warning-btn.confirm:hover {
-  filter: brightness(1.1);
+  margin: 0;
 }
 
 /* Invite Button */
@@ -1549,42 +1494,9 @@ async function stopTranscription() {
   z-index: 1;
 }
 
-/* Invite Dialog Styles */
-.invite-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.7);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  z-index: 9999;
-  backdrop-filter: blur(4px);
-}
-
-.invite-dialog {
-  background: var(--surface-glass-strong, rgba(30, 30, 40, 0.95));
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: var(--radius-lg, 16px);
-  padding: 24px;
-  max-width: 440px;
-  width: 90%;
-  text-align: center;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
-}
-
+/* Invite Dialog Styles (minimal - NModal handles most) */
 .invite-icon {
   color: #3b82f6;
-  margin-bottom: 12px;
-}
-
-.invite-title {
-  color: var(--color-text-main);
-  font-size: 20px;
-  font-weight: 600;
-  margin: 0 0 16px 0;
 }
 
 .invite-loading {
@@ -1593,19 +1505,6 @@ async function stopTranscription() {
   align-items: center;
   gap: 12px;
   padding: 20px 0;
-}
-
-.invite-loading .loading-spinner {
-  width: 32px;
-  height: 32px;
-  border: 3px solid rgba(255, 255, 255, 0.2);
-  border-top-color: #3b82f6;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
 }
 
 .invite-loading p {
@@ -1626,102 +1525,6 @@ async function stopTranscription() {
   color: var(--color-text-muted);
   font-size: 13px;
   margin: 0 0 12px 0;
-}
-
-.invite-url-box {
-  display: flex;
-  gap: 8px;
-}
-
-.invite-url-input {
-  flex: 1;
-  padding: 12px 14px;
-  font-size: 13px;
-  color: var(--color-text-main);
-  background: var(--surface-glass-input);
-  border: 1px solid transparent;
-  border-radius: var(--radius-md);
-  font-family: monospace;
-}
-
-.invite-url-input:focus {
-  outline: none;
-}
-
-.invite-copy-btn {
-  padding: 12px 14px;
-  background: #3b82f6;
-  border: none;
-  border-radius: var(--radius-md);
-  color: white;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.invite-copy-btn:hover {
-  filter: brightness(1.1);
-}
-
-.invite-actions {
-  margin-top: 20px;
-}
-
-.invite-btn-close {
-  padding: 10px 24px;
-  background: rgba(255, 255, 255, 0.1);
-  border: none;
-  border-radius: var(--radius-md);
-  color: var(--color-text-main);
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.invite-btn-close:hover {
-  background: rgba(255, 255, 255, 0.2);
-}
-
-/* Mobile Responsive */
-/* Context Menu */
-.context-menu {
-  position: fixed;
-  background: var(--surface-glass-strong, rgba(30, 30, 40, 0.95));
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: var(--radius-md, 8px);
-  padding: 4px;
-  min-width: 160px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
-  z-index: 9999;
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-}
-
-.context-menu-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 14px;
-  font-size: 14px;
-  color: var(--color-text-main);
-  cursor: pointer;
-  border-radius: var(--radius-sm, 6px);
-  transition: background 0.15s ease;
-}
-
-.context-menu-item:hover {
-  background: rgba(255, 255, 255, 0.1);
-}
-
-.context-menu-item.delete {
-  color: var(--color-error, #ef4444);
-}
-
-.context-menu-item.delete:hover {
-  background: rgba(239, 68, 68, 0.15);
 }
 
 @media (max-width: 768px) {
@@ -1771,10 +1574,6 @@ async function stopTranscription() {
   .control-btn {
     width: 44px;
     height: 44px;
-  }
-
-  .context-menu {
-    display: none;
   }
 }
 </style>

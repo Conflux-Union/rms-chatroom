@@ -2,7 +2,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useMusicStore, type Song } from '../stores/music'
 import { useVoiceStore } from '../stores/voice'
-import { NSlider, NSelect } from 'naive-ui'
+import { NSlider, NSelect, NModal, NButton, NSpace, NInput, NSpin } from 'naive-ui'
 import { Music, Bot, SkipBack, Pause, Play, SkipForward, Plus, Trash2, X, Search, Loader2, Volume2 } from 'lucide-vue-next'
 
 const music = useMusicStore()
@@ -191,34 +191,47 @@ async function handleStopBot() {
     </div>
 
     <div class="music-content">
-      <!-- Login Platform Select Dialog -->
-      <div v-if="showLoginSelect" class="qr-login-overlay" @click.self="showLoginSelect = false">
-        <div class="qr-login-dialog">
-          <h3>选择登录平台</h3>
-          <div class="platform-select">
-            <button 
-              v-if="!music.platformLoginStatus.qq.logged_in"
-              class="platform-btn qq" 
-              @click="startLogin('qq')"
-            >
-              QQ 音乐
-            </button>
-            <button 
-              v-if="!music.platformLoginStatus.netease.logged_in"
-              class="platform-btn netease" 
-              @click="startLogin('netease')"
-            >
-              网易云音乐
-            </button>
-          </div>
-        </div>
-      </div>
+      <!-- Login Platform Select Dialog (NModal) -->
+      <NModal
+        v-model:show="showLoginSelect"
+        preset="card"
+        title="选择登录平台"
+        style="width: 360px"
+        :segmented="{ content: true }"
+      >
+        <NSpace vertical size="large">
+          <NButton
+            v-if="!music.platformLoginStatus.qq.logged_in"
+            block
+            size="large"
+            type="success"
+            @click="startLogin('qq')"
+          >
+            QQ 音乐
+          </NButton>
+          <NButton
+            v-if="!music.platformLoginStatus.netease.logged_in"
+            block
+            size="large"
+            type="error"
+            @click="startLogin('netease')"
+          >
+            网易云音乐
+          </NButton>
+        </NSpace>
+      </NModal>
 
-      <!-- QR Code Login Dialog -->
-      <div v-if="music.qrCodeUrl" class="qr-login-overlay" @click.self="music.qrCodeUrl = null">
-        <div class="qr-login-dialog">
-          <h3>扫码登录 {{ music.loginPlatform === 'qq' ? 'QQ 音乐' : '网易云音乐' }}</h3>
-          <img :src="music.qrCodeUrl" alt="QR Code" class="qr-code" />
+      <!-- QR Code Login Dialog (NModal) -->
+      <NModal
+        :show="!!music.qrCodeUrl"
+        preset="card"
+        :title="'扫码登录 ' + (music.loginPlatform === 'qq' ? 'QQ 音乐' : '网易云音乐')"
+        style="width: 320px"
+        :segmented="{ content: true, footer: 'soft' }"
+        @update:show="(v) => { if (!v) music.qrCodeUrl = null }"
+      >
+        <div class="qr-login-content">
+          <img :src="music.qrCodeUrl || ''" alt="QR Code" class="qr-code" />
           <p class="login-hint">
             {{ music.loginStatus === 'waiting' ? '等待扫码...' :
                music.loginStatus === 'scanned' ? '扫码成功！请在手机上确认...' :
@@ -226,11 +239,16 @@ async function handleStopBot() {
                music.loginStatus === 'refused' ? '登录被拒绝' :
                '加载中...' }}
           </p>
-          <button v-if="music.loginStatus === 'expired'" class="refresh-btn" @click="startLogin(music.loginPlatform)">
-            刷新二维码
-          </button>
         </div>
-      </div>
+        <template #footer>
+          <NSpace justify="center">
+            <NButton v-if="music.loginStatus === 'expired'" type="primary" @click="startLogin(music.loginPlatform)">
+              刷新二维码
+            </NButton>
+            <NButton @click="music.qrCodeUrl = null">关闭</NButton>
+          </NSpace>
+        </template>
+      </NModal>
 
       <!-- Now Playing -->
       <div v-if="music.currentSong" class="now-playing">
@@ -326,60 +344,71 @@ async function handleStopBot() {
         </div>
       </div>
 
-      <!-- Search Dialog -->
-      <Teleport to="body">
-        <div v-if="showSearch" class="search-overlay" @click.self="showSearch = false">
-          <div class="search-dialog">
-            <div class="search-header">
-              <input
-                v-model="searchInput"
-                type="text"
-                placeholder="搜索歌曲..."
-                class="search-input"
-                @keyup.enter="handleSearch"
-                autofocus
-              />
-              <NSelect
-                v-model:value="music.searchPlatform"
-                :options="[
-                  { label: 'All', value: 'all' },
-                  { label: 'QQ Music', value: 'qq' },
-                  { label: 'NetEase', value: 'netease' },
-                ]"
-                style="width: 120px"
-              />
-              <button class="search-btn" @click="handleSearch" :disabled="music.isSearching">
-                <span v-if="music.isSearching">...</span>
-                <Search v-else :size="18" />
-              </button>
-            </div>
-            <div class="search-results">
-              <div 
-                v-for="song in music.searchResults" 
-                :key="`${song.platform}-${song.mid}`"
-                class="search-item"
-                @click="handleAddToQueue(song)"
-              >
-                <img :src="song.cover" alt="Cover" class="search-cover" />
-                <div class="search-info">
-                  <div class="search-song-name">
-                    {{ song.name }}
-                    <span class="platform-tag" :class="song.platform">
-                      {{ song.platform === 'qq' ? 'QQ' : '网易云' }}
-                    </span>
-                  </div>
-                  <div class="search-song-artist">{{ song.artist }} · {{ song.album }}</div>
+      <!-- Search Dialog (NModal) -->
+      <NModal
+        v-model:show="showSearch"
+        preset="card"
+        title="搜索歌曲"
+        style="width: 500px; max-height: 80vh"
+        :segmented="{ content: true, footer: 'soft' }"
+      >
+        <template #header-extra>
+          <NSelect
+            v-model:value="music.searchPlatform"
+            :options="[
+              { label: 'All', value: 'all' },
+              { label: 'QQ Music', value: 'qq' },
+              { label: 'NetEase', value: 'netease' },
+            ]"
+            style="width: 100px"
+            size="small"
+          />
+        </template>
+
+        <NSpace vertical>
+          <NSpace>
+            <NInput
+              v-model:value="searchInput"
+              placeholder="搜索歌曲..."
+              @keyup.enter="handleSearch"
+              style="flex: 1"
+            />
+            <NButton type="primary" @click="handleSearch" :loading="music.isSearching">
+              <template #icon><Search :size="18" /></template>
+            </NButton>
+          </NSpace>
+
+          <div class="search-results">
+            <div
+              v-for="song in music.searchResults"
+              :key="`${song.platform}-${song.mid}`"
+              class="search-item"
+              @click="handleAddToQueue(song)"
+            >
+              <img :src="song.cover" alt="Cover" class="search-cover" />
+              <div class="search-info">
+                <div class="search-song-name">
+                  {{ song.name }}
+                  <span class="platform-tag" :class="song.platform">
+                    {{ song.platform === 'qq' ? 'QQ' : '网易云' }}
+                  </span>
                 </div>
-                <span class="search-duration">{{ music.formatDuration(song.duration) }}</span>
+                <div class="search-song-artist">{{ song.artist }} · {{ song.album }}</div>
               </div>
-              <div v-if="music.searchResults.length === 0 && searchInput" class="search-empty">
-                {{ music.isSearching ? '搜索中...' : '未找到结果' }}
-              </div>
+              <span class="search-duration">{{ music.formatDuration(song.duration) }}</span>
             </div>
-            <button class="close-search" @click="showSearch = false">关闭</button>
+            <div v-if="music.searchResults.length === 0 && searchInput" class="search-empty">
+              {{ music.isSearching ? '搜索中...' : '未找到结果' }}
+            </div>
           </div>
-        </div>
-      </Teleport>
+        </NSpace>
+
+        <template #footer>
+          <NSpace justify="end">
+            <NButton @click="showSearch = false">关闭</NButton>
+          </NSpace>
+        </template>
+      </NModal>
     </div>
   </div>
 </template>
@@ -467,31 +496,9 @@ async function handleStopBot() {
   overflow: hidden;
 }
 
-/* QR Login Dialog */
-.qr-login-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.8);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  z-index: 9999;
-}
-
-.qr-login-dialog {
-  background: var(--surface-glass-strong, rgba(30, 30, 40, 0.95));
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 16px;
-  padding: 24px;
+/* QR Login Content (inside NModal) */
+.qr-login-content {
   text-align: center;
-}
-
-.qr-login-dialog h3 {
-  margin: 0 0 16px;
-  color: var(--color-text-main);
 }
 
 .qr-code {
@@ -505,52 +512,6 @@ async function handleStopBot() {
   margin: 16px 0 0;
   color: var(--color-text-muted);
   font-size: 14px;
-}
-
-.refresh-btn {
-  margin-top: 12px;
-  padding: 8px 16px;
-  background: var(--color-primary);
-  color: #fff;
-  border: none;
-  border-radius: 8px;
-  cursor: pointer;
-}
-
-.platform-select {
-  display: flex;
-  gap: 16px;
-  margin-top: 16px;
-}
-
-.platform-btn {
-  flex: 1;
-  padding: 16px 24px;
-  border: none;
-  border-radius: 12px;
-  font-size: 16px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s;
-  color: #fff;
-}
-
-.platform-btn.qq {
-  background: linear-gradient(135deg, #10b981, #059669);
-}
-
-.platform-btn.qq:hover {
-  transform: scale(1.05);
-  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
-}
-
-.platform-btn.netease {
-  background: linear-gradient(135deg, #e60026, #c20020);
-}
-
-.platform-btn.netease:hover {
-  transform: scale(1.05);
-  box-shadow: 0 4px 12px rgba(230, 0, 38, 0.4);
 }
 
 .platform-tag {
@@ -861,68 +822,10 @@ async function handleStopBot() {
   font-size: 14px;
 }
 
-/* Search Dialog */
-.search-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.8);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  z-index: 9999;
-  padding: 20px;
-}
-
-.search-dialog {
-  background: var(--surface-glass-strong, rgba(30, 30, 40, 0.98));
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 16px;
-  width: 100%;
-  max-width: 500px;
-  max-height: 80vh;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.search-header {
-  display: flex;
-  gap: 8px;
-  padding: 16px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.search-input {
-  flex: 1;
-  background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 8px;
-  padding: 12px 16px;
-  color: var(--color-text-main);
-  font-size: 16px;
-}
-
-.search-input:focus {
-  outline: none;
-  border-color: var(--color-primary);
-}
-
-.search-btn {
-  background: var(--color-primary);
-  border: none;
-  border-radius: 8px;
-  padding: 0 16px;
-  font-size: 18px;
-  cursor: pointer;
-}
-
+/* Search Results (inside NModal) */
 .search-results {
-  flex: 1;
+  max-height: 400px;
   overflow-y: auto;
-  padding: 8px;
 }
 
 .search-item {
@@ -976,20 +879,5 @@ async function handleStopBot() {
   text-align: center;
   padding: 32px;
   color: var(--color-text-muted);
-}
-
-.close-search {
-  margin: 16px;
-  padding: 12px;
-  background: rgba(255, 255, 255, 0.1);
-  border: none;
-  border-radius: 8px;
-  color: var(--color-text-main);
-  cursor: pointer;
-  font-size: 14px;
-}
-
-.close-search:hover {
-  background: rgba(255, 255, 255, 0.2);
 }
 </style>

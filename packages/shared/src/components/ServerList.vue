@@ -2,18 +2,26 @@
 import { ref } from 'vue'
 import { useChatStore } from '../stores/chat'
 import { useAuthStore } from '../stores/auth'
-import Settings from './Setting.vue' // ✅ 新增：同目录引入
+import { NModal, NInput, NButton, NSpace, NDropdown } from 'naive-ui'
+import type { DropdownOption } from 'naive-ui'
+import Settings from './Setting.vue'
 
 const chat = useChatStore()
 const auth = useAuthStore()
 
 const showCreate = ref(false)
 const newServerName = ref('')
-const showSettings = ref(false) // ✅ 新增：控制设置弹窗
+const showSettings = ref(false)
 
-const contextMenu = ref<{ show: boolean; x: number; y: number; serverId: number | null }>({
+// Context menu state (NDropdown)
+const serverDropdown = ref<{ show: boolean; x: number; y: number; serverId: number | null }>({
   show: false, x: 0, y: 0, serverId: null
 })
+
+// Dropdown options
+const serverDropdownOptions: DropdownOption[] = [
+  { label: '删除服务器', key: 'delete', props: { style: { color: 'var(--color-danger)' } } }
+]
 
 async function selectServer(serverId: number) {
   await chat.fetchServer(serverId)
@@ -28,22 +36,23 @@ async function createServer() {
 
 function showContextMenu(event: MouseEvent, serverId: number) {
   event.preventDefault()
-  contextMenu.value = { show: true, x: event.clientX, y: event.clientY, serverId }
+  serverDropdown.value = { show: true, x: event.clientX, y: event.clientY, serverId }
 }
 
-function hideContextMenu() {
-  contextMenu.value.show = false
+function hideDropdown() {
+  serverDropdown.value.show = false
 }
 
-async function deleteServer() {
-  if (!contextMenu.value.serverId) return
-  await chat.deleteServer(contextMenu.value.serverId)
-  contextMenu.value.show = false
+async function handleDropdownSelect(key: string) {
+  if (key === 'delete' && serverDropdown.value.serverId) {
+    await chat.deleteServer(serverDropdown.value.serverId)
+  }
+  serverDropdown.value.show = false
 }
 </script>
 
 <template>
-  <div class="server-list" @click="hideContextMenu">
+  <div class="server-list" @click="hideDropdown">
     <div>
       <div
         v-for="server in chat.servers"
@@ -61,33 +70,40 @@ async function deleteServer() {
         +
       </div>
 
-      <!-- Context Menu -->
-      <div
-        v-if="contextMenu.show && auth.isAdmin"
-        class="context-menu"
-        :style="{ left: contextMenu.x + 'px', top: contextMenu.y + 'px' }"
-        @click.stop
-      >
-        <div class="context-menu-item delete" @click="deleteServer">删除服务器</div>
-      </div>
+      <!-- Context Menu (NDropdown) -->
+      <NDropdown
+        placement="bottom-start"
+        trigger="manual"
+        :x="serverDropdown.x"
+        :y="serverDropdown.y"
+        :options="serverDropdownOptions"
+        :show="serverDropdown.show && auth.isAdmin"
+        @select="handleDropdownSelect"
+        @clickoutside="serverDropdown.show = false"
+      />
 
-      <div v-if="showCreate" class="create-modal" @click.self="showCreate = false">
-        <div class="modal-content">
-          <h3 class="showCreateH3">创建服务器</h3>
-          <input
-            v-model="newServerName"
-            placeholder="服务器名称"
-            @keyup.enter="createServer"
-          />
-          <div class="modal-actions">
-            <button class="glow-effect" @click="showCreate = false">取消</button>
-            <button class="primary glow-effect" @click="createServer">创建</button>
-          </div>
-        </div>
-      </div>
+      <!-- Create Server Modal (NModal) -->
+      <NModal
+        v-model:show="showCreate"
+        preset="card"
+        title="创建服务器"
+        style="width: 360px"
+        :segmented="{ content: true, footer: 'soft' }"
+      >
+        <NInput
+          v-model:value="newServerName"
+          placeholder="服务器名称"
+          @keyup.enter="createServer"
+        />
+        <template #footer>
+          <NSpace justify="end">
+            <NButton @click="showCreate = false">取消</NButton>
+            <NButton type="primary" @click="createServer">创建</NButton>
+          </NSpace>
+        </template>
+      </NModal>
     </div>
 
-    <!-- ✅ 底部区域：设置入口（你可以把图标换成自己的） -->
     <div class="bottom-area">
       <div
         class="server-icon glow-effect settings-btn"
@@ -98,7 +114,6 @@ async function deleteServer() {
       </div>
     </div>
 
-    <!-- ✅ 设置弹窗 -->
     <Settings v-if="showSettings" @close="showSettings = false" />
   </div>
 </template>
@@ -151,112 +166,15 @@ async function deleteServer() {
   font-size: 24px;
 }
 
-.create-modal {
-  position: fixed;
-  top: 50vh;
-  left: 50vw;
-  transform: translate(-50%, -50%);
-  width: 500px;
-  height: auto;
-  background: rgba(0, 0, 0, 0);
+/* Bottom area */
+.bottom-area {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
-
-.modal-content {
-  background: var(--surface-glass-dark);
-  padding: 30px;
-  border-radius: var(--radius-lg);
-  background: rgba(20,20,22,.95);
-  border: 1px solid rgba(255,255,255,.12);
-  backdrop-filter: blur(20px);
-  width: 300px;
-}
-
-.modal-content h3 {
-  margin: 0 0 20px 0;
-  color: white;
-  text-align: left;
-  font-size: 18px; 
-  font-weight: 700;
-}
-
-.modal-content input {
-  width: 100%;
-  padding: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: var(--radius-md);
-  background: var(--surface-glass);
-  color: var(--color-text-main);
-  margin-bottom: 20px;
-}
-
-.modal-actions {
-  display: flex;
-  gap: 10px;
-  justify-content: center;
-}
-
-.modal-actions button {
-  padding: 10px 20px;
-  border: none;
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  background: var(--surface-glass);
-  color: var(--color-text-main);
-  transition: all var(--transition-fast);
-}
-
-.modal-actions button.primary {
-  background: var(--color-gradient-primary);
-  color: white;
-  box-shadow: var(--shadow-glow);
-}
-
-/* Context Menu */
-.context-menu {
-  position: fixed;
-  background: var(--surface-glass-dark);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: var(--radius-md);
-  padding: 8px 0;
-  min-width: 120px;
-  z-index: 2000;
-  backdrop-filter: blur(20px);
-  box-shadow: var(--shadow-lg);
-}
-
-.context-menu-item {
-  padding: 10px 16px;
-  cursor: pointer;
-  color: var(--color-text-main);
-  transition: all var(--transition-fast);
-  font-size: 14px;
-}
-
-.context-menu-item:hover {
-  background: var(--surface-glass);
-}
-
-.context-menu-item.delete {
-  color: var(--color-danger);
-}
-
-.context-menu-item.delete:hover {
-  background: rgba(237, 66, 69, 0.2);
-}
-
-/* ✅ 底部区域 */
-.bottom-area{
-  display:flex;
-  flex-direction:column;
-  align-items:center;
   padding-bottom: 6px;
 }
 
-.settings-btn{
+.settings-btn {
   margin-bottom: 0;
 }
 </style>
