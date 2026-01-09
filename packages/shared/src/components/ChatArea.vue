@@ -3,6 +3,7 @@ import { ref, watch, nextTick, onMounted, onUnmounted, computed } from 'vue'
 import { useChatStore } from '../stores/chat'
 import { useAuthStore } from '../stores/auth'
 import { useWebSocket } from '../composables/useWebSocket'
+import { useReadPosition } from '../composables/useReadPosition'
 import {
   NDropdown,
   NModal,
@@ -16,7 +17,7 @@ import {
   NProgress,
   useDialog,
 } from 'naive-ui'
-import { Paperclip, Send, Upload, X, Image, Video, Music, FileText, File, MoreVertical } from 'lucide-vue-next'
+import { Paperclip, Send, Upload, X, Image, Video, Music, FileText, File, MoreVertical, ArrowUp } from 'lucide-vue-next'
 import FilePreview from './FilePreview.vue'
 import type { Attachment, Message } from '../types'
 import axios from 'axios'
@@ -112,6 +113,16 @@ const muteDialog = ref<{
 const isMuted = ref(false)
 const muteReason = ref('')
 
+// Read position tracking
+const {
+  lastReadMessageId,
+  showContinueReading,
+  saveReadPosition,
+  initForChannel,
+  dismissContinueReading,
+} = useReadPosition()
+let scrollSaveTimeout: ReturnType<typeof setTimeout> | null = null
+
 let ws: ReturnType<typeof useWebSocket> | null = null
 
 function connectWebSocket(channelId: number) {
@@ -169,6 +180,13 @@ watch(
       await chat.fetchMessages(channel.id)
       connectWebSocket(channel.id)
       await checkMuteStatus()
+
+      // Initialize read position tracking
+      const latestMessageId = chat.messages.length > 0
+        ? chat.messages[chat.messages.length - 1].id
+        : null
+      initForChannel(channel.id, latestMessageId)
+
       await nextTick()
       scrollToBottom()
     }
@@ -185,6 +203,9 @@ onUnmounted(() => {
   if (ws) {
     ws.disconnect()
   }
+  if (scrollSaveTimeout) {
+    clearTimeout(scrollSaveTimeout)
+  }
   document.removeEventListener('click', hideContextMenu)
 })
 
@@ -194,6 +215,58 @@ function scrollToBottom() {
       messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
     }
   })
+}
+
+// Save read position when user scrolls (debounced)
+function handleMessagesScroll() {
+  if (!chat.currentChannel || chat.messages.length === 0) return
+
+  // Debounce: only save after user stops scrolling for 500ms
+  if (scrollSaveTimeout) {
+    clearTimeout(scrollSaveTimeout)
+  }
+
+  scrollSaveTimeout = setTimeout(() => {
+    const container = messagesContainer.value
+    if (!container) return
+
+    // Find the last visible message
+    const containerRect = container.getBoundingClientRect()
+    const messageElements = container.querySelectorAll('.message[data-message-id]')
+
+    let lastVisibleMessageId: number | null = null
+    for (const el of messageElements) {
+      const rect = el.getBoundingClientRect()
+      // Check if message is visible in the container
+      if (rect.top < containerRect.bottom && rect.bottom > containerRect.top) {
+        const id = parseInt(el.getAttribute('data-message-id') || '0', 10)
+        if (id > 0) {
+          lastVisibleMessageId = id
+        }
+      }
+    }
+
+    if (lastVisibleMessageId && chat.currentChannel) {
+      saveReadPosition(chat.currentChannel.id, lastVisibleMessageId)
+    }
+  }, 500)
+}
+
+// Scroll to a specific message by ID
+function scrollToMessage(messageId: number) {
+  const container = messagesContainer.value
+  if (!container) return
+
+  const messageEl = container.querySelector(`[data-message-id="${messageId}"]`)
+  if (messageEl) {
+    messageEl.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    // Highlight the message briefly
+    messageEl.classList.add('message-highlight')
+    setTimeout(() => {
+      messageEl.classList.remove('message-highlight')
+    }, 2000)
+  }
+  dismissContinueReading()
 }
 
 // File handling
@@ -599,12 +672,25 @@ function handleClickOutside(event: MouseEvent) {
     <div class="chat-header">
       <span class="channel-hash">#</span>
       <span class="channel-name">{{ chat.currentChannel?.name }}</span>
+
+      <!-- Continue reading button -->
+      <Transition name="continue-reading">
+        <button
+          v-if="showContinueReading && lastReadMessageId"
+          class="continue-reading-btn"
+          @click="scrollToMessage(lastReadMessageId)"
+        >
+          <ArrowUp :size="16" />
+          <span>回到上次阅读位置</span>
+        </button>
+      </Transition>
     </div>
 
-    <div class="messages" ref="messagesContainer">
+    <div class="messages" ref="messagesContainer" @scroll="handleMessagesScroll">
       <div
         v-for="(msg, index) in chat.messages"
         :key="msg.id"
+        :data-message-id="msg.id"
         class="message"
         :class="{ 'message-grouped': shouldGroupWithPrevious(index) }"
         @contextmenu="!msg.is_deleted && showContextMenu($event, msg)"
@@ -1181,5 +1267,64 @@ function handleClickOutside(event: MouseEvent) {
   font-size: 12px;
   color: var(--color-text-muted);
   margin-left: auto;
+}
+
+/* Continue Reading Button */
+.continue-reading-btn {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: var(--color-gradient-primary);
+  color: white;
+  border: none;
+  border-radius: 20px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: var(--shadow-glow);
+  animation: btn-pulse 2s ease-in-out infinite;
+}
+
+.continue-reading-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 25px rgba(252, 121, 97, 0.4);
+}
+
+@keyframes btn-pulse {
+  0%, 100% {
+    box-shadow: 0 4px 15px rgba(252, 121, 97, 0.3);
+  }
+  50% {
+    box-shadow: 0 4px 25px rgba(252, 121, 97, 0.5);
+  }
+}
+
+/* Continue reading transition */
+.continue-reading-enter-active,
+.continue-reading-leave-active {
+  transition: all 0.3s ease;
+}
+
+.continue-reading-enter-from,
+.continue-reading-leave-to {
+  opacity: 0;
+  transform: translateX(20px);
+}
+
+/* Message highlight animation */
+.message-highlight {
+  animation: highlight-pulse 2s ease-out;
+}
+
+@keyframes highlight-pulse {
+  0% {
+    background: rgba(var(--color-accent-rgb, 99, 102, 241), 0.3);
+  }
+  100% {
+    background: transparent;
+  }
 }
 </style>
