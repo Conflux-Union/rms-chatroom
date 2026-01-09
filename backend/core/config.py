@@ -24,20 +24,18 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "deploy_token": "",
     "livekit_host": "ws://localhost:7880",
     "livekit_internal_host": "ws://127.0.0.1:7880",
-    "livekit_api_key": "rms_discord",
-    "livekit_api_secret": "rmsdiscordsecretkey123456",
-    "voice_server_url": "http://localhost:8001",  # 语音识别服务器端口
-    "voice_service_url": "http://localhost:5000",  # 独立语音转文字服务地址
-    "voice_callback_base_url": "http://localhost:8000/api/voice-recognition/callback",  # 回调地址
+    "livekit_api_key": "rms_discord",  # intentionally empty in public repo
+    "livekit_api_secret": "rmsdiscordsecretkey123456",  # do NOT store secrets in repo
+    "voice_server_url": "",  # set via ENV or config.json in deployment
+    "voice_service_url": "",  # set via ENV or config.json in deployment
+    "voice_callback_base_url": ""  # set via ENV or config.json in deployment
 }
 
 
 def _load_config() -> dict[str, Any]:
+    # If config.json does not exist, do NOT create one automatically with defaults
+    # to avoid leaking secrets in public repositories or creating unintended files.
     if not CONFIG_PATH.exists():
-        try:
-            CONFIG_PATH.write_text(json.dumps(DEFAULT_CONFIG, indent=2), encoding="utf-8")
-        except OSError:
-            pass
         return DEFAULT_CONFIG.copy()
 
     try:
@@ -65,11 +63,11 @@ class Settings(BaseSettings):
     deploy_token: str = ""
     livekit_host: str = "ws://localhost:7880"
     livekit_internal_host: str = "ws://127.0.0.1:7880"
-    livekit_api_key: str = "rms_discord"
-    livekit_api_secret: str = "rmsdiscordsecretkey123456"
-    voice_server_url: str = "http://api.hurrybili1016hjh.cc:5000"  # 语音识别服务器端口
-    voice_service_url: str = "http://api.hurrybili1016hjh.cc:5000"  # 独立语音转文字服务地址
-    voice_callback_base_url: str = "http://preview-chatroom.rms.net.cn/api/voice-recognition/callback"  # 回调地址
+    livekit_api_key: str = ""
+    livekit_api_secret: str = ""
+    voice_server_url: str = ""  # set via config.json or VOICE_SERVER_URL env
+    voice_service_url: str = ""  # set via config.json or VOICE_SERVICE_URL env
+    voice_callback_base_url: str = ""  # set via config.json or VOICE_CALLBACK_BASE_URL env
 
 
 def _env_overrides() -> dict[str, Any]:
