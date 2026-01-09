@@ -16,7 +16,9 @@ import android.os.Environment
 import android.widget.Toast
 import androidx.annotation.OptIn
 import androidx.compose.foundation.background
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.media3.common.MediaItem
 import androidx.media3.common.util.UnstableApi
@@ -437,6 +439,7 @@ private fun ConnectionBanner(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun MessageItem(
     message: Message,
@@ -449,7 +452,7 @@ private fun MessageItem(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(
+            .combinedClickable(
                 interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
                 indication = null,
                 onClickLabel = "Long press for options",
@@ -492,15 +495,15 @@ private fun MessageItem(
                     style = MaterialTheme.typography.labelSmall,
                     color = TextMuted
                 )
+            }
 
-                // Edited indicator
-                if (message.editedAt != null) {
-                    Text(
-                        text = "(已编辑)",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = TextMuted
-                    )
-                }
+            // Edited indicator on new line
+            if (message.editedAt != null) {
+                Text(
+                    text = "(已编辑于 ${formatTimestamp(message.editedAt)})",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = TextMuted
+                )
             }
 
             Spacer(modifier = Modifier.height(4.dp))
@@ -1116,10 +1119,9 @@ private fun MessageInput(
 
 private fun formatTimestamp(timestamp: String): String {
     return try {
-        // Backend returns UTC time without 'Z' suffix, append it if missing
         val normalizedTimestamp = if (timestamp.endsWith("Z")) timestamp else "${timestamp}Z"
         val instant = Instant.parse(normalizedTimestamp)
-        val formatter = DateTimeFormatter.ofPattern("HH:mm")
+        val formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
             .withZone(ZoneId.systemDefault())
         formatter.format(instant)
     } catch (e: Exception) {
