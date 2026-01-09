@@ -745,22 +745,68 @@ async def transcription_callback(request: dict):
 async def voice_recognition_help():
     """Return help information for the voice transcription (voice-tran) feature."""
     try:
+        settings = get_settings()
+        voice_service_url = _get_voice_service_url()
+        
+        # 尝试连接语音服务检查可用性
+        service_status = "未知"
+        service_error = None
+        try:
+            response = requests.get(f"{voice_service_url}/health", timeout=3)
+            if response.status_code == 200:
+                service_status = "可用 ✓"
+            else:
+                service_status = f"异常 (HTTP {response.status_code})"
+        except requests.ConnectionError as e:
+            service_status = "不可达 ✗"
+            service_error = f"连接被拒绝: {str(e)}"
+        except requests.Timeout:
+            service_status = "超时 ✗"
+            service_error = "连接超时"
+        except Exception as e:
+            service_status = "错误 ✗"
+            service_error = str(e)
+        
         help_text = (
-            "Voice Transcription (voice-tran) Help:\n"
-            "- What it does: converts live voice in a voice channel to text and optionally generates a short summary.\n"
-            "- How to start: open a voice channel, click the transcription button in the voice panel to create a transcription session.\n"
-            "- Permissions: users with appropriate permission level can use the button; server administrators can view and manage global locks.\n"
-            "- Behavior: starting a session will request a transcription service and attach a WebSocket for real-time results. The session_id is returned on success.\n"
-            "- Troubleshooting: if you see errors like 'Connection refused' or 'Invalid URL', the server's transcription service (voice_service_url) may be misconfigured or unreachable. Verify voice_service_url in backend config or environment variables.\n"
-            "- Local services: the project also includes a local voice server (voice_server_url) used for hosting realtime voice components; this is separate from the transcription engine.\n"
-            "- Contact: if issues persist, collect the front-end error message and backend logs and contact the administrator."
+            "语音转录 (voice-tran) 帮助信息：\n"
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"• 配置的语音服务地址: {voice_service_url}\n"
+            f"• 服务状态: {service_status}\n"
+        )
+        
+        if service_error:
+            help_text += f"• 错误详情: {service_error}\n"
+        
+        help_text += (
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            "功能说明:\n"
+            "- 将语音频道中的实时语音转换为文字，可选生成简短摘要\n"
+            "- 使用方法: 打开语音频道，点击转录按钮创建转录会话\n"
+            "- 权限要求: 需要相应权限等级的用户才能使用；服务器管理员可查看全局锁状态\n"
+            "\n故障排查:\n"
+            "1. 如看到 'Connection refused' 或 'Invalid URL' 错误:\n"
+            "   → 检查后端配置中的 voice_service_url 是否正确\n"
+            "   → 确认语音服务是否已启动并可访问\n"
+            "2. 如服务状态显示'不可达':\n"
+            "   → 检查网络连接和防火墙设置\n"
+            "   → 确认语音服务地址和端口正确\n"
+            "3. 本地开发环境:\n"
+            "   → voice_server_url: WebRTC语音服务 (默认 http://localhost:8001)\n"
+            "   → voice_service_url: 语音转录引擎 (默认 http://localhost:5000)\n"
+            "\n如问题持续，请收集前端错误信息和后端日志联系管理员。"
         )
 
         return {
             "success": True,
             "feature": "voice-tran",
-            "title": "Voice Transcription Help",
-            "help": help_text
+            "title": "语音转录帮助信息",
+            "help": help_text,
+            "config": {
+                "voice_service_url": voice_service_url,
+                "service_status": service_status,
+                "service_error": service_error,
+                "callback_base_url": getattr(settings, 'voice_callback_base_url', None)
+            }
         }
     except Exception as e:
         logger.exception(f"Error returning voice help: {e}")
