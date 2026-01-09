@@ -3,10 +3,24 @@ import { ref, watch, nextTick, onMounted, onUnmounted, computed } from 'vue'
 import { useChatStore } from '../stores/chat'
 import { useAuthStore } from '../stores/auth'
 import { useWebSocket } from '../composables/useWebSocket'
+import {
+  NDropdown,
+  NModal,
+  NForm,
+  NFormItem,
+  NSelect,
+  NInput,
+  NInputNumber,
+  NButton,
+  NSpace,
+  useDialog,
+} from 'naive-ui'
 import { Paperclip, Send, Upload, X, Image, Video, Music, FileText, File, MoreVertical } from 'lucide-vue-next'
 import FilePreview from './FilePreview.vue'
 import type { Attachment, Message } from '../types'
 import axios from 'axios'
+
+const dialog = useDialog()
 
 const API_BASE = import.meta.env.VITE_API_BASE || ''
 
@@ -35,6 +49,41 @@ const contextMenu = ref<{
   y: 0,
   message: null,
 })
+
+// Dropdown options for context menu
+const contextMenuOptions = computed(() => {
+  const msg = contextMenu.value.message
+  if (!msg) return []
+  const opts: Array<{ label: string; key: string }> = []
+  if (canEdit(msg)) opts.push({ label: 'Edit', key: 'edit' })
+  if (canDelete(msg)) opts.push({ label: 'Delete', key: 'delete' })
+  if (canMute(msg)) opts.push({ label: 'Mute User', key: 'mute' })
+  return opts
+})
+
+function handleContextMenuSelect(key: string) {
+  const msg = contextMenu.value.message
+  if (!msg) return
+  hideContextMenu()
+  if (key === 'edit') startEdit(msg)
+  else if (key === 'delete') confirmDeleteMessage(msg)
+  else if (key === 'mute') showMuteDialog(msg)
+}
+
+// Mute dialog options
+const scopeOptions = [
+  { label: 'Current Channel', value: 'channel' },
+  { label: 'Current Server', value: 'server' },
+  { label: 'Global', value: 'global' },
+]
+
+const durationOptions = [
+  { label: 'Permanent', value: 'permanent' },
+  { label: '10 minutes', value: '10m' },
+  { label: '1 hour', value: '1h' },
+  { label: '1 day', value: '1d' },
+  { label: 'Custom', value: 'custom' },
+]
 
 // Edit message state
 const editingMessage = ref<{ id: number; content: string } | null>(null)
@@ -327,7 +376,7 @@ async function saveEdit() {
 
   const content = editingMessage.value.content.trim()
   if (!content) {
-    alert('消息内容不能为空')
+    dialog.warning({ title: 'Warning', content: 'Message cannot be empty' })
     return
   }
 
@@ -339,24 +388,37 @@ async function saveEdit() {
     )
     editingMessage.value = null
   } catch (error: any) {
-    alert(error.response?.data?.detail || '编辑消息失败')
+    dialog.error({
+      title: 'Error',
+      content: error.response?.data?.detail || 'Failed to edit message',
+    })
   }
 }
 
 // Delete message function
+function confirmDeleteMessage(message: Message) {
+  dialog.warning({
+    title: 'Delete Message',
+    content: 'Are you sure you want to delete this message?',
+    positiveText: 'Delete',
+    negativeText: 'Cancel',
+    onPositiveClick: () => deleteMessage(message),
+  })
+}
+
 async function deleteMessage(message: Message) {
   if (!chat.currentChannel) return
-
-  if (!confirm('确定要撤回这条消息吗？')) return
 
   try {
     await axios.delete(
       `${API_BASE}/api/channels/${chat.currentChannel.id}/messages/${message.id}`,
       { headers: { Authorization: `Bearer ${auth.token}` } }
     )
-    hideContextMenu()
   } catch (error: any) {
-    alert(error.response?.data?.detail || '撤回消息失败')
+    dialog.error({
+      title: 'Error',
+      content: error.response?.data?.detail || 'Failed to delete message',
+    })
   }
 }
 
@@ -414,10 +476,13 @@ async function confirmMute() {
     await axios.post(`${API_BASE}/api/mute`, payload, {
       headers: { Authorization: `Bearer ${auth.token}` },
     })
-    alert('禁言成功')
+    dialog.success({ title: 'Success', content: 'User muted successfully' })
     hideMuteDialog()
   } catch (error: any) {
-    alert(error.response?.data?.detail || '禁言失败')
+    dialog.error({
+      title: 'Error',
+      content: error.response?.data?.detail || 'Failed to mute user',
+    })
   }
 }
 
@@ -518,17 +583,18 @@ function handleClickOutside(event: MouseEvent) {
 
           <!-- Edit mode -->
           <div v-else-if="editingMessage && editingMessage.id === msg.id" class="message-edit">
-            <textarea
-              v-model="editingMessage.content"
-              class="edit-textarea"
+            <NInput
+              v-model:value="editingMessage.content"
+              type="textarea"
+              :autosize="{ minRows: 1, maxRows: 5 }"
               @keydown.enter.exact.prevent="saveEdit"
               @keydown.esc="cancelEdit"
-            ></textarea>
-            <div class="edit-actions">
-              <button class="edit-btn save" @click="saveEdit">保存</button>
-              <button class="edit-btn cancel" @click="cancelEdit">取消</button>
-              <span class="edit-hint">Enter 保存 • Esc 取消</span>
-            </div>
+            />
+            <NSpace size="small" style="margin-top: 8px">
+              <NButton size="small" type="primary" @click="saveEdit">Save</NButton>
+              <NButton size="small" @click="cancelEdit">Cancel</NButton>
+              <span class="edit-hint">Enter to save, Esc to cancel</span>
+            </NSpace>
           </div>
 
           <!-- Normal message display -->
@@ -600,86 +666,59 @@ function handleClickOutside(event: MouseEvent) {
       </button>
     </div>
 
-    <!-- Context Menu -->
-    <div
-      v-if="contextMenu.visible && contextMenu.message"
-      class="context-menu"
-      :style="{ left: contextMenu.x + 'px', top: contextMenu.y + 'px' }"
-      @click.stop
-    >
-      <button
-        v-if="canEdit(contextMenu.message)"
-        class="context-menu-item"
-        @click="startEdit(contextMenu.message)"
-      >
-        编辑消息
-      </button>
-      <button
-        v-if="canDelete(contextMenu.message)"
-        class="context-menu-item"
-        @click="deleteMessage(contextMenu.message)"
-      >
-        撤回消息
-      </button>
-      <button
-        v-if="canMute(contextMenu.message)"
-        class="context-menu-item"
-        @click="showMuteDialog(contextMenu.message)"
-      >
-        禁言用户
-      </button>
-    </div>
+    <!-- Context Menu (NDropdown) -->
+    <NDropdown
+      trigger="manual"
+      placement="bottom-start"
+      :show="contextMenu.visible && contextMenuOptions.length > 0"
+      :options="contextMenuOptions"
+      :x="contextMenu.x"
+      :y="contextMenu.y"
+      @select="handleContextMenuSelect"
+      @clickoutside="hideContextMenu"
+    />
 
     <!-- Mute Dialog -->
-    <div v-if="muteDialog.visible" class="modal-overlay" @click="hideMuteDialog">
-      <div class="modal-content" @click.stop>
-        <h3 class="modal-title">禁言用户: {{ muteDialog.username }}</h3>
+    <NModal
+      v-model:show="muteDialog.visible"
+      preset="card"
+      :title="`Mute User: ${muteDialog.username}`"
+      :bordered="false"
+      style="width: 420px; max-width: 90vw"
+    >
+      <NForm label-placement="top">
+        <NFormItem label="Scope">
+          <NSelect v-model:value="muteDialog.scope" :options="scopeOptions" />
+        </NFormItem>
 
-        <div class="form-group">
-          <label>禁言范围</label>
-          <select v-model="muteDialog.scope" class="form-select">
-            <option value="channel">当前频道</option>
-            <option value="server">当前服务器</option>
-            <option value="global">全局禁言</option>
-          </select>
-        </div>
+        <NFormItem label="Duration">
+          <NSelect v-model:value="muteDialog.duration" :options="durationOptions" />
+        </NFormItem>
 
-        <div class="form-group">
-          <label>禁言时长</label>
-          <select v-model="muteDialog.duration" class="form-select">
-            <option value="permanent">永久</option>
-            <option value="10m">10分钟</option>
-            <option value="1h">1小时</option>
-            <option value="1d">1天</option>
-            <option value="custom">自定义</option>
-          </select>
-        </div>
-
-        <div v-if="muteDialog.duration === 'custom'" class="form-group">
-          <label>自定义时长（分钟）</label>
-          <input
-            v-model.number="muteDialog.customMinutes"
-            type="number"
-            min="1"
-            class="form-input"
+        <NFormItem v-if="muteDialog.duration === 'custom'" label="Custom Duration (minutes)">
+          <NInputNumber
+            v-model:value="muteDialog.customMinutes"
+            :min="1"
           />
-        </div>
+        </NFormItem>
 
-        <div class="form-group">
-          <label>禁言原因（可选）</label>
-          <textarea
-            v-model="muteDialog.reason"
-            class="form-textarea"
-            placeholder="输入禁言原因..."
-          ></textarea>
-        </div>
+        <NFormItem label="Reason (optional)">
+          <NInput
+            v-model:value="muteDialog.reason"
+            type="textarea"
+            placeholder="Enter mute reason..."
+            :rows="3"
+          />
+        </NFormItem>
+      </NForm>
 
-        <div class="modal-actions">
-          <button class="modal-btn cancel" @click="hideMuteDialog">取消</button>
-          <button class="modal-btn confirm" @click="confirmMute">确认禁言</button>
-        </div>
-      </div>
-    </div>
+      <template #footer>
+        <NSpace justify="end">
+          <NButton @click="hideMuteDialog">Cancel</NButton>
+          <NButton type="primary" @click="confirmMute">Confirm</NButton>
+        </NSpace>
+      </template>
+    </NModal>
   </div>
 </template>
 
@@ -1034,35 +1073,6 @@ function handleClickOutside(event: MouseEvent) {
   }
 }
 
-/* Context Menu */
-.context-menu {
-  position: fixed;
-  background: var(--surface-glass);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: var(--radius-md);
-  padding: 4px;
-  min-width: 150px;
-  box-shadow: var(--shadow-lg);
-  z-index: 1000;
-}
-
-.context-menu-item {
-  width: 100%;
-  padding: 8px 12px;
-  background: none;
-  border: none;
-  color: var(--color-text-main);
-  text-align: left;
-  cursor: pointer;
-  border-radius: var(--radius-sm);
-  font-size: 14px;
-  transition: all var(--transition-fast);
-}
-
-.context-menu-item:hover {
-  background: var(--surface-glass-input);
-}
-
 /* Message Deleted */
 .message-deleted {
   color: var(--color-text-muted);
@@ -1074,177 +1084,11 @@ function handleClickOutside(event: MouseEvent) {
 .message-edit {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-}
-
-.edit-textarea {
-  width: 100%;
-  min-height: 60px;
-  padding: 8px 12px;
-  background: var(--surface-glass-input);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: var(--radius-md);
-  color: var(--color-text-main);
-  font-size: 14px;
-  font-family: inherit;
-  resize: vertical;
-}
-
-.edit-textarea:focus {
-  outline: none;
-  border-color: var(--color-accent);
-}
-
-.edit-actions {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-
-.edit-btn {
-  padding: 6px 12px;
-  border: none;
-  border-radius: var(--radius-sm);
-  font-size: 13px;
-  cursor: pointer;
-  transition: all var(--transition-fast);
-}
-
-.edit-btn.save {
-  background: var(--color-accent);
-  color: white;
-}
-
-.edit-btn.save:hover {
-  opacity: 0.9;
-}
-
-.edit-btn.cancel {
-  background: var(--surface-glass-input);
-  color: var(--color-text-main);
-}
-
-.edit-btn.cancel:hover {
-  background: var(--surface-glass-input-focus);
 }
 
 .edit-hint {
   font-size: 12px;
   color: var(--color-text-muted);
   margin-left: auto;
-}
-
-/* Edited Badge */
-.edited-badge {
-  font-size: 11px;
-  color: var(--color-text-muted);
-  margin-left: 4px;
-}
-
-/* Modal Overlay */
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.7);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 2000;
-}
-
-.modal-content {
-  background: var(--surface-glass);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: var(--radius-lg);
-  padding: 24px;
-  min-width: 400px;
-  max-width: 90vw;
-  box-shadow: var(--shadow-xl);
-}
-
-.modal-title {
-  margin: 0 0 20px 0;
-  color: var(--color-text-main);
-  font-size: 18px;
-  font-weight: 600;
-}
-
-.form-group {
-  margin-bottom: 16px;
-}
-
-.form-group label {
-  display: block;
-  margin-bottom: 6px;
-  color: var(--color-text-main);
-  font-size: 14px;
-  font-weight: 500;
-}
-
-.form-select,
-.form-input,
-.form-textarea {
-  width: 100%;
-  padding: 8px 12px;
-  background: var(--surface-glass-input);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: var(--radius-md);
-  color: var(--color-text-main);
-  font-size: 14px;
-  font-family: inherit;
-}
-
-.form-select:focus,
-.form-input:focus,
-.form-textarea:focus {
-  outline: none;
-  border-color: var(--color-accent);
-}
-
-.form-textarea {
-  min-height: 80px;
-  resize: vertical;
-}
-
-.modal-actions {
-  display: flex;
-  gap: 12px;
-  justify-content: flex-end;
-  margin-top: 20px;
-}
-
-.modal-btn {
-  padding: 8px 16px;
-  border: none;
-  border-radius: var(--radius-md);
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all var(--transition-fast);
-}
-
-.modal-btn.cancel {
-  background: var(--surface-glass-input);
-  color: var(--color-text-main);
-}
-
-.modal-btn.cancel:hover {
-  background: var(--surface-glass-input-focus);
-}
-
-.modal-btn.confirm {
-  background: var(--color-accent);
-  color: white;
-}
-
-.modal-btn.confirm:hover {
-  opacity: 0.9;
-}
-
-@media (max-width: 768px) {
-  .modal-content {
-    min-width: 0;
-    width: 90vw;
-  }
 }
 </style>
