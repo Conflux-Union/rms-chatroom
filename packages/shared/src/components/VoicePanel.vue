@@ -28,7 +28,8 @@ onMounted(() => {
   console.log('[VoicePanel] - API_BASE:', API_BASE)
   console.log('[VoicePanel] - User:', auth.user)
   console.log('[VoicePanel] - User permission level:', auth.user?.permission_level)
-  console.log('[VoicePanel] - Can use transcription:', canUseTranscription.value)
+  console.log('[VoicePanel] - Can view transcription sidebar:', canViewTranscriptionSidebar?.value)
+  console.log('[VoicePanel] - Can use transcription button:', canUseTranscription?.value)
   console.log('[VoicePanel] - Current channel:', chat.currentChannel)
   console.log('[VoicePanel] - Token exists:', !!auth.token)
   console.log('[VoicePanel] - Token preview:', auth.token?.substring(0, 20) + '...')
@@ -74,9 +75,20 @@ const hostButtonDisabled = computed(() =>
 )
 
 // Transcription computed
+// 权限调整：转录侧边栏可见性下调到权限等级 >= 0（所有用户可见）
+// 而实际启用/使用转录功能的按钮权限下调到权限等级 >= 3
+const canViewTranscriptionSidebar = computed(() => {
+  const result = (auth.user?.permission_level ?? 0) >= 0
+  console.log('[VoicePanel] canViewTranscriptionSidebar computed:', {
+    permission_level: auth.user?.permission_level,
+    result: result
+  })
+  return result
+})
+
 const canUseTranscription = computed(() => {
-  const result = (auth.user?.permission_level ?? 0) >= 4
-  console.log('[VoicePanel] canUseTranscription computed:', {
+  const result = (auth.user?.permission_level ?? 0) >= 3
+  console.log('[VoicePanel] canUseTranscription computed (button permission):', {
     permission_level: auth.user?.permission_level,
     result: result
   })
@@ -521,13 +533,13 @@ async function stopTranscription() {
 
       <div v-else class="voice-connected">
         <!-- 主要内容区域：用户和转录面板并排 -->
-        <div class="voice-main-content" :class="{ 'has-transcription': canUseTranscription && transcriptionExpanded }">
+        <div class="voice-main-content" :class="{ 'has-transcription': canViewTranscriptionSidebar && transcriptionExpanded }">
           <!-- 左侧：语音用户列表 -->
           <div class="voice-users-container">
             <div class="voice-users-header">
               <h4>语音用户 ({{ voice.participants.length }})</h4>
               <button
-                v-if="canUseTranscription"
+                v-if="canViewTranscriptionSidebar"
                 class="transcription-toggle-btn"
                 @click="toggleTranscriptionPanel"
                 :class="{ 'expanded': transcriptionExpanded }"
@@ -687,7 +699,7 @@ async function stopTranscription() {
           </div>
           
           <!-- 右侧：转录面板（仅在展开时显示）-->
-          <div v-if="canUseTranscription && transcriptionExpanded" class="transcription-panel-container">
+          <div v-if="canViewTranscriptionSidebar && transcriptionExpanded" class="transcription-panel-container">
             <TranscriptionPanel
               ref="transcriptionPanel"
               :is-expanded="true"
