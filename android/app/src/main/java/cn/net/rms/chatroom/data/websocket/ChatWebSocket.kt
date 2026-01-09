@@ -26,7 +26,9 @@ sealed class WebSocketEvent {
     data class UserLeft(val userId: Long) : WebSocketEvent()
     data class Connected(val channelId: Long) : WebSocketEvent()
     object Disconnected : WebSocketEvent()
-    data class Error(val error: String) : WebSocketEvent()
+    data class Error(val error: String, val code: String? = null) : WebSocketEvent()
+    data class MessageDeleted(val messageId: Long, val deletedBy: Long, val deletedByUsername: String) : WebSocketEvent()
+    data class MessageEdited(val messageId: Long, val content: String, val editedAt: String) : WebSocketEvent()
 }
 
 enum class ConnectionState {
@@ -159,6 +161,26 @@ class ChatWebSocket @Inject constructor(
                     )
                     Log.d(TAG, "Received message: ${message.id} from ${message.username}, attachments: ${attachments?.size ?: 0}")
                     _events.tryEmit(WebSocketEvent.NewMessage(message))
+                }
+                "message_deleted" -> {
+                    val messageId = json.get("message_id").asLong
+                    val deletedBy = json.get("deleted_by").asLong
+                    val deletedByUsername = json.get("deleted_by_username").asString
+                    Log.d(TAG, "Message deleted: $messageId by $deletedByUsername")
+                    _events.tryEmit(WebSocketEvent.MessageDeleted(messageId, deletedBy, deletedByUsername))
+                }
+                "message_edited" -> {
+                    val messageId = json.get("message_id").asLong
+                    val content = json.get("content").asString
+                    val editedAt = json.get("edited_at").asString
+                    Log.d(TAG, "Message edited: $messageId")
+                    _events.tryEmit(WebSocketEvent.MessageEdited(messageId, content, editedAt))
+                }
+                "error" -> {
+                    val errorCode = json.get("code")?.asString
+                    val errorMessage = json.get("message")?.asString ?: "Unknown error"
+                    Log.w(TAG, "Received error: code=$errorCode, message=$errorMessage")
+                    _events.tryEmit(WebSocketEvent.Error(errorMessage, errorCode))
                 }
                 "user_joined" -> {
                     val user = gson.fromJson(json.getAsJsonObject("user"), VoiceUser::class.java)

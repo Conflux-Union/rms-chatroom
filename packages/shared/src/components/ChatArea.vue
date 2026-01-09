@@ -82,9 +82,9 @@ function connectWebSocket(channelId: number) {
         created_at: data.created_at,
         attachments: data.attachments || [],
         is_deleted: false,
-        deleted_by: null,
-        deleted_by_username: null,
-        edited_at: null,
+        deleted_by: undefined,
+        deleted_by_username: undefined,
+        edited_at: undefined,
       })
       scrollToBottom()
     } else if (data.type === 'message_deleted') {
