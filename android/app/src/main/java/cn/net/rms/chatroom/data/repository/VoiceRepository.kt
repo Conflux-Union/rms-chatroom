@@ -38,6 +38,9 @@ class VoiceRepository @Inject constructor(
     private val _currentChannelId = MutableStateFlow<Long?>(null)
     val currentChannelId: StateFlow<Long?> = _currentChannelId.asStateFlow()
 
+    private val _currentChannelName = MutableStateFlow<String?>(null)
+    val currentChannelName: StateFlow<String?> = _currentChannelName.asStateFlow()
+
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error.asStateFlow()
 
@@ -112,7 +115,7 @@ class VoiceRepository @Inject constructor(
         }
     }
 
-    suspend fun joinVoice(channelId: Long): Result<Unit> {
+    suspend fun joinVoice(channelId: Long, channelName: String? = null): Result<Unit> {
         // Leave current channel if already connected
         if (isConnected.value) {
             leaveVoice()
@@ -125,16 +128,18 @@ class VoiceRepository @Inject constructor(
             if (tokenResult.isFailure) {
                 return Result.failure(tokenResult.exceptionOrNull()!!)
             }
-            
+
             val response = tokenResult.getOrThrow()
-            
+            _currentChannelName.value = channelName
+
             // Connect to LiveKit
             val connectResult = liveKitManager.connect(response.url, response.token, response.roomName)
             if (connectResult.isFailure) {
                 _currentChannelId.value = null
+                _currentChannelName.value = null
                 return Result.failure(connectResult.exceptionOrNull()!!)
             }
-            
+
             Result.success(Unit)
         } catch (e: Exception) {
             Log.e(TAG, "joinVoice failed", e)
@@ -146,6 +151,7 @@ class VoiceRepository @Inject constructor(
     fun leaveVoice() {
         liveKitManager.disconnect()
         _currentChannelId.value = null
+        _currentChannelName.value = null
         _error.value = null
         // Clear host mode state
         _hostModeEnabled.value = false
