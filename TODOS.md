@@ -116,9 +116,9 @@ ALTER TABLE messages ADD COLUMN mentioned_user_ids TEXT;
 
 ---
 
-## Phase 3: Reactions Feature (Priority: MEDIUM)
+## Phase 3: Reactions Feature (Priority: MEDIUM) ✅ COMPLETED
 
-### 3.1 Backend Model Changes
+### 3.1 Backend Model Changes ✅
 
 **File:** `backend/models/server.py`
 
@@ -129,7 +129,8 @@ class Reaction(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     message_id: Mapped[int] = mapped_column(ForeignKey("messages.id", ondelete="CASCADE"))
     user_id: Mapped[int] = mapped_column(index=True)
-    emoji: Mapped[str] = mapped_column(String(32))  # Unicode emoji or shortcode
+    username: Mapped[str] = mapped_column(String(100))
+    emoji: Mapped[str] = mapped_column(String(32))  # Unicode emoji
     created_at: Mapped[datetime] = mapped_column(default=datetime.now)
     
     # Unique constraint: one reaction per user per emoji per message
@@ -137,13 +138,13 @@ class Reaction(Base):
         UniqueConstraint("message_id", "user_id", "emoji", name="uq_reaction"),
     )
 
-# Add to Message model
+# Added to Message model
 reactions: Mapped[list["Reaction"]] = relationship("Reaction", lazy="selectin", cascade="all, delete-orphan")
 ```
 
-### 3.2 Backend API Changes
+### 3.2 Backend API Changes ✅
 
-**File:** `backend/routers/messages.py`
+**File:** `backend/routers/reactions.py`
 
 ```python
 # Add reaction
@@ -152,11 +153,14 @@ Body: { "emoji": "👍" }
 
 # Remove reaction
 DELETE /api/messages/{message_id}/reactions/{emoji}
+
+# Get reactions (grouped by emoji)
+GET /api/messages/{message_id}/reactions
 ```
 
-### 3.3 Backend WebSocket Changes
+### 3.3 Backend WebSocket Changes ✅
 
-**File:** `backend/websocket/chat.py`
+**File:** `backend/websocket/chat.py` (via reactions.py broadcast)
 
 Broadcast events:
 ```json
@@ -164,16 +168,21 @@ Broadcast events:
 { "type": "reaction_removed", "message_id": 123, "emoji": "👍", "user_id": 456 }
 ```
 
-### 3.4 Frontend Type Changes
+### 3.4 Frontend Type Changes ✅
 
 **File:** `packages/shared/src/types/index.ts`
 
 ```typescript
+export interface ReactionUser {
+  id: number
+  username: string
+}
+
 export interface ReactionGroup {
   emoji: string
   count: number
-  users: { id: number; username: string }[]
-  reacted: boolean  // current user has reacted
+  users: ReactionUser[]
+  reacted?: boolean  // Whether current user has reacted
 }
 
 export interface Message {
@@ -182,14 +191,31 @@ export interface Message {
 }
 ```
 
-### 3.5 Frontend UI Changes
+### 3.5 Frontend UI Changes ✅
 
 **File:** `packages/shared/src/components/ChatArea.vue`
 
-- Add emoji picker component (use existing library like `emoji-mart-vue`)
+- Added emoji picker with common emojis (👍 ❤️ 😂 😮 😢 🎉 🔥 👀)
 - Show reaction bar below message content
-- Click existing reaction to toggle
-- Hover reaction to show who reacted
+- Click existing reaction to toggle (add/remove)
+- Hover reaction to show who reacted (tooltip)
+- "Add Reaction" option in context menu
+
+### 3.6 Database Migration ✅
+
+```sql
+CREATE TABLE reactions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    message_id INTEGER NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL,
+    username VARCHAR(100) NOT NULL,
+    emoji VARCHAR(32) NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(message_id, user_id, emoji)
+);
+CREATE INDEX ix_reactions_message_id ON reactions(message_id);
+CREATE INDEX ix_reactions_user_id ON reactions(user_id);
+```
 
 ---
 

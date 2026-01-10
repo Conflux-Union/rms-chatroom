@@ -16,7 +16,20 @@ from .core.config import get_settings
 
 logger = logging.getLogger(__name__)
 from .core.database import init_db
-from .routers import auth, servers, channels, messages, files, system, music, bug_report, app_update, voice_recognition, moderation
+from .routers import (
+    auth,
+    servers,
+    channels,
+    messages,
+    files,
+    system,
+    music,
+    bug_report,
+    app_update,
+    voice_recognition,
+    moderation,
+    reactions,
+)
 from .websocket import chat, voice, music as music_ws, transcription
 
 
@@ -31,6 +44,7 @@ async def lifespan(app: FastAPI):
     # Set up callback for late joiners to get current playback state
     music_ws.set_get_room_playback_state(music.get_room_playback_state)
     yield
+
 
 app = FastAPI(title="RMS ChatRoom", lifespan=lifespan)
 
@@ -69,6 +83,7 @@ app.include_router(bug_report.router)
 app.include_router(app_update.router)
 app.include_router(voice_recognition.router)
 app.include_router(moderation.router)
+app.include_router(reactions.router)
 
 # WebSocket routes
 app.include_router(chat.router)
@@ -87,27 +102,29 @@ async def health():
         "services": {
             "main_backend": "ok",
             "database": "unknown",
-            "voice_recognition": "unknown"
-        }
+            "voice_recognition": "unknown",
+        },
     }
-    
+
     # 检查数据库连接
     try:
         from .core.database import get_db
+
         # 这里可以添加具体的数据库健康检查
         health_status["services"]["database"] = "ok"
     except Exception:
         health_status["services"]["database"] = "error"
         health_status["status"] = "degraded"
-    
+
     # 检查语音识别服务
     try:
         from .services.voice_recognition import voice_service
+
         # 检查语音服务是否可用
         health_status["services"]["voice_recognition"] = "ok"
     except Exception:
         health_status["services"]["voice_recognition"] = "error"
-    
+
     return health_status
 
 
@@ -116,31 +133,34 @@ async def health_detailed():
     """详细健康检查，包含各个组件状态"""
     try:
         import sys
-        
+
         # 基本系统信息
-        system_info = {
-            "python_version": sys.version,
-            "platform": sys.platform
-        }
-        
+        system_info = {"python_version": sys.version, "platform": sys.platform}
+
         # 尝试获取更多系统信息（如果可用）
         try:
             import psutil
-            system_info.update({
-                "memory_usage": psutil.virtual_memory()._asdict(),
-                "disk_usage": psutil.disk_usage('/')._asdict(),
-                "cpu_percent": psutil.cpu_percent(interval=1),
-                "process_count": len(psutil.pids())
-            })
+
+            system_info.update(
+                {
+                    "memory_usage": psutil.virtual_memory()._asdict(),
+                    "disk_usage": psutil.disk_usage("/")._asdict(),
+                    "cpu_percent": psutil.cpu_percent(interval=1),
+                    "process_count": len(psutil.pids()),
+                }
+            )
         except ImportError:
             system_info["note"] = "psutil not available for detailed system metrics"
-        
+
         # 服务状态
         services_status = {
             "main_backend": {"status": "ok", "port": settings.port},
-            "voice_recognition_api": {"status": "available", "endpoint": "/api/voice-recognition"},
+            "voice_recognition_api": {
+                "status": "available",
+                "endpoint": "/api/voice-recognition",
+            },
         }
-        
+
         return {
             "status": "ok",
             "timestamp": datetime.now().isoformat(),
@@ -150,14 +170,14 @@ async def health_detailed():
             "config": {
                 "debug": settings.debug,
                 "host": settings.host,
-                "port": settings.port
-            }
+                "port": settings.port,
+            },
         }
     except Exception as e:
         return {
             "status": "error",
             "error": str(e),
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat(),
         }
 
 
@@ -179,9 +199,11 @@ if frontend_dist.exists() and frontend_dist.is_dir():
 if __name__ == "__main__":
     import uvicorn
     import logging
-    
+
     # 设置日志
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s [%(name)s] %(message)s')
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s %(levelname)s [%(name)s] %(message)s"
+    )
     logger = logging.getLogger(__name__)
 
     try:
@@ -190,11 +212,11 @@ if __name__ == "__main__":
             host=settings.host,
             port=settings.port,
             reload=settings.debug,
-            log_level="info"
+            log_level="info",
         )
     except KeyboardInterrupt:
         logger.info("收到中断信号，正在关闭服务...")
     except Exception as e:
         logger.exception(f"服务运行出错: {e}")
-    
+
     logger.info("服务已关闭")

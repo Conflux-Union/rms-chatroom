@@ -258,6 +258,7 @@ async def chat_websocket(
                         "reply_to_id": reply_to_id,
                         "reply_to": reply_to_data,
                         "mentions": mentions_data,
+                        "reactions": [],
                     }
                     await chat_manager.broadcast_to_channel(channel_id, broadcast_msg)
 
