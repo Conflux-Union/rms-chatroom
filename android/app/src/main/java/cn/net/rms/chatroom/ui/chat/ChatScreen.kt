@@ -734,8 +734,8 @@ private fun MessageItem(
     ) {
         // Avatar: show for first message in group, placeholder for grouped messages
         if (isGrouped) {
-            // Invisible placeholder to maintain alignment
-            Spacer(modifier = Modifier.size(40.dp))
+            // Invisible placeholder to maintain alignment (width only, not height)
+            Spacer(modifier = Modifier.width(40.dp))
         } else {
             Box(
                 modifier = Modifier
@@ -774,37 +774,6 @@ private fun MessageItem(
                     )
                 }
 
-                // Reply preview (below username, above content)
-                if (message.replyTo != null) {
-                    Row(
-                        modifier = Modifier
-                            .padding(top = 2.dp, bottom = 4.dp)
-                            .clickable { onReplyClick(message.replyTo) },
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.Reply,
-                            contentDescription = null,
-                            tint = TextMuted,
-                            modifier = Modifier.size(12.dp)
-                        )
-                        Text(
-                            text = "@${message.replyTo.username}",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = TiColor,
-                            fontWeight = FontWeight.Medium
-                        )
-                        Text(
-                            text = message.replyTo.content.take(40) + if (message.replyTo.content.length > 40) "..." else "",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = TextMuted,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                }
-
                 // Edited indicator
                 if (message.editedAt != null) {
                     Text(
@@ -815,6 +784,37 @@ private fun MessageItem(
                 }
 
                 Spacer(modifier = Modifier.height(4.dp))
+            }
+
+            // Reply preview (always shown, even for grouped messages)
+            if (message.replyTo != null) {
+                Row(
+                    modifier = Modifier
+                        .padding(top = 2.dp, bottom = 4.dp)
+                        .clickable { onReplyClick(message.replyTo) },
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.Reply,
+                        contentDescription = null,
+                        tint = TextMuted,
+                        modifier = Modifier.size(12.dp)
+                    )
+                    Text(
+                        text = "@${message.replyTo.username}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = TiColor,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Text(
+                        text = message.replyTo.content.take(40) + if (message.replyTo.content.length > 40) "..." else "",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = TextMuted,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
 
             // Message content or deleted placeholder
