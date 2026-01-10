@@ -264,7 +264,10 @@ class ChatRepository @Inject constructor(
                 channelId,
                 SendMessageBody(content, attachmentIds, replyToId)
             )
-            _messages.value = _messages.value + message
+            // Check for duplicate before adding (WebSocket may have already added this message)
+            if (_messages.value.none { it.id == message.id }) {
+                _messages.value = _messages.value + message
+            }
             // Cache sent message
             cacheMessage(message)
             Result.success(message)
