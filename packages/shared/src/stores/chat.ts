@@ -174,6 +174,24 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
+  // Admin: reorder mixed list of channel groups and ungrouped channels
+  async function reorderMixedList(serverId: number, items: Array<{ type: 'group' | 'channel'; id: number }>) {
+    try {
+      const resp = await axios.post(
+        `${API_BASE}/api/servers/${serverId}/channel-groups/reorder-mixed`,
+        { items },
+        { headers: getAuthHeaders() }
+      )
+      // Refresh both channel groups and server
+      await fetchChannelGroups(serverId)
+      await fetchServer(serverId)
+      return resp.data
+    } catch (e) {
+      console.error('Failed to reorder mixed list:', e)
+      return null
+    }
+  }
+
   // Admin: reorder channels by providing an ordered list of channel ids
   async function reorderChannels(serverId: number, channelIds: number[]) {
     try {
@@ -374,5 +392,6 @@ export const useChatStore = defineStore('chat', () => {
     updateChannelGroup,
     deleteChannelGroup,
     reorderChannelGroups,
+    reorderMixedList,
   }
 })
