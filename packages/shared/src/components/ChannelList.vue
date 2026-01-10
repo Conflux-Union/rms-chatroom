@@ -467,6 +467,7 @@ async function onChannelDrop(event: DragEvent, targetId: number, targetGroupId: 
   // Handle group drop on ungrouped channel (reorder in mixed list)
   if (srcType === 'group' && targetGroupId === null) {
     await reorderMixedList('group', srcId, 'channel', targetId)
+    await chat.fetchServerDetail(chat.currentServer.id)
     return
   }
   
@@ -479,12 +480,15 @@ async function onChannelDrop(event: DragEvent, targetId: number, targetGroupId: 
   // If both are ungrouped, reorder in mixed list
   if (srcGroupId === null && targetGroupId === null) {
     await reorderMixedList('channel', srcId, 'channel', targetId)
+    await chat.fetchServerDetail(chat.currentServer.id)
     return
   }
   
   // If source and target are in different groups, move channel to target group
   if (srcGroupId !== targetGroupId) {
     await chat.updateChannel(chat.currentServer.id, srcId, { group_id: targetGroupId === null ? -1 : targetGroupId })
+    // 刷新服务器数据确保UI正确更新
+    await chat.fetchServerDetail(chat.currentServer.id)
     return
   }
   
@@ -614,12 +618,14 @@ async function onGroupDrop(event: DragEvent, targetGroupId: number) {
   if (srcType === 'group') {
     if (srcId === targetGroupId) return
     await reorderMixedList('group', srcId, 'group', targetGroupId)
+    await chat.fetchServerDetail(chat.currentServer.id)
     return
   }
   
   // Handle ungrouped channel drop on group (reorder in mixed list)
   if (srcType === 'channel' && srcGroupId === null) {
     await reorderMixedList('channel', srcId, 'group', targetGroupId)
+    await chat.fetchServerDetail(chat.currentServer.id)
     return
   }
   
@@ -627,6 +633,8 @@ async function onGroupDrop(event: DragEvent, targetGroupId: number) {
   if (srcType === 'channel') {
     if (srcGroupId === targetGroupId) return // Already in this group
     await chat.updateChannel(chat.currentServer.id, srcId, { group_id: targetGroupId })
+    // 刷新服务器数据确保UI正确更新
+    await chat.fetchServerDetail(chat.currentServer.id)
   }
 }
 
@@ -1051,13 +1059,14 @@ async function deleteChannel() {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 8px;
+  padding: 8px;
   margin: 1px 8px;
   border-radius: var(--radius-sm);
   cursor: pointer;
   color: var(--color-text-muted);
   transition: all var(--transition-fast);
   min-width: 0; /* important so flex children can shrink */
+  min-height: 32px; /* 统一高度 */
 }
 
 .channel-name {
@@ -1477,21 +1486,47 @@ async function deleteChannel() {
 }
 
 .group-channels .channel {
-  margin-left: 16px;
-  margin-right: 8px;
-  border-left: 2px solid rgba(88, 101, 242, 0.3);
+  margin-left: 20px;
+  margin-right: 12px;
+  padding-left: 12px;
+  background: rgba(88, 101, 242, 0.08);
+  border-left: 2px solid rgba(88, 101, 242, 0.4);
   border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
 }
 
+.group-channels .channel:hover {
+  background: rgba(88, 101, 242, 0.15);
+  color: var(--color-text-main);
+}
+
+.group-channels .channel.active {
+  background: rgba(88, 101, 242, 0.25);
+  color: var(--color-text-bright);
+  border-left-color: var(--color-primary);
+}
+
 .group-channels .voice-channel-wrapper {
-  margin-left: 16px;
-  margin-right: 8px;
+  margin-left: 20px;
+  margin-right: 12px;
 }
 
 .group-channels .voice-channel-wrapper .channel {
   margin-left: 0;
-  border-left: 2px solid rgba(88, 101, 242, 0.3);
+  padding-left: 12px;
+  background: rgba(88, 101, 242, 0.08);
+  border-left: 2px solid rgba(88, 101, 242, 0.4);
   border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+
+.group-channels .voice-channel-wrapper .channel:hover {
+  background: rgba(88, 101, 242, 0.15);
+  color: var(--color-text-main);
+}
+
+.group-channels .voice-channel-wrapper .channel.active {
+  background: rgba(88, 101, 242, 0.25);
+  color: var(--color-text-bright);
+  border-left-color: var(--color-primary);
 }
 
 /* Collapsed group indicator */
