@@ -118,6 +118,28 @@ function getGroupChannels(groupId: number) {
   return chat.currentServer?.channels?.filter((c) => c.group_id === groupId)?.sort((a, b) => a.position - b.position) || []
 }
 
+// Unified list of groups and ungrouped channels, sorted by position
+// This allows groups and channels to be mixed in any order
+type ListItem = { type: 'group'; data: ChannelGroup } | { type: 'channel'; data: Channel }
+const mixedList = computed((): ListItem[] => {
+  const items: ListItem[] = []
+  
+  // Add all channel groups
+  for (const group of channelGroups.value) {
+    items.push({ type: 'group', data: group })
+  }
+  
+  // Add all ungrouped channels
+  for (const channel of ungroupedChannels.value) {
+    items.push({ type: 'channel', data: channel })
+  }
+  
+  // Sort by position
+  items.sort((a, b) => a.data.position - b.data.position)
+  
+  return items
+})
+
 // Toggle group collapse
 function toggleGroupCollapse(groupId: number) {
   const newSet = new Set(collapsedGroups.value)
@@ -429,38 +451,45 @@ function onDragOver(event: DragEvent) {
   event.preventDefault()
 }
 
-// Drop on a channel (reorder channels within same group or ungrouped)
+// Drop on a channel (reorder channels within same group, or reorder in mixed list if ungrouped)
 async function onChannelDrop(event: DragEvent, targetId: number, targetGroupId: number | null = null) {
   if (!auth.isAdmin || !editMode.value) return
   event.preventDefault()
   event.stopPropagation()
   
-  // Only handle channel drops
-  if (dragSourceType.value !== 'channel') {
-    resetDragState()
-    return
-  }
-  
   const srcId = dragSourceId.value
+  const srcType = dragSourceType.value
   const srcGroupId = dragSourceGroupId.value
   resetDragState()
   
-  if (!chat.currentServer || srcId === null || srcId === targetId) return
+  if (!chat.currentServer || srcId === null) return
   
-  // Get channels in the same group (or ungrouped)
-  const allChannels = [...(chat.currentServer.channels || [])].sort((a, b) => a.position - b.position)
-  
-  // If source and target are in different groups, we need to move the channel first
-  if (srcGroupId !== targetGroupId) {
-    // Move channel to target group first
-    await chat.updateChannel(chat.currentServer.id, srcId, { group_id: targetGroupId === null ? -1 : targetGroupId })
-    return // The server will refresh and show the new order
+  // Handle group drop on ungrouped channel (reorder in mixed list)
+  if (srcType === 'group' && targetGroupId === null) {
+    await reorderMixedList('group', srcId, 'channel', targetId)
+    return
   }
   
-  // Same group - just reorder
-  const groupChannels = allChannels.filter(c => 
-    targetGroupId === null ? c.group_id == null : c.group_id === targetGroupId
-  )
+  // Handle channel drop
+  if (srcType !== 'channel') return
+  if (srcId === targetId) return
+  
+  const allChannels = [...(chat.currentServer.channels || [])].sort((a, b) => a.position - b.position)
+  
+  // If both are ungrouped, reorder in mixed list
+  if (srcGroupId === null && targetGroupId === null) {
+    await reorderMixedList('channel', srcId, 'channel', targetId)
+    return
+  }
+  
+  // If source and target are in different groups, move channel to target group
+  if (srcGroupId !== targetGroupId) {
+    await chat.updateChannel(chat.currentServer.id, srcId, { group_id: targetGroupId === null ? -1 : targetGroupId })
+    return
+  }
+  
+  // Same group - just reorder within group
+  const groupChannels = allChannels.filter(c => c.group_id === targetGroupId)
   
   const srcIdx = groupChannels.findIndex(c => c.id === srcId)
   const tgtIdx = groupChannels.findIndex(c => c.id === targetId)
@@ -470,87 +499,133 @@ async function onChannelDrop(event: DragEvent, targetId: number, targetGroupId: 
   if (!moved) return
   groupChannels.splice(tgtIdx, 0, moved)
   
-  // Rebuild full channel list maintaining order
+  // Rebuild full channel list
   const newAll: typeof allChannels = []
   const groupedChannels = new Map<number | null, typeof allChannels>()
   
-  // Group channels by group_id
   for (const c of allChannels) {
     const gid = c.group_id ?? null
     if (!groupedChannels.has(gid)) groupedChannels.set(gid, [])
     groupedChannels.get(gid)!.push(c)
   }
   
-  // Replace the reordered group
   groupedChannels.set(targetGroupId, groupChannels)
   
-  // Flatten back - groups first, then ungrouped
-  for (const group of channelGroups.value) {
-    const gChannels = groupedChannels.get(group.id) || []
-    newAll.push(...gChannels)
+  // Flatten - use mixed list order for ungrouped
+  for (const item of mixedList.value) {
+    if (item.type === 'group') {
+      const gChannels = groupedChannels.get(item.data.id) || []
+      newAll.push(...gChannels)
+    }
   }
-  // Add ungrouped channels
   const ungrouped = groupedChannels.get(null) || []
-  newAll.push(...ungrouped)
+  // Ungrouped channels are handled by mixed list, but we need to include them
+  // Actually, ungrouped channels are part of mixedList, so we handle them there
   
   // Optimistic UI update
   try {
     if (chat.currentServer && (chat.currentServer as any).channels) {
-      ;(chat.currentServer as any).channels = newAll
+      ;(chat.currentServer as any).channels = newAll.length > 0 ? newAll : allChannels
     }
   } catch (e) {
     console.warn('Optimistic channel update failed', e)
   }
   
-  const ids = newAll.map(c => c.id)
+  const ids = (newAll.length > 0 ? newAll : allChannels).map(c => c.id)
   await chat.reorderChannels(chat.currentServer.id, ids)
 }
 
-// Drop on a group header (reorder groups)
+// Reorder items in the mixed list (groups and ungrouped channels)
+async function reorderMixedList(
+  srcType: 'group' | 'channel', 
+  srcId: number, 
+  targetType: 'group' | 'channel', 
+  targetId: number
+) {
+  if (!chat.currentServer) return
+  
+  const items = [...mixedList.value]
+  const srcIdx = items.findIndex(i => 
+    (srcType === 'group' && i.type === 'group' && i.data.id === srcId) ||
+    (srcType === 'channel' && i.type === 'channel' && i.data.id === srcId)
+  )
+  const tgtIdx = items.findIndex(i => 
+    (targetType === 'group' && i.type === 'group' && i.data.id === targetId) ||
+    (targetType === 'channel' && i.type === 'channel' && i.data.id === targetId)
+  )
+  
+  if (srcIdx === -1 || tgtIdx === -1 || srcIdx === tgtIdx) return
+  
+  const moved = items.splice(srcIdx, 1)[0]
+  if (!moved) return
+  items.splice(tgtIdx, 0, moved)
+  
+  // Build the new order for the API
+  const newOrder = items.map(item => ({
+    type: item.type,
+    id: item.data.id
+  }))
+  
+  // Optimistic UI update
+  try {
+    if (chat.currentServer) {
+      // Update channel groups positions
+      const newGroups = items
+        .filter(i => i.type === 'group')
+        .map((i, idx) => ({ ...i.data, position: items.indexOf(i) }))
+      if ((chat.currentServer as any).channelGroups) {
+        ;(chat.currentServer as any).channelGroups = newGroups
+      }
+      
+      // Update ungrouped channels positions
+      const channels = [...(chat.currentServer.channels || [])]
+      for (const item of items) {
+        if (item.type === 'channel') {
+          const channel = channels.find(c => c.id === item.data.id)
+          if (channel) {
+            channel.position = items.indexOf(item)
+          }
+        }
+      }
+      ;(chat.currentServer as any).channels = channels
+    }
+  } catch (e) {
+    console.warn('Optimistic update failed', e)
+  }
+  
+  // Call the new API
+  await chat.reorderMixedList(chat.currentServer.id, newOrder)
+}
+
+// Drop on a group header (reorder groups or move channel to group)
 async function onGroupDrop(event: DragEvent, targetGroupId: number) {
   if (!auth.isAdmin || !editMode.value) return
   event.preventDefault()
   event.stopPropagation()
   
+  const srcId = dragSourceId.value
+  const srcType = dragSourceType.value
+  const srcGroupId = dragSourceGroupId.value
+  resetDragState()
+  
+  if (!chat.currentServer || srcId === null) return
+  
   // Handle group reordering
-  if (dragSourceType.value === 'group') {
-    const srcId = dragSourceId.value
-    resetDragState()
-    
-    if (!chat.currentServer || srcId === null || srcId === targetGroupId) return
-    
-    const groups = [...channelGroups.value]
-    const srcIdx = groups.findIndex(g => g.id === srcId)
-    const tgtIdx = groups.findIndex(g => g.id === targetGroupId)
-    if (srcIdx === -1 || tgtIdx === -1) return
-    
-    const moved = groups.splice(srcIdx, 1)[0]
-    if (!moved) return
-    groups.splice(tgtIdx, 0, moved)
-    
-    // Optimistic UI update
-    try {
-      if (chat.currentServer && (chat.currentServer as any).channelGroups) {
-        ;(chat.currentServer as any).channelGroups = groups
-      }
-    } catch (e) {
-      console.warn('Optimistic group update failed', e)
-    }
-    
-    const ids = groups.map(g => g.id)
-    await chat.reorderChannelGroups(chat.currentServer.id, ids)
+  if (srcType === 'group') {
+    if (srcId === targetGroupId) return
+    await reorderMixedList('group', srcId, 'group', targetGroupId)
+    return
+  }
+  
+  // Handle ungrouped channel drop on group (reorder in mixed list)
+  if (srcType === 'channel' && srcGroupId === null) {
+    await reorderMixedList('channel', srcId, 'group', targetGroupId)
     return
   }
   
   // Handle channel drop on group (move channel to group)
-  if (dragSourceType.value === 'channel') {
-    const srcId = dragSourceId.value
-    const srcGroupId = dragSourceGroupId.value
-    resetDragState()
-    
-    if (!chat.currentServer || srcId === null) return
+  if (srcType === 'channel') {
     if (srcGroupId === targetGroupId) return // Already in this group
-    
     await chat.updateChannel(chat.currentServer.id, srcId, { group_id: targetGroupId })
   }
 }
@@ -605,74 +680,49 @@ async function deleteChannel() {
       </div>
 
       <div class="channels">
-        <!-- Channel Groups -->
-        <div v-for="group in channelGroups" :key="'group-' + group.id" class="channel-group">
-          <div 
-            class="channel-group-header"
-            :draggable="auth.isAdmin && editMode"
-            @click="toggleGroupCollapse(group.id)"
-            @contextmenu="auth.isAdmin && editMode ? showGroupContextMenu($event, group.id) : undefined"
-            @dragstart="onGroupDragStart($event, group.id)"
-            @dragover="onDragOver($event)"
-            @drop="onGroupDrop($event, group.id)"
-          >
-            <span v-if="editMode" class="drag-handle">☰</span>
-            <ChevronDown v-if="!collapsedGroups.has(group.id)" :size="14" class="collapse-icon" />
-            <ChevronRight v-else :size="14" class="collapse-icon" />
-            <span class="group-name">{{ group.name }}</span>
-            <button v-if="auth.isAdmin && editMode" class="add-channel" @click.stop="showCreate = true; newCreateType = 'text'; newChannelGroupId = group.id">+</button>
-          </div>
-          
-          <!-- Group channels (mixed text and voice) -->
-          <div v-if="!collapsedGroups.has(group.id)" class="group-channels">
-            <template v-for="channel in getGroupChannels(group.id)" :key="channel.id">
-              <!-- Text channel -->
-              <div
-                v-if="channel.type === 'text'"
-                class="channel glow-effect"
-                :class="{ active: chat.currentChannel?.id === channel.id }"
-                @click="selectChannel(channel)"
-                @contextmenu="auth.isAdmin && editMode ? showChannelContextMenu($event, channel.id) : undefined"
-                :draggable="auth.isAdmin && editMode"
-                @dragstart="onChannelDragStart($event, channel.id, group.id)"
-                @dragover="onDragOver($event)"
-                @drop="onChannelDrop($event, channel.id, group.id)"
-              >
-                <span class="channel-icon">#</span>
-                <span v-if="editMode" class="drag-handle">☰</span>
-                <template v-if="editingChannelId === channel.id">
-                  <input
-                    class="inline-edit custom-input"
-                    v-model="editedName"
-                    @keyup.enter="saveInlineEdit(channel)"
-                    @keyup.esc="cancelInlineEdit"
-                    @blur="saveInlineEdit(channel)"
-                    @click.stop
-                    autofocus
-                  />
-                </template>
-                <template v-else>
-                  <span class="channel-name" @dblclick.stop="auth.isAdmin && editMode ? startInlineEdit(channel) : undefined">{{ channel.name }}</span>
-                </template>
-                <div v-if="editMode" class="edit-actions" @click.stop>
-                  <button v-if="editingChannelId !== channel.id" class="small" @click="renameChannel(channel)">重命名</button>
-                </div>
-              </div>
-              
-              <!-- Voice channel -->
-              <div v-else class="voice-channel-wrapper">
+        <!-- Header with add button -->
+        <div class="channel-category">
+          <span class="category-name">频道</span>
+          <button v-if="auth.isAdmin" class="add-channel-btn" @click.stop="showCreate = true; newCreateType = 'text'; newChannelGroupId = 'none'" title="创建频道/频道组">+</button>
+        </div>
+
+        <!-- Mixed list of channel groups and ungrouped channels -->
+        <template v-for="item in mixedList" :key="item.type + '-' + item.data.id">
+          <!-- Channel Group -->
+          <div v-if="item.type === 'group'" class="channel-group">
+            <div 
+              class="channel-group-header"
+              :draggable="auth.isAdmin && editMode"
+              @click="toggleGroupCollapse(item.data.id)"
+              @contextmenu="auth.isAdmin && editMode ? showGroupContextMenu($event, item.data.id) : undefined"
+              @dragstart="onGroupDragStart($event, item.data.id)"
+              @dragover="onDragOver($event)"
+              @drop="onGroupDrop($event, item.data.id)"
+            >
+              <span v-if="editMode" class="drag-handle">☰</span>
+              <ChevronDown v-if="!collapsedGroups.has(item.data.id)" :size="14" class="collapse-icon" />
+              <ChevronRight v-else :size="14" class="collapse-icon" />
+              <span class="group-name">{{ item.data.name }}</span>
+              <button v-if="auth.isAdmin && editMode" class="add-channel" @click.stop="showCreate = true; newCreateType = 'text'; newChannelGroupId = item.data.id">+</button>
+            </div>
+            
+            <!-- Group channels (mixed text and voice) -->
+            <div v-if="!collapsedGroups.has(item.data.id)" class="group-channels">
+              <template v-for="channel in getGroupChannels(item.data.id)" :key="channel.id">
+                <!-- Text channel in group -->
                 <div
+                  v-if="channel.type === 'text'"
                   class="channel glow-effect"
                   :class="{ active: chat.currentChannel?.id === channel.id }"
                   @click="selectChannel(channel)"
                   @contextmenu="auth.isAdmin && editMode ? showChannelContextMenu($event, channel.id) : undefined"
                   :draggable="auth.isAdmin && editMode"
-                  @dragstart="onChannelDragStart($event, channel.id, group.id)"
+                  @dragstart="onChannelDragStart($event, channel.id, item.data.id)"
                   @dragover="onDragOver($event)"
-                  @drop="onChannelDrop($event, channel.id, group.id)"
+                  @drop="onChannelDrop($event, channel.id, item.data.id)"
                 >
+                  <span class="channel-icon">#</span>
                   <span v-if="editMode" class="drag-handle">☰</span>
-                  <Volume2 class="channel-icon" :size="18" />
                   <template v-if="editingChannelId === channel.id">
                     <input
                       class="inline-edit custom-input"
@@ -687,119 +737,146 @@ async function deleteChannel() {
                   <template v-else>
                     <span class="channel-name" @dblclick.stop="auth.isAdmin && editMode ? startInlineEdit(channel) : undefined">{{ channel.name }}</span>
                   </template>
-                  <span v-if="chat.getVoiceChannelUsers(channel.id).length > 0" class="user-count">
-                    {{ chat.getVoiceChannelUsers(channel.id).length }}
-                  </span>
                   <div v-if="editMode" class="edit-actions" @click.stop>
                     <button v-if="editingChannelId !== channel.id" class="small" @click="renameChannel(channel)">重命名</button>
                   </div>
                 </div>
-                <div
-                  v-if="chat.getVoiceChannelUsers(channel.id).length > 0"
-                  class="voice-users-list"
-                >
+                
+                <!-- Voice channel in group -->
+                <div v-else class="voice-channel-wrapper">
                   <div
-                    v-for="user in chat.getVoiceChannelUsers(channel.id)"
-                    :key="user.id"
-                    class="voice-user-item"
-                    @contextmenu="auth.isAdmin ? showUserContextMenu($event, channel.id, user.id) : undefined"
+                    class="channel glow-effect"
+                    :class="{ active: chat.currentChannel?.id === channel.id }"
+                    @click="selectChannel(channel)"
+                    @contextmenu="auth.isAdmin && editMode ? showChannelContextMenu($event, channel.id) : undefined"
+                    :draggable="auth.isAdmin && editMode"
+                    @dragstart="onChannelDragStart($event, channel.id, item.data.id)"
+                    @dragover="onDragOver($event)"
+                    @drop="onChannelDrop($event, channel.id, item.data.id)"
                   >
-                    <div class="voice-user-avatar-wrapper">
-                      <span class="voice-user-avatar">{{ user.name.charAt(0).toUpperCase() }}</span>
-                      <Crown v-if="user.is_host" class="voice-user-host-badge" :size="10" />
+                    <span v-if="editMode" class="drag-handle">☰</span>
+                    <Volume2 class="channel-icon" :size="18" />
+                    <template v-if="editingChannelId === channel.id">
+                      <input
+                        class="inline-edit custom-input"
+                        v-model="editedName"
+                        @keyup.enter="saveInlineEdit(channel)"
+                        @keyup.esc="cancelInlineEdit"
+                        @blur="saveInlineEdit(channel)"
+                        @click.stop
+                        autofocus
+                      />
+                    </template>
+                    <template v-else>
+                      <span class="channel-name" @dblclick.stop="auth.isAdmin && editMode ? startInlineEdit(channel) : undefined">{{ channel.name }}</span>
+                    </template>
+                    <span v-if="chat.getVoiceChannelUsers(channel.id).length > 0" class="user-count">
+                      {{ chat.getVoiceChannelUsers(channel.id).length }}
+                    </span>
+                    <div v-if="editMode" class="edit-actions" @click.stop>
+                      <button v-if="editingChannelId !== channel.id" class="small" @click="renameChannel(channel)">重命名</button>
                     </div>
-                    <span class="voice-user-name">{{ user.name }}</span>
-                    <MicOff v-if="user.is_muted" class="voice-user-muted" :size="12" />
+                  </div>
+                  <div
+                    v-if="chat.getVoiceChannelUsers(channel.id).length > 0"
+                    class="voice-users-list"
+                  >
+                    <div
+                      v-for="user in chat.getVoiceChannelUsers(channel.id)"
+                      :key="user.id"
+                      class="voice-user-item"
+                      @contextmenu="auth.isAdmin ? showUserContextMenu($event, channel.id, user.id) : undefined"
+                    >
+                      <div class="voice-user-avatar-wrapper">
+                        <span class="voice-user-avatar">{{ user.name.charAt(0).toUpperCase() }}</span>
+                        <Crown v-if="user.is_host" class="voice-user-host-badge" :size="10" />
+                      </div>
+                      <span class="voice-user-name">{{ user.name }}</span>
+                      <MicOff v-if="user.is_muted" class="voice-user-muted" :size="12" />
+                    </div>
                   </div>
                 </div>
-              </div>
-            </template>
+              </template>
+            </div>
           </div>
-        </div>
 
-        <!-- Ungrouped Channels (mixed text and voice) -->
-        <div class="channel-category">
-          <span class="category-name">频道</span>
-          <button v-if="auth.isAdmin" class="add-channel-btn" @click.stop="showCreate = true; newCreateType = 'text'; newChannelGroupId = 'none'" title="创建频道/频道组">+</button>
-        </div>
-        <template v-for="channel in ungroupedChannels" :key="channel.id">
-          <!-- Text channel -->
+          <!-- Ungrouped Text Channel -->
           <div
-            v-if="channel.type === 'text'"
+            v-else-if="item.type === 'channel' && item.data.type === 'text'"
             class="channel glow-effect"
-            :class="{ active: chat.currentChannel?.id === channel.id }"
-            @click="selectChannel(channel)"
-            @contextmenu="auth.isAdmin && editMode ? showChannelContextMenu($event, channel.id) : undefined"
+            :class="{ active: chat.currentChannel?.id === item.data.id }"
+            @click="selectChannel(item.data)"
+            @contextmenu="auth.isAdmin && editMode ? showChannelContextMenu($event, item.data.id) : undefined"
             :draggable="auth.isAdmin && editMode"
-            @dragstart="onChannelDragStart($event, channel.id, null)"
+            @dragstart="onChannelDragStart($event, item.data.id, null)"
             @dragover="onDragOver($event)"
-            @drop="onChannelDrop($event, channel.id, null)"
+            @drop="onChannelDrop($event, item.data.id, null)"
           >
             <span class="channel-icon">#</span>
             <span v-if="editMode" class="drag-handle">☰</span>
-            <template v-if="editingChannelId === channel.id">
+            <template v-if="editingChannelId === item.data.id">
               <input
                 class="inline-edit custom-input"
                 v-model="editedName"
-                @keyup.enter="saveInlineEdit(channel)"
+                @keyup.enter="saveInlineEdit(item.data)"
                 @keyup.esc="cancelInlineEdit"
-                @blur="saveInlineEdit(channel)"
+                @blur="saveInlineEdit(item.data)"
                 @click.stop
                 autofocus
               />
             </template>
             <template v-else>
-              <span class="channel-name" @dblclick.stop="auth.isAdmin && editMode ? startInlineEdit(channel) : undefined">{{ channel.name }}</span>
+              <span class="channel-name" @dblclick.stop="auth.isAdmin && editMode ? startInlineEdit(item.data) : undefined">{{ item.data.name }}</span>
             </template>
             <div v-if="editMode" class="edit-actions" @click.stop>
-              <button v-if="editingChannelId !== channel.id" class="small" @click="renameChannel(channel)">重命名</button>
+              <button v-if="editingChannelId !== item.data.id" class="small" @click="renameChannel(item.data)">重命名</button>
             </div>
           </div>
           
-          <!-- Voice channel -->
-          <div v-else class="voice-channel-wrapper">
+          <!-- Ungrouped Voice Channel -->
+          <div v-else-if="item.type === 'channel' && item.data.type === 'voice'" class="voice-channel-wrapper">
             <div
               class="channel glow-effect"
-              :class="{ active: chat.currentChannel?.id === channel.id }"
-              @click="selectChannel(channel)"
-              @contextmenu="auth.isAdmin && editMode ? showChannelContextMenu($event, channel.id) : undefined"
+              :class="{ active: chat.currentChannel?.id === item.data.id }"
+              @click="selectChannel(item.data)"
+              @contextmenu="auth.isAdmin && editMode ? showChannelContextMenu($event, item.data.id) : undefined"
               :draggable="auth.isAdmin && editMode"
-              @dragstart="onChannelDragStart($event, channel.id, null)"
+              @dragstart="onChannelDragStart($event, item.data.id, null)"
               @dragover="onDragOver($event)"
-              @drop="onChannelDrop($event, channel.id, null)"
+              @drop="onChannelDrop($event, item.data.id, null)"
             >
               <span v-if="editMode" class="drag-handle">☰</span>
               <Volume2 class="channel-icon" :size="18" />
-              <template v-if="editingChannelId === channel.id">
+              <template v-if="editingChannelId === item.data.id">
                 <input
                   class="inline-edit custom-input"
                   v-model="editedName"
-                  @keyup.enter="saveInlineEdit(channel)"
+                  @keyup.enter="saveInlineEdit(item.data)"
                   @keyup.esc="cancelInlineEdit"
-                  @blur="saveInlineEdit(channel)"
+                  @blur="saveInlineEdit(item.data)"
                   @click.stop
                   autofocus
                 />
               </template>
               <template v-else>
-                <span class="channel-name" @dblclick.stop="auth.isAdmin && editMode ? startInlineEdit(channel) : undefined">{{ channel.name }}</span>
+                <span class="channel-name" @dblclick.stop="auth.isAdmin && editMode ? startInlineEdit(item.data) : undefined">{{ item.data.name }}</span>
               </template>
-              <span v-if="chat.getVoiceChannelUsers(channel.id).length > 0" class="user-count">
-                {{ chat.getVoiceChannelUsers(channel.id).length }}
+              <span v-if="chat.getVoiceChannelUsers(item.data.id).length > 0" class="user-count">
+                {{ chat.getVoiceChannelUsers(item.data.id).length }}
               </span>
               <div v-if="editMode" class="edit-actions" @click.stop>
-                <button v-if="editingChannelId !== channel.id" class="small" @click="renameChannel(channel)">重命名</button>
+                <button v-if="editingChannelId !== item.data.id" class="small" @click="renameChannel(item.data)">重命名</button>
               </div>
             </div>
             <div
-              v-if="chat.getVoiceChannelUsers(channel.id).length > 0"
+              v-if="chat.getVoiceChannelUsers(item.data.id).length > 0"
               class="voice-users-list"
             >
               <div
-                v-for="user in chat.getVoiceChannelUsers(channel.id)"
+                v-for="user in chat.getVoiceChannelUsers(item.data.id)"
                 :key="user.id"
                 class="voice-user-item"
-                @contextmenu="auth.isAdmin ? showUserContextMenu($event, channel.id, user.id) : undefined"
+                @contextmenu="auth.isAdmin ? showUserContextMenu($event, item.data.id, user.id) : undefined"
               >
                 <div class="voice-user-avatar-wrapper">
                   <span class="voice-user-avatar">{{ user.name.charAt(0).toUpperCase() }}</span>

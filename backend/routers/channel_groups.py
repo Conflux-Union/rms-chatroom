@@ -60,11 +60,18 @@ async def create_channel_group(
     if not server_result.scalar_one_or_none():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Server not found")
 
-    # Get max position
-    pos_result = await db.execute(
+    # Get max position from both channel groups and ungrouped channels
+    group_pos_result = await db.execute(
         select(ChannelGroup.position).where(ChannelGroup.server_id == server_id).order_by(ChannelGroup.position.desc())
     )
-    max_pos = pos_result.scalar() or 0
+    max_group_pos = group_pos_result.scalar() or 0
+    
+    channel_pos_result = await db.execute(
+        select(Channel.position).where(Channel.server_id == server_id, Channel.group_id == None).order_by(Channel.position.desc())
+    )
+    max_channel_pos = channel_pos_result.scalar() or 0
+    
+    max_pos = max(max_group_pos, max_channel_pos)
 
     group = ChannelGroup(
         server_id=server_id,
@@ -150,6 +157,45 @@ async def reorder_channel_groups(
         ChannelGroupResponse(id=g.id, server_id=g.server_id, name=g.name, position=g.position)
         for g in sorted_groups
     ]
+
+
+class ReorderMixedRequest(BaseModel):
+    """Request to reorder mixed list of groups and ungrouped channels."""
+    items: list[dict]  # [{"type": "group", "id": 1}, {"type": "channel", "id": 2}, ...]
+
+
+@router.post("/reorder-mixed")
+async def reorder_mixed_list(
+    server_id: int,
+    payload: ReorderMixedRequest,
+    user: AdminUser,
+    db: AsyncSession = Depends(get_db),
+):
+    """Reorder mixed list of channel groups and ungrouped channels."""
+    # Fetch all groups and ungrouped channels
+    groups_result = await db.execute(
+        select(ChannelGroup).where(ChannelGroup.server_id == server_id)
+    )
+    groups = {g.id: g for g in groups_result.scalars().all()}
+    
+    channels_result = await db.execute(
+        select(Channel).where(Channel.server_id == server_id, Channel.group_id == None)
+    )
+    ungrouped_channels = {c.id: c for c in channels_result.scalars().all()}
+    
+    # Update positions based on the order in payload
+    for idx, item in enumerate(payload.items):
+        item_type = item.get("type")
+        item_id = item.get("id")
+        
+        if item_type == "group" and item_id in groups:
+            groups[item_id].position = idx
+        elif item_type == "channel" and item_id in ungrouped_channels:
+            ungrouped_channels[item_id].position = idx
+    
+    await db.flush()
+    
+    return {"success": True}
 
 
 @router.delete("/{group_id}", status_code=status.HTTP_204_NO_CONTENT)
