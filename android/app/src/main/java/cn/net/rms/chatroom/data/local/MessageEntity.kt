@@ -6,6 +6,11 @@ import androidx.room.Index
 import androidx.room.PrimaryKey
 import cn.net.rms.chatroom.data.model.Message
 
+/**
+ * Room entity for caching messages locally.
+ * Note: Complex fields (reactions, mentions, reply_to) are not cached
+ * as they require real-time updates from the server.
+ */
 @Entity(
     tableName = "messages",
     indices = [
@@ -25,7 +30,14 @@ data class MessageEntity(
     @ColumnInfo(name = "created_at")
     val createdAt: String,
     @ColumnInfo(name = "cached_at")
-    val cachedAt: Long = System.currentTimeMillis()
+    val cachedAt: Long = System.currentTimeMillis(),
+    // Reply feature - only store the ID, full data comes from server
+    @ColumnInfo(name = "reply_to_id")
+    val replyToId: Long? = null,
+    @ColumnInfo(name = "reply_to_username")
+    val replyToUsername: String? = null,
+    @ColumnInfo(name = "reply_to_content")
+    val replyToContent: String? = null
 ) {
     fun toMessage(): Message = Message(
         id = id,
@@ -33,7 +45,17 @@ data class MessageEntity(
         userId = userId,
         username = username,
         content = content,
-        createdAt = createdAt
+        createdAt = createdAt,
+        replyToId = replyToId,
+        replyTo = if (replyToId != null && replyToUsername != null) {
+            cn.net.rms.chatroom.data.model.ReplyTo(
+                id = replyToId,
+                userId = 0,  // Not cached
+                username = replyToUsername,
+                content = replyToContent ?: ""
+            )
+        } else null
+        // Note: reactions, mentions, attachments are not cached
     )
 
     companion object {
@@ -43,7 +65,10 @@ data class MessageEntity(
             userId = message.userId,
             username = message.username,
             content = message.content,
-            createdAt = message.createdAt
+            createdAt = message.createdAt,
+            replyToId = message.replyToId,
+            replyToUsername = message.replyTo?.username,
+            replyToContent = message.replyTo?.content
         )
     }
 }

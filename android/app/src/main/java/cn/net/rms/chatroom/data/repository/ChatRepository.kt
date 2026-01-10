@@ -3,7 +3,9 @@ package cn.net.rms.chatroom.data.repository
 import android.util.Log
 import android.content.Context
 import android.net.Uri
+import cn.net.rms.chatroom.data.api.AddReactionRequest
 import cn.net.rms.chatroom.data.api.ApiService
+import cn.net.rms.chatroom.data.api.ChannelMember
 import cn.net.rms.chatroom.data.api.CreateChannelRequest
 import cn.net.rms.chatroom.data.api.CreateServerRequest
 import cn.net.rms.chatroom.data.api.SendMessageBody
@@ -17,6 +19,8 @@ import cn.net.rms.chatroom.data.local.SettingsPreferences
 import cn.net.rms.chatroom.data.model.Channel
 import cn.net.rms.chatroom.data.model.ChannelType
 import cn.net.rms.chatroom.data.model.Message
+import cn.net.rms.chatroom.data.model.ReactionGroup
+import cn.net.rms.chatroom.data.model.ReactionUser
 import cn.net.rms.chatroom.data.model.Server
 import cn.net.rms.chatroom.data.model.VoiceUser
 import cn.net.rms.chatroom.data.model.AttachmentResponse
@@ -96,6 +100,14 @@ class ChatRepository @Inject constructor(
                     is WebSocketEvent.MessageEdited -> {
                         Log.d(TAG, "Message edited: ${event.messageId}")
                         updateMessageEdited(event.messageId, event.content, event.editedAt)
+                    }
+                    is WebSocketEvent.ReactionAdded -> {
+                        Log.d(TAG, "Reaction added: ${event.emoji} to message ${event.messageId}")
+                        updateMessageReactionAdded(event.messageId, event.emoji, event.userId, event.username)
+                    }
+                    is WebSocketEvent.ReactionRemoved -> {
+                        Log.d(TAG, "Reaction removed: ${event.emoji} from message ${event.messageId}")
+                        updateMessageReactionRemoved(event.messageId, event.emoji, event.userId)
                     }
                     is WebSocketEvent.Connected -> {
                         Log.d(TAG, "WebSocket connected to channel ${event.channelId}")
@@ -243,14 +255,14 @@ class ChatRepository @Inject constructor(
         }
     }
 
-    suspend fun sendMessage(channelId: Long, content: String, attachmentIds: List<Long> = emptyList()): Result<Message> {
+    suspend fun sendMessage(channelId: Long, content: String, attachmentIds: List<Long> = emptyList(), replyToId: Long? = null): Result<Message> {
         return try {
             val token = authRepository.getToken()
                 ?: return Result.failure(AuthException("未登录，请先登录"))
             val message = api.sendMessage(
                 authRepository.getAuthHeader(token),
                 channelId,
-                SendMessageBody(content, attachmentIds)
+                SendMessageBody(content, attachmentIds, replyToId)
             )
             _messages.value = _messages.value + message
             // Cache sent message
@@ -547,5 +559,111 @@ class ChatRepository @Inject constructor(
 
     suspend fun setLastReadMessageId(channelId: Long, messageId: Long) {
         settingsPreferences.setLastReadMessageId(channelId, messageId)
+    }
+
+    // Reaction methods
+    suspend fun addReaction(messageId: Long, emoji: String): Result<Unit> {
+        return try {
+            val token = authRepository.getToken()
+                ?: return Result.failure(AuthException("未登录，请先登录"))
+            api.addReaction(authRepository.getAuthHeader(token), messageId, AddReactionRequest(emoji))
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e(TAG, "addReaction failed", e)
+            Result.failure(e.toAuthException())
+        }
+    }
+
+    suspend fun removeReaction(messageId: Long, emoji: String): Result<Unit> {
+        return try {
+            val token = authRepository.getToken()
+                ?: return Result.failure(AuthException("未登录，请先登录"))
+            api.removeReaction(authRepository.getAuthHeader(token), messageId, emoji)
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e(TAG, "removeReaction failed", e)
+            Result.failure(e.toAuthException())
+        }
+    }
+
+    private fun updateMessageReactionAdded(messageId: Long, emoji: String, userId: Long, username: String) {
+        _messages.value = _messages.value.map { message ->
+            if (message.id == messageId) {
+                val currentReactions = message.reactions?.toMutableList() ?: mutableListOf()
+                val existingGroup = currentReactions.find { it.emoji == emoji }
+                
+                if (existingGroup != null) {
+                    // Check if user already reacted (prevent duplicates from WebSocket retries)
+                    if (existingGroup.users.any { it.id == userId }) {
+                        return@map message
+                    }
+                    // Add user to existing reaction group
+                    val updatedUsers = existingGroup.users + ReactionUser(userId, username)
+                    val updatedGroup = existingGroup.copy(
+                        count = existingGroup.count + 1,
+                        users = updatedUsers
+                    )
+                    currentReactions[currentReactions.indexOf(existingGroup)] = updatedGroup
+                } else {
+                    // Create new reaction group
+                    currentReactions.add(ReactionGroup(
+                        emoji = emoji,
+                        count = 1,
+                        users = listOf(ReactionUser(userId, username)),
+                        reacted = false
+                    ))
+                }
+                
+                message.copy(reactions = currentReactions)
+            } else {
+                message
+            }
+        }
+    }
+
+    private fun updateMessageReactionRemoved(messageId: Long, emoji: String, userId: Long) {
+        _messages.value = _messages.value.map { message ->
+            if (message.id == messageId) {
+                val currentReactions = message.reactions?.toMutableList() ?: mutableListOf()
+                val existingGroup = currentReactions.find { it.emoji == emoji }
+                
+                if (existingGroup != null) {
+                    val updatedUsers = existingGroup.users.filter { it.id != userId }
+                    if (updatedUsers.isEmpty()) {
+                        // Remove the reaction group entirely
+                        currentReactions.remove(existingGroup)
+                    } else {
+                        // Update the reaction group
+                        val updatedGroup = existingGroup.copy(
+                            count = updatedUsers.size,
+                            users = updatedUsers
+                        )
+                        currentReactions[currentReactions.indexOf(existingGroup)] = updatedGroup
+                    }
+                }
+                
+                message.copy(reactions = currentReactions.ifEmpty { null })
+            } else {
+                message
+            }
+        }
+    }
+
+    // Channel members for @mention autocomplete
+    suspend fun getChannelMembers(channelId: Long): Result<List<ChannelMember>> {
+        return try {
+            val token = authRepository.getToken()
+                ?: return Result.failure(AuthException("未登录，请先登录"))
+            val members = api.getChannelMembers(authRepository.getAuthHeader(token), channelId)
+            Result.success(members)
+        } catch (e: Exception) {
+            Log.e(TAG, "getChannelMembers failed", e)
+            Result.failure(e.toAuthException())
+        }
+    }
+
+    // Find message by ID (for reply scroll)
+    fun findMessageIndex(messageId: Long): Int {
+        return _messages.value.indexOfFirst { it.id == messageId }
     }
 }
