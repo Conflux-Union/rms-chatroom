@@ -241,7 +241,10 @@ fun MainScreen(
                     }
 
                     mainState.currentChannel?.type == ChannelType.VOICE -> {
-                        VoiceScreen(channelId = mainState.currentChannel!!.id)
+                        VoiceScreen(
+                            channelId = mainState.currentChannel!!.id,
+                            channelName = mainState.currentChannel!!.name
+                        )
                     }
                 }
 
