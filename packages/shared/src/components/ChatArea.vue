@@ -1058,7 +1058,7 @@ function getReactionTooltip(reaction: ReactionGroup): string {
             >
               <CornerUpLeft :size="14" class="reply-icon" />
               <span class="reply-author">{{ msg.reply_to.username }}</span>
-              <span class="reply-content">{{ msg.reply_to.content }}</span>
+              <span class="reply-content">{{ msg.reply_to.content || '[附件]' }}</span>
             </div>
             <div v-if="msg.content" class="message-text" v-html="renderMessageContent(msg.content)"></div>
             <!-- Attachments -->
@@ -1090,16 +1090,15 @@ function getReactionTooltip(reaction: ReactionGroup): string {
                 <SmilePlus :size="16" />
               </button>
             </div>
-            <!-- Add reaction button when no reactions yet -->
-            <div v-else class="message-reactions-empty">
-              <button
-                class="reaction-add-btn"
-                @click="showReactionPicker($event, msg.id)"
-                title="Add Reaction"
-              >
-                <SmilePlus :size="16" />
-              </button>
-            </div>
+            <!-- Add reaction button when no reactions yet (positioned absolutely to not take space) -->
+            <button
+              v-else
+              class="reaction-add-btn reaction-add-btn-floating"
+              @click="showReactionPicker($event, msg.id)"
+              title="Add Reaction"
+            >
+              <SmilePlus :size="16" />
+            </button>
           </div>
         </div>
       </div>
@@ -1145,7 +1144,13 @@ function getReactionTooltip(reaction: ReactionGroup): string {
         <Reply :size="16" class="reply-preview-icon" />
         <span class="reply-preview-label">回复</span>
         <span class="reply-preview-author">{{ replyingTo.username }}</span>
-        <span class="reply-preview-text">{{ replyingTo.content.slice(0, 100) }}{{ replyingTo.content.length > 100 ? '...' : '' }}</span>
+        <span class="reply-preview-text">
+          <template v-if="replyingTo.content">{{ replyingTo.content.slice(0, 100) }}{{ replyingTo.content.length > 100 ? '...' : '' }}</template>
+          <template v-else-if="replyingTo.attachments?.length">
+            <Image v-if="replyingTo.attachments[0].content_type.startsWith('image/')" :size="14" style="vertical-align: middle; margin-right: 4px;" />
+            <span>[{{ replyingTo.attachments[0].content_type.startsWith('image/') ? '图片' : '附件' }}]</span>
+          </template>
+        </span>
       </div>
       <button class="reply-preview-close" @click="cancelReply">
         <X :size="16" />
@@ -1577,7 +1582,7 @@ function getReactionTooltip(reaction: ReactionGroup): string {
 }
 
 .message-input {
-  flex: 1;
+  width: 100%;
   padding: 12px 16px;
   border: 1px solid transparent;
   border-radius: var(--radius-md);
@@ -1734,7 +1739,7 @@ function getReactionTooltip(reaction: ReactionGroup): string {
   margin-bottom: 4px;
   background: var(--surface-glass);
   border-left: 2px solid var(--color-accent);
-  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  border-radius: var(--radius-sm);
   font-size: 12px;
   cursor: pointer;
   transition: background var(--transition-fast);
@@ -1901,21 +1906,31 @@ function getReactionTooltip(reaction: ReactionGroup): string {
 }
 
 /* Reactions */
-.message-reactions,
-.message-reactions-empty {
+.message-reactions {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
   margin-top: 6px;
 }
 
-.message-reactions-empty {
+/* Floating reaction button - doesn't take space in layout */
+.reaction-add-btn-floating {
+  position: absolute;
+  bottom: 0;
+  left: 0;
   opacity: 0;
+  pointer-events: none;
   transition: opacity var(--transition-fast);
 }
 
-.message:hover .message-reactions-empty {
+.message:hover .reaction-add-btn-floating {
   opacity: 1;
+  pointer-events: auto;
+}
+
+/* Make message content relative for absolute positioning */
+.message-content > div:last-child {
+  position: relative;
 }
 
 .reaction-badge {
