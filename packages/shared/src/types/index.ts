@@ -31,6 +31,18 @@ export interface Attachment {
   url: string
 }
 
+export interface ReplyTo {
+  id: number
+  user_id: number
+  username: string
+  content: string  // Truncated preview
+}
+
+export interface Mention {
+  id: number
+  username: string
+}
+
 export interface Message {
   id: number
   channel_id: number
@@ -44,6 +56,11 @@ export interface Message {
   deleted_by?: number
   deleted_by_username?: string
   edited_at?: string
+  // Reply feature
+  reply_to_id?: number
+  reply_to?: ReplyTo
+  // Mentions feature
+  mentions?: Mention[]
 }
 
 export interface MuteRecord {

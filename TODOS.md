@@ -1,421 +1,251 @@
-# 文字频道消息管理功能 - 待办事项
+# Feature Implementation Plan: Mentions, Reply, Reactions
 
-## 已完成 ✅
+## Overview
 
-### 后端实现
-- [x] 修改Message表结构，添加is_deleted、deleted_at、deleted_by、edited_at字段
-- [x] 创建MuteRecord表和MuteScope枚举
-- [x] 创建backend/services/moderation.py禁言检查服务
-- [x] 创建backend/routers/moderation.py禁言管理API
-- [x] 在messages.py添加消息撤回DELETE端点
-- [x] 在messages.py添加消息编辑PATCH端点
-- [x] 在messages.py更新MessageResponse模型和查询过滤
-- [x] 在chat.py的WebSocket添加禁言检查
-- [x] 在app.py注册moderation路由
-- [x] 数据库初始化测试通过
-
-### 前端类型定义
-- [x] 更新types/index.ts的Message接口（添加is_deleted、deleted_by、deleted_by_username、edited_at）
-- [x] 添加MuteRecord接口到types/index.ts
+Adding three core chat features to RMS Discord:
+1. **Reply** - Reply to specific messages ✅ DONE
+2. **@Mentions** - Mention users in messages ✅ DONE
+3. **Reactions** - Add emoji reactions to messages
 
 ---
 
-## 待实现 🚧
+## Phase 1: Reply Feature (Priority: HIGH) ✅ COMPLETED
 
-### 前端 Web/Electron (packages/shared)
+### 1.1 Backend Model Changes ✅
 
-#### 1. ChatArea.vue - 消息右键菜单
-**文件**: `packages/shared/src/components/ChatArea.vue`
+**File:** `backend/models/server.py`
 
-- [ ] 添加右键菜单HTML结构
-  - [ ] 编辑消息选项（仅自己的消息）
-  - [ ] 撤回消息选项（自己2分钟内 或 管理员无限制）
-  - [ ] 禁言用户选项（仅管理员，且不能禁言自己）
-- [ ] 实现右键菜单逻辑
-  - [ ] `showContextMenu()` - 显示菜单
-  - [ ] `canEdit()` - 判断是否可编辑
-  - [ ] `canDelete()` - 判断是否可撤回（含2分钟时间判断）
-  - [ ] `isOwnMessage()` - 判断是否自己的消息
-- [ ] 点击外部关闭菜单
+```python
+# Added to Message model
+reply_to_id: Mapped[int | None] = mapped_column(ForeignKey("messages.id", ondelete="SET NULL"), nullable=True, index=True)
+reply_to: Mapped["Message | None"] = relationship("Message", remote_side="Message.id", foreign_keys=[reply_to_id], lazy="joined")
+```
 
-#### 2. ChatArea.vue - 消息编辑功能
-**文件**: `packages/shared/src/components/ChatArea.vue`
+### 1.2 Backend API/WebSocket Changes ✅
 
-- [ ] 添加编辑模式UI
-  - [ ] textarea输入框
-  - [ ] 保存/取消按钮
-  - [ ] 支持Enter保存、Esc取消
-- [ ] 实现编辑逻辑
-  - [ ] `startEdit()` - 进入编辑模式
-  - [ ] `saveEdit()` - 保存编辑（调用PATCH API）
-  - [ ] `cancelEdit()` - 取消编辑
-- [ ] 显示"(已编辑)"标记
-  - [ ] 鼠标悬停显示编辑时间
+**File:** `backend/websocket/chat.py`
+- Accept `reply_to_id` in message payload
+- Include `reply_to` summary in broadcast (id, username, content preview)
 
-#### 3. ChatArea.vue - 消息撤回功能
-**文件**: `packages/shared/src/components/ChatArea.vue`
+**File:** `backend/routers/messages.py`
+- Include `reply_to` in message list response
+- Added `ReplyToResponse` model
+- Modified `_message_to_response` to include reply info
 
-- [ ] 实现撤回逻辑
-  - [ ] `deleteMessage()` - 调用DELETE API
-  - [ ] 确认对话框
-- [ ] 显示已撤回消息占位符
-  - [ ] "你撤回了一条消息"
-  - [ ] "XXX撤回了一条消息"
-  - [ ] "管理员撤回了一条消息"
+### 1.3 Frontend Type Changes ✅
 
-#### 4. ChatArea.vue - 禁言对话框
-**文件**: `packages/shared/src/components/ChatArea.vue`
+**File:** `packages/shared/src/types/index.ts`
 
-- [ ] 添加禁言对话框HTML
-  - [ ] 范围选择（全局/服务器/频道）
-  - [ ] 时长选择（永久/10分钟/1小时/1天/自定义）
-  - [ ] 原因输入框（可选）
-  - [ ] 确认/取消按钮
-- [ ] 实现禁言逻辑
-  - [ ] `showMuteDialog()` - 显示对话框
-  - [ ] `confirmMute()` - 调用POST /api/mute
-  - [ ] 根据scope自动填充server_id或channel_id
+```typescript
+export interface ReplyTo {
+  id: number
+  user_id: number
+  username: string
+  content: string  // Truncated preview
+}
 
-#### 5. ChatArea.vue - 禁言状态处理
-**文件**: `packages/shared/src/components/ChatArea.vue`
+export interface Message {
+  // ... existing fields
+  reply_to_id?: number
+  reply_to?: ReplyTo
+}
+```
 
-- [ ] 检查用户禁言状态
-  - [ ] `checkMuteStatus()` - 调用GET /api/mute/user/{user_id}
-  - [ ] 频道切换时自动检查
-- [ ] 禁用输入框
-  - [ ] 输入框disabled状态
-  - [ ] 占位符显示"你已被禁言"
-  - [ ] 发送按钮禁用
+### 1.4 Frontend UI Changes ✅
 
-#### 6. ChatArea.vue - WebSocket事件处理
-**文件**: `packages/shared/src/components/ChatArea.vue`
+**File:** `packages/shared/src/components/ChatArea.vue`
 
-- [ ] 处理message_deleted事件
-  - [ ] 更新本地消息状态（is_deleted、deleted_by、deleted_by_username）
-- [ ] 处理message_edited事件
-  - [ ] 更新消息内容和edited_at
-- [ ] 处理error事件（code: "muted"）
-  - [ ] 显示禁言提示
-  - [ ] 自动禁用输入框
+- Added "Reply" button to message context menu
+- Show reply preview above input when replying
+- Display replied message preview in message bubble
+- Click on reply preview scrolls to original message
 
-#### 7. ChatArea.vue - CSS样式
-**文件**: `packages/shared/src/components/ChatArea.vue`
+### 1.5 Database Migration ✅
 
-- [ ] 右键菜单样式
-- [ ] 编辑模式样式
-- [ ] 已删除消息占位符样式
-- [ ] 已编辑标记样式
-- [ ] 禁言对话框样式（模态框）
-- [ ] 禁言输入框样式
+```sql
+ALTER TABLE messages ADD COLUMN reply_to_id INTEGER REFERENCES messages(id);
+CREATE INDEX ix_messages_reply_to_id ON messages(reply_to_id);
+```
 
 ---
 
-### Android端 (android/)
+## Phase 2: @Mentions Feature (Priority: MEDIUM) ✅ COMPLETED
 
-#### 1. 数据模型更新
-**文件**: `android/app/src/main/java/com/rms/discord/data/model/Message.kt`
+### 2.1 Backend Model Changes ✅
 
-- [ ] 添加Message字段
-  ```kotlin
-  val isDeleted: Boolean = false
-  val deletedBy: Int? = null
-  val deletedByUsername: String? = null
-  val editedAt: String? = null
-  ```
-- [ ] 创建MuteRecord数据类
-  ```kotlin
-  data class MuteRecord(
-      val id: Int,
-      val scope: String,  // "global" | "server" | "channel"
-      val serverId: Int? = null,
-      val channelId: Int? = null,
-      val mutedUntil: String? = null,
-      val reason: String? = null
-  )
-  ```
+**File:** `backend/models/server.py`
 
-#### 2. API接口定义
-**文件**: `android/app/src/main/java/com/rms/discord/data/api/ApiService.kt`
+```python
+# Add to Message model
+mentioned_user_ids: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON array: "[1, 2, 3]"
+```
 
-- [ ] 添加消息管理API
-  ```kotlin
-  @PATCH("api/channels/{channelId}/messages/{messageId}")
-  suspend fun editMessage(@Path("channelId") channelId: Int, @Path("messageId") messageId: Int, @Body content: MessageEditRequest): Message
+### 2.2 Backend API Changes ✅
 
-  @DELETE("api/channels/{channelId}/messages/{messageId}")
-  suspend fun deleteMessage(@Path("channelId") channelId: Int, @Path("messageId") messageId: Int)
-  ```
-- [ ] 添加禁言管理API
-  ```kotlin
-  @POST("api/mute")
-  suspend fun createMute(@Body request: MuteCreateRequest): MuteResponse
+**File:** `backend/routers/messages.py`
 
-  @DELETE("api/mute/{muteId}")
-  suspend fun removeMute(@Path("muteId") muteId: Int)
+- Added endpoint: `GET /api/channels/{channel_id}/messages/members` - List channel members for mention autocomplete
+- Added `MentionResponse` and `ChannelMemberResponse` models
+- Updated `MessageResponse` to include `mentions` field
 
-  @GET("api/mute/user/{userId}")
-  suspend fun getUserMutes(@Path("userId") userId: Int): List<MuteRecord>
-  ```
+**File:** `backend/websocket/chat.py`
 
-#### 3. WebSocket事件处理
-**文件**: `android/app/src/main/java/com/rms/discord/data/websocket/ChatWebSocketManager.kt`
+- Parse `@username` patterns from content using regex
+- Store mentioned user IDs as JSON in `mentioned_user_ids` field
+- Include `mentions` data in broadcast message
 
-- [ ] 处理message_deleted事件
-  ```kotlin
-  "message_deleted" -> {
-      val messageId = json.getInt("message_id")
-      val deletedBy = json.getInt("deleted_by")
-      val deletedByUsername = json.getString("deleted_by_username")
-      // 更新本地消息状态
-  }
-  ```
-- [ ] 处理message_edited事件
-  ```kotlin
-  "message_edited" -> {
-      val messageId = json.getInt("message_id")
-      val content = json.getString("content")
-      val editedAt = json.getString("edited_at")
-      // 更新消息内容
-  }
-  ```
-- [ ] 处理error事件（muted）
-  ```kotlin
-  "error" -> {
-      if (json.getString("code") == "muted") {
-          val message = json.getString("message")
-          // 显示禁言提示，禁用输入框
-      }
-  }
-  ```
+### 2.3 Frontend Changes ✅
 
-#### 4. UI组件 - 消息长按菜单
-**文件**: `android/app/src/main/java/com/rms/discord/ui/chat/ChatScreen.kt`
+**File:** `packages/shared/src/types/index.ts`
 
-- [ ] 添加消息长按监听
-  ```kotlin
-  LazyColumn {
-      items(messages) { message ->
-          MessageItem(
-              message = message,
-              onLongClick = { showMessageMenu(message) }
-          )
-      }
-  }
-  ```
-- [ ] 实现BottomSheet菜单
-  - [ ] 编辑消息（仅自己的消息）
-  - [ ] 撤回消息（自己2分钟内 或 管理员）
-  - [ ] 禁言用户（仅管理员）
+- Added `Mention` interface
+- Updated `Message` interface with `mentions` field
 
-#### 5. UI组件 - 消息编辑对话框
-**文件**: `android/app/src/main/java/com/rms/discord/ui/chat/EditMessageDialog.kt`
+**File:** `packages/shared/src/components/ChatArea.vue`
 
-- [ ] 创建编辑对话框Composable
-  ```kotlin
-  @Composable
-  fun EditMessageDialog(
-      message: Message,
-      onDismiss: () -> Unit,
-      onConfirm: (String) -> Unit
-  )
-  ```
-- [ ] TextField输入框
-- [ ] 保存/取消按钮
+- Implemented `@` trigger in input field with cursor position tracking
+- Show user autocomplete dropdown with keyboard navigation (↑↓ Enter Esc)
+- Highlight mentions in message content with special styling
+- `renderMessageContent()` function to parse and highlight @mentions
 
-#### 6. UI组件 - 禁言对话框
-**文件**: `android/app/src/main/java/com/rms/discord/ui/chat/MuteUserDialog.kt`
+### 2.4 Database Migration ✅
 
-- [ ] 创建禁言对话框Composable
-  ```kotlin
-  @Composable
-  fun MuteUserDialog(
-      userId: Int,
-      username: String,
-      currentServerId: Int?,
-      currentChannelId: Int?,
-      onDismiss: () -> Unit,
-      onConfirm: (MuteCreateRequest) -> Unit
-  )
-  ```
-- [ ] 范围选择（RadioButton）
-- [ ] 时长选择（Dropdown）
-- [ ] 原因输入框
-- [ ] 确认/取消按钮
-
-#### 7. UI显示 - 已撤回消息
-**文件**: `android/app/src/main/java/com/rms/discord/ui/chat/MessageItem.kt`
-
-- [ ] 判断is_deleted
-  ```kotlin
-  if (message.isDeleted) {
-      Text(
-          text = when {
-              message.deletedBy == currentUserId -> "你撤回了一条消息"
-              message.deletedByUsername != null -> "${message.deletedByUsername}撤回了一条消息"
-              else -> "管理员撤回了一条消息"
-          },
-          style = MaterialTheme.typography.bodySmall,
-          color = Color.Gray
-      )
-  } else {
-      // 正常消息显示
-  }
-  ```
-
-#### 8. UI显示 - 已编辑标记
-**文件**: `android/app/src/main/java/com/rms/discord/ui/chat/MessageItem.kt`
-
-- [ ] 显示"(已编辑)"标记
-  ```kotlin
-  Row {
-      Text(text = message.content)
-      if (message.editedAt != null) {
-          Text(
-              text = "(已编辑)",
-              style = MaterialTheme.typography.bodySmall,
-              color = Color.Gray
-          )
-      }
-  }
-  ```
-
-#### 9. 禁言状态处理
-**文件**: `android/app/src/main/java/com/rms/discord/ui/chat/ChatScreen.kt`
-
-- [ ] 检查用户禁言状态
-  ```kotlin
-  LaunchedEffect(currentChannelId) {
-      val mutes = apiService.getUserMutes(currentUserId)
-      isMuted = mutes.any { mute ->
-          mute.scope == "global" ||
-          (mute.scope == "server" && mute.serverId == currentServerId) ||
-          (mute.scope == "channel" && mute.channelId == currentChannelId)
-      }
-  }
-  ```
-- [ ] 禁用输入框
-  ```kotlin
-  TextField(
-      value = messageInput,
-      onValueChange = { messageInput = it },
-      enabled = !isMuted,
-      placeholder = { Text(if (isMuted) "你已被禁言" else "发送消息") }
-  )
-  ```
-
-#### 10. ViewModel逻辑
-**文件**: `android/app/src/main/java/com/rms/discord/ui/chat/ChatViewModel.kt`
-
-- [ ] 添加消息编辑方法
-  ```kotlin
-  fun editMessage(channelId: Int, messageId: Int, content: String)
-  ```
-- [ ] 添加消息撤回方法
-  ```kotlin
-  fun deleteMessage(channelId: Int, messageId: Int)
-  ```
-- [ ] 添加禁言方法
-  ```kotlin
-  fun muteUser(request: MuteCreateRequest)
-  ```
-- [ ] 添加检查禁言状态方法
-  ```kotlin
-  fun checkMuteStatus(userId: Int)
-  ```
+```sql
+ALTER TABLE messages ADD COLUMN mentioned_user_ids TEXT;
+```
 
 ---
 
-## 测试清单 🧪
+## Phase 3: Reactions Feature (Priority: MEDIUM)
 
-### 后端测试
-- [ ] 消息撤回测试
-  - [ ] 普通用户2分钟内撤回自己的消息 ✓
-  - [ ] 普通用户2分钟后撤回自己的消息 ✗ (应返回403)
-  - [ ] 管理员撤回任何消息 ✓
-  - [ ] 撤回已删除的消息 ✗ (应返回400)
+### 3.1 Backend Model Changes
 
-- [ ] 消息编辑测试
-  - [ ] 用户编辑自己的消息 ✓
-  - [ ] 用户编辑他人的消息 ✗ (应返回403)
-  - [ ] 编辑已删除的消息 ✗ (应返回400)
-  - [ ] 编辑为空内容 ✗ (应返回400)
+**File:** `backend/models/server.py`
 
-- [ ] 禁言功能测试
-  - [ ] 管理员创建全局禁言 ✓
-  - [ ] 管理员创建服务器禁言 ✓
-  - [ ] 管理员创建频道禁言 ✓
-  - [ ] 普通用户创建禁言 ✗ (应返回403)
-  - [ ] 被禁言用户发送消息 ✗ (应返回error)
-  - [ ] 临时禁言过期后发送消息 ✓
+```python
+class Reaction(Base):
+    __tablename__ = "reactions"
+    
+    id: Mapped[int] = mapped_column(primary_key=True)
+    message_id: Mapped[int] = mapped_column(ForeignKey("messages.id", ondelete="CASCADE"))
+    user_id: Mapped[int] = mapped_column(index=True)
+    emoji: Mapped[str] = mapped_column(String(32))  # Unicode emoji or shortcode
+    created_at: Mapped[datetime] = mapped_column(default=datetime.now)
+    
+    # Unique constraint: one reaction per user per emoji per message
+    __table_args__ = (
+        UniqueConstraint("message_id", "user_id", "emoji", name="uq_reaction"),
+    )
 
-### 前端Web/Electron测试
-- [ ] UI交互测试
-  - [ ] 右键菜单显示正确的选项
-  - [ ] 编辑模式正常工作
-  - [ ] 禁言对话框正常工作
-  - [ ] 已删除消息显示占位提示
+# Add to Message model
+reactions: Mapped[list["Reaction"]] = relationship("Reaction", lazy="selectin", cascade="all, delete-orphan")
+```
 
-- [ ] 实时更新测试
-  - [ ] 消息撤回后其他用户实时看到
-  - [ ] 消息编辑后其他用户实时看到
-  - [ ] 被禁言后输入框自动禁用
+### 3.2 Backend API Changes
 
-- [ ] 权限测试
-  - [ ] 普通用户只能撤回/编辑自己的消息
-  - [ ] 管理员可以撤回任何消息
-  - [ ] 管理员可以看到"禁言用户"选项
+**File:** `backend/routers/messages.py`
 
-### Android端测试
-- [ ] UI交互测试
-  - [ ] 长按消息显示菜单
-  - [ ] 编辑对话框正常工作
-  - [ ] 禁言对话框正常工作
-  - [ ] 已删除消息显示占位提示
+```python
+# Add reaction
+POST /api/messages/{message_id}/reactions
+Body: { "emoji": "👍" }
 
-- [ ] 实时更新测试
-  - [ ] WebSocket事件正确处理
-  - [ ] 消息状态实时更新
-  - [ ] 禁言状态实时生效
+# Remove reaction
+DELETE /api/messages/{message_id}/reactions/{emoji}
+```
 
-- [ ] 权限测试
-  - [ ] 菜单选项根据权限显示
-  - [ ] API调用权限验证
+### 3.3 Backend WebSocket Changes
+
+**File:** `backend/websocket/chat.py`
+
+Broadcast events:
+```json
+{ "type": "reaction_added", "message_id": 123, "emoji": "👍", "user_id": 456, "username": "user" }
+{ "type": "reaction_removed", "message_id": 123, "emoji": "👍", "user_id": 456 }
+```
+
+### 3.4 Frontend Type Changes
+
+**File:** `packages/shared/src/types/index.ts`
+
+```typescript
+export interface ReactionGroup {
+  emoji: string
+  count: number
+  users: { id: number; username: string }[]
+  reacted: boolean  // current user has reacted
+}
+
+export interface Message {
+  // ... existing fields
+  reactions?: ReactionGroup[]
+}
+```
+
+### 3.5 Frontend UI Changes
+
+**File:** `packages/shared/src/components/ChatArea.vue`
+
+- Add emoji picker component (use existing library like `emoji-mart-vue`)
+- Show reaction bar below message content
+- Click existing reaction to toggle
+- Hover reaction to show who reacted
 
 ---
 
-## 注意事项 ⚠️
+## Phase 4: Android Adaptation (Priority: LOW)
 
-1. **时间判断**: 所有时间判断必须在服务器端完成，客户端时间不可信
-2. **权限验证**: WebSocket和REST API都要独立验证权限，防止绕过
-3. **软删除**: 消息撤回使用软删除，保留记录用于审计
-4. **附件处理**: 消息撤回后附件文件保留，避免其他地方引用丢失
-5. **实时通知**: 所有操作通过WebSocket实时通知其他在线用户
-6. **过期处理**: 临时禁言自动过期，查询时过滤已过期记录
-7. **错误处理**: 所有API调用都要有错误处理和用户提示
+### 4.1 Data Model Updates
+
+**File:** `android/app/src/main/java/cn/net/rms/chatroom/data/local/MessageEntity.kt`
+
+```kotlin
+data class MessageEntity(
+    // ... existing fields
+    val replyToId: Long? = null,
+    val replyToUsername: String? = null,
+    val replyToContent: String? = null,
+    val mentionedUserIds: List<Long>? = null,
+    val reactions: List<ReactionGroup>? = null
+)
+```
+
+### 4.2 WebSocket Handler Updates
+
+**File:** `android/app/src/main/java/cn/net/rms/chatroom/data/websocket/ChatWebSocket.kt`
+
+- Handle `reaction_added` / `reaction_removed` events
+- Parse reply_to and mentions from message payload
+
+### 4.3 UI Updates
+
+- Reply preview in message item
+- Mention highlighting with AnnotatedString
+- Reaction bar with emoji display
 
 ---
 
-## 关键文件清单 📁
+## Implementation Order
 
-### 后端（已完成）
-- `backend/models/server.py` - Message表和MuteRecord表
-- `backend/services/moderation.py` - 禁言检查服务
-- `backend/routers/moderation.py` - 禁言管理API
-- `backend/routers/messages.py` - 消息撤回/编辑API
-- `backend/websocket/chat.py` - WebSocket禁言检查
-- `backend/app.py` - 路由注册
+| # | Task | Est. Time | Dependencies |
+|---|------|-----------|--------------|
+| 1 | Reply - Backend Model | 0.5h | None |
+| 2 | Reply - Backend API/WS | 1h | #1 |
+| 3 | Reply - Frontend Types | 0.5h | #1 |
+| 4 | Reply - Frontend UI | 2h | #2, #3 |
+| 5 | Mentions - Backend | 1h | None |
+| 6 | Mentions - Frontend | 3h | #5 |
+| 7 | Reactions - Backend | 2h | None |
+| 8 | Reactions - Frontend | 3h | #7 |
+| 9 | Android - All features | 6h | #4, #6, #8 |
 
-### 前端Web/Electron（待实现）
-- `packages/shared/src/types/index.ts` - 类型定义（已完成）
-- `packages/shared/src/components/ChatArea.vue` - 主要UI实现
+**Total Estimated Time:** ~19 hours
 
-### Android端（待实现）
-- `android/app/src/main/java/com/rms/discord/data/model/Message.kt`
-- `android/app/src/main/java/com/rms/discord/data/model/MuteRecord.kt`
-- `android/app/src/main/java/com/rms/discord/data/api/ApiService.kt`
-- `android/app/src/main/java/com/rms/discord/data/websocket/ChatWebSocketManager.kt`
-- `android/app/src/main/java/com/rms/discord/ui/chat/ChatScreen.kt`
-- `android/app/src/main/java/com/rms/discord/ui/chat/ChatViewModel.kt`
-- `android/app/src/main/java/com/rms/discord/ui/chat/EditMessageDialog.kt`
-- `android/app/src/main/java/com/rms/discord/ui/chat/MuteUserDialog.kt`
-- `android/app/src/main/java/com/rms/discord/ui/chat/MessageItem.kt`
+---
+
+## Notes
+
+- All database changes are additive (no breaking changes)
+- WebSocket events are backward compatible (new fields are optional)
+- Android can be done later without blocking web release
+- Consider adding notification system for mentions in future
