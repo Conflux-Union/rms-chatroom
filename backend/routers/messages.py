@@ -13,6 +13,7 @@ from sqlalchemy.orm import selectinload
 from ..core.database import get_db
 from ..models.server import Attachment, Channel, ChannelType, Message
 from .deps import CurrentUser
+from .schemas import ReactionGroupResponse, ReactionUserResponse
 
 logger = logging.getLogger(__name__)
 
@@ -69,6 +70,8 @@ class MessageResponse(BaseModel):
     reply_to: ReplyToResponse | None = None
     # Mentions feature
     mentions: list[MentionResponse] = []
+    # Reactions feature
+    reactions: list[ReactionGroupResponse] = []
 
     class Config:
         from_attributes = True
@@ -122,6 +125,21 @@ def _message_to_response(msg: Message) -> MessageResponse:
                 # Frontend primarily uses username for display anyway
                 mentions_data.append(MentionResponse(id=0, username=username))
 
+    # Group reactions by emoji
+    reactions_data = []
+    if hasattr(msg, "reactions") and msg.reactions:
+        groups: dict[str, ReactionGroupResponse] = {}
+        for r in msg.reactions:
+            if r.emoji not in groups:
+                groups[r.emoji] = ReactionGroupResponse(
+                    emoji=r.emoji, count=0, users=[]
+                )
+            groups[r.emoji].count += 1
+            groups[r.emoji].users.append(
+                ReactionUserResponse(id=r.user_id, username=r.username)
+            )
+        reactions_data = list(groups.values())
+
     return MessageResponse(
         id=msg.id,
         channel_id=msg.channel_id,
@@ -136,6 +154,7 @@ def _message_to_response(msg: Message) -> MessageResponse:
         reply_to_id=msg.reply_to_id,
         reply_to=reply_to_data,
         mentions=mentions_data,
+        reactions=reactions_data,
     )
 
 
@@ -166,7 +185,11 @@ async def get_messages(
             Message.channel_id == channel_id,
             Message.is_deleted == False,  # Filter out deleted messages
         )
-        .options(selectinload(Message.attachments), selectinload(Message.reply_to))
+        .options(
+            selectinload(Message.attachments),
+            selectinload(Message.reply_to),
+            selectinload(Message.reactions),
+        )
     )
     if before:
         query = query.where(Message.id < before)

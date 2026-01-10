@@ -4,7 +4,15 @@ from datetime import datetime
 from enum import Enum
 from typing import TYPE_CHECKING
 
-from sqlalchemy import ForeignKey, String, Text, Integer, DateTime, Enum as SAEnum
+from sqlalchemy import (
+    ForeignKey,
+    String,
+    Text,
+    Integer,
+    DateTime,
+    Enum as SAEnum,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..core.database import Base
@@ -94,6 +102,12 @@ class Message(Base):
     )
     attachments: Mapped[list["Attachment"]] = relationship(
         "Attachment", back_populates="message", cascade="all, delete-orphan"
+    )
+    reactions: Mapped[list["Reaction"]] = relationship(
+        "Reaction",
+        back_populates="message",
+        cascade="all, delete-orphan",
+        lazy="selectin",
     )
 
 
@@ -185,3 +199,25 @@ class MuteRecord(Base):
     # Relationships
     server: Mapped["Server | None"] = relationship("Server")
     channel: Mapped["Channel | None"] = relationship("Channel")
+
+
+class Reaction(Base):
+    """Emoji reaction on a message."""
+
+    __tablename__ = "reactions"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    message_id: Mapped[int] = mapped_column(
+        ForeignKey("messages.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    user_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    username: Mapped[str] = mapped_column(String(100), nullable=False)
+    emoji: Mapped[str] = mapped_column(String(32), nullable=False)  # Unicode emoji
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    # Unique constraint: one reaction per user per emoji per message
+    __table_args__ = (
+        UniqueConstraint("message_id", "user_id", "emoji", name="uq_reaction"),
+    )
+
+    message: Mapped["Message"] = relationship("Message", back_populates="reactions")

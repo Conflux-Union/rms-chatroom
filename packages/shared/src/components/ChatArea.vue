@@ -17,9 +17,9 @@ import {
   NProgress,
   useDialog,
 } from 'naive-ui'
-import { Paperclip, Send, Upload, X, Image, Video, Music, FileText, File, MoreVertical, ArrowUp, Reply, CornerUpLeft } from 'lucide-vue-next'
+import { Paperclip, Send, Upload, X, Image, Video, Music, FileText, File, MoreVertical, ArrowUp, Reply, CornerUpLeft, SmilePlus } from 'lucide-vue-next'
 import FilePreview from './FilePreview.vue'
-import type { Attachment, Message } from '../types'
+import type { Attachment, Message, ReactionGroup } from '../types'
 import axios from 'axios'
 
 const dialog = useDialog()
@@ -57,6 +57,7 @@ const contextMenuOptions = computed(() => {
   const msg = contextMenu.value.message
   if (!msg) return []
   const opts: Array<{ label: string; key: string }> = []
+  opts.push({ label: 'Add Reaction', key: 'reaction' })
   opts.push({ label: 'Reply', key: 'reply' })
   if (canEdit(msg)) opts.push({ label: 'Edit', key: 'edit' })
   if (canDelete(msg)) opts.push({ label: 'Delete', key: 'delete' })
@@ -67,8 +68,21 @@ const contextMenuOptions = computed(() => {
 function handleContextMenuSelect(key: string) {
   const msg = contextMenu.value.message
   if (!msg) return
+  const menuX = contextMenu.value.x
+  const menuY = contextMenu.value.y
   hideContextMenu()
-  if (key === 'reply') startReply(msg)
+  if (key === 'reaction') {
+    // Show emoji picker at context menu position
+    const pickerHeight = 180
+    const showBelow = menuY < pickerHeight
+    emojiPickerPosition.value = {
+      x: menuX,
+      y: showBelow ? menuY + 10 : menuY - 10,
+      showBelow,
+    }
+    emojiPickerMessageId.value = msg.id
+    showEmojiPicker.value = true
+  } else if (key === 'reply') startReply(msg)
   else if (key === 'edit') startEdit(msg)
   else if (key === 'delete') confirmDeleteMessage(msg)
   else if (key === 'mute') showMuteDialog(msg)
@@ -146,6 +160,14 @@ const muteDialog = ref<{
 const isMuted = ref(false)
 const muteReason = ref('')
 
+// Reaction state
+const showEmojiPicker = ref(false)
+const emojiPickerMessageId = ref<number | null>(null)
+const emojiPickerPosition = ref({ x: 0, y: 0, showBelow: false })
+
+// Common emojis for quick reactions
+const commonEmojis = ['👍', '❤️', '😂', '😮', '😢', '🎉', '🔥', '👀']
+
 // Read position tracking
 const {
   lastReadMessageId,
@@ -202,6 +224,43 @@ function connectWebSocket(channelId: number) {
       // User is muted
       isMuted.value = true
       muteReason.value = data.message || 'You are muted'
+    } else if (data.type === 'reaction_added') {
+      // Add reaction to message
+      const message = chat.messages.find(m => m.id === data.message_id)
+      if (message) {
+        if (!message.reactions) message.reactions = []
+        const existingGroup = message.reactions.find(r => r.emoji === data.emoji)
+        if (existingGroup) {
+          // Check if user already in the group
+          if (!existingGroup.users.some(u => u.id === data.user_id)) {
+            existingGroup.count++
+            existingGroup.users.push({ id: data.user_id, username: data.username })
+          }
+        } else {
+          message.reactions.push({
+            emoji: data.emoji,
+            count: 1,
+            users: [{ id: data.user_id, username: data.username }],
+          })
+        }
+      }
+    } else if (data.type === 'reaction_removed') {
+      // Remove reaction from message
+      const message = chat.messages.find(m => m.id === data.message_id)
+      if (message && message.reactions) {
+        const groupIndex = message.reactions.findIndex(r => r.emoji === data.emoji)
+        if (groupIndex !== -1) {
+          const group = message.reactions[groupIndex]
+          const userIndex = group.users.findIndex(u => u.id === data.user_id)
+          if (userIndex !== -1) {
+            group.users.splice(userIndex, 1)
+            group.count--
+            if (group.count <= 0) {
+              message.reactions.splice(groupIndex, 1)
+            }
+          }
+        }
+      }
     }
   })
 
@@ -800,6 +859,93 @@ function handleClickOutside(event: MouseEvent) {
   if (contextMenu.value.visible) {
     hideContextMenu()
   }
+  // Close emoji picker when clicking outside
+  if (showEmojiPicker.value) {
+    showEmojiPicker.value = false
+    emojiPickerMessageId.value = null
+  }
+}
+
+// Reaction functions
+function showReactionPicker(event: MouseEvent, messageId: number) {
+  event.stopPropagation()
+  const rect = (event.target as HTMLElement).getBoundingClientRect()
+  // Emoji picker height is approximately 180px (4 rows * 36px + padding)
+  const pickerHeight = 180
+  const spaceAbove = rect.top
+  const showBelow = spaceAbove < pickerHeight
+
+  emojiPickerPosition.value = {
+    x: rect.left,
+    y: showBelow ? rect.bottom + 10 : rect.top - 10,
+    showBelow,
+  }
+  emojiPickerMessageId.value = messageId
+  showEmojiPicker.value = true
+}
+
+function hideReactionPicker() {
+  showEmojiPicker.value = false
+  emojiPickerMessageId.value = null
+}
+
+async function addReaction(messageId: number, emoji: string) {
+  if (!chat.currentChannel) return
+
+  try {
+    await axios.post(
+      `${API_BASE}/api/messages/${messageId}/reactions`,
+      { emoji },
+      { headers: { Authorization: `Bearer ${auth.token}` } }
+    )
+  } catch (error: any) {
+    console.error('Failed to add reaction:', error)
+  }
+
+  hideReactionPicker()
+}
+
+async function toggleReaction(messageId: number, emoji: string) {
+  if (!chat.currentChannel || !auth.user) return
+
+  const message = chat.messages.find(m => m.id === messageId)
+  if (!message) return
+
+  const existingGroup = message.reactions?.find(r => r.emoji === emoji)
+  const hasReacted = existingGroup?.users.some(u => u.id === auth.user!.id)
+
+  try {
+    if (hasReacted) {
+      // Remove reaction
+      await axios.delete(
+        `${API_BASE}/api/messages/${messageId}/reactions/${encodeURIComponent(emoji)}`,
+        { headers: { Authorization: `Bearer ${auth.token}` } }
+      )
+    } else {
+      // Add reaction
+      await axios.post(
+        `${API_BASE}/api/messages/${messageId}/reactions`,
+        { emoji },
+        { headers: { Authorization: `Bearer ${auth.token}` } }
+      )
+    }
+  } catch (error: any) {
+    console.error('Failed to toggle reaction:', error)
+  }
+}
+
+function hasUserReacted(reactions: ReactionGroup[] | undefined, emoji: string): boolean {
+  if (!reactions || !auth.user) return false
+  const group = reactions.find(r => r.emoji === emoji)
+  return group?.users.some(u => u.id === auth.user!.id) ?? false
+}
+
+function getReactionTooltip(reaction: ReactionGroup): string {
+  const names = reaction.users.map(u => u.username).slice(0, 5)
+  if (reaction.users.length > 5) {
+    names.push(`+${reaction.users.length - 5} more`)
+  }
+  return names.join(', ')
 }
 
 </script>
@@ -923,6 +1069,37 @@ function handleClickOutside(event: MouseEvent) {
                 :attachment="att"
               />
             </div>
+            <!-- Reactions -->
+            <div v-if="msg.reactions?.length" class="message-reactions">
+              <button
+                v-for="reaction in msg.reactions"
+                :key="reaction.emoji"
+                class="reaction-badge"
+                :class="{ 'reaction-active': hasUserReacted(msg.reactions, reaction.emoji) }"
+                :title="getReactionTooltip(reaction)"
+                @click="toggleReaction(msg.id, reaction.emoji)"
+              >
+                <span class="reaction-emoji">{{ reaction.emoji }}</span>
+                <span class="reaction-count">{{ reaction.count }}</span>
+              </button>
+              <button
+                class="reaction-add-btn"
+                @click="showReactionPicker($event, msg.id)"
+                title="Add Reaction"
+              >
+                <SmilePlus :size="16" />
+              </button>
+            </div>
+            <!-- Add reaction button when no reactions yet -->
+            <div v-else class="message-reactions-empty">
+              <button
+                class="reaction-add-btn"
+                @click="showReactionPicker($event, msg.id)"
+                title="Add Reaction"
+              >
+                <SmilePlus :size="16" />
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -1029,6 +1206,33 @@ function handleClickOutside(event: MouseEvent) {
       @select="handleContextMenuSelect"
       @clickoutside="hideContextMenu"
     />
+
+    <!-- Emoji Picker Popup -->
+    <Teleport to="body">
+      <div
+        v-if="showEmojiPicker && emojiPickerMessageId"
+        class="emoji-picker-overlay"
+        @click="hideReactionPicker"
+      >
+        <div
+          class="emoji-picker"
+          :class="{ 'emoji-picker-below': emojiPickerPosition.showBelow }"
+          :style="{ left: emojiPickerPosition.x + 'px', top: emojiPickerPosition.y + 'px' }"
+          @click.stop
+        >
+          <div class="emoji-picker-grid">
+            <button
+              v-for="emoji in commonEmojis"
+              :key="emoji"
+              class="emoji-btn"
+              @click="addReaction(emojiPickerMessageId!, emoji)"
+            >
+              {{ emoji }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
 
     <!-- Mute Dialog -->
     <NModal
@@ -1694,5 +1898,127 @@ function handleClickOutside(event: MouseEvent) {
 
 .message-text :deep(.mention-highlight:hover) {
   background: rgba(var(--color-accent-rgb, 99, 102, 241), 0.25);
+}
+
+/* Reactions */
+.message-reactions,
+.message-reactions-empty {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.message-reactions-empty {
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+}
+
+.message:hover .message-reactions-empty {
+  opacity: 1;
+}
+
+.reaction-badge {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  background: var(--surface-glass-input);
+  border: 1px solid transparent;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  font-size: 14px;
+}
+
+.reaction-badge:hover {
+  background: var(--surface-glass-input-focus);
+}
+
+.reaction-badge.reaction-active {
+  background: rgba(var(--color-accent-rgb, 99, 102, 241), 0.2);
+  border-color: var(--color-accent);
+}
+
+.reaction-emoji {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.reaction-count {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  font-weight: 500;
+}
+
+.reaction-active .reaction-count {
+  color: var(--color-accent);
+}
+
+.reaction-add-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: var(--surface-glass-input);
+  border: 1px dashed rgba(128, 128, 128, 0.3);
+  border-radius: 12px;
+  cursor: pointer;
+  color: var(--color-text-muted);
+  transition: all var(--transition-fast);
+}
+
+.reaction-add-btn:hover {
+  background: var(--surface-glass-input-focus);
+  color: var(--color-text-main);
+  border-style: solid;
+}
+
+/* Emoji Picker */
+.emoji-picker-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+}
+
+.emoji-picker {
+  position: fixed;
+  transform: translateY(-100%);
+  background: var(--surface-glass);
+  border: 1px solid rgba(128, 128, 128, 0.3);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  padding: 8px;
+  backdrop-filter: blur(20px);
+  z-index: 1001;
+}
+
+.emoji-picker.emoji-picker-below {
+  transform: translateY(0);
+}
+
+.emoji-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+}
+
+.emoji-btn {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.emoji-btn:hover {
+  background: var(--surface-glass-input);
 }
 </style>

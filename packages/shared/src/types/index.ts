@@ -43,6 +43,18 @@ export interface Mention {
   username: string
 }
 
+export interface ReactionUser {
+  id: number
+  username: string
+}
+
+export interface ReactionGroup {
+  emoji: string
+  count: number
+  users: ReactionUser[]
+  reacted?: boolean  // Whether current user has reacted (set by frontend)
+}
+
 export interface Message {
   id: number
   channel_id: number
@@ -61,6 +73,8 @@ export interface Message {
   reply_to?: ReplyTo
   // Mentions feature
   mentions?: Mention[]
+  // Reactions feature
+  reactions?: ReactionGroup[]
 }
 
 export interface MuteRecord {
