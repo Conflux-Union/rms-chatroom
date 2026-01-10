@@ -13,11 +13,20 @@ export interface Server {
   icon: string | null
   owner_id: number
   channels?: Channel[]
+  channelGroups?: ChannelGroup[]
+}
+
+export interface ChannelGroup {
+  id: number
+  server_id: number
+  name: string
+  position: number
 }
 
 export interface Channel {
   id: number
   server_id: number
+  group_id: number | null
   name: string
   type: 'text' | 'voice'
   position: number

@@ -671,6 +671,7 @@ async function stopTranscription() {
               >
                 <Link :size="20" />
               </button>
+              <!-- 语音转文字按钮已注释
               <button
                 v-if="canUseTranscription"
                 class="control-btn glow-effect"
@@ -686,6 +687,7 @@ async function stopTranscription() {
               >
                 <MessageSquare :size="20" />
               </button>
+              -->
               <button
                 class="control-btn glow-effect"
                 :class="{ 'screen-share-active': voice.isScreenSharing }"
@@ -705,7 +707,7 @@ async function stopTranscription() {
             </div>
           </div>
           
-          <!-- 右侧：转录面板（仅在展开时显示）-->
+          <!-- 右侧：转录面板已注释
           <div v-if="canViewTranscriptionSidebar && transcriptionExpanded" class="transcription-panel-container">
             <TranscriptionPanel
               ref="transcriptionPanel"
@@ -713,6 +715,7 @@ async function stopTranscription() {
               @toggle-expand="toggleTranscriptionPanel"
             />
           </div>
+          -->
         </div>
 
         <!-- Host mode banner -->

@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import type { Server, Channel, Message, Attachment } from '../types'
+import type { Server, Channel, ChannelGroup, Message, Attachment } from '../types'
 import axios from 'axios'
 import { useAuthStore } from './auth'
 
@@ -66,11 +66,11 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  async function createChannel(serverId: number, name: string, type: 'text' | 'voice') {
+  async function createChannel(serverId: number, name: string, type: 'text' | 'voice', groupId?: number | null) {
     try {
       const resp = await axios.post(
         `${API_BASE}/api/servers/${serverId}/channels`,
-        { name, type },
+        { name, type, group_id: groupId ?? null },
         { headers: getAuthHeaders() }
       )
       await fetchServer(serverId)
@@ -81,8 +81,8 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  // Admin: update channel (rename etc.)
-  async function updateChannel(serverId: number, channelId: number, payload: { name?: string }) {
+  // Admin: update channel (rename, move to group, etc.)
+  async function updateChannel(serverId: number, channelId: number, payload: { name?: string; group_id?: number | null }) {
     try {
       const resp = await axios.patch(
         `${API_BASE}/api/servers/${serverId}/channels/${channelId}`,
@@ -94,6 +94,82 @@ export const useChatStore = defineStore('chat', () => {
       return resp.data
     } catch (e) {
       console.error('Failed to update channel:', e)
+      return null
+    }
+  }
+
+  // Channel Group CRUD
+  async function fetchChannelGroups(serverId: number) {
+    try {
+      const resp = await axios.get(
+        `${API_BASE}/api/servers/${serverId}/channel-groups`,
+        { headers: getAuthHeaders() }
+      )
+      if (currentServer.value && currentServer.value.id === serverId) {
+        currentServer.value.channelGroups = resp.data
+      }
+      return resp.data
+    } catch (e) {
+      console.error('Failed to fetch channel groups:', e)
+      return []
+    }
+  }
+
+  async function createChannelGroup(serverId: number, name: string) {
+    try {
+      const resp = await axios.post(
+        `${API_BASE}/api/servers/${serverId}/channel-groups`,
+        { name },
+        { headers: getAuthHeaders() }
+      )
+      await fetchChannelGroups(serverId)
+      return resp.data
+    } catch (e) {
+      console.error('Failed to create channel group:', e)
+      return null
+    }
+  }
+
+  async function updateChannelGroup(serverId: number, groupId: number, payload: { name?: string }) {
+    try {
+      const resp = await axios.patch(
+        `${API_BASE}/api/servers/${serverId}/channel-groups/${groupId}`,
+        payload,
+        { headers: getAuthHeaders() }
+      )
+      await fetchChannelGroups(serverId)
+      return resp.data
+    } catch (e) {
+      console.error('Failed to update channel group:', e)
+      return null
+    }
+  }
+
+  async function deleteChannelGroup(serverId: number, groupId: number) {
+    try {
+      await axios.delete(
+        `${API_BASE}/api/servers/${serverId}/channel-groups/${groupId}`,
+        { headers: getAuthHeaders() }
+      )
+      await fetchChannelGroups(serverId)
+      await fetchServer(serverId) // Refresh channels as they may have been ungrouped
+    } catch (e) {
+      console.error('Failed to delete channel group:', e)
+    }
+  }
+
+  // Admin: reorder channel groups by providing an ordered list of group ids
+  async function reorderChannelGroups(serverId: number, groupIds: number[]) {
+    try {
+      const resp = await axios.post(
+        `${API_BASE}/api/servers/${serverId}/channel-groups/reorder`,
+        { group_ids: groupIds },
+        { headers: getAuthHeaders() }
+      )
+      await fetchChannelGroups(serverId)
+      return resp.data
+    } catch (e) {
+      console.error('Failed to reorder channel groups:', e)
       return null
     }
   }
@@ -292,5 +368,11 @@ export const useChatStore = defineStore('chat', () => {
     getVoiceChannelUsers,
     uploadFile,
     getFileUrl,
+    // Channel Group functions
+    fetchChannelGroups,
+    createChannelGroup,
+    updateChannelGroup,
+    deleteChannelGroup,
+    reorderChannelGroups,
   }
 })

@@ -33,6 +33,25 @@ class Server(Base):
     channels: Mapped[list["Channel"]] = relationship(
         "Channel", back_populates="server", cascade="all, delete-orphan"
     )
+    channel_groups: Mapped[list["ChannelGroup"]] = relationship(
+        "ChannelGroup", back_populates="server", cascade="all, delete-orphan"
+    )
+
+
+class ChannelGroup(Base):
+    """Channel group for organizing channels."""
+    __tablename__ = "channel_groups"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    server_id: Mapped[int] = mapped_column(ForeignKey("servers.id", ondelete="CASCADE"), nullable=False)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    position: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    server: Mapped["Server"] = relationship("Server", back_populates="channel_groups")
+    channels: Mapped[list["Channel"]] = relationship(
+        "Channel", back_populates="group"
+    )
 
 
 class Channel(Base):
@@ -40,12 +59,14 @@ class Channel(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     server_id: Mapped[int] = mapped_column(ForeignKey("servers.id", ondelete="CASCADE"), nullable=False)
+    group_id: Mapped[int | None] = mapped_column(ForeignKey("channel_groups.id", ondelete="SET NULL"), nullable=True)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     type: Mapped[ChannelType] = mapped_column(SAEnum(ChannelType), default=ChannelType.TEXT)
     position: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     server: Mapped["Server"] = relationship("Server", back_populates="channels")
+    group: Mapped["ChannelGroup | None"] = relationship("ChannelGroup", back_populates="channels")
     messages: Mapped[list["Message"]] = relationship(
         "Message", back_populates="channel", cascade="all, delete-orphan"
     )

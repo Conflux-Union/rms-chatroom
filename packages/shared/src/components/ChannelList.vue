@@ -3,21 +3,30 @@ import { ref, computed, watch, onUnmounted, onMounted, nextTick } from 'vue'
 import { useChatStore } from '../stores/chat'
 import { useAuthStore } from '../stores/auth'
 import { useVoiceStore } from '../stores/voice'
-import { Volume2, MicOff, Crown } from 'lucide-vue-next'
-import { NDropdown, NModal, NInput, NButton, NSpace } from 'naive-ui'
-import type { DropdownOption } from 'naive-ui'
-import type { Channel } from '../types'
+import { Volume2, MicOff, Crown, ChevronDown, ChevronRight } from 'lucide-vue-next'
+import { NDropdown, NModal, NInput, NButton, NSpace, NSelect } from 'naive-ui'
+import type { DropdownOption, SelectOption } from 'naive-ui'
+import type { Channel, ChannelGroup } from '../types'
 import VoiceControls from '../components/VoiceControls.vue'
 
 const chat = useChatStore()
 const auth = useAuthStore()
 const voice = useVoiceStore()
 const showCreate = ref(false)
-const newChannelName = ref('')
-const newChannelType = ref<'text' | 'voice'>('text')
+const newItemName = ref('')
+const newCreateType = ref<'text' | 'voice' | 'group'>('text') // 创建类型：文字频道、语音频道、频道组
+const newChannelGroupId = ref<number | string | null>(null) // 新频道所属的频道组 ('none' 表示无)
+
+const collapsedGroups = ref<Set<number>>(new Set()) // 折叠的频道组
+
 // Channel context menu state (NDropdown)
 const channelDropdown = ref<{ show: boolean; x: number; y: number; channelId: number | null }>({
   show: false, x: 0, y: 0, channelId: null
+})
+
+// Channel Group context menu state
+const groupDropdown = ref<{ show: boolean; x: number; y: number; groupId: number | null }>({
+  show: false, x: 0, y: 0, groupId: null
 })
 
 // Voice user context menu state (NDropdown)
@@ -25,9 +34,28 @@ const userDropdown = ref<{ show: boolean; x: number; y: number; channelId: numbe
   show: false, x: 0, y: 0, channelId: null, userId: null
 })
 
-// Dropdown options
-const channelDropdownOptions: DropdownOption[] = [
-  { label: '删除频道', key: 'delete', props: { style: { color: 'var(--color-danger)' } } }
+// Move channel to group dialog state
+const showMoveChannelDialog = ref(false)
+const moveChannelId = ref<number | null>(null)
+const moveToGroupId = ref<number | string | null>(null)
+
+// Rename group dialog state
+const showRenameGroupDialog = ref(false)
+const renameGroupId = ref<number | null>(null)
+const renameGroupName = ref('')
+
+// Dropdown options - computed to include dynamic group options
+const channelDropdownOptions = computed((): DropdownOption[] => {
+  const options: DropdownOption[] = [
+    { label: '移动到频道组', key: 'move' },
+    { label: '删除频道', key: 'delete', props: { style: { color: 'var(--color-danger)' } } }
+  ]
+  return options
+})
+
+const groupDropdownOptions: DropdownOption[] = [
+  { label: '重命名', key: 'rename' },
+  { label: '删除频道组', key: 'delete', props: { style: { color: 'var(--color-danger)' } } }
 ]
 
 const userDropdownOptions: DropdownOption[] = [
@@ -63,6 +91,8 @@ function stopVoiceUsersPolling() {
 watch(() => chat.currentServer, (server) => {
   if (server) {
     startVoiceUsersPolling()
+    // Fetch channel groups when server changes
+    chat.fetchChannelGroups(server.id)
   } else {
     stopVoiceUsersPolling()
   }
@@ -71,6 +101,49 @@ watch(() => chat.currentServer, (server) => {
 onUnmounted(() => {
   stopVoiceUsersPolling()
 })
+
+// Channel groups
+const channelGroups = computed(() => 
+  chat.currentServer?.channelGroups?.sort((a, b) => a.position - b.position) || []
+)
+
+// Ungrouped channels (channels without a group) - mixed text and voice
+// Use == null to match both null and undefined
+const ungroupedChannels = computed(() => 
+  chat.currentServer?.channels?.filter((c) => c.group_id == null)?.sort((a, b) => a.position - b.position) || []
+)
+
+// Get all channels for a specific group (mixed text and voice)
+function getGroupChannels(groupId: number) {
+  return chat.currentServer?.channels?.filter((c) => c.group_id === groupId)?.sort((a, b) => a.position - b.position) || []
+}
+
+// Toggle group collapse
+function toggleGroupCollapse(groupId: number) {
+  const newSet = new Set(collapsedGroups.value)
+  if (newSet.has(groupId)) {
+    newSet.delete(groupId)
+  } else {
+    newSet.add(groupId)
+  }
+  collapsedGroups.value = newSet
+}
+
+// Group select options for create channel modal
+const groupSelectOptions = computed((): SelectOption[] => {
+  const options: SelectOption[] = [{ label: '无 (独立频道)', value: 'none' }]
+  for (const group of channelGroups.value) {
+    options.push({ label: group.name, value: group.id })
+  }
+  return options
+})
+
+// Create type options
+const createTypeOptions: SelectOption[] = [
+  { label: '文字频道', value: 'text' },
+  { label: '语音频道', value: 'voice' },
+  { label: '频道组', value: 'group' }
+]
 
 const textChannels = computed(() => 
   chat.currentServer?.channels?.filter((c) => c.type === 'text') || []
@@ -84,11 +157,83 @@ function selectChannel(channel: Channel) {
   chat.setCurrentChannel(channel)
 }
 
-async function createChannel() {
-  if (!newChannelName.value.trim() || !chat.currentServer) return
-  await chat.createChannel(chat.currentServer.id, newChannelName.value.trim(), newChannelType.value)
-  newChannelName.value = ''
+// Unified create function for channel or group
+async function createItem() {
+  if (!newItemName.value.trim() || !chat.currentServer) return
+  
+  if (newCreateType.value === 'group') {
+    // Create channel group
+    await chat.createChannelGroup(chat.currentServer.id, newItemName.value.trim())
+  } else {
+    // Create channel (text or voice)
+    const groupId = newChannelGroupId.value === 'none' ? null : (newChannelGroupId.value as number | null)
+    await chat.createChannel(chat.currentServer.id, newItemName.value.trim(), newCreateType.value, groupId)
+  }
+  
+  newItemName.value = ''
+  newChannelGroupId.value = null
+  newCreateType.value = 'text'
   showCreate.value = false
+}
+
+function showGroupContextMenu(event: MouseEvent, groupId: number) {
+  event.preventDefault()
+  event.stopPropagation()
+  groupDropdown.value = { show: true, x: event.clientX, y: event.clientY, groupId }
+}
+
+async function handleGroupDropdownSelect(key: string) {
+  if (key === 'delete') {
+    await deleteChannelGroup()
+  } else if (key === 'rename') {
+    openRenameGroupDialog()
+  }
+  groupDropdown.value.show = false
+}
+
+async function deleteChannelGroup() {
+  if (!groupDropdown.value.groupId || !chat.currentServer) return
+  if (confirm('确定要删除此频道组吗？组内的频道将变为独立频道。')) {
+    await chat.deleteChannelGroup(chat.currentServer.id, groupDropdown.value.groupId)
+  }
+}
+
+// Rename group dialog functions
+function openRenameGroupDialog() {
+  if (!groupDropdown.value.groupId) return
+  const group = channelGroups.value.find(g => g.id === groupDropdown.value.groupId)
+  if (!group) return
+  renameGroupId.value = group.id
+  renameGroupName.value = group.name
+  showRenameGroupDialog.value = true
+}
+
+async function confirmRenameGroup() {
+  if (!renameGroupId.value || !renameGroupName.value.trim() || !chat.currentServer) return
+  await chat.updateChannelGroup(chat.currentServer.id, renameGroupId.value, { name: renameGroupName.value.trim() })
+  showRenameGroupDialog.value = false
+  renameGroupId.value = null
+  renameGroupName.value = ''
+}
+
+// Move channel to group functions
+function openMoveChannelDialog() {
+  if (!channelDropdown.value.channelId) return
+  const channel = chat.currentServer?.channels?.find(c => c.id === channelDropdown.value.channelId)
+  if (!channel) return
+  moveChannelId.value = channel.id
+  moveToGroupId.value = channel.group_id ?? 'none'
+  showMoveChannelDialog.value = true
+}
+
+async function confirmMoveChannel() {
+  if (!moveChannelId.value || !chat.currentServer) return
+  // Convert 'none' to -1 for API (ungroup)
+  const groupId = moveToGroupId.value === 'none' ? -1 : (moveToGroupId.value as number)
+  await chat.updateChannel(chat.currentServer.id, moveChannelId.value, { group_id: groupId })
+  showMoveChannelDialog.value = false
+  moveChannelId.value = null
+  moveToGroupId.value = null
 }
 
 function showChannelContextMenu(event: MouseEvent, channelId: number) {
@@ -99,6 +244,7 @@ function showChannelContextMenu(event: MouseEvent, channelId: number) {
 function hideAllDropdowns() {
   channelDropdown.value = { show: false, x: 0, y: 0, channelId: null }
   userDropdown.value = { show: false, x: 0, y: 0, channelId: null, userId: null }
+  groupDropdown.value = { show: false, x: 0, y: 0, groupId: null }
 }
 
 function showUserContextMenu(event: MouseEvent, channelId: number, userId: string) {
@@ -110,6 +256,8 @@ function showUserContextMenu(event: MouseEvent, channelId: number, userId: strin
 async function handleChannelDropdownSelect(key: string) {
   if (key === 'delete') {
     await deleteChannel()
+  } else if (key === 'move') {
+    openMoveChannelDialog()
   }
   channelDropdown.value.show = false
 }
@@ -132,6 +280,8 @@ const editedName = ref('')
 
 // Drag & drop state
 const dragSourceId = ref<number | null>(null)
+const dragSourceType = ref<'channel' | 'group' | null>(null)
+const dragSourceGroupId = ref<number | null>(null) // The group the dragged channel belongs to
 
 // Sidebar width state for a full-height right-edge resizer
 const width = ref<number>(300)
@@ -252,10 +402,26 @@ watch(editMode, (val) => {
 //   await chat.reorderChannels(chat.currentServer.id, ids)
 // }
 
-function onDragStart(event: DragEvent, channelId: number) {
+// Channel drag functions
+function onChannelDragStart(event: DragEvent, channelId: number, groupId: number | null = null) {
   if (!auth.isAdmin || !editMode.value) return
   dragSourceId.value = channelId
-  try { event.dataTransfer?.setData('text/plain', String(channelId)) } catch {}
+  dragSourceType.value = 'channel'
+  dragSourceGroupId.value = groupId
+  try { 
+    event.dataTransfer?.setData('text/plain', JSON.stringify({ type: 'channel', id: channelId, groupId })) 
+  } catch {}
+}
+
+// Group drag functions
+function onGroupDragStart(event: DragEvent, groupId: number) {
+  if (!auth.isAdmin || !editMode.value) return
+  dragSourceId.value = groupId
+  dragSourceType.value = 'group'
+  dragSourceGroupId.value = null
+  try { 
+    event.dataTransfer?.setData('text/plain', JSON.stringify({ type: 'group', id: groupId })) 
+  } catch {}
 }
 
 function onDragOver(event: DragEvent) {
@@ -263,34 +429,70 @@ function onDragOver(event: DragEvent) {
   event.preventDefault()
 }
 
-async function onDrop(event: DragEvent, targetId: number, type: 'text' | 'voice') {
+// Drop on a channel (reorder channels within same group or ungrouped)
+async function onChannelDrop(event: DragEvent, targetId: number, targetGroupId: number | null = null) {
   if (!auth.isAdmin || !editMode.value) return
   event.preventDefault()
-  const srcId = dragSourceId.value !== null ? dragSourceId.value : Number(event.dataTransfer?.getData('text/plain') || -1)
-  dragSourceId.value = null
-  if (!chat.currentServer || srcId === -1 || srcId === targetId) return
-
-  const all = [...(chat.currentServer.channels || [])].sort((a, b) => a.position - b.position)
-  const typeList = all.filter(c => c.type === type)
-  const srcIdx = typeList.findIndex(c => c.id === srcId)
-  const tgtIdx = typeList.findIndex(c => c.id === targetId)
-  if (srcIdx === -1 || tgtIdx === -1) return
-
-  const moved = typeList.splice(srcIdx, 1)[0]
-  if (!moved) return
-  typeList.splice(tgtIdx, 0, moved)
-
-  const newAll: typeof all = []
-  let p = 0
-  for (const c of all) {
-    if (c.type === type) {
-      const r = typeList[p++]
-      if (r) newAll.push(r)
-    } else {
-      newAll.push(c)
-    }
+  event.stopPropagation()
+  
+  // Only handle channel drops
+  if (dragSourceType.value !== 'channel') {
+    resetDragState()
+    return
   }
-
+  
+  const srcId = dragSourceId.value
+  const srcGroupId = dragSourceGroupId.value
+  resetDragState()
+  
+  if (!chat.currentServer || srcId === null || srcId === targetId) return
+  
+  // Get channels in the same group (or ungrouped)
+  const allChannels = [...(chat.currentServer.channels || [])].sort((a, b) => a.position - b.position)
+  
+  // If source and target are in different groups, we need to move the channel first
+  if (srcGroupId !== targetGroupId) {
+    // Move channel to target group first
+    await chat.updateChannel(chat.currentServer.id, srcId, { group_id: targetGroupId === null ? -1 : targetGroupId })
+    return // The server will refresh and show the new order
+  }
+  
+  // Same group - just reorder
+  const groupChannels = allChannels.filter(c => 
+    targetGroupId === null ? c.group_id == null : c.group_id === targetGroupId
+  )
+  
+  const srcIdx = groupChannels.findIndex(c => c.id === srcId)
+  const tgtIdx = groupChannels.findIndex(c => c.id === targetId)
+  if (srcIdx === -1 || tgtIdx === -1) return
+  
+  const moved = groupChannels.splice(srcIdx, 1)[0]
+  if (!moved) return
+  groupChannels.splice(tgtIdx, 0, moved)
+  
+  // Rebuild full channel list maintaining order
+  const newAll: typeof allChannels = []
+  const groupedChannels = new Map<number | null, typeof allChannels>()
+  
+  // Group channels by group_id
+  for (const c of allChannels) {
+    const gid = c.group_id ?? null
+    if (!groupedChannels.has(gid)) groupedChannels.set(gid, [])
+    groupedChannels.get(gid)!.push(c)
+  }
+  
+  // Replace the reordered group
+  groupedChannels.set(targetGroupId, groupChannels)
+  
+  // Flatten back - groups first, then ungrouped
+  for (const group of channelGroups.value) {
+    const gChannels = groupedChannels.get(group.id) || []
+    newAll.push(...gChannels)
+  }
+  // Add ungrouped channels
+  const ungrouped = groupedChannels.get(null) || []
+  newAll.push(...ungrouped)
+  
   // Optimistic UI update
   try {
     if (chat.currentServer && (chat.currentServer as any).channels) {
@@ -299,10 +501,73 @@ async function onDrop(event: DragEvent, targetId: number, type: 'text' | 'voice'
   } catch (e) {
     console.warn('Optimistic channel update failed', e)
   }
-
+  
   const ids = newAll.map(c => c.id)
-  console.debug('onDrop reorder ids:', ids)
   await chat.reorderChannels(chat.currentServer.id, ids)
+}
+
+// Drop on a group header (reorder groups)
+async function onGroupDrop(event: DragEvent, targetGroupId: number) {
+  if (!auth.isAdmin || !editMode.value) return
+  event.preventDefault()
+  event.stopPropagation()
+  
+  // Handle group reordering
+  if (dragSourceType.value === 'group') {
+    const srcId = dragSourceId.value
+    resetDragState()
+    
+    if (!chat.currentServer || srcId === null || srcId === targetGroupId) return
+    
+    const groups = [...channelGroups.value]
+    const srcIdx = groups.findIndex(g => g.id === srcId)
+    const tgtIdx = groups.findIndex(g => g.id === targetGroupId)
+    if (srcIdx === -1 || tgtIdx === -1) return
+    
+    const moved = groups.splice(srcIdx, 1)[0]
+    if (!moved) return
+    groups.splice(tgtIdx, 0, moved)
+    
+    // Optimistic UI update
+    try {
+      if (chat.currentServer && (chat.currentServer as any).channelGroups) {
+        ;(chat.currentServer as any).channelGroups = groups
+      }
+    } catch (e) {
+      console.warn('Optimistic group update failed', e)
+    }
+    
+    const ids = groups.map(g => g.id)
+    await chat.reorderChannelGroups(chat.currentServer.id, ids)
+    return
+  }
+  
+  // Handle channel drop on group (move channel to group)
+  if (dragSourceType.value === 'channel') {
+    const srcId = dragSourceId.value
+    const srcGroupId = dragSourceGroupId.value
+    resetDragState()
+    
+    if (!chat.currentServer || srcId === null) return
+    if (srcGroupId === targetGroupId) return // Already in this group
+    
+    await chat.updateChannel(chat.currentServer.id, srcId, { group_id: targetGroupId })
+  }
+}
+
+function resetDragState() {
+  dragSourceId.value = null
+  dragSourceType.value = null
+  dragSourceGroupId.value = null
+}
+
+// Legacy function for backward compatibility
+function onDragStart(event: DragEvent, channelId: number) {
+  onChannelDragStart(event, channelId, null)
+}
+
+async function onDrop(event: DragEvent, targetId: number, type: 'text' | 'voice') {
+  await onChannelDrop(event, targetId, null)
 }
 
 async function muteVoiceUser() {
@@ -340,65 +605,138 @@ async function deleteChannel() {
       </div>
 
       <div class="channels">
-        <div class="channel-category">
-          <span class="category-name">文字频道</span>
-          <button v-if="auth.isAdmin" class="add-channel" @click="showCreate = true; newChannelType = 'text'">+</button>
-        </div>
-        <div
-          v-for="channel in textChannels"
-          :key="channel.id"
-          class="channel glow-effect"
-          :class="{ active: chat.currentChannel?.id === channel.id }"
-          @click="selectChannel(channel)"
-          @contextmenu="auth.isAdmin ? showChannelContextMenu($event, channel.id) : undefined"
-          :draggable="auth.isAdmin && editMode"
-          @dragstart="onDragStart($event, channel.id)"
-          @dragover="onDragOver($event)"
-          @drop="onDrop($event, channel.id, 'text')"
-        >
-          <span class="channel-icon">#</span>
-          <span v-if="editMode" class="drag-handle" @dragstart="onDragStart($event, channel.id)" draggable="true">☰</span>
-          <template v-if="editingChannelId === channel.id">
-            <input
-              class="inline-edit custom-input"
-              v-model="editedName"
-              @keyup.enter="saveInlineEdit(channel)"
-              @keyup.esc="cancelInlineEdit"
-              @blur="saveInlineEdit(channel)"
-              @click.stop
-              autofocus
-            />
-          </template>
-          <template v-else>
-            <span class="channel-name" @dblclick.stop="auth.isAdmin && editMode ? startInlineEdit(channel) : undefined">{{ channel.name }}</span>
-          </template>
-          <div v-if="editMode" class="edit-actions" @click.stop>
-            <button v-if="editingChannelId !== channel.id" class="small" @click="renameChannel(channel)">重命名</button>
-            <!-- <button v-if="!isFirstInType(channel)" class="small" @click="moveChannel(channel, -1)">↑</button>
-            <button v-if="!isLastInType(channel)" class="small" @click="moveChannel(channel, 1)">↓</button> -->
+        <!-- Channel Groups -->
+        <div v-for="group in channelGroups" :key="'group-' + group.id" class="channel-group">
+          <div 
+            class="channel-group-header"
+            :draggable="auth.isAdmin && editMode"
+            @click="toggleGroupCollapse(group.id)"
+            @contextmenu="auth.isAdmin && editMode ? showGroupContextMenu($event, group.id) : undefined"
+            @dragstart="onGroupDragStart($event, group.id)"
+            @dragover="onDragOver($event)"
+            @drop="onGroupDrop($event, group.id)"
+          >
+            <span v-if="editMode" class="drag-handle">☰</span>
+            <ChevronDown v-if="!collapsedGroups.has(group.id)" :size="14" class="collapse-icon" />
+            <ChevronRight v-else :size="14" class="collapse-icon" />
+            <span class="group-name">{{ group.name }}</span>
+            <button v-if="auth.isAdmin && editMode" class="add-channel" @click.stop="showCreate = true; newCreateType = 'text'; newChannelGroupId = group.id">+</button>
+          </div>
+          
+          <!-- Group channels (mixed text and voice) -->
+          <div v-if="!collapsedGroups.has(group.id)" class="group-channels">
+            <template v-for="channel in getGroupChannels(group.id)" :key="channel.id">
+              <!-- Text channel -->
+              <div
+                v-if="channel.type === 'text'"
+                class="channel glow-effect"
+                :class="{ active: chat.currentChannel?.id === channel.id }"
+                @click="selectChannel(channel)"
+                @contextmenu="auth.isAdmin && editMode ? showChannelContextMenu($event, channel.id) : undefined"
+                :draggable="auth.isAdmin && editMode"
+                @dragstart="onChannelDragStart($event, channel.id, group.id)"
+                @dragover="onDragOver($event)"
+                @drop="onChannelDrop($event, channel.id, group.id)"
+              >
+                <span class="channel-icon">#</span>
+                <span v-if="editMode" class="drag-handle">☰</span>
+                <template v-if="editingChannelId === channel.id">
+                  <input
+                    class="inline-edit custom-input"
+                    v-model="editedName"
+                    @keyup.enter="saveInlineEdit(channel)"
+                    @keyup.esc="cancelInlineEdit"
+                    @blur="saveInlineEdit(channel)"
+                    @click.stop
+                    autofocus
+                  />
+                </template>
+                <template v-else>
+                  <span class="channel-name" @dblclick.stop="auth.isAdmin && editMode ? startInlineEdit(channel) : undefined">{{ channel.name }}</span>
+                </template>
+                <div v-if="editMode" class="edit-actions" @click.stop>
+                  <button v-if="editingChannelId !== channel.id" class="small" @click="renameChannel(channel)">重命名</button>
+                </div>
+              </div>
+              
+              <!-- Voice channel -->
+              <div v-else class="voice-channel-wrapper">
+                <div
+                  class="channel glow-effect"
+                  :class="{ active: chat.currentChannel?.id === channel.id }"
+                  @click="selectChannel(channel)"
+                  @contextmenu="auth.isAdmin && editMode ? showChannelContextMenu($event, channel.id) : undefined"
+                  :draggable="auth.isAdmin && editMode"
+                  @dragstart="onChannelDragStart($event, channel.id, group.id)"
+                  @dragover="onDragOver($event)"
+                  @drop="onChannelDrop($event, channel.id, group.id)"
+                >
+                  <span v-if="editMode" class="drag-handle">☰</span>
+                  <Volume2 class="channel-icon" :size="18" />
+                  <template v-if="editingChannelId === channel.id">
+                    <input
+                      class="inline-edit custom-input"
+                      v-model="editedName"
+                      @keyup.enter="saveInlineEdit(channel)"
+                      @keyup.esc="cancelInlineEdit"
+                      @blur="saveInlineEdit(channel)"
+                      @click.stop
+                      autofocus
+                    />
+                  </template>
+                  <template v-else>
+                    <span class="channel-name" @dblclick.stop="auth.isAdmin && editMode ? startInlineEdit(channel) : undefined">{{ channel.name }}</span>
+                  </template>
+                  <span v-if="chat.getVoiceChannelUsers(channel.id).length > 0" class="user-count">
+                    {{ chat.getVoiceChannelUsers(channel.id).length }}
+                  </span>
+                  <div v-if="editMode" class="edit-actions" @click.stop>
+                    <button v-if="editingChannelId !== channel.id" class="small" @click="renameChannel(channel)">重命名</button>
+                  </div>
+                </div>
+                <div
+                  v-if="chat.getVoiceChannelUsers(channel.id).length > 0"
+                  class="voice-users-list"
+                >
+                  <div
+                    v-for="user in chat.getVoiceChannelUsers(channel.id)"
+                    :key="user.id"
+                    class="voice-user-item"
+                    @contextmenu="auth.isAdmin ? showUserContextMenu($event, channel.id, user.id) : undefined"
+                  >
+                    <div class="voice-user-avatar-wrapper">
+                      <span class="voice-user-avatar">{{ user.name.charAt(0).toUpperCase() }}</span>
+                      <Crown v-if="user.is_host" class="voice-user-host-badge" :size="10" />
+                    </div>
+                    <span class="voice-user-name">{{ user.name }}</span>
+                    <MicOff v-if="user.is_muted" class="voice-user-muted" :size="12" />
+                  </div>
+                </div>
+              </div>
+            </template>
           </div>
         </div>
 
+        <!-- Ungrouped Channels (mixed text and voice) -->
         <div class="channel-category">
-          <span class="category-name">语音频道</span>
-          <button v-if="auth.isAdmin" class="add-channel" @click="showCreate = true; newChannelType = 'voice'">+</button>
+          <span class="category-name">频道</span>
+          <button v-if="auth.isAdmin" class="add-channel-btn" @click.stop="showCreate = true; newCreateType = 'text'; newChannelGroupId = 'none'" title="创建频道/频道组">+</button>
         </div>
-        <div
-          v-for="channel in voiceChannels"
-          :key="channel.id"
-          class="voice-channel-wrapper"
-        >
+        <template v-for="channel in ungroupedChannels" :key="channel.id">
+          <!-- Text channel -->
           <div
+            v-if="channel.type === 'text'"
             class="channel glow-effect"
             :class="{ active: chat.currentChannel?.id === channel.id }"
             @click="selectChannel(channel)"
-            @contextmenu="auth.isAdmin ? showChannelContextMenu($event, channel.id) : undefined"
+            @contextmenu="auth.isAdmin && editMode ? showChannelContextMenu($event, channel.id) : undefined"
             :draggable="auth.isAdmin && editMode"
-            @dragstart="onDragStart($event, channel.id)"
+            @dragstart="onChannelDragStart($event, channel.id, null)"
             @dragover="onDragOver($event)"
-            @drop="onDrop($event, channel.id, 'voice')"
+            @drop="onChannelDrop($event, channel.id, null)"
           >
-            <Volume2 class="channel-icon" :size="18" />
+            <span class="channel-icon">#</span>
+            <span v-if="editMode" class="drag-handle">☰</span>
             <template v-if="editingChannelId === channel.id">
               <input
                 class="inline-edit custom-input"
@@ -413,35 +751,66 @@ async function deleteChannel() {
             <template v-else>
               <span class="channel-name" @dblclick.stop="auth.isAdmin && editMode ? startInlineEdit(channel) : undefined">{{ channel.name }}</span>
             </template>
-            <span v-if="chat.getVoiceChannelUsers(channel.id).length > 0" class="user-count">
-              {{ chat.getVoiceChannelUsers(channel.id).length }}
-            </span>
             <div v-if="editMode" class="edit-actions" @click.stop>
               <button v-if="editingChannelId !== channel.id" class="small" @click="renameChannel(channel)">重命名</button>
-              <!-- <button v-if="!isFirstInType(channel)" class="small" @click="moveChannel(channel, -1)">↑</button>
-              <button v-if="!isLastInType(channel)" class="small" @click="moveChannel(channel, 1)">↓</button> -->
-            </div>
-          </div>
-          <div
-            v-if="chat.getVoiceChannelUsers(channel.id).length > 0"
-            class="voice-users-list"
-          >
-            <div
-              v-for="user in chat.getVoiceChannelUsers(channel.id)"
-              :key="user.id"
-              class="voice-user-item"
-              @contextmenu="auth.isAdmin ? showUserContextMenu($event, channel.id, user.id) : undefined"
-            >
-              <div class="voice-user-avatar-wrapper">
-                <span class="voice-user-avatar">{{ user.name.charAt(0).toUpperCase() }}</span>
-                <Crown v-if="user.is_host" class="voice-user-host-badge" :size="10" />
-              </div>
-              <span class="voice-user-name">{{ user.name }}</span>
-              <MicOff v-if="user.is_muted" class="voice-user-muted" :size="12" />
             </div>
           </div>
           
-        </div>
+          <!-- Voice channel -->
+          <div v-else class="voice-channel-wrapper">
+            <div
+              class="channel glow-effect"
+              :class="{ active: chat.currentChannel?.id === channel.id }"
+              @click="selectChannel(channel)"
+              @contextmenu="auth.isAdmin && editMode ? showChannelContextMenu($event, channel.id) : undefined"
+              :draggable="auth.isAdmin && editMode"
+              @dragstart="onChannelDragStart($event, channel.id, null)"
+              @dragover="onDragOver($event)"
+              @drop="onChannelDrop($event, channel.id, null)"
+            >
+              <span v-if="editMode" class="drag-handle">☰</span>
+              <Volume2 class="channel-icon" :size="18" />
+              <template v-if="editingChannelId === channel.id">
+                <input
+                  class="inline-edit custom-input"
+                  v-model="editedName"
+                  @keyup.enter="saveInlineEdit(channel)"
+                  @keyup.esc="cancelInlineEdit"
+                  @blur="saveInlineEdit(channel)"
+                  @click.stop
+                  autofocus
+                />
+              </template>
+              <template v-else>
+                <span class="channel-name" @dblclick.stop="auth.isAdmin && editMode ? startInlineEdit(channel) : undefined">{{ channel.name }}</span>
+              </template>
+              <span v-if="chat.getVoiceChannelUsers(channel.id).length > 0" class="user-count">
+                {{ chat.getVoiceChannelUsers(channel.id).length }}
+              </span>
+              <div v-if="editMode" class="edit-actions" @click.stop>
+                <button v-if="editingChannelId !== channel.id" class="small" @click="renameChannel(channel)">重命名</button>
+              </div>
+            </div>
+            <div
+              v-if="chat.getVoiceChannelUsers(channel.id).length > 0"
+              class="voice-users-list"
+            >
+              <div
+                v-for="user in chat.getVoiceChannelUsers(channel.id)"
+                :key="user.id"
+                class="voice-user-item"
+                @contextmenu="auth.isAdmin ? showUserContextMenu($event, channel.id, user.id) : undefined"
+              >
+                <div class="voice-user-avatar-wrapper">
+                  <span class="voice-user-avatar">{{ user.name.charAt(0).toUpperCase() }}</span>
+                  <Crown v-if="user.is_host" class="voice-user-host-badge" :size="10" />
+                </div>
+                <span class="voice-user-name">{{ user.name }}</span>
+                <MicOff v-if="user.is_muted" class="voice-user-muted" :size="12" />
+              </div>
+            </div>
+          </div>
+        </template>
       </div>
       
       <div class="user-panel">
@@ -466,6 +835,18 @@ async function deleteChannel() {
       @clickoutside="channelDropdown.show = false"
     />
 
+    <!-- Channel Group Context Menu (NDropdown) -->
+    <NDropdown
+      placement="bottom-start"
+      trigger="manual"
+      :x="groupDropdown.x"
+      :y="groupDropdown.y"
+      :options="groupDropdownOptions"
+      :show="groupDropdown.show && auth.isAdmin"
+      @select="handleGroupDropdownSelect"
+      @clickoutside="groupDropdown.show = false"
+    />
+
     <!-- Voice User Context Menu (NDropdown) -->
     <NDropdown
       placement="bottom-start"
@@ -478,23 +859,79 @@ async function deleteChannel() {
       @clickoutside="userDropdown.show = false"
     />
 
-    <!-- Create Channel Modal -->
+    <!-- Create Channel/Group Modal -->
     <NModal
       v-model:show="showCreate"
       preset="card"
-      :title="'创建' + (newChannelType === 'text' ? '文字' : '语音') + '频道'"
+      title="创建频道/频道组"
+      style="width: 360px"
+      :segmented="{ content: true, footer: 'soft' }"
+    >
+      <NSpace vertical>
+        <NSelect
+          v-model:value="newCreateType"
+          :options="createTypeOptions"
+          placeholder="选择类型"
+        />
+        <NInput
+          v-model:value="newItemName"
+          :placeholder="newCreateType === 'group' ? '频道组名称' : '频道名称'"
+          @keyup.enter="createItem"
+        />
+        <NSelect
+          v-if="newCreateType !== 'group' && channelGroups.length > 0"
+          v-model:value="newChannelGroupId"
+          :options="groupSelectOptions"
+          placeholder="选择频道组（可选）"
+          clearable
+        />
+      </NSpace>
+      <template #footer>
+        <NSpace justify="end">
+          <NButton @click="showCreate = false">取消</NButton>
+          <NButton type="primary" @click="createItem">创建</NButton>
+        </NSpace>
+      </template>
+    </NModal>
+
+    <!-- Rename Channel Group Modal -->
+    <NModal
+      v-model:show="showRenameGroupDialog"
+      preset="card"
+      title="重命名频道组"
       style="width: 360px"
       :segmented="{ content: true, footer: 'soft' }"
     >
       <NInput
-        v-model:value="newChannelName"
-        placeholder="频道名称"
-        @keyup.enter="createChannel"
+        v-model:value="renameGroupName"
+        placeholder="新名称"
+        @keyup.enter="confirmRenameGroup"
       />
       <template #footer>
         <NSpace justify="end">
-          <NButton @click="showCreate = false">取消</NButton>
-          <NButton type="primary" @click="createChannel">创建</NButton>
+          <NButton @click="showRenameGroupDialog = false">取消</NButton>
+          <NButton type="primary" @click="confirmRenameGroup">确定</NButton>
+        </NSpace>
+      </template>
+    </NModal>
+
+    <!-- Move Channel to Group Modal -->
+    <NModal
+      v-model:show="showMoveChannelDialog"
+      preset="card"
+      title="移动频道到频道组"
+      style="width: 360px"
+      :segmented="{ content: true, footer: 'soft' }"
+    >
+      <NSelect
+        v-model:value="moveToGroupId"
+        :options="groupSelectOptions"
+        placeholder="选择目标频道组"
+      />
+      <template #footer>
+        <NSpace justify="end">
+          <NButton @click="showMoveChannelDialog = false">取消</NButton>
+          <NButton type="primary" @click="confirmMoveChannel">确定</NButton>
         </NSpace>
       </template>
     </NModal>
@@ -633,6 +1070,28 @@ async function deleteChannel() {
   font-weight: 600;
   color: var(--color-text-muted);
   text-transform: uppercase;
+}
+
+.add-channel-btn {
+  background: transparent;
+  border: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  font-size: 18px;
+  font-weight: 500;
+  padding: 0 8px;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: all var(--transition-fast);
+}
+
+.add-channel-btn:hover {
+  color: var(--color-text-bright);
+  background: rgba(255, 255, 255, 0.1);
 }
 
 .add-channel {
@@ -842,5 +1301,91 @@ async function deleteChannel() {
   padding: 4px;
   border-radius: var(--radius-sm);
   cursor: pointer;
+}
+
+/* Channel Group Styles */
+.channel-group {
+  margin-bottom: 4px;
+}
+
+.channel-group-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  margin: 4px 8px;
+  cursor: pointer;
+  color: var(--color-text-main);
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(135deg, rgba(88, 101, 242, 0.15) 0%, rgba(88, 101, 242, 0.05) 100%);
+  border-left: 3px solid var(--color-primary);
+  transition: all var(--transition-fast);
+}
+
+.channel-group-header:hover {
+  background: linear-gradient(135deg, rgba(88, 101, 242, 0.25) 0%, rgba(88, 101, 242, 0.1) 100%);
+  color: var(--color-text-bright);
+}
+
+.channel-group-header .drag-handle {
+  cursor: grab;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  opacity: 0.6;
+  transition: opacity var(--transition-fast);
+}
+
+.channel-group-header .drag-handle:hover {
+  opacity: 1;
+}
+
+.channel-group-header .drag-handle:active {
+  cursor: grabbing;
+}
+
+.channel-group-header .collapse-icon {
+  flex-shrink: 0;
+  opacity: 0.8;
+  color: var(--color-primary);
+  transition: transform var(--transition-fast);
+}
+
+.channel-group-header .group-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.channel-group-header .add-channel {
+  opacity: 0;
+  background: var(--color-primary);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  width: 20px;
+  height: 20px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.channel-group-header .add-channel:hover {
+  background: var(--color-primary-hover);
+  transform: scale(1.1);
+}
+
+.channel-group-header:hover .add-channel {
+  opacity: 1;
+}
+
+.group-channels {
+  padding-left: 12px;
+  margin-left: 8px;
+  border-left: 1px solid rgba(88, 101, 242, 0.2);
 }
 </style>
