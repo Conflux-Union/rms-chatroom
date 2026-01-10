@@ -80,7 +80,9 @@ object AppModule {
             context,
             AppDatabase::class.java,
             "rms_discord.db"
-        ).build()
+        )
+            .fallbackToDestructiveMigration()
+            .build()
     }
 
     @Provides

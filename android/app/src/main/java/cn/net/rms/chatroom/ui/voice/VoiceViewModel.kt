@@ -226,11 +226,24 @@ class VoiceViewModel @Inject constructor(
     )
 
     fun setChannelId(channelId: Long, channelName: String = "") {
+        val previousChannelId = _channelId.value
+        val wasConnected = _state.value.isConnected
+        
         _channelId.value = channelId
         _channelName.value = channelName
+        
         // Fetch current voice users from API
         viewModelScope.launch {
             voiceRepository.fetchVoiceUsers(channelId)
+        }
+        
+        // If already connected to a different channel, switch to the new one
+        if (wasConnected && previousChannelId != null && previousChannelId != channelId) {
+            viewModelScope.launch {
+                _isLoading.value = true
+                voiceRepository.joinVoice(channelId, channelName)
+                _isLoading.value = false
+            }
         }
     }
 

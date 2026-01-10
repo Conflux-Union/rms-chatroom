@@ -4,6 +4,7 @@ import android.net.Uri
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import cn.net.rms.chatroom.data.api.ChannelMember
 import cn.net.rms.chatroom.data.model.Channel
 import cn.net.rms.chatroom.data.model.ChannelType
 import cn.net.rms.chatroom.data.model.Server
@@ -39,7 +40,8 @@ data class MainState(
     val isDownloading: Boolean = false,
     val downloadComplete: Boolean = false,
     val lastReadMessageId: Long? = null,
-    val showContinueReading: Boolean = false
+    val showContinueReading: Boolean = false,
+    val channelMembers: List<ChannelMember> = emptyList()
 )
 
 @HiltViewModel
@@ -203,10 +205,10 @@ class MainViewModel @Inject constructor(
         }
     }
 
-    fun sendMessage(content: String, attachmentIds: List<Long> = emptyList()) {
+    fun sendMessage(content: String, attachmentIds: List<Long> = emptyList(), replyToId: Long? = null) {
         val channelId = _state.value.currentChannel?.id ?: return
         viewModelScope.launch {
-            chatRepository.sendMessage(channelId, content, attachmentIds)
+            chatRepository.sendMessage(channelId, content, attachmentIds, replyToId)
                 .onFailure { e ->
                     _state.value = _state.value.copy(error = "发送失败: ${e.message}")
                 }
@@ -413,6 +415,39 @@ class MainViewModel @Inject constructor(
 
     fun disconnectVoice() {
         voiceRepository.leaveVoice()
+    }
+
+    // Reaction methods
+    fun addReaction(messageId: Long, emoji: String) {
+        viewModelScope.launch {
+            chatRepository.addReaction(messageId, emoji)
+                .onFailure { e ->
+                    _state.value = _state.value.copy(error = "添加表情失败: ${e.message}")
+                }
+        }
+    }
+
+    fun removeReaction(messageId: Long, emoji: String) {
+        viewModelScope.launch {
+            chatRepository.removeReaction(messageId, emoji)
+                .onFailure { e ->
+                    _state.value = _state.value.copy(error = "移除表情失败: ${e.message}")
+                }
+        }
+    }
+
+    // Channel members for @mention autocomplete
+    fun fetchChannelMembers() {
+        val channelId = _state.value.currentChannel?.id ?: return
+        viewModelScope.launch {
+            chatRepository.getChannelMembers(channelId)
+                .onSuccess { members ->
+                    _state.value = _state.value.copy(channelMembers = members)
+                }
+                .onFailure { e ->
+                    Log.e(TAG, "Failed to fetch channel members: ${e.message}")
+                }
+        }
     }
 
     override fun onCleared() {
