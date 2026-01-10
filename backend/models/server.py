@@ -16,9 +16,9 @@ class ChannelType(str, Enum):
 
 
 class MuteScope(str, Enum):
-    GLOBAL = "global"      # Global mute (all servers)
-    SERVER = "server"      # Server-level mute (all channels in server)
-    CHANNEL = "channel"    # Channel-level mute (specific channel only)
+    GLOBAL = "global"  # Global mute (all servers)
+    SERVER = "server"  # Server-level mute (all channels in server)
+    CHANNEL = "channel"  # Channel-level mute (specific channel only)
 
 
 class Server(Base):
@@ -39,9 +39,13 @@ class Channel(Base):
     __tablename__ = "channels"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    server_id: Mapped[int] = mapped_column(ForeignKey("servers.id", ondelete="CASCADE"), nullable=False)
+    server_id: Mapped[int] = mapped_column(
+        ForeignKey("servers.id", ondelete="CASCADE"), nullable=False
+    )
     name: Mapped[str] = mapped_column(String(100), nullable=False)
-    type: Mapped[ChannelType] = mapped_column(SAEnum(ChannelType), default=ChannelType.TEXT)
+    type: Mapped[ChannelType] = mapped_column(
+        SAEnum(ChannelType), default=ChannelType.TEXT
+    )
     position: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
@@ -58,11 +62,15 @@ class Message(Base):
     __tablename__ = "messages"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    channel_id: Mapped[int] = mapped_column(ForeignKey("channels.id", ondelete="CASCADE"), nullable=False, index=True)
+    channel_id: Mapped[int] = mapped_column(
+        ForeignKey("channels.id", ondelete="CASCADE"), nullable=False, index=True
+    )
     user_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
     username: Mapped[str] = mapped_column(String(100), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False, default="")
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, index=True
+    )
 
     # Message recall/deletion fields
     is_deleted: Mapped[bool] = mapped_column(default=False, index=True)
@@ -72,7 +80,18 @@ class Message(Base):
     # Message editing field
     edited_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
+    # Reply feature
+    reply_to_id: Mapped[int | None] = mapped_column(
+        ForeignKey("messages.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+
+    # Mentions feature - JSON array of user IDs: "[1, 2, 3]"
+    mentioned_user_ids: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     channel: Mapped["Channel"] = relationship("Channel", back_populates="messages")
+    reply_to: Mapped["Message | None"] = relationship(
+        "Message", remote_side="Message.id", foreign_keys=[reply_to_id], lazy="joined"
+    )
     attachments: Mapped[list["Attachment"]] = relationship(
         "Attachment", back_populates="message", cascade="all, delete-orphan"
     )
@@ -80,11 +99,16 @@ class Message(Base):
 
 class Attachment(Base):
     """File attachment for messages."""
+
     __tablename__ = "attachments"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    message_id: Mapped[int | None] = mapped_column(ForeignKey("messages.id", ondelete="CASCADE"), nullable=True, index=True)
-    channel_id: Mapped[int] = mapped_column(ForeignKey("channels.id", ondelete="CASCADE"), nullable=False, index=True)
+    message_id: Mapped[int | None] = mapped_column(
+        ForeignKey("messages.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    channel_id: Mapped[int] = mapped_column(
+        ForeignKey("channels.id", ondelete="CASCADE"), nullable=False, index=True
+    )
     user_id: Mapped[int] = mapped_column(Integer, nullable=False)
     filename: Mapped[str] = mapped_column(String(255), nullable=False)
     stored_name: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
@@ -92,14 +116,18 @@ class Attachment(Base):
     size: Mapped[int] = mapped_column(Integer, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
-    message: Mapped["Message | None"] = relationship("Message", back_populates="attachments")
+    message: Mapped["Message | None"] = relationship(
+        "Message", back_populates="attachments"
+    )
 
 
 class VoiceState(Base):
     __tablename__ = "voice_states"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    channel_id: Mapped[int] = mapped_column(ForeignKey("channels.id", ondelete="CASCADE"), nullable=False)
+    channel_id: Mapped[int] = mapped_column(
+        ForeignKey("channels.id", ondelete="CASCADE"), nullable=False
+    )
     user_id: Mapped[int] = mapped_column(Integer, nullable=False, unique=True)
     username: Mapped[str] = mapped_column(String(100), nullable=False)
     muted: Mapped[bool] = mapped_column(default=False)
@@ -111,11 +139,16 @@ class VoiceState(Base):
 
 class VoiceInvite(Base):
     """Single-use invite link for guest access to voice channels."""
+
     __tablename__ = "voice_invites"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    channel_id: Mapped[int] = mapped_column(ForeignKey("channels.id", ondelete="CASCADE"), nullable=False)
-    token: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    channel_id: Mapped[int] = mapped_column(
+        ForeignKey("channels.id", ondelete="CASCADE"), nullable=False
+    )
+    token: Mapped[str] = mapped_column(
+        String(64), unique=True, index=True, nullable=False
+    )
     created_by: Mapped[int] = mapped_column(Integer, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     used: Mapped[bool] = mapped_column(default=False)
@@ -127,6 +160,7 @@ class VoiceInvite(Base):
 
 class MuteRecord(Base):
     """User mute records with three scopes: global, server, or channel."""
+
     __tablename__ = "mute_records"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
@@ -141,7 +175,9 @@ class MuteRecord(Base):
         ForeignKey("channels.id", ondelete="CASCADE"), nullable=True, index=True
     )
 
-    muted_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)  # NULL = permanent mute
+    muted_until: Mapped[datetime | None] = mapped_column(
+        DateTime, nullable=True
+    )  # NULL = permanent mute
     muted_by: Mapped[int] = mapped_column(Integer, nullable=False)
     reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
