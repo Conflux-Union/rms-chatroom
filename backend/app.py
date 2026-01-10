@@ -16,7 +16,7 @@ from .core.config import get_settings
 
 logger = logging.getLogger(__name__)
 from .core.database import init_db
-from .routers import auth, servers, channels, messages, files, system, music, bug_report, app_update, voice_recognition, moderation
+from .routers import auth, servers, channels, channel_groups, messages, files, system, music, bug_report, app_update, voice_recognition, moderation
 from .websocket import chat, voice, music as music_ws, transcription
 
 
@@ -61,6 +61,7 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(servers.router)
 app.include_router(channels.router)
+app.include_router(channel_groups.router)
 app.include_router(messages.router)
 app.include_router(files.router)
 app.include_router(system.router)

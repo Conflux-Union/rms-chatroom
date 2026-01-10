@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.database import get_db
-from ..models.server import Channel, ChannelType, Server
+from ..models.server import Channel, ChannelType, Server, ChannelGroup
 from .deps import CurrentUser, AdminUser
 
 
@@ -16,10 +16,12 @@ router = APIRouter(prefix="/api/servers/{server_id}/channels", tags=["channels"]
 class ChannelCreate(BaseModel):
     name: str
     type: str = "text"
+    group_id: int | None = None  # Optional: assign to a channel group
 
 
 class ChannelUpdate(BaseModel):
     name: str | None = None
+    group_id: int | None = None  # Optional: move to a different group (use -1 to ungroup)
 
 
 class ReorderRequest(BaseModel):
@@ -29,6 +31,7 @@ class ReorderRequest(BaseModel):
 class ChannelResponse(BaseModel):
     id: int
     server_id: int
+    group_id: int | None
     name: str
     type: str
     position: int
@@ -46,7 +49,7 @@ async def list_channels(server_id: int, user: CurrentUser, db: AsyncSession = De
     channels = result.scalars().all()
     return [
         ChannelResponse(
-            id=c.id, server_id=c.server_id, name=c.name, type=c.type.value, position=c.position
+            id=c.id, server_id=c.server_id, group_id=c.group_id, name=c.name, type=c.type.value, position=c.position
         )
         for c in channels
     ]
@@ -62,6 +65,14 @@ async def create_channel(
     if not server_result.scalar_one_or_none():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Server not found")
 
+    # Verify group exists if provided
+    if payload.group_id is not None:
+        group_result = await db.execute(
+            select(ChannelGroup).where(ChannelGroup.id == payload.group_id, ChannelGroup.server_id == server_id)
+        )
+        if not group_result.scalar_one_or_none():
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Channel group not found")
+
     # Get max position
     pos_result = await db.execute(
         select(Channel.position).where(Channel.server_id == server_id).order_by(Channel.position.desc())
@@ -71,6 +82,7 @@ async def create_channel(
     channel_type = ChannelType.VOICE if payload.type == "voice" else ChannelType.TEXT
     channel = Channel(
         server_id=server_id,
+        group_id=payload.group_id,
         name=payload.name,
         type=channel_type,
         position=max_pos + 1,
@@ -81,6 +93,7 @@ async def create_channel(
     return ChannelResponse(
         id=channel.id,
         server_id=channel.server_id,
+        group_id=channel.group_id,
         name=channel.name,
         type=channel.type.value,
         position=channel.position,
@@ -106,9 +119,26 @@ async def update_channel(
     if payload.name is not None:
         channel.name = payload.name
 
+    # Handle group_id update: -1 means ungroup, None means no change, positive int means move to group
+    if payload.group_id is not None:
+        if payload.group_id == -1:
+            # Ungroup the channel
+            channel.group_id = None
+        else:
+            # Verify group exists
+            group_result = await db.execute(
+                select(ChannelGroup).where(ChannelGroup.id == payload.group_id, ChannelGroup.server_id == server_id)
+            )
+            if not group_result.scalar_one_or_none():
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Channel group not found")
+            channel.group_id = payload.group_id
+
     await db.flush()
 
-    return ChannelResponse(id=channel.id, server_id=channel.server_id, name=channel.name, type=channel.type.value, position=channel.position)
+    return ChannelResponse(
+        id=channel.id, server_id=channel.server_id, group_id=channel.group_id,
+        name=channel.name, type=channel.type.value, position=channel.position
+    )
 
 
 @router.post("/reorder", response_model=list[ChannelResponse])
@@ -170,7 +200,7 @@ async def reorder_channels(
     sorted_channels = result.scalars().all()
 
     return [
-        ChannelResponse(id=c.id, server_id=c.server_id, name=c.name, type=c.type.value, position=c.position)
+        ChannelResponse(id=c.id, server_id=c.server_id, group_id=c.group_id, name=c.name, type=c.type.value, position=c.position)
         for c in sorted_channels
     ]
 
