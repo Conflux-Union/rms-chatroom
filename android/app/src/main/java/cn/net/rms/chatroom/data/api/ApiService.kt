@@ -328,6 +328,28 @@ interface ApiService {
         @Part file: MultipartBody.Part
     ): BugReportResponse
 
+    // Reactions
+    @POST("api/messages/{messageId}/reactions")
+    suspend fun addReaction(
+        @Header("Authorization") token: String,
+        @Path("messageId") messageId: Long,
+        @Body body: AddReactionRequest
+    ): ReactionResponse
+
+    @DELETE("api/messages/{messageId}/reactions/{emoji}")
+    suspend fun removeReaction(
+        @Header("Authorization") token: String,
+        @Path("messageId") messageId: Long,
+        @Path("emoji") emoji: String
+    )
+
+    // Channel Members (for @mention autocomplete)
+    @GET("api/channels/{channelId}/messages/members")
+    suspend fun getChannelMembers(
+        @Header("Authorization") token: String,
+        @Path("channelId") channelId: Long
+    ): List<ChannelMember>
+
     // App Update - GitHub Release
     @GET
     suspend fun checkGitHubRelease(@Url url: String): GitHubReleaseResponse
@@ -336,7 +358,9 @@ interface ApiService {
 data class SendMessageBody(
     val content: String = "",
     @SerializedName("attachment_ids")
-    val attachmentIds: List<Long> = emptyList()
+    val attachmentIds: List<Long> = emptyList(),
+    @SerializedName("reply_to_id")
+    val replyToId: Long? = null
 )
 data class GuestJoinBody(val username: String)
 data class CreateChannelRequest(val name: String, val type: String = "text")
@@ -346,6 +370,24 @@ data class CreateServerRequest(val name: String, val icon: String? = null)
 data class BugReportResponse(
     @SerializedName("report_id")
     val reportId: String
+)
+
+// Reactions
+data class AddReactionRequest(
+    val emoji: String
+)
+
+data class ReactionResponse(
+    val success: Boolean,
+    val emoji: String,
+    @SerializedName("message_id")
+    val messageId: Long
+)
+
+// Channel Members (for @mention)
+data class ChannelMember(
+    val id: Long,
+    val username: String
 )
 
 // GitHub Release Response

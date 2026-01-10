@@ -40,6 +40,30 @@ export interface Attachment {
   url: string
 }
 
+export interface ReplyTo {
+  id: number
+  user_id: number
+  username: string
+  content: string  // Truncated preview
+}
+
+export interface Mention {
+  id: number
+  username: string
+}
+
+export interface ReactionUser {
+  id: number
+  username: string
+}
+
+export interface ReactionGroup {
+  emoji: string
+  count: number
+  users: ReactionUser[]
+  reacted?: boolean  // Whether current user has reacted (set by frontend)
+}
+
 export interface Message {
   id: number
   channel_id: number
@@ -53,6 +77,13 @@ export interface Message {
   deleted_by?: number
   deleted_by_username?: string
   edited_at?: string
+  // Reply feature
+  reply_to_id?: number
+  reply_to?: ReplyTo
+  // Mentions feature
+  mentions?: Mention[]
+  // Reactions feature
+  reactions?: ReactionGroup[]
 }
 
 export interface MuteRecord {

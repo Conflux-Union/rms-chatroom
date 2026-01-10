@@ -17,9 +17,9 @@ import {
   NProgress,
   useDialog,
 } from 'naive-ui'
-import { Paperclip, Send, Upload, X, Image, Video, Music, FileText, File, MoreVertical, ArrowUp } from 'lucide-vue-next'
+import { Paperclip, Send, Upload, X, Image, Video, Music, FileText, File, MoreVertical, ArrowUp, Reply, CornerUpLeft, SmilePlus } from 'lucide-vue-next'
 import FilePreview from './FilePreview.vue'
-import type { Attachment, Message } from '../types'
+import type { Attachment, Message, ReactionGroup } from '../types'
 import axios from 'axios'
 
 const dialog = useDialog()
@@ -57,6 +57,8 @@ const contextMenuOptions = computed(() => {
   const msg = contextMenu.value.message
   if (!msg) return []
   const opts: Array<{ label: string; key: string }> = []
+  opts.push({ label: 'Add Reaction', key: 'reaction' })
+  opts.push({ label: 'Reply', key: 'reply' })
   if (canEdit(msg)) opts.push({ label: 'Edit', key: 'edit' })
   if (canDelete(msg)) opts.push({ label: 'Delete', key: 'delete' })
   if (canMute(msg)) opts.push({ label: 'Mute User', key: 'mute' })
@@ -66,8 +68,22 @@ const contextMenuOptions = computed(() => {
 function handleContextMenuSelect(key: string) {
   const msg = contextMenu.value.message
   if (!msg) return
+  const menuX = contextMenu.value.x
+  const menuY = contextMenu.value.y
   hideContextMenu()
-  if (key === 'edit') startEdit(msg)
+  if (key === 'reaction') {
+    // Show emoji picker at context menu position
+    const pickerHeight = 180
+    const showBelow = menuY < pickerHeight
+    emojiPickerPosition.value = {
+      x: menuX,
+      y: showBelow ? menuY + 10 : menuY - 10,
+      showBelow,
+    }
+    emojiPickerMessageId.value = msg.id
+    showEmojiPicker.value = true
+  } else if (key === 'reply') startReply(msg)
+  else if (key === 'edit') startEdit(msg)
   else if (key === 'delete') confirmDeleteMessage(msg)
   else if (key === 'mute') showMuteDialog(msg)
 }
@@ -89,6 +105,37 @@ const durationOptions = [
 
 // Edit message state
 const editingMessage = ref<{ id: number; content: string } | null>(null)
+
+// Reply state
+const replyingTo = ref<Message | null>(null)
+
+// Mention autocomplete state
+const mentionQuery = ref('')
+const mentionStartIndex = ref(-1)
+const showMentionDropdown = ref(false)
+const mentionDropdownPosition = ref({ x: 0, y: 0 })
+const selectedMentionIndex = ref(0)
+const messageInputRef = ref<HTMLInputElement | null>(null)
+
+// Extract unique users from messages for mention autocomplete
+const channelUsers = computed(() => {
+  const userMap = new Map<number, { id: number; username: string }>()
+  for (const msg of chat.messages) {
+    if (!userMap.has(msg.user_id)) {
+      userMap.set(msg.user_id, { id: msg.user_id, username: msg.username })
+    }
+  }
+  return Array.from(userMap.values())
+})
+
+// Filtered users for mention autocomplete
+const filteredMentionUsers = computed(() => {
+  if (!mentionQuery.value) return channelUsers.value.slice(0, 10)
+  const query = mentionQuery.value.toLowerCase()
+  return channelUsers.value
+    .filter(u => u.username.toLowerCase().includes(query))
+    .slice(0, 10)
+})
 
 // Mute dialog state
 const muteDialog = ref<{
@@ -112,6 +159,14 @@ const muteDialog = ref<{
 // Mute status
 const isMuted = ref(false)
 const muteReason = ref('')
+
+// Reaction state
+const showEmojiPicker = ref(false)
+const emojiPickerMessageId = ref<number | null>(null)
+const emojiPickerPosition = ref({ x: 0, y: 0, showBelow: false })
+
+// Common emojis for quick reactions
+const commonEmojis = ['👍', '❤️', '😂', '😮', '😢', '🎉', '🔥', '👀']
 
 // Read position tracking
 const {
@@ -146,6 +201,8 @@ function connectWebSocket(channelId: number) {
         deleted_by: undefined,
         deleted_by_username: undefined,
         edited_at: undefined,
+        reply_to_id: data.reply_to_id,
+        reply_to: data.reply_to,
       })
       scrollToBottom()
     } else if (data.type === 'message_deleted') {
@@ -167,6 +224,43 @@ function connectWebSocket(channelId: number) {
       // User is muted
       isMuted.value = true
       muteReason.value = data.message || 'You are muted'
+    } else if (data.type === 'reaction_added') {
+      // Add reaction to message
+      const message = chat.messages.find(m => m.id === data.message_id)
+      if (message) {
+        if (!message.reactions) message.reactions = []
+        const existingGroup = message.reactions.find(r => r.emoji === data.emoji)
+        if (existingGroup) {
+          // Check if user already in the group
+          if (!existingGroup.users.some(u => u.id === data.user_id)) {
+            existingGroup.count++
+            existingGroup.users.push({ id: data.user_id, username: data.username })
+          }
+        } else {
+          message.reactions.push({
+            emoji: data.emoji,
+            count: 1,
+            users: [{ id: data.user_id, username: data.username }],
+          })
+        }
+      }
+    } else if (data.type === 'reaction_removed') {
+      // Remove reaction from message
+      const message = chat.messages.find(m => m.id === data.message_id)
+      if (message && message.reactions) {
+        const groupIndex = message.reactions.findIndex(r => r.emoji === data.emoji)
+        if (groupIndex !== -1) {
+          const group = message.reactions[groupIndex]
+          const userIndex = group.users.findIndex(u => u.id === data.user_id)
+          if (userIndex !== -1) {
+            group.users.splice(userIndex, 1)
+            group.count--
+            if (group.count <= 0) {
+              message.reactions.splice(groupIndex, 1)
+            }
+          }
+        }
+      }
     }
   })
 
@@ -197,16 +291,6 @@ watch(
 onMounted(() => {
   // Close context menu on click outside
   document.addEventListener('click', hideContextMenu)
-})
-
-onUnmounted(() => {
-  if (ws) {
-    ws.disconnect()
-  }
-  if (scrollSaveTimeout) {
-    clearTimeout(scrollSaveTimeout)
-  }
-  document.removeEventListener('click', hideContextMenu)
 })
 
 function scrollToBottom() {
@@ -351,10 +435,12 @@ async function sendMessage() {
     type: 'message',
     content: content,
     attachment_ids: attachmentIds,
+    reply_to_id: replyingTo.value?.id || null,
   })
   
   messageInput.value = ''
   uploadedAttachments.value = []
+  replyingTo.value = null
 }
 
 function formatTime(dateStr: string) {
@@ -494,6 +580,120 @@ function startEdit(message: Message) {
 
 function cancelEdit() {
   editingMessage.value = null
+}
+
+// Reply functions
+function startReply(message: Message) {
+  replyingTo.value = message
+  hideContextMenu()
+}
+
+function cancelReply() {
+  replyingTo.value = null
+}
+
+// Mention autocomplete functions
+function handleInputChange(event: Event) {
+  const input = event.target as HTMLInputElement
+  const value = input.value
+  const cursorPos = input.selectionStart || 0
+
+  // Find if we're in a mention context (after @)
+  const textBeforeCursor = value.slice(0, cursorPos)
+  const lastAtIndex = textBeforeCursor.lastIndexOf('@')
+
+  if (lastAtIndex !== -1) {
+    // Check if there's a space between @ and cursor (would end the mention)
+    const textAfterAt = textBeforeCursor.slice(lastAtIndex + 1)
+    if (!textAfterAt.includes(' ')) {
+      mentionStartIndex.value = lastAtIndex
+      mentionQuery.value = textAfterAt
+      showMentionDropdown.value = true
+      selectedMentionIndex.value = 0
+      return
+    }
+  }
+
+  // Not in mention context
+  showMentionDropdown.value = false
+  mentionQuery.value = ''
+  mentionStartIndex.value = -1
+}
+
+function handleInputKeydown(event: KeyboardEvent) {
+  if (showMentionDropdown.value && filteredMentionUsers.value.length > 0) {
+    if (event.key === 'ArrowDown') {
+      event.preventDefault()
+      selectedMentionIndex.value = Math.min(
+        selectedMentionIndex.value + 1,
+        filteredMentionUsers.value.length - 1
+      )
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault()
+      selectedMentionIndex.value = Math.max(selectedMentionIndex.value - 1, 0)
+    } else if (event.key === 'Enter' || event.key === 'Tab') {
+      event.preventDefault()
+      const selectedUser = filteredMentionUsers.value[selectedMentionIndex.value]
+      if (selectedUser) {
+        selectMention(selectedUser)
+      }
+    } else if (event.key === 'Escape') {
+      event.preventDefault()
+      showMentionDropdown.value = false
+    }
+  } else if (event.key === 'Enter' && !event.shiftKey) {
+    event.preventDefault()
+    sendMessage()
+  }
+}
+
+function selectMention(user: { id: number; username: string }) {
+  if (mentionStartIndex.value === -1) return
+
+  const input = messageInputRef.value
+  if (!input) return
+
+  const value = messageInput.value
+  const beforeMention = value.slice(0, mentionStartIndex.value)
+  const afterCursor = value.slice(input.selectionStart || mentionStartIndex.value + mentionQuery.value.length + 1)
+
+  // Insert @username with a space after
+  messageInput.value = `${beforeMention}@${user.username} ${afterCursor}`
+
+  // Reset mention state
+  showMentionDropdown.value = false
+  mentionQuery.value = ''
+  mentionStartIndex.value = -1
+
+  // Focus back on input and set cursor position
+  nextTick(() => {
+    if (input) {
+      const newCursorPos = beforeMention.length + user.username.length + 2 // +2 for @ and space
+      input.focus()
+      input.setSelectionRange(newCursorPos, newCursorPos)
+    }
+  })
+}
+
+// Render message content with @mention highlighting
+function renderMessageContent(content: string): string {
+  // Escape HTML to prevent XSS
+  const escapeHtml = (text: string) => {
+    const div = document.createElement('div')
+    div.textContent = text
+    return div.innerHTML
+  }
+
+  // First escape the content
+  const escaped = escapeHtml(content)
+
+  // Then highlight @mentions
+  // Match @username (word characters only)
+  // IMPORTANT: Also escape the captured username to prevent XSS via escaped entities
+  const mentionRegex = /@(\w+)/g
+  return escaped.replace(mentionRegex, (_match, username) => {
+    return `<span class="mention-highlight">@${escapeHtml(username)}</span>`
+  })
 }
 
 async function saveEdit() {
@@ -649,8 +849,150 @@ function handleClickOutside(event: MouseEvent) {
   if (contextMenu.value.visible) {
     hideContextMenu()
   }
+  // Close emoji picker when clicking outside
+  if (showEmojiPicker.value) {
+    showEmojiPicker.value = false
+    emojiPickerMessageId.value = null
+  }
 }
 
+// Reaction functions
+function showReactionPicker(event: MouseEvent, messageId: number) {
+  event.stopPropagation()
+  const rect = (event.target as HTMLElement).getBoundingClientRect()
+  // Emoji picker height is approximately 180px (4 rows * 36px + padding)
+  const pickerHeight = 180
+  const spaceAbove = rect.top
+  const showBelow = spaceAbove < pickerHeight
+
+  emojiPickerPosition.value = {
+    x: rect.left,
+    y: showBelow ? rect.bottom + 10 : rect.top - 10,
+    showBelow,
+  }
+  emojiPickerMessageId.value = messageId
+  showEmojiPicker.value = true
+}
+
+function hideReactionPicker() {
+  showEmojiPicker.value = false
+  emojiPickerMessageId.value = null
+}
+
+async function addReaction(messageId: number, emoji: string) {
+  if (!chat.currentChannel) return
+
+  try {
+    await axios.post(
+      `${API_BASE}/api/messages/${messageId}/reactions`,
+      { emoji },
+      { headers: { Authorization: `Bearer ${auth.token}` } }
+    )
+  } catch (error: any) {
+    console.error('Failed to add reaction:', error)
+  }
+
+  hideReactionPicker()
+}
+
+async function toggleReaction(messageId: number, emoji: string) {
+  if (!chat.currentChannel || !auth.user) return
+
+  const message = chat.messages.find(m => m.id === messageId)
+  if (!message) return
+
+  const existingGroup = message.reactions?.find(r => r.emoji === emoji)
+  const hasReacted = existingGroup?.users.some(u => u.id === auth.user!.id)
+
+  try {
+    if (hasReacted) {
+      // Remove reaction
+      await axios.delete(
+        `${API_BASE}/api/messages/${messageId}/reactions/${encodeURIComponent(emoji)}`,
+        { headers: { Authorization: `Bearer ${auth.token}` } }
+      )
+    } else {
+      // Add reaction
+      await axios.post(
+        `${API_BASE}/api/messages/${messageId}/reactions`,
+        { emoji },
+        { headers: { Authorization: `Bearer ${auth.token}` } }
+      )
+    }
+  } catch (error: any) {
+    console.error('Failed to toggle reaction:', error)
+  }
+}
+
+function hasUserReacted(reactions: ReactionGroup[] | undefined, emoji: string): boolean {
+  if (!reactions || !auth.user) return false
+  const group = reactions.find(r => r.emoji === emoji)
+  return group?.users.some(u => u.id === auth.user!.id) ?? false
+}
+
+function getReactionTooltip(reaction: ReactionGroup): string {
+  const names = reaction.users.map(u => u.username).slice(0, 5)
+  if (reaction.users.length > 5) {
+    names.push(`+${reaction.users.length - 5} more`)
+  }
+  return names.join(', ')
+}
+
+// Get the original message for reply reference (to access attachments)
+function getReplyOriginalMessage(replyToId: number): Message | undefined {
+  return chat.messages.find(m => m.id === replyToId)
+}
+
+// Cache for reply thumbnail blob URLs (attachment id -> blob url)
+const replyThumbnailCache = ref<Map<number, string>>(new Map())
+
+// Load reply thumbnail with auth header
+async function loadReplyThumbnail(attachmentId: number, attachmentUrl: string): Promise<string | null> {
+  // Check cache first
+  if (replyThumbnailCache.value.has(attachmentId)) {
+    return replyThumbnailCache.value.get(attachmentId)!
+  }
+
+  try {
+    const res = await fetch(`${API_BASE}${attachmentUrl}?inline=1`, {
+      headers: { Authorization: `Bearer ${auth.token}` }
+    })
+    if (res.ok) {
+      const blob = await res.blob()
+      const blobUrl = URL.createObjectURL(blob)
+      replyThumbnailCache.value.set(attachmentId, blobUrl)
+      return blobUrl
+    }
+  } catch (e) {
+    console.error('Failed to load reply thumbnail:', e)
+  }
+  return null
+}
+
+// Get cached thumbnail or trigger load
+function getReplyThumbnailUrl(attachmentId: number, attachmentUrl: string): string | null {
+  const cached = replyThumbnailCache.value.get(attachmentId)
+  if (cached) return cached
+
+  // Trigger async load (will update cache and re-render)
+  loadReplyThumbnail(attachmentId, attachmentUrl)
+  return null
+}
+
+// Cleanup blob URLs on unmount
+onUnmounted(() => {
+  if (ws) {
+    ws.disconnect()
+  }
+  if (scrollSaveTimeout) {
+    clearTimeout(scrollSaveTimeout)
+  }
+  document.removeEventListener('click', hideContextMenu)
+  // Revoke all cached blob URLs
+  for (const url of replyThumbnailCache.value.values()) {
+    URL.revokeObjectURL(url)
+  }
+})
 </script>
 
 <template>
@@ -752,10 +1094,34 @@ function handleClickOutside(event: MouseEvent) {
           </div>
 
           <!-- Normal message display -->
-          <div v-else>
-            <div v-if="msg.content" class="message-text">
-              {{ msg.content }}
+          <div v-else class="message-body">
+            <!-- Reply reference -->
+            <div
+              v-if="msg.reply_to"
+              class="message-reply-ref"
+              @click="scrollToMessage(msg.reply_to.id)"
+            >
+              <CornerUpLeft :size="14" class="reply-icon" />
+              <span class="reply-author">{{ msg.reply_to.username }}</span>
+              <template v-if="msg.reply_to.content">
+                <span class="reply-content">{{ msg.reply_to.content }}</span>
+              </template>
+              <template v-else>
+                <!-- No text content, check for attachments in original message -->
+                <template v-if="getReplyOriginalMessage(msg.reply_to.id)?.attachments?.length">
+                  <img
+                    v-if="getReplyOriginalMessage(msg.reply_to.id)!.attachments![0].content_type.startsWith('image/') && getReplyThumbnailUrl(getReplyOriginalMessage(msg.reply_to.id)!.attachments![0].id, getReplyOriginalMessage(msg.reply_to.id)!.attachments![0].url)"
+                    :src="getReplyThumbnailUrl(getReplyOriginalMessage(msg.reply_to.id)!.attachments![0].id, getReplyOriginalMessage(msg.reply_to.id)!.attachments![0].url)!"
+                    class="reply-thumbnail"
+                    alt="image"
+                  />
+                  <span v-else-if="getReplyOriginalMessage(msg.reply_to.id)!.attachments![0].content_type.startsWith('image/')" class="reply-content">[图片]</span>
+                  <span v-else class="reply-content">[附件]</span>
+                </template>
+                <span v-else class="reply-content">[附件]</span>
+              </template>
             </div>
+            <div v-if="msg.content" class="message-text" v-html="renderMessageContent(msg.content)"></div>
             <!-- Attachments -->
             <div v-if="msg.attachments?.length" class="message-attachments">
               <FilePreview
@@ -763,6 +1129,37 @@ function handleClickOutside(event: MouseEvent) {
                 :key="att.id"
                 :attachment="att"
               />
+            </div>
+            <!-- Reactions -->
+            <div v-if="msg.reactions?.length" class="message-reactions">
+              <button
+                v-for="reaction in msg.reactions"
+                :key="reaction.emoji"
+                class="reaction-badge"
+                :class="{ 'reaction-active': hasUserReacted(msg.reactions, reaction.emoji) }"
+                :title="getReactionTooltip(reaction)"
+                @click="toggleReaction(msg.id, reaction.emoji)"
+              >
+                <span class="reaction-emoji">{{ reaction.emoji }}</span>
+                <span class="reaction-count">{{ reaction.count }}</span>
+              </button>
+              <button
+                class="reaction-add-btn"
+                @click="showReactionPicker($event, msg.id)"
+                title="Add Reaction"
+              >
+                <SmilePlus :size="16" />
+              </button>
+            </div>
+            <!-- Add reaction button when no reactions yet -->
+            <div v-else class="message-reactions-empty">
+              <button
+                class="reaction-add-btn"
+                @click="showReactionPicker($event, msg.id)"
+                title="Add Reaction"
+              >
+                <SmilePlus :size="16" />
+              </button>
             </div>
           </div>
         </div>
@@ -803,18 +1200,58 @@ function handleClickOutside(event: MouseEvent) {
       </div>
     </div>
 
+    <!-- Reply preview bar -->
+    <div v-if="replyingTo" class="reply-preview-bar">
+      <div class="reply-preview-content">
+        <Reply :size="16" class="reply-preview-icon" />
+        <span class="reply-preview-label">回复</span>
+        <span class="reply-preview-author">{{ replyingTo.username }}</span>
+        <span class="reply-preview-text">
+          <template v-if="replyingTo.content">{{ replyingTo.content.slice(0, 100) }}{{ replyingTo.content.length > 100 ? '...' : '' }}</template>
+          <template v-else-if="replyingTo.attachments?.length">
+            <Image v-if="replyingTo.attachments[0].content_type.startsWith('image/')" :size="14" style="vertical-align: middle; margin-right: 4px;" />
+            <span>[{{ replyingTo.attachments[0].content_type.startsWith('image/') ? '图片' : '附件' }}]</span>
+          </template>
+        </span>
+      </div>
+      <button class="reply-preview-close" @click="cancelReply">
+        <X :size="16" />
+      </button>
+    </div>
+
     <div class="chat-input">
       <input type="file" ref="fileInput" @change="handleFileSelect" multiple hidden />
       <button class="attach-btn" @click="triggerFileSelect" title="添加附件" :disabled="isMuted">
         <Paperclip :size="20" />
       </button>
-      <input
-        v-model="messageInput"
-        :placeholder="isMuted ? muteReason : `发送消息到 #${chat.currentChannel?.name || ''}`"
-        @keyup.enter="sendMessage"
-        class="message-input"
-        :disabled="isMuted"
-      />
+      <div class="input-wrapper">
+        <input
+          ref="messageInputRef"
+          v-model="messageInput"
+          :placeholder="isMuted ? muteReason : `发送消息到 #${chat.currentChannel?.name || ''}`"
+          @keydown="handleInputKeydown"
+          @input="handleInputChange"
+          class="message-input"
+          :disabled="isMuted"
+        />
+        <!-- Mention autocomplete dropdown -->
+        <div
+          v-if="showMentionDropdown && filteredMentionUsers.length > 0"
+          class="mention-dropdown"
+        >
+          <div
+            v-for="(user, index) in filteredMentionUsers"
+            :key="user.id"
+            class="mention-item"
+            :class="{ 'mention-item-selected': index === selectedMentionIndex }"
+            @click="selectMention(user)"
+            @mouseenter="selectedMentionIndex = index"
+          >
+            <div class="mention-avatar">{{ user.username.charAt(0).toUpperCase() }}</div>
+            <span class="mention-username">{{ user.username }}</span>
+          </div>
+        </div>
+      </div>
       <button
         class="send-btn"
         @click="sendMessage"
@@ -836,6 +1273,33 @@ function handleClickOutside(event: MouseEvent) {
       @select="handleContextMenuSelect"
       @clickoutside="hideContextMenu"
     />
+
+    <!-- Emoji Picker Popup -->
+    <Teleport to="body">
+      <div
+        v-if="showEmojiPicker && emojiPickerMessageId"
+        class="emoji-picker-overlay"
+        @click="hideReactionPicker"
+      >
+        <div
+          class="emoji-picker"
+          :class="{ 'emoji-picker-below': emojiPickerPosition.showBelow }"
+          :style="{ left: emojiPickerPosition.x + 'px', top: emojiPickerPosition.y + 'px' }"
+          @click.stop
+        >
+          <div class="emoji-picker-grid">
+            <button
+              v-for="emoji in commonEmojis"
+              :key="emoji"
+              class="emoji-btn"
+              @click="addReaction(emojiPickerMessageId!, emoji)"
+            >
+              {{ emoji }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
 
     <!-- Mute Dialog -->
     <NModal
@@ -1180,7 +1644,7 @@ function handleClickOutside(event: MouseEvent) {
 }
 
 .message-input {
-  flex: 1;
+  width: 100%;
   padding: 12px 16px;
   border: 1px solid transparent;
   border-radius: var(--radius-md);
@@ -1326,5 +1790,318 @@ function handleClickOutside(event: MouseEvent) {
   100% {
     background: transparent;
   }
+}
+
+/* Reply Reference in Message */
+.message-reply-ref {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  margin-bottom: 4px;
+  background: var(--surface-glass);
+  border-left: 2px solid var(--color-accent);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background var(--transition-fast);
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.message-reply-ref:hover {
+  background: var(--surface-glass-input);
+}
+
+.message-reply-ref .reply-icon {
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+}
+
+.message-reply-ref .reply-author {
+  color: var(--color-accent);
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+.message-reply-ref .reply-content {
+  color: var(--color-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.message-reply-ref .reply-thumbnail {
+  height: 36px;
+  max-width: 60px;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+}
+
+/* Reply Preview Bar */
+.reply-preview-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  background: var(--surface-glass);
+  border-top: 1px solid rgba(128, 128, 128, 0.2);
+  border-left: 3px solid var(--color-accent);
+}
+
+.reply-preview-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.reply-preview-icon {
+  color: var(--color-accent);
+  flex-shrink: 0;
+}
+
+.reply-preview-label {
+  color: var(--color-text-muted);
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.reply-preview-author {
+  color: var(--color-accent);
+  font-weight: 500;
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+.reply-preview-text {
+  color: var(--color-text-muted);
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.reply-preview-close {
+  background: none;
+  border: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.reply-preview-close:hover {
+  background: var(--surface-glass-input);
+  color: var(--color-text-main);
+}
+
+/* Input wrapper for mention dropdown positioning */
+.input-wrapper {
+  flex: 1;
+  position: relative;
+}
+
+/* Mention Autocomplete Dropdown */
+.mention-dropdown {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  margin-bottom: 8px;
+  background: var(--surface-glass);
+  border: 1px solid rgba(128, 128, 128, 0.3);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  max-height: 200px;
+  overflow-y: auto;
+  z-index: 100;
+  backdrop-filter: blur(20px);
+}
+
+.mention-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.mention-item:hover,
+.mention-item-selected {
+  background: var(--surface-glass-input);
+}
+
+.mention-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--color-gradient-primary);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-weight: 600;
+  font-size: 12px;
+  color: #fff;
+  flex-shrink: 0;
+}
+
+.mention-username {
+  color: var(--color-text-main);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+/* Mention highlight in message content */
+.message-text :deep(.mention-highlight) {
+  color: var(--color-accent);
+  background: rgba(var(--color-accent-rgb, 99, 102, 241), 0.15);
+  padding: 0 4px;
+  border-radius: 4px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.message-text :deep(.mention-highlight:hover) {
+  background: rgba(var(--color-accent-rgb, 99, 102, 241), 0.25);
+}
+
+/* Reactions */
+.message-reactions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+/* Empty reactions container - collapses when not hovered */
+.message-reactions-empty {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  max-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  margin-top: 0;
+  transition: max-height 0.2s ease, opacity 0.2s ease, margin-top 0.2s ease;
+}
+
+.message:hover .message-reactions-empty {
+  max-height: 40px;
+  opacity: 1;
+  margin-top: 6px;
+}
+
+.reaction-badge {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  background: var(--surface-glass-input);
+  border: 1px solid transparent;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  font-size: 14px;
+}
+
+.reaction-badge:hover {
+  background: var(--surface-glass-input-focus);
+}
+
+.reaction-badge.reaction-active {
+  background: rgba(var(--color-accent-rgb, 99, 102, 241), 0.2);
+  border-color: var(--color-accent);
+}
+
+.reaction-emoji {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.reaction-count {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  font-weight: 500;
+}
+
+.reaction-active .reaction-count {
+  color: var(--color-accent);
+}
+
+.reaction-add-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: var(--surface-glass-input);
+  border: 1px dashed rgba(128, 128, 128, 0.3);
+  border-radius: 12px;
+  cursor: pointer;
+  color: var(--color-text-muted);
+  transition: all var(--transition-fast);
+}
+
+.reaction-add-btn:hover {
+  background: var(--surface-glass-input-focus);
+  color: var(--color-text-main);
+  border-style: solid;
+}
+
+/* Emoji Picker */
+.emoji-picker-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+}
+
+.emoji-picker {
+  position: fixed;
+  transform: translateY(-100%);
+  background: var(--surface-glass);
+  border: 1px solid rgba(128, 128, 128, 0.3);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  padding: 8px;
+  backdrop-filter: blur(20px);
+  z-index: 1001;
+}
+
+.emoji-picker.emoji-picker-below {
+  transform: translateY(0);
+}
+
+.emoji-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+}
+
+.emoji-btn {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.emoji-btn:hover {
+  background: var(--surface-glass-input);
 }
 </style>

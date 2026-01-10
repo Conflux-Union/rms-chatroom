@@ -47,6 +47,34 @@ data class Attachment(
     val url: String
 )
 
+// Reply feature models
+data class ReplyTo(
+    val id: Long,
+    @SerializedName("user_id")
+    val userId: Long,
+    val username: String,
+    val content: String  // Truncated preview
+)
+
+// Mention feature models
+data class Mention(
+    val id: Long,
+    val username: String
+)
+
+// Reaction feature models
+data class ReactionUser(
+    val id: Long,
+    val username: String
+)
+
+data class ReactionGroup(
+    val emoji: String,
+    val count: Int,
+    val users: List<ReactionUser>,
+    val reacted: Boolean = false  // Whether current user has reacted
+)
+
 data class Message(
     val id: Long,
     @SerializedName("channel_id")
@@ -66,7 +94,16 @@ data class Message(
     @SerializedName("deleted_by_username")
     val deletedByUsername: String? = null,
     @SerializedName("edited_at")
-    val editedAt: String? = null
+    val editedAt: String? = null,
+    // Reply feature
+    @SerializedName("reply_to_id")
+    val replyToId: Long? = null,
+    @SerializedName("reply_to")
+    val replyTo: ReplyTo? = null,
+    // Mention feature
+    val mentions: List<Mention>? = null,
+    // Reaction feature
+    val reactions: List<ReactionGroup>? = null
 )
 
 data class VoiceUser(

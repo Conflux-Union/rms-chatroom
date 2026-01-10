@@ -6,6 +6,10 @@ import com.google.gson.JsonParser
 import cn.net.rms.chatroom.BuildConfig
 import cn.net.rms.chatroom.data.model.Attachment
 import cn.net.rms.chatroom.data.model.Message
+import cn.net.rms.chatroom.data.model.Mention
+import cn.net.rms.chatroom.data.model.ReplyTo
+import cn.net.rms.chatroom.data.model.ReactionGroup
+import cn.net.rms.chatroom.data.model.ReactionUser
 import cn.net.rms.chatroom.data.model.VoiceUser
 import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.*
@@ -29,6 +33,9 @@ sealed class WebSocketEvent {
     data class Error(val error: String, val code: String? = null) : WebSocketEvent()
     data class MessageDeleted(val messageId: Long, val deletedBy: Long, val deletedByUsername: String) : WebSocketEvent()
     data class MessageEdited(val messageId: Long, val content: String, val editedAt: String) : WebSocketEvent()
+    // Reaction events
+    data class ReactionAdded(val messageId: Long, val emoji: String, val userId: Long, val username: String) : WebSocketEvent()
+    data class ReactionRemoved(val messageId: Long, val emoji: String, val userId: Long) : WebSocketEvent()
 }
 
 enum class ConnectionState {
@@ -150,6 +157,35 @@ class ChatWebSocket @Inject constructor(
                         null
                     }
 
+                    // Parse reply_to if present
+                    val replyTo = if (json.has("reply_to") && !json.get("reply_to").isJsonNull) {
+                        val replyToJson = json.getAsJsonObject("reply_to")
+                        ReplyTo(
+                            id = replyToJson.get("id").asLong,
+                            userId = replyToJson.get("user_id")?.asLong ?: 0L,
+                            username = replyToJson.get("username")?.asString ?: "",
+                            content = replyToJson.get("content")?.asString ?: ""
+                        )
+                    } else {
+                        null
+                    }
+
+                    // Parse mentions if present
+                    val mentions = if (json.has("mentions") && !json.get("mentions").isJsonNull) {
+                        val mentionsType = object : TypeToken<List<Mention>>() {}.type
+                        gson.fromJson<List<Mention>>(json.get("mentions"), mentionsType)
+                    } else {
+                        null
+                    }
+
+                    // Parse reactions if present
+                    val reactions = if (json.has("reactions") && !json.get("reactions").isJsonNull) {
+                        val reactionsType = object : TypeToken<List<ReactionGroup>>() {}.type
+                        gson.fromJson<List<ReactionGroup>>(json.get("reactions"), reactionsType)
+                    } else {
+                        null
+                    }
+
                     val message = Message(
                         id = json.get("id").asLong,
                         channelId = json.get("channel_id")?.asLong ?: 0L,
@@ -157,9 +193,13 @@ class ChatWebSocket @Inject constructor(
                         username = json.get("username").asString,
                         content = json.get("content")?.asString ?: "",
                         createdAt = json.get("created_at").asString,
-                        attachments = attachments
+                        attachments = attachments,
+                        replyToId = if (json.has("reply_to_id") && !json.get("reply_to_id").isJsonNull) json.get("reply_to_id").asLong else null,
+                        replyTo = replyTo,
+                        mentions = mentions,
+                        reactions = reactions
                     )
-                    Log.d(TAG, "Received message: ${message.id} from ${message.username}, attachments: ${attachments?.size ?: 0}")
+                    Log.d(TAG, "Received message: ${message.id} from ${message.username}, attachments: ${attachments?.size ?: 0}, replyTo: ${replyTo?.username}, mentions: ${mentions?.size ?: 0}")
                     _events.tryEmit(WebSocketEvent.NewMessage(message))
                 }
                 "message_deleted" -> {
@@ -175,6 +215,21 @@ class ChatWebSocket @Inject constructor(
                     val editedAt = json.get("edited_at").asString
                     Log.d(TAG, "Message edited: $messageId")
                     _events.tryEmit(WebSocketEvent.MessageEdited(messageId, content, editedAt))
+                }
+                "reaction_added" -> {
+                    val messageId = json.get("message_id").asLong
+                    val emoji = json.get("emoji").asString
+                    val userId = json.get("user_id").asLong
+                    val username = json.get("username").asString
+                    Log.d(TAG, "Reaction added: $emoji to message $messageId by $username")
+                    _events.tryEmit(WebSocketEvent.ReactionAdded(messageId, emoji, userId, username))
+                }
+                "reaction_removed" -> {
+                    val messageId = json.get("message_id").asLong
+                    val emoji = json.get("emoji").asString
+                    val userId = json.get("user_id").asLong
+                    Log.d(TAG, "Reaction removed: $emoji from message $messageId")
+                    _events.tryEmit(WebSocketEvent.ReactionRemoved(messageId, emoji, userId))
                 }
                 "error" -> {
                     val errorCode = json.get("code")?.asString
@@ -269,7 +324,7 @@ class ChatWebSocket @Inject constructor(
         return minOf(delay, MAX_RECONNECT_DELAY_MS)
     }
 
-    fun sendMessage(content: String, attachmentIds: List<Long> = emptyList()): Boolean {
+    fun sendMessage(content: String, attachmentIds: List<Long> = emptyList(), replyToId: Long? = null): Boolean {
         if (_connectionState.value != ConnectionState.CONNECTED) {
             Log.w(TAG, "Cannot send message, not connected")
             return false
@@ -282,6 +337,9 @@ class ChatWebSocket @Inject constructor(
             )
             if (attachmentIds.isNotEmpty()) {
                 payload["attachment_ids"] = attachmentIds
+            }
+            if (replyToId != null) {
+                payload["reply_to_id"] = replyToId
             }
             val json = gson.toJson(payload)
             webSocket?.send(json) ?: false
