@@ -689,20 +689,21 @@ async function deleteChannel() {
         <!-- Mixed list of channel groups and ungrouped channels -->
         <template v-for="item in mixedList" :key="item.type + '-' + item.data.id">
           <!-- Channel Group -->
-          <div v-if="item.type === 'group'" class="channel-group">
+          <div v-if="item.type === 'group'" class="channel-group" :class="{ collapsed: collapsedGroups.has(item.data.id) }">
             <div 
               class="channel-group-header"
               :draggable="auth.isAdmin && editMode"
-              @click="toggleGroupCollapse(item.data.id)"
-              @contextmenu="auth.isAdmin && editMode ? showGroupContextMenu($event, item.data.id) : undefined"
+              @click.stop="toggleGroupCollapse(item.data.id)"
+              @contextmenu.prevent="auth.isAdmin && editMode ? showGroupContextMenu($event, item.data.id) : undefined"
               @dragstart="onGroupDragStart($event, item.data.id)"
               @dragover="onDragOver($event)"
               @drop="onGroupDrop($event, item.data.id)"
             >
-              <span v-if="editMode" class="drag-handle">☰</span>
+              <span v-if="editMode" class="drag-handle" @click.stop>☰</span>
               <ChevronDown v-if="!collapsedGroups.has(item.data.id)" :size="14" class="collapse-icon" />
               <ChevronRight v-else :size="14" class="collapse-icon" />
               <span class="group-name">{{ item.data.name }}</span>
+              <span class="channel-count">({{ getGroupChannels(item.data.id).length }})</span>
               <button v-if="auth.isAdmin && editMode" class="add-channel" @click.stop="showCreate = true; newCreateType = 'text'; newChannelGroupId = item.data.id">+</button>
             </div>
             
@@ -1382,29 +1383,32 @@ async function deleteChannel() {
 
 /* Channel Group Styles */
 .channel-group {
-  margin-bottom: 4px;
+  margin-bottom: 8px;
+  background: rgba(88, 101, 242, 0.05);
+  border-radius: var(--radius-md);
+  margin: 4px 8px 8px 8px;
+  overflow: hidden;
 }
 
 .channel-group-header {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 8px 12px;
-  margin: 4px 8px;
+  padding: 10px 12px;
   cursor: pointer;
   color: var(--color-text-main);
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 12px;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.03em;
-  border-radius: var(--radius-sm);
-  background: linear-gradient(135deg, rgba(88, 101, 242, 0.15) 0%, rgba(88, 101, 242, 0.05) 100%);
+  letter-spacing: 0.05em;
+  background: linear-gradient(135deg, rgba(88, 101, 242, 0.2) 0%, rgba(88, 101, 242, 0.08) 100%);
   border-left: 3px solid var(--color-primary);
   transition: all var(--transition-fast);
+  user-select: none;
 }
 
 .channel-group-header:hover {
-  background: linear-gradient(135deg, rgba(88, 101, 242, 0.25) 0%, rgba(88, 101, 242, 0.1) 100%);
+  background: linear-gradient(135deg, rgba(88, 101, 242, 0.3) 0%, rgba(88, 101, 242, 0.15) 100%);
   color: var(--color-text-bright);
 }
 
@@ -1426,7 +1430,7 @@ async function deleteChannel() {
 
 .channel-group-header .collapse-icon {
   flex-shrink: 0;
-  opacity: 0.8;
+  opacity: 0.9;
   color: var(--color-primary);
   transition: transform var(--transition-fast);
 }
@@ -1436,6 +1440,13 @@ async function deleteChannel() {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.channel-group-header .channel-count {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--color-text-muted);
+  opacity: 0.7;
 }
 
 .channel-group-header .add-channel {
@@ -1461,8 +1472,30 @@ async function deleteChannel() {
 }
 
 .group-channels {
-  padding-left: 12px;
-  margin-left: 8px;
-  border-left: 1px solid rgba(88, 101, 242, 0.2);
+  padding: 4px 0 8px 0;
+  background: rgba(0, 0, 0, 0.1);
+}
+
+.group-channels .channel {
+  margin-left: 16px;
+  margin-right: 8px;
+  border-left: 2px solid rgba(88, 101, 242, 0.3);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+
+.group-channels .voice-channel-wrapper {
+  margin-left: 16px;
+  margin-right: 8px;
+}
+
+.group-channels .voice-channel-wrapper .channel {
+  margin-left: 0;
+  border-left: 2px solid rgba(88, 101, 242, 0.3);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+
+/* Collapsed group indicator */
+.channel-group.collapsed .channel-group-header {
+  border-radius: var(--radius-md);
 }
 </style>
