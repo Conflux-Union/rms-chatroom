@@ -293,16 +293,6 @@ onMounted(() => {
   document.addEventListener('click', hideContextMenu)
 })
 
-onUnmounted(() => {
-  if (ws) {
-    ws.disconnect()
-  }
-  if (scrollSaveTimeout) {
-    clearTimeout(scrollSaveTimeout)
-  }
-  document.removeEventListener('click', hideContextMenu)
-})
-
 function scrollToBottom() {
   nextTick(() => {
     if (messagesContainer.value) {
@@ -953,6 +943,56 @@ function getReplyOriginalMessage(replyToId: number): Message | undefined {
   return chat.messages.find(m => m.id === replyToId)
 }
 
+// Cache for reply thumbnail blob URLs (attachment id -> blob url)
+const replyThumbnailCache = ref<Map<number, string>>(new Map())
+
+// Load reply thumbnail with auth header
+async function loadReplyThumbnail(attachmentId: number, attachmentUrl: string): Promise<string | null> {
+  // Check cache first
+  if (replyThumbnailCache.value.has(attachmentId)) {
+    return replyThumbnailCache.value.get(attachmentId)!
+  }
+
+  try {
+    const res = await fetch(`${API_BASE}${attachmentUrl}?inline=1`, {
+      headers: { Authorization: `Bearer ${auth.token}` }
+    })
+    if (res.ok) {
+      const blob = await res.blob()
+      const blobUrl = URL.createObjectURL(blob)
+      replyThumbnailCache.value.set(attachmentId, blobUrl)
+      return blobUrl
+    }
+  } catch (e) {
+    console.error('Failed to load reply thumbnail:', e)
+  }
+  return null
+}
+
+// Get cached thumbnail or trigger load
+function getReplyThumbnailUrl(attachmentId: number, attachmentUrl: string): string | null {
+  const cached = replyThumbnailCache.value.get(attachmentId)
+  if (cached) return cached
+
+  // Trigger async load (will update cache and re-render)
+  loadReplyThumbnail(attachmentId, attachmentUrl)
+  return null
+}
+
+// Cleanup blob URLs on unmount
+onUnmounted(() => {
+  if (ws) {
+    ws.disconnect()
+  }
+  if (scrollSaveTimeout) {
+    clearTimeout(scrollSaveTimeout)
+  }
+  document.removeEventListener('click', hideContextMenu)
+  // Revoke all cached blob URLs
+  for (const url of replyThumbnailCache.value.values()) {
+    URL.revokeObjectURL(url)
+  }
+})
 </script>
 
 <template>
@@ -1070,11 +1110,12 @@ function getReplyOriginalMessage(replyToId: number): Message | undefined {
                 <!-- No text content, check for attachments in original message -->
                 <template v-if="getReplyOriginalMessage(msg.reply_to.id)?.attachments?.length">
                   <img
-                    v-if="getReplyOriginalMessage(msg.reply_to.id)!.attachments![0].content_type.startsWith('image/')"
-                    :src="API_BASE + getReplyOriginalMessage(msg.reply_to.id)!.attachments![0].url"
+                    v-if="getReplyOriginalMessage(msg.reply_to.id)!.attachments![0].content_type.startsWith('image/') && getReplyThumbnailUrl(getReplyOriginalMessage(msg.reply_to.id)!.attachments![0].id, getReplyOriginalMessage(msg.reply_to.id)!.attachments![0].url)"
+                    :src="getReplyThumbnailUrl(getReplyOriginalMessage(msg.reply_to.id)!.attachments![0].id, getReplyOriginalMessage(msg.reply_to.id)!.attachments![0].url)!"
                     class="reply-thumbnail"
                     alt="image"
                   />
+                  <span v-else-if="getReplyOriginalMessage(msg.reply_to.id)!.attachments![0].content_type.startsWith('image/')" class="reply-content">[图片]</span>
                   <span v-else class="reply-content">[附件]</span>
                 </template>
                 <span v-else class="reply-content">[附件]</span>
