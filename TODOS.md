@@ -219,53 +219,104 @@ CREATE INDEX ix_reactions_user_id ON reactions(user_id);
 
 ---
 
-## Phase 4: Android Adaptation (Priority: LOW)
+## Phase 4: Android Adaptation (Priority: LOW) ✅ COMPLETED
 
-### 4.1 Data Model Updates
+### 4.1 Data Model Updates ✅
 
-**File:** `android/app/src/main/java/cn/net/rms/chatroom/data/local/MessageEntity.kt`
+**File:** `android/app/src/main/java/cn/net/rms/chatroom/data/model/Models.kt`
 
 ```kotlin
-data class MessageEntity(
-    // ... existing fields
+// Added new data classes
+data class ReplyTo(
+    val id: Long,
+    val userId: Long,
+    val username: String,
+    val content: String
+)
+
+data class Mention(
+    val id: Long,
+    val username: String
+)
+
+data class ReactionUser(
+    val id: Long,
+    val username: String
+)
+
+data class ReactionGroup(
+    val emoji: String,
+    val count: Int,
+    val users: List<ReactionUser>,
+    val reacted: Boolean = false
+)
+
+// Updated Message model with new fields
+data class Message(
+    // ... existing fields ...
     val replyToId: Long? = null,
-    val replyToUsername: String? = null,
-    val replyToContent: String? = null,
-    val mentionedUserIds: List<Long>? = null,
+    val replyTo: ReplyTo? = null,
+    val mentions: List<Mention>? = null,
     val reactions: List<ReactionGroup>? = null
 )
 ```
 
-### 4.2 WebSocket Handler Updates
+### 4.2 WebSocket Handler Updates ✅
 
 **File:** `android/app/src/main/java/cn/net/rms/chatroom/data/websocket/ChatWebSocket.kt`
 
-- Handle `reaction_added` / `reaction_removed` events
-- Parse reply_to and mentions from message payload
+- Added `ReactionAdded` and `ReactionRemoved` WebSocket events
+- Parse `reply_to`, `mentions`, `reactions` from message payload
+- Updated `sendMessage()` to support `replyToId` parameter
 
-### 4.3 UI Updates
+### 4.3 API Service Updates ✅
 
-- Reply preview in message item
-- Mention highlighting with AnnotatedString
-- Reaction bar with emoji display
+**File:** `android/app/src/main/java/cn/net/rms/chatroom/data/api/ApiService.kt`
+
+- Added `addReaction()` endpoint
+- Added `removeReaction()` endpoint
+- Added `getChannelMembers()` endpoint for @mention autocomplete
+- Updated `SendMessageBody` to include `replyToId`
+
+### 4.4 Repository Updates ✅
+
+**File:** `android/app/src/main/java/cn/net/rms/chatroom/data/repository/ChatRepository.kt`
+
+- Added `addReaction()` and `removeReaction()` methods
+- Added `getChannelMembers()` method
+- Added `updateMessageReactionAdded()` and `updateMessageReactionRemoved()` handlers
+- Updated `sendMessage()` to support `replyToId`
+
+### 4.5 UI Updates ✅
+
+**File:** `android/app/src/main/java/cn/net/rms/chatroom/ui/chat/ChatScreen.kt`
+
+- Reply preview in message item (click to scroll to original)
+- Reply preview bar above input when replying
+- Mention highlighting with AnnotatedString (TiColor for @mentions)
+- Reactions bar with emoji display and interaction
+- Emoji picker dialog with common emojis
+- @mention autocomplete dropdown
+- Updated message context menu with Reply and Add Reaction options
 
 ---
 
 ## Implementation Order
 
-| # | Task | Est. Time | Dependencies |
-|---|------|-----------|--------------|
-| 1 | Reply - Backend Model | 0.5h | None |
-| 2 | Reply - Backend API/WS | 1h | #1 |
-| 3 | Reply - Frontend Types | 0.5h | #1 |
-| 4 | Reply - Frontend UI | 2h | #2, #3 |
-| 5 | Mentions - Backend | 1h | None |
-| 6 | Mentions - Frontend | 3h | #5 |
-| 7 | Reactions - Backend | 2h | None |
-| 8 | Reactions - Frontend | 3h | #7 |
-| 9 | Android - All features | 6h | #4, #6, #8 |
+| # | Task | Est. Time | Dependencies | Status |
+|---|------|-----------|--------------|--------|
+| 1 | Reply - Backend Model | 0.5h | None | ✅ Done |
+| 2 | Reply - Backend API/WS | 1h | #1 | ✅ Done |
+| 3 | Reply - Frontend Types | 0.5h | #1 | ✅ Done |
+| 4 | Reply - Frontend UI | 2h | #2, #3 | ✅ Done |
+| 5 | Mentions - Backend | 1h | None | ✅ Done |
+| 6 | Mentions - Frontend | 3h | #5 | ✅ Done |
+| 7 | Reactions - Backend | 2h | None | ✅ Done |
+| 8 | Reactions - Frontend | 3h | #7 | ✅ Done |
+| 9 | Android - All features | 6h | #4, #6, #8 | ✅ Done |
 
 **Total Estimated Time:** ~19 hours
+**Status:** ✅ ALL COMPLETED
 
 ---
 

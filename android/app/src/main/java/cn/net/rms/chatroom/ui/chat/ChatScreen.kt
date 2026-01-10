@@ -65,6 +65,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.InsertDriveFile
+import androidx.compose.material.icons.automirrored.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.PictureAsPdf
@@ -72,6 +73,8 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Block
+import androidx.compose.material.icons.automirrored.filled.Reply
+import androidx.compose.material.icons.filled.EmojiEmotions
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -106,6 +109,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
@@ -117,9 +124,11 @@ import me.saket.telephoto.zoomable.coil.ZoomableAsyncImage
 import me.saket.telephoto.zoomable.rememberZoomableImageState
 import cn.net.rms.chatroom.BuildConfig
 import cn.net.rms.chatroom.R
+import cn.net.rms.chatroom.data.api.ChannelMember
 import cn.net.rms.chatroom.data.model.AttachmentResponse
 import cn.net.rms.chatroom.data.model.Attachment
 import cn.net.rms.chatroom.data.model.Message
+import cn.net.rms.chatroom.data.model.ReactionGroup
 import cn.net.rms.chatroom.data.websocket.ConnectionState
 import cn.net.rms.chatroom.ui.theme.DiscordRed
 import cn.net.rms.chatroom.ui.theme.DiscordYellow
@@ -156,7 +165,8 @@ fun ChatScreen(
     currentUserPermission: Int? = null,
     lastReadMessageId: Long? = null,
     showContinueReading: Boolean = false,
-    onSendMessage: (String, List<Long>) -> Unit,
+    channelMembers: List<ChannelMember> = emptyList(),
+    onSendMessage: (String, List<Long>, Long?) -> Unit,  // Added replyToId parameter
     onUploadFile: suspend (Uri) -> Result<AttachmentResponse>,
     onRefresh: () -> Unit = {},
     onReconnect: () -> Unit = {},
@@ -165,7 +175,10 @@ fun ChatScreen(
     onMuteUser: (Long, String, String?, Long?, Long?, String?) -> Unit = { _, _, _, _, _, _ -> },
     onSaveReadPosition: (Long) -> Unit = {},
     onDismissContinueReading: () -> Unit = {},
-    onGetMessageIndex: (Long) -> Int = { -1 }
+    onGetMessageIndex: (Long) -> Int = { -1 },
+    onAddReaction: (Long, String) -> Unit = { _, _ -> },
+    onRemoveReaction: (Long, String) -> Unit = { _, _ -> },
+    onFetchChannelMembers: () -> Unit = {}
 ) {
     val listState = rememberLazyListState()
     var messageText by remember { mutableStateOf("") }
@@ -179,13 +192,28 @@ fun ChatScreen(
     var showMessageMenu by remember { mutableStateOf(false) }
     var showEditDialog by remember { mutableStateOf(false) }
     var showMuteDialog by remember { mutableStateOf(false) }
+    var showEmojiPicker by remember { mutableStateOf(false) }
+    var emojiPickerMessageId by remember { mutableStateOf<Long?>(null) }
     val scope = rememberCoroutineScope()
+
+    // Reply state
+    var replyingTo by remember { mutableStateOf<Message?>(null) }
+
+    // Mention autocomplete state
+    var showMentionDropdown by remember { mutableStateOf(false) }
+    var mentionQuery by remember { mutableStateOf("") }
+    var mentionStartIndex by remember { mutableStateOf(-1) }
 
     // File upload state
     var pendingFiles by remember { mutableStateOf<List<Uri>>(emptyList()) }
     var uploadedAttachments by remember { mutableStateOf<List<AttachmentResponse>>(emptyList()) }
     var isUploading by remember { mutableStateOf(false) }
     var uploadProgress by remember { mutableStateOf<Map<Uri, Float>>(emptyMap()) }
+
+    // Fetch channel members when screen loads
+    LaunchedEffect(Unit) {
+        onFetchChannelMembers()
+    }
 
     // File picker launcher
     val filePickerLauncher = rememberLauncherForActivityResult(
@@ -304,12 +332,64 @@ fun ChatScreen(
                                     onLongClick = { msg ->
                                         selectedMessage = msg
                                         showMessageMenu = true
+                                    },
+                                    onReplyClick = { replyTo ->
+                                        // Scroll to the replied message
+                                        val replyIndex = onGetMessageIndex(replyTo.id)
+                                        if (replyIndex >= 0) {
+                                            scope.launch {
+                                                listState.animateScrollToItem(replyIndex)
+                                            }
+                                        }
+                                    },
+                                    onReactionClick = { emoji, reacted ->
+                                        if (reacted) {
+                                            onRemoveReaction(message.id, emoji)
+                                        } else {
+                                            onAddReaction(message.id, emoji)
+                                        }
+                                    },
+                                    onAddReactionClick = {
+                                        emojiPickerMessageId = message.id
+                                        showEmojiPicker = true
                                     }
                                 )
                             }
                         }
                     }
                 }
+            }
+
+            // Reply preview bar
+            if (replyingTo != null) {
+                ReplyPreviewBar(
+                    replyingTo = replyingTo!!,
+                    onDismiss = { replyingTo = null }
+                )
+            }
+
+            // Mention autocomplete dropdown
+            if (showMentionDropdown && channelMembers.isNotEmpty()) {
+                MentionAutocomplete(
+                    query = mentionQuery,
+                    members = channelMembers,
+                    onSelect = { member ->
+                        // Replace @query with @username
+                        val beforeMention = messageText.substring(0, mentionStartIndex)
+                        val afterMention = messageText.substring(
+                            minOf(mentionStartIndex + mentionQuery.length + 1, messageText.length)
+                        )
+                        messageText = "$beforeMention@${member.username} $afterMention"
+                        showMentionDropdown = false
+                        mentionQuery = ""
+                        mentionStartIndex = -1
+                    },
+                    onDismiss = {
+                        showMentionDropdown = false
+                        mentionQuery = ""
+                        mentionStartIndex = -1
+                    }
+                )
             }
 
             // Pending files preview
@@ -332,7 +412,25 @@ fun ChatScreen(
             // Message input
             MessageInput(
                 value = messageText,
-                onValueChange = { messageText = it },
+                onValueChange = { newValue ->
+                    messageText = newValue
+                    // Check for @mention trigger
+                    val cursorPos = newValue.length  // Simplified: assume cursor at end
+                    val lastAtIndex = newValue.lastIndexOf('@')
+                    if (lastAtIndex >= 0 && lastAtIndex < cursorPos) {
+                        val textAfterAt = newValue.substring(lastAtIndex + 1)
+                        // Check if we're in a mention (no space after @)
+                        if (!textAfterAt.contains(' ') && textAfterAt.length <= 20) {
+                            mentionStartIndex = lastAtIndex
+                            mentionQuery = textAfterAt
+                            showMentionDropdown = true
+                        } else {
+                            showMentionDropdown = false
+                        }
+                    } else {
+                        showMentionDropdown = false
+                    }
+                },
                 sendingState = sendingState,
                 isConnected = connectionState == ConnectionState.CONNECTED,
                 hasAttachments = pendingFiles.isNotEmpty() || uploadedAttachments.isNotEmpty(),
@@ -362,15 +460,17 @@ fun ChatScreen(
                                 isUploading = false
                             }
 
-                            // Send message with attachments
+                            // Send message with attachments and reply
                             val attachmentIds = uploadedAttachments.map { it.id }
                             val content = messageText.trim()
+                            val replyToId = replyingTo?.id
 
                             if (content.isNotBlank() || attachmentIds.isNotEmpty()) {
                                 keyboardController?.hide()
-                                onSendMessage(content, attachmentIds)
+                                onSendMessage(content, attachmentIds, replyToId)
                                 messageText = ""
                                 uploadedAttachments = emptyList()
+                                replyingTo = null  // Clear reply state
                             }
 
                             sendingState = SendingState.SENT
@@ -441,6 +541,17 @@ fun ChatScreen(
                 currentUserId = currentUserId,
                 currentUserPermission = currentUserPermission,
                 onDismiss = { showMessageMenu = false },
+                onReply = {
+                    showMessageMenu = false
+                    replyingTo = selectedMessage
+                    selectedMessage = null
+                },
+                onAddReaction = {
+                    showMessageMenu = false
+                    emojiPickerMessageId = selectedMessage!!.id
+                    showEmojiPicker = true
+                    selectedMessage = null
+                },
                 onEdit = {
                     showMessageMenu = false
                     showEditDialog = true
@@ -453,6 +564,21 @@ fun ChatScreen(
                 onMute = {
                     showMessageMenu = false
                     showMuteDialog = true
+                }
+            )
+        }
+
+        // Emoji picker dialog
+        if (showEmojiPicker && emojiPickerMessageId != null) {
+            EmojiPickerDialog(
+                onEmojiSelected = { emoji ->
+                    onAddReaction(emojiPickerMessageId!!, emoji)
+                    showEmojiPicker = false
+                    emojiPickerMessageId = null
+                },
+                onDismiss = {
+                    showEmojiPicker = false
+                    emojiPickerMessageId = null
                 }
             )
         }
@@ -588,7 +714,10 @@ private fun MessageItem(
     currentUserId: Long?,
     currentUserPermission: Int?,
     onAttachmentClick: (Attachment) -> Unit,
-    onLongClick: (Message) -> Unit
+    onLongClick: (Message) -> Unit,
+    onReplyClick: (cn.net.rms.chatroom.data.model.ReplyTo) -> Unit = {},
+    onReactionClick: (String, Boolean) -> Unit = { _, _ -> },
+    onAddReactionClick: () -> Unit = {}
 ) {
     Row(
         modifier = Modifier
@@ -645,7 +774,38 @@ private fun MessageItem(
                     )
                 }
 
-                // Edited indicator on new line
+                // Reply preview (below username, above content)
+                if (message.replyTo != null) {
+                    Row(
+                        modifier = Modifier
+                            .padding(top = 2.dp, bottom = 4.dp)
+                            .clickable { onReplyClick(message.replyTo) },
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.Reply,
+                            contentDescription = null,
+                            tint = TextMuted,
+                            modifier = Modifier.size(12.dp)
+                        )
+                        Text(
+                            text = "@${message.replyTo.username}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = TiColor,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Text(
+                            text = message.replyTo.content.take(40) + if (message.replyTo.content.length > 40) "..." else "",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = TextMuted,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+
+                // Edited indicator
                 if (message.editedAt != null) {
                     Text(
                         text = "(已编辑于 ${formatTimestamp(message.editedAt)})",
@@ -671,10 +831,10 @@ private fun MessageItem(
                 )
             } else {
                 if (message.content.isNotBlank()) {
+                    // Render content with mention highlighting
                     Text(
-                        text = message.content,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = TextSecondary
+                        text = renderMessageContent(message.content, message.mentions),
+                        style = MaterialTheme.typography.bodyMedium
                     )
                 }
 
@@ -685,6 +845,17 @@ private fun MessageItem(
                         attachment = attachment,
                         authToken = authToken,
                         onAttachmentClick = onAttachmentClick
+                    )
+                }
+
+                // Reactions
+                if (!message.reactions.isNullOrEmpty()) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    ReactionsBar(
+                        reactions = message.reactions,
+                        currentUserId = currentUserId,
+                        onReactionClick = onReactionClick,
+                        onAddReactionClick = onAddReactionClick
                     )
                 }
             }
@@ -709,7 +880,7 @@ private fun AttachmentItem(
         isVideo -> Icons.Default.Movie
         isAudio -> Icons.Default.MusicNote
         isPdf -> Icons.Default.PictureAsPdf
-        else -> Icons.Default.InsertDriveFile
+        else -> Icons.AutoMirrored.Filled.InsertDriveFile
     }
     val inlineUrl = buildAttachmentUrl(attachment, inline = true)
 
@@ -1254,7 +1425,7 @@ private fun PendingFileItem(
         ) {
             Box(modifier = Modifier.fillMaxWidth()) {
                 Icon(
-                    imageVector = Icons.Default.InsertDriveFile,
+                    imageVector = Icons.AutoMirrored.Filled.InsertDriveFile,
                     contentDescription = null,
                     tint = TiColor,
                     modifier = Modifier
@@ -1308,7 +1479,7 @@ private fun UploadedAttachmentItem(
         attachment.contentType.startsWith("video/") -> Icons.Default.Movie
         attachment.contentType.startsWith("audio/") -> Icons.Default.MusicNote
         attachment.contentType == "application/pdf" -> Icons.Default.PictureAsPdf
-        else -> Icons.Default.InsertDriveFile
+        else -> Icons.AutoMirrored.Filled.InsertDriveFile
     }
 
     Surface(
@@ -1546,6 +1717,8 @@ private fun MessageContextMenu(
     currentUserId: Long?,
     currentUserPermission: Int?,
     onDismiss: () -> Unit,
+    onReply: () -> Unit,
+    onAddReaction: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
     onMute: () -> Unit
@@ -1555,6 +1728,8 @@ private fun MessageContextMenu(
     val canEdit = isOwnMessage && !message.isDeleted
     val canDelete = !message.isDeleted && (isOwnMessage || isAdmin)
     val canMute = isAdmin && !isOwnMessage
+    val canReply = !message.isDeleted
+    val canReact = !message.isDeleted
 
     androidx.compose.material3.ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -1565,6 +1740,22 @@ private fun MessageContextMenu(
                 .fillMaxWidth()
                 .padding(vertical = 16.dp)
         ) {
+            if (canReply) {
+                MenuOption(
+                    text = "回复",
+                    icon = Icons.AutoMirrored.Filled.Reply,
+                    onClick = onReply
+                )
+            }
+
+            if (canReact) {
+                MenuOption(
+                    text = "添加表情",
+                    icon = Icons.Default.EmojiEmotions,
+                    onClick = onAddReaction
+                )
+            }
+
             if (canEdit) {
                 MenuOption(
                     text = "编辑消息",
@@ -1591,7 +1782,7 @@ private fun MessageContextMenu(
                 )
             }
 
-            if (!canEdit && !canDelete && !canMute) {
+            if (!canReply && !canReact && !canEdit && !canDelete && !canMute) {
                 Text(
                     text = "无可用操作",
                     modifier = Modifier.padding(16.dp),
@@ -1787,5 +1978,288 @@ private fun RadioOption(
             style = MaterialTheme.typography.bodyMedium,
             color = TextPrimary
         )
+    }
+}
+
+// Helper function to render message content with mention highlighting
+@Composable
+private fun renderMessageContent(
+    content: String,
+    mentions: List<cn.net.rms.chatroom.data.model.Mention>?
+): AnnotatedString {
+    if (mentions.isNullOrEmpty()) {
+        return buildAnnotatedString {
+            withStyle(SpanStyle(color = TextSecondary)) {
+                append(content)
+            }
+        }
+    }
+
+    return buildAnnotatedString {
+        var currentIndex = 0
+        val mentionPattern = Regex("@(\\w+)")
+        val mentionUsernames = mentions.map { it.username }.toSet()
+
+        mentionPattern.findAll(content).forEach { match ->
+            val username = match.groupValues[1]
+            
+            // Add text before the mention
+            if (match.range.first > currentIndex) {
+                withStyle(SpanStyle(color = TextSecondary)) {
+                    append(content.substring(currentIndex, match.range.first))
+                }
+            }
+
+            // Add the mention with highlighting if it's a valid mention
+            if (mentionUsernames.contains(username)) {
+                withStyle(SpanStyle(color = TiColor, fontWeight = FontWeight.Medium)) {
+                    append(match.value)
+                }
+            } else {
+                withStyle(SpanStyle(color = TextSecondary)) {
+                    append(match.value)
+                }
+            }
+
+            currentIndex = match.range.last + 1
+        }
+
+        // Add remaining text
+        if (currentIndex < content.length) {
+            withStyle(SpanStyle(color = TextSecondary)) {
+                append(content.substring(currentIndex))
+            }
+        }
+    }
+}
+
+// Reply preview bar above input
+@Composable
+private fun ReplyPreviewBar(
+    replyingTo: Message,
+    onDismiss: () -> Unit
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = SurfaceLighter
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.Reply,
+                contentDescription = null,
+                tint = TiColor,
+                modifier = Modifier.size(16.dp)
+            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "回复 ${replyingTo.username}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = TiColor,
+                    fontWeight = FontWeight.Medium
+                )
+                Text(
+                    text = replyingTo.content.take(50) + if (replyingTo.content.length > 50) "..." else "",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = TextMuted,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            IconButton(
+                onClick = onDismiss,
+                modifier = Modifier.size(24.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = "取消回复",
+                    tint = TextMuted,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+        }
+    }
+}
+
+// Reactions bar below message
+@Composable
+private fun ReactionsBar(
+    reactions: List<ReactionGroup>,
+    currentUserId: Long?,
+    onReactionClick: (String, Boolean) -> Unit,
+    onAddReactionClick: () -> Unit
+) {
+    LazyRow(
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        items(reactions) { reaction ->
+            val hasReacted = reaction.users.any { it.id == currentUserId }
+            Surface(
+                onClick = { onReactionClick(reaction.emoji, hasReacted) },
+                shape = RoundedCornerShape(12.dp),
+                color = if (hasReacted) TiColor.copy(alpha = 0.2f) else SurfaceLighter,
+                border = if (hasReacted) {
+                    androidx.compose.foundation.BorderStroke(1.dp, TiColor)
+                } else null
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(
+                        text = reaction.emoji,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    Text(
+                        text = reaction.count.toString(),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (hasReacted) TiColor else TextMuted
+                    )
+                }
+            }
+        }
+        
+        // Add reaction button
+        item {
+            Surface(
+                onClick = onAddReactionClick,
+                shape = RoundedCornerShape(12.dp),
+                color = SurfaceLighter
+            ) {
+                Icon(
+                    imageVector = Icons.Default.EmojiEmotions,
+                    contentDescription = "添加表情",
+                    tint = TextMuted,
+                    modifier = Modifier
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                        .size(16.dp)
+                )
+            }
+        }
+    }
+}
+
+// Emoji picker dialog
+@Composable
+private fun EmojiPickerDialog(
+    onEmojiSelected: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val commonEmojis = listOf("👍", "❤️", "😂", "😮", "😢", "🎉", "🔥", "👀", "👎", "🤔", "💯", "✅")
+
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            color = SurfaceDarker
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp)
+            ) {
+                Text(
+                    text = "选择表情",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = TextPrimary,
+                    modifier = Modifier.padding(bottom = 12.dp)
+                )
+                
+                // Emoji grid (3 columns)
+                val rows = commonEmojis.chunked(4)
+                rows.forEach { row ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceEvenly
+                    ) {
+                        row.forEach { emoji ->
+                            Surface(
+                                onClick = { onEmojiSelected(emoji) },
+                                shape = RoundedCornerShape(8.dp),
+                                color = Color.Transparent
+                            ) {
+                                Text(
+                                    text = emoji,
+                                    style = MaterialTheme.typography.headlineMedium,
+                                    modifier = Modifier.padding(8.dp)
+                                )
+                            }
+                        }
+                        // Fill empty slots
+                        repeat(4 - row.size) {
+                            Spacer(modifier = Modifier.size(48.dp))
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Mention autocomplete dropdown
+@Composable
+private fun MentionAutocomplete(
+    query: String,
+    members: List<ChannelMember>,
+    onSelect: (ChannelMember) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val filteredMembers = remember(query, members) {
+        if (query.isBlank()) {
+            members.take(5)
+        } else {
+            members.filter { 
+                it.username.lowercase().contains(query.lowercase()) 
+            }.take(5)
+        }
+    }
+
+    if (filteredMembers.isEmpty()) {
+        return
+    }
+
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(max = 200.dp),
+        color = SurfaceDarker,
+        shadowElevation = 4.dp
+    ) {
+        LazyColumn {
+            items(filteredMembers) { member ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onSelect(member) }
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    // Avatar
+                    Box(
+                        modifier = Modifier
+                            .size(32.dp)
+                            .clip(CircleShape)
+                            .background(TiColor),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = member.username.take(1).uppercase(),
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                    }
+                    Text(
+                        text = member.username,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = TextPrimary
+                    )
+                }
+            }
+        }
     }
 }

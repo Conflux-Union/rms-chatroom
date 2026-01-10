@@ -219,7 +219,10 @@ fun MainScreen(
                             currentUserPermission = authState.user?.permissionLevel,
                             lastReadMessageId = mainState.lastReadMessageId,
                             showContinueReading = mainState.showContinueReading,
-                            onSendMessage = { content, attachmentIds -> mainViewModel.sendMessage(content, attachmentIds) },
+                            channelMembers = mainState.channelMembers,
+                            onSendMessage = { content, attachmentIds, replyToId -> 
+                                mainViewModel.sendMessage(content, attachmentIds, replyToId) 
+                            },
                             onUploadFile = { uri -> mainViewModel.uploadFile(uri) },
                             onRefresh = { mainViewModel.refreshMessages() },
                             onReconnect = { mainViewModel.reconnectWebSocket() },
@@ -230,7 +233,10 @@ fun MainScreen(
                             },
                             onSaveReadPosition = { messageId -> mainViewModel.saveReadPosition(messageId) },
                             onDismissContinueReading = { mainViewModel.dismissContinueReading() },
-                            onGetMessageIndex = { messageId -> mainViewModel.getMessageIndexById(messageId) }
+                            onGetMessageIndex = { messageId -> mainViewModel.getMessageIndexById(messageId) },
+                            onAddReaction = { messageId, emoji -> mainViewModel.addReaction(messageId, emoji) },
+                            onRemoveReaction = { messageId, emoji -> mainViewModel.removeReaction(messageId, emoji) },
+                            onFetchChannelMembers = { mainViewModel.fetchChannelMembers() }
                         )
                     }
 
