@@ -948,6 +948,11 @@ function getReactionTooltip(reaction: ReactionGroup): string {
   return names.join(', ')
 }
 
+// Get the original message for reply reference (to access attachments)
+function getReplyOriginalMessage(replyToId: number): Message | undefined {
+  return chat.messages.find(m => m.id === replyToId)
+}
+
 </script>
 
 <template>
@@ -1049,7 +1054,7 @@ function getReactionTooltip(reaction: ReactionGroup): string {
           </div>
 
           <!-- Normal message display -->
-          <div v-else>
+          <div v-else class="message-body">
             <!-- Reply reference -->
             <div
               v-if="msg.reply_to"
@@ -1058,7 +1063,22 @@ function getReactionTooltip(reaction: ReactionGroup): string {
             >
               <CornerUpLeft :size="14" class="reply-icon" />
               <span class="reply-author">{{ msg.reply_to.username }}</span>
-              <span class="reply-content">{{ msg.reply_to.content || '[附件]' }}</span>
+              <template v-if="msg.reply_to.content">
+                <span class="reply-content">{{ msg.reply_to.content }}</span>
+              </template>
+              <template v-else>
+                <!-- No text content, check for attachments in original message -->
+                <template v-if="getReplyOriginalMessage(msg.reply_to.id)?.attachments?.length">
+                  <img
+                    v-if="getReplyOriginalMessage(msg.reply_to.id)!.attachments![0].content_type.startsWith('image/')"
+                    :src="API_BASE + getReplyOriginalMessage(msg.reply_to.id)!.attachments![0].url"
+                    class="reply-thumbnail"
+                    alt="image"
+                  />
+                  <span v-else class="reply-content">[附件]</span>
+                </template>
+                <span v-else class="reply-content">[附件]</span>
+              </template>
             </div>
             <div v-if="msg.content" class="message-text" v-html="renderMessageContent(msg.content)"></div>
             <!-- Attachments -->
@@ -1090,15 +1110,16 @@ function getReactionTooltip(reaction: ReactionGroup): string {
                 <SmilePlus :size="16" />
               </button>
             </div>
-            <!-- Add reaction button when no reactions yet (positioned absolutely to not take space) -->
-            <button
-              v-else
-              class="reaction-add-btn reaction-add-btn-floating"
-              @click="showReactionPicker($event, msg.id)"
-              title="Add Reaction"
-            >
-              <SmilePlus :size="16" />
-            </button>
+            <!-- Add reaction button when no reactions yet -->
+            <div v-else class="message-reactions-empty">
+              <button
+                class="reaction-add-btn"
+                @click="showReactionPicker($event, msg.id)"
+                title="Add Reaction"
+              >
+                <SmilePlus :size="16" />
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -1769,6 +1790,14 @@ function getReactionTooltip(reaction: ReactionGroup): string {
   text-overflow: ellipsis;
 }
 
+.message-reply-ref .reply-thumbnail {
+  height: 36px;
+  max-width: 60px;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+}
+
 /* Reply Preview Bar */
 .reply-preview-bar {
   display: flex;
@@ -1913,24 +1942,22 @@ function getReactionTooltip(reaction: ReactionGroup): string {
   margin-top: 6px;
 }
 
-/* Floating reaction button - doesn't take space in layout */
-.reaction-add-btn-floating {
-  position: absolute;
-  bottom: 0;
-  left: 0;
+/* Empty reactions container - collapses when not hovered */
+.message-reactions-empty {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  max-height: 0;
+  overflow: hidden;
   opacity: 0;
-  pointer-events: none;
-  transition: opacity var(--transition-fast);
+  margin-top: 0;
+  transition: max-height 0.2s ease, opacity 0.2s ease, margin-top 0.2s ease;
 }
 
-.message:hover .reaction-add-btn-floating {
+.message:hover .message-reactions-empty {
+  max-height: 40px;
   opacity: 1;
-  pointer-events: auto;
-}
-
-/* Make message content relative for absolute positioning */
-.message-content > div:last-child {
-  position: relative;
+  margin-top: 6px;
 }
 
 .reaction-badge {
