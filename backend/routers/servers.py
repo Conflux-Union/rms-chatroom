@@ -34,6 +34,7 @@ class ChannelResponse(BaseModel):
     name: str
     type: str
     position: int
+    group_id: int | None = None
 
     class Config:
         from_attributes = True
@@ -83,7 +84,13 @@ async def get_server(server_id: int, user: CurrentUser, db: AsyncSession = Depen
         icon=server.icon,
         owner_id=server.owner_id,
         channels=[
-            ChannelResponse(id=c.id, name=c.name, type=c.type.value, position=c.position)
+            ChannelResponse(
+                id=c.id,
+                name=c.name,
+                type=c.type.value,
+                position=c.position,
+                group_id=c.group_id,
+            )
             for c in sorted(server.channels, key=lambda x: x.position)
         ],
     )
