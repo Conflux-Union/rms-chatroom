@@ -712,8 +712,9 @@ async function deleteChannel() {
             </div>
             
             <!-- Group channels (mixed text and voice) -->
-            <div v-if="!collapsedGroups.has(item.data.id)" class="group-channels">
-              <template v-for="channel in getGroupChannels(item.data.id)" :key="channel.id">
+            <Transition name="slide-down">
+              <div v-if="!collapsedGroups.has(item.data.id)" class="group-channels">
+                <template v-for="channel in getGroupChannels(item.data.id)" :key="channel.id">
                 <!-- Text channel in group -->
                 <div
                   v-if="channel.type === 'text'"
@@ -802,7 +803,8 @@ async function deleteChannel() {
                   </div>
                 </div>
               </template>
-            </div>
+              </div>
+            </Transition>
           </div>
 
           <!-- Ungrouped Text Channel -->
@@ -1126,6 +1128,10 @@ async function deleteChannel() {
   gap: 8px;
 }
 
+.channels {
+  transition: all 0.5s linear;
+}
+
 .drag-hint {
   font-size: 12px;
   color: var(--color-text-muted);
@@ -1277,6 +1283,7 @@ async function deleteChannel() {
   border: 1px solid rgba(255,255,255,0.06);
   background: var(--surface-glass-input);
   color: var(--color-text-main);
+  font-size: 12px;
   min-width: 0; /* allow shrink */
   outline: none;
   margin-right: 8px;
@@ -1321,6 +1328,7 @@ async function deleteChannel() {
 
 .voice-channel-wrapper {
   margin-bottom: 2px;
+  transition: all 0.5s linear;
 }
 
 .user-count {
@@ -1445,7 +1453,15 @@ async function deleteChannel() {
   flex-shrink: 0;
   opacity: 0.9;
   color: var(--color-primary);
-  transition: transform var(--transition-fast);
+  transition: transform 0.3s ease;
+}
+
+.channel-group.collapsed .channel-group-header .collapse-icon {
+  transform: rotate(0deg);
+}
+
+.channel-group:not(.collapsed) .channel-group-header .collapse-icon {
+  transform: rotate(0deg);
 }
 
 .channel-group-header .group-name {
@@ -1483,12 +1499,35 @@ async function deleteChannel() {
 .group-channels {
   padding: 3px 0px 0px 0px;
   background: rgba(255, 255, 255, 0);
+  overflow: hidden;
+  transition: all 0.5s linear;
+}
+
+/* Slide down animation for channel groups */
+.slide-down-enter-active {
+  transition: max-height 0.35s linear;
+  overflow: hidden;
+}
+
+.slide-down-leave-active {
+  transition: max-height 0.2s linear;
+  overflow: hidden;
+}
+
+.slide-down-enter-from,
+.slide-down-leave-to {
+  max-height: 0 !important;
+}
+
+.slide-down-enter-to,
+.slide-down-leave-from {
+  max-height: 200px;
 }
 
 .group-channels .channel {
   margin: 0;
   padding: 10px 12px;
-  font-size: 8px;
+  font-size: 12px;
   font-weight: 500;
   letter-spacing: 0.05em;
   background: rgba(218, 218, 218, 0);
@@ -1516,7 +1555,7 @@ async function deleteChannel() {
 .group-channels .voice-channel-wrapper .channel {
   margin: 0;
   padding: 10px 12px;
-  font-size: 8px;
+  font-size: 12px;
   font-weight: 500;
   letter-spacing: 0.05em;
   background:  rgba(218, 218, 218, 0);
