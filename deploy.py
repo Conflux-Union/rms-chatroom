@@ -179,17 +179,18 @@ def git_push(with_tags: bool = False) -> tuple[bool, str]:
 
 
 def build_frontend() -> tuple[bool, str]:
-    """Build web frontend locally using pnpm."""
+    """Build web frontend locally using vite."""
     if not WEB_DIR.exists():
         return False, f"Web directory not found: {WEB_DIR}"
 
     try:
         result = subprocess.run(
-            ["pnpm", "build:web"],
-            cwd=PROJECT_ROOT,
+            "vite build",
+            cwd=WEB_DIR,
             capture_output=True,
             text=True,
             timeout=300,  # 5 minutes timeout
+            shell=True,
         )
         if result.returncode != 0:
             return False, f"Web build failed:\n{result.stderr[-2000:]}"
@@ -202,7 +203,7 @@ def build_frontend() -> tuple[bool, str]:
     except subprocess.TimeoutExpired:
         return False, "Web build timed out (5 minutes)"
     except FileNotFoundError:
-        return False, "pnpm not found. Install with: npm install -g pnpm"
+        return False, "vite not found. Install with: npm install -g vite"
     except Exception as e:
         return False, f"Web build error: {e}"
 
