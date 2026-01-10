@@ -54,7 +54,6 @@ const channelDropdownOptions = computed((): DropdownOption[] => {
 })
 
 const groupDropdownOptions: DropdownOption[] = [
-  { label: '重命名', key: 'rename' },
   { label: '删除频道组', key: 'delete', props: { style: { color: 'var(--color-danger)' } } }
 ]
 
@@ -207,8 +206,6 @@ function showGroupContextMenu(event: MouseEvent, groupId: number) {
 async function handleGroupDropdownSelect(key: string) {
   if (key === 'delete') {
     await deleteChannelGroup()
-  } else if (key === 'rename') {
-    openRenameGroupDialog()
   }
   groupDropdown.value.show = false
 }
@@ -221,9 +218,8 @@ async function deleteChannelGroup() {
 }
 
 // Rename group dialog functions
-function openRenameGroupDialog() {
-  if (!groupDropdown.value.groupId) return
-  const group = channelGroups.value.find(g => g.id === groupDropdown.value.groupId)
+function openRenameGroupDialog(groupId: number) {
+  const group = channelGroups.value.find(g => g.id === groupId)
   if (!group) return
   renameGroupId.value = group.id
   renameGroupName.value = group.name
@@ -707,12 +703,12 @@ async function deleteChannel() {
               @dragover="onDragOver($event)"
               @drop="onGroupDrop($event, item.data.id)"
             >
-              <span v-if="editMode" class="drag-handle" @click.stop>☰</span>
               <ChevronDown v-if="!collapsedGroups.has(item.data.id)" :size="14" class="collapse-icon" />
               <ChevronRight v-else :size="14" class="collapse-icon" />
               <span class="group-name">{{ item.data.name }}</span>
               <span class="channel-count">({{ getGroupChannels(item.data.id).length }})</span>
-              <button v-if="auth.isAdmin && editMode" class="add-channel" @click.stop="showCreate = true; newCreateType = 'text'; newChannelGroupId = item.data.id">+</button>
+              <button v-if="auth.isAdmin && editMode" class="rename-group-btn" @click.stop="openRenameGroupDialog(item.data.id)">重命名</button>
+              <span v-if="editMode" class="drag-handle" @click.stop>☰</span>
             </div>
             
             <!-- Group channels (mixed text and voice) -->
@@ -730,8 +726,7 @@ async function deleteChannel() {
                   @dragover="onDragOver($event)"
                   @drop="onChannelDrop($event, channel.id, item.data.id)"
                 >
-                  <span class="channel-icon">#</span>
-                  <span v-if="editMode" class="drag-handle">☰</span>
+                  <svg class="channel-icon" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 24 24"><g fill="none"><path d="M12 3a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2h-7a2 2 0 0 1-2-2V3zm2.5 1a.5.5 0 0 0 0 1h6a.5.5 0 0 0 0-1h-6zm0 3a.5.5 0 0 0 0 1h6a.5.5 0 0 0 0-1h-6z" fill="currentColor"></path><path d="M5.25 3H11v1.5H5.25A1.75 1.75 0 0 0 3.5 6.25v8.5c0 .966.784 1.75 1.75 1.75h2.249v3.75l5.015-3.75h6.236a1.75 1.75 0 0 0 1.75-1.75V12h.5c.35 0 .687-.06 1-.17v2.92A3.25 3.25 0 0 1 18.75 18h-5.738L8 21.75a1.25 1.25 0 0 1-1.999-1V18h-.75A3.25 3.25 0 0 1 2 14.75v-8.5A3.25 3.25 0 0 1 5.25 3z" fill="currentColor"></path></g></svg>
                   <template v-if="editingChannelId === channel.id">
                     <input
                       class="inline-edit custom-input"
@@ -748,6 +743,7 @@ async function deleteChannel() {
                   </template>
                   <div v-if="editMode" class="edit-actions" @click.stop>
                     <button v-if="editingChannelId !== channel.id" class="small" @click="renameChannel(channel)">重命名</button>
+                    <span class="drag-handle">☰</span>
                   </div>
                 </div>
                 
@@ -763,7 +759,6 @@ async function deleteChannel() {
                     @dragover="onDragOver($event)"
                     @drop="onChannelDrop($event, channel.id, item.data.id)"
                   >
-                    <span v-if="editMode" class="drag-handle">☰</span>
                     <Volume2 class="channel-icon" :size="18" />
                     <template v-if="editingChannelId === channel.id">
                       <input
@@ -784,6 +779,7 @@ async function deleteChannel() {
                     </span>
                     <div v-if="editMode" class="edit-actions" @click.stop>
                       <button v-if="editingChannelId !== channel.id" class="small" @click="renameChannel(channel)">重命名</button>
+                      <span class="drag-handle">☰</span>
                     </div>
                   </div>
                   <div
@@ -821,8 +817,7 @@ async function deleteChannel() {
             @dragover="onDragOver($event)"
             @drop="onChannelDrop($event, item.data.id, null)"
           >
-            <span class="channel-icon">#</span>
-            <span v-if="editMode" class="drag-handle">☰</span>
+            <svg class="channel-icon" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 24 24"><g fill="none"><path d="M12 3a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2h-7a2 2 0 0 1-2-2V3zm2.5 1a.5.5 0 0 0 0 1h6a.5.5 0 0 0 0-1h-6zm0 3a.5.5 0 0 0 0 1h6a.5.5 0 0 0 0-1h-6z" fill="currentColor"></path><path d="M5.25 3H11v1.5H5.25A1.75 1.75 0 0 0 3.5 6.25v8.5c0 .966.784 1.75 1.75 1.75h2.249v3.75l5.015-3.75h6.236a1.75 1.75 0 0 0 1.75-1.75V12h.5c.35 0 .687-.06 1-.17v2.92A3.25 3.25 0 0 1 18.75 18h-5.738L8 21.75a1.25 1.25 0 0 1-1.999-1V18h-.75A3.25 3.25 0 0 1 2 14.75v-8.5A3.25 3.25 0 0 1 5.25 3z" fill="currentColor"></path></g></svg>
             <template v-if="editingChannelId === item.data.id">
               <input
                 class="inline-edit custom-input"
@@ -839,6 +834,7 @@ async function deleteChannel() {
             </template>
             <div v-if="editMode" class="edit-actions" @click.stop>
               <button v-if="editingChannelId !== item.data.id" class="small" @click="renameChannel(item.data)">重命名</button>
+              <span class="drag-handle">☰</span>
             </div>
           </div>
           
@@ -854,7 +850,6 @@ async function deleteChannel() {
               @dragover="onDragOver($event)"
               @drop="onChannelDrop($event, item.data.id, null)"
             >
-              <span v-if="editMode" class="drag-handle">☰</span>
               <Volume2 class="channel-icon" :size="18" />
               <template v-if="editingChannelId === item.data.id">
                 <input
@@ -875,6 +870,7 @@ async function deleteChannel() {
               </span>
               <div v-if="editMode" class="edit-actions" @click.stop>
                 <button v-if="editingChannelId !== item.data.id" class="small" @click="renameChannel(item.data)">重命名</button>
+                <span class="drag-handle">☰</span>
               </div>
             </div>
             <div
@@ -1069,15 +1065,6 @@ async function deleteChannel() {
   min-height: 32px; /* 统一高度 */
 }
 
-.channel-name {
-  font-size: 14px;
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  min-width: 0;
-}
-
 /* remove marquee/automatic scrolling — we use ellipsis only */
 /* .channel-name.scrolling { animation: marquee 6s linear infinite; } */
 
@@ -1198,7 +1185,7 @@ async function deleteChannel() {
 .channel {
   display: flex;
   align-items: center;
-  padding: 6px 8px;
+  padding: 10px 12px;
   margin: 1px 8px;
   border-radius: var(--radius-sm);
   cursor: pointer;
@@ -1207,23 +1194,30 @@ async function deleteChannel() {
 }
 
 .channel:hover {
-  background: var(--surface-glass);
+  background: rgba(255, 166, 133, 0.15);
   color: var(--color-text-main);
 }
 
 .channel.active {
-  background: var(--surface-glass-strong);
-  color: var(--color-text-main);
+  background: rgba(255, 166, 133, 0.6);
+  color: var(--color-text-bright);
 }
 
 .channel-icon {
+  width: 18px;
+  height: 18px;
   margin-right: 6px;
-  font-size: 18px;
   opacity: 0.7;
+  flex-shrink: 0;
+}
+
+.channel-icon svg {
+  width: 100%;
+  height: 100%;
 }
 
 .channel-name {
-  font-size: 14px;
+  font-size: 12px;
   flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1232,15 +1226,26 @@ async function deleteChannel() {
 }
 
 .drag-handle {
-  width: 28px;
-  height: 28px;
-  margin-left: 8px;
+  width: 20px;
+  height: 20px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   cursor: grab;
   color: var(--color-text-muted);
   user-select: none;
+  font-size: 14px;
+  opacity: 0.6;
+  transition: opacity var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.drag-handle:hover {
+  opacity: 1;
+}
+
+.drag-handle:active {
+  cursor: grabbing;
 }
 
 .edit-actions {
@@ -1393,7 +1398,7 @@ async function deleteChannel() {
 /* Channel Group Styles */
 .channel-group {
   margin-bottom: 8px;
-  background: rgba(88, 101, 242, 0.05);
+  background: rgba(76, 76, 76, 0.164);
   border-radius: var(--radius-md);
   margin: 4px 8px 8px 8px;
   overflow: hidden;
@@ -1408,16 +1413,15 @@ async function deleteChannel() {
   color: var(--color-text-main);
   font-size: 12px;
   font-weight: 700;
-  text-transform: uppercase;
   letter-spacing: 0.05em;
-  background: linear-gradient(135deg, rgba(88, 101, 242, 0.2) 0%, rgba(88, 101, 242, 0.08) 100%);
+  background: rgba(110, 153, 255, 0.6);
   border-left: 3px solid var(--color-primary);
   transition: all var(--transition-fast);
   user-select: none;
 }
 
 .channel-group-header:hover {
-  background: linear-gradient(135deg, rgba(88, 101, 242, 0.3) 0%, rgba(88, 101, 242, 0.15) 100%);
+  background: rgba(106, 145, 255, 0.779);
   color: var(--color-text-bright);
 }
 
@@ -1458,73 +1462,76 @@ async function deleteChannel() {
   opacity: 0.7;
 }
 
-.channel-group-header .add-channel {
-  opacity: 0;
-  background: var(--color-primary);
-  color: white;
-  border: none;
+.channel-group-header .rename-group-btn {
+  margin-left: auto;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: var(--color-text-muted);
+  padding: 4px 8px;
   border-radius: 4px;
-  width: 20px;
-  height: 20px;
-  font-size: 14px;
+  font-size: 11px;
   cursor: pointer;
   transition: all var(--transition-fast);
 }
 
-.channel-group-header .add-channel:hover {
-  background: var(--color-primary-hover);
-  transform: scale(1.1);
-}
-
-.channel-group-header:hover .add-channel {
-  opacity: 1;
+.channel-group-header .rename-group-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--color-text-bright);
+  border-color: rgba(255, 255, 255, 0.3);
 }
 
 .group-channels {
-  padding: 4px 0 8px 0;
-  background: rgba(0, 0, 0, 0.1);
+  padding: 3px 0px 0px 0px;
+  background: rgba(255, 255, 255, 0);
 }
 
 .group-channels .channel {
-  margin-left: 20px;
-  margin-right: 12px;
-  padding-left: 12px;
-  background: rgba(88, 101, 242, 0.08);
-  border-left: 2px solid rgba(88, 101, 242, 0.4);
-  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  margin: 0;
+  padding: 10px 12px;
+  font-size: 8px;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  background: rgba(218, 218, 218, 0);
+  border-left: 3px solid var(--color-primary);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-main);
+}
+
+.group-channels .channel .channel-icon {
+  font-size: 16px;
+  opacity: 0.8;
 }
 
 .group-channels .channel:hover {
-  background: rgba(88, 101, 242, 0.15);
+  background: rgba(255, 166, 133, 0.15);
   color: var(--color-text-main);
 }
 
 .group-channels .channel.active {
-  background: rgba(88, 101, 242, 0.25);
+  background: rgba(255, 166, 133, 0.6);
   color: var(--color-text-bright);
   border-left-color: var(--color-primary);
 }
 
-.group-channels .voice-channel-wrapper {
-  margin-left: 20px;
-  margin-right: 12px;
-}
-
 .group-channels .voice-channel-wrapper .channel {
-  margin-left: 0;
-  padding-left: 12px;
-  background: rgba(88, 101, 242, 0.08);
-  border-left: 2px solid rgba(88, 101, 242, 0.4);
-  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  margin: 0;
+  padding: 10px 12px;
+  font-size: 8px;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  background:  rgba(218, 218, 218, 0);
+  border-left: 3px solid var(--color-primary);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-main);
 }
 
 .group-channels .voice-channel-wrapper .channel:hover {
-  background: rgba(88, 101, 242, 0.15);
+  background: rgba(255, 166, 133, 0.15);
   color: var(--color-text-main);
 }
 
 .group-channels .voice-channel-wrapper .channel.active {
-  background: rgba(88, 101, 242, 0.25);
+  background: rgba(255, 166, 133, 0.6);
   color: var(--color-text-bright);
   border-left-color: var(--color-primary);
 }
