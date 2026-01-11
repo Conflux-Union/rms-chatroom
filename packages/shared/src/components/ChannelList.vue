@@ -715,7 +715,7 @@ async function deleteChannel() {
           <!-- Channel Group -->
           <div v-if="item.type === 'group'" class="channel-group" :class="{ collapsed: collapsedGroups.has(item.data.id) }">
             <div 
-              class="channel-group-header"
+              class="channel-group-header glow-effect"
               :draggable="auth.isAdmin && editMode"
               @click.stop="toggleGroupCollapse(item.data.id)"
               @contextmenu.prevent="auth.isAdmin && editMode ? showGroupContextMenu($event, item.data.id) : undefined"
