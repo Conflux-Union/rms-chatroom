@@ -51,6 +51,11 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
+  // Alias for fetchServer for clarity
+  async function fetchServerDetail(serverId: number) {
+    return await fetchServer(serverId)
+  }
+
   async function createServer(name: string) {
     try {
       const resp = await axios.post(
@@ -141,6 +146,29 @@ export const useChatStore = defineStore('chat', () => {
       return resp.data
     } catch (e) {
       console.error('Failed to update channel group:', e)
+      return null
+    }
+  }
+
+  async function updateServer(serverId: number, payload: { name?: string; icon?: string }) {
+    try {
+      const resp = await axios.put(
+        `${API_BASE}/api/servers/${serverId}`,
+        payload,
+        { headers: getAuthHeaders() }
+      )
+      // Update current server if it's the one being edited
+      if (currentServer.value && currentServer.value.id === serverId) {
+        currentServer.value = { ...currentServer.value, ...resp.data }
+      }
+      // Update in servers list
+      const index = servers.value.findIndex(s => s.id === serverId)
+      if (index !== -1) {
+        servers.value[index] = { ...servers.value[index], ...resp.data }
+      }
+      return resp.data
+    } catch (e) {
+      console.error('Failed to update server:', e)
       return null
     }
   }
@@ -372,7 +400,9 @@ export const useChatStore = defineStore('chat', () => {
     voiceChannelUsers,
     fetchServers,
     fetchServer,
+    fetchServerDetail,
     createServer,
+    updateServer,
     createChannel,
     updateChannel,
     reorderChannels,
