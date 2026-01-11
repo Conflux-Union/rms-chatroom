@@ -36,6 +36,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -64,6 +65,8 @@ import cn.net.rms.chatroom.ui.music.MusicSearchDialog
 import cn.net.rms.chatroom.ui.music.MusicViewModel
 import cn.net.rms.chatroom.ui.music.PlatformSelectDialog
 import cn.net.rms.chatroom.ui.theme.*
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -590,12 +593,26 @@ private fun VoiceUserItem(
                     .background(TiColor),
                 contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = participant.name.take(1).uppercase(),
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White
-                )
+                if (!participant.avatarUrl.isNullOrBlank()) {
+                    AsyncImage(
+                        model = ImageRequest.Builder(LocalContext.current)
+                            .data(participant.avatarUrl)
+                            .crossfade(true)
+                            .build(),
+                        contentDescription = participant.name,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clip(CircleShape),
+                        contentScale = ContentScale.Crop
+                    )
+                } else {
+                    Text(
+                        text = participant.name.take(1).uppercase(),
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                }
             }
         }
 
@@ -809,12 +826,26 @@ private fun ParticipantSettingsSheet(
                     .background(TiColor),
                 contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = participant.name.take(1).uppercase(),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White
-                )
+                if (!participant.avatarUrl.isNullOrBlank()) {
+                    AsyncImage(
+                        model = ImageRequest.Builder(LocalContext.current)
+                            .data(participant.avatarUrl)
+                            .crossfade(true)
+                            .build(),
+                        contentDescription = participant.name,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clip(CircleShape),
+                        contentScale = ContentScale.Crop
+                    )
+                } else {
+                    Text(
+                        text = participant.name.take(1).uppercase(),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                }
             }
             Column {
                 Text(
