@@ -19,6 +19,11 @@ class ServerCreate(BaseModel):
     icon: str | None = None
 
 
+class ServerUpdate(BaseModel):
+    name: str | None = None
+    icon: str | None = None
+
+
 class ServerResponse(BaseModel):
     id: int
     name: str
@@ -94,6 +99,23 @@ async def get_server(server_id: int, user: CurrentUser, db: AsyncSession = Depen
             for c in sorted(server.channels, key=lambda x: x.position)
         ],
     )
+
+
+@router.put("/{server_id}", response_model=ServerResponse)
+async def update_server(server_id: int, payload: ServerUpdate, user: AdminUser, db: AsyncSession = Depends(get_db)):
+    """Update a server (admin only)."""
+    result = await db.execute(select(Server).where(Server.id == server_id))
+    server = result.scalar_one_or_none()
+    if not server:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Server not found")
+
+    if payload.name is not None:
+        server.name = payload.name
+    if payload.icon is not None:
+        server.icon = payload.icon
+
+    await db.flush()
+    return server
 
 
 @router.delete("/{server_id}", status_code=status.HTTP_204_NO_CONTENT)

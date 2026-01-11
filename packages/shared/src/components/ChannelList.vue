@@ -292,6 +292,10 @@ async function handleUserDropdownSelect(key: string) {
 // Edit mode (only when admin toggles it on)
 const editMode = ref(false)
 
+// Server name rename dialog state
+const showRenameServerDialog = ref(false)
+const renameServerName = ref('')
+
 // Inline edit state
 const editingChannelId = ref<number | null>(null)
 const editedName = ref('')
@@ -355,6 +359,24 @@ function renameChannel(channel: Channel) {
   startInlineEdit(channel)
 }
 
+function openRenameServerDialog() {
+  if (!chat.currentServer) return
+  renameServerName.value = chat.currentServer.name
+  showRenameServerDialog.value = true
+}
+
+async function confirmRenameServer() {
+  if (!chat.currentServer || !renameServerName.value.trim()) return
+  const name = renameServerName.value.trim()
+  if (name === chat.currentServer.name) {
+    showRenameServerDialog.value = false
+    return
+  }
+  await chat.updateServer(chat.currentServer.id, { name })
+  showRenameServerDialog.value = false
+  renameServerName.value = ''
+}
+
 // Clear editing state when leaving edit mode
 watch(editMode, (val) => {
   if (!val) {
@@ -362,6 +384,8 @@ watch(editMode, (val) => {
     try { (document.activeElement as HTMLElement | null)?.blur() } catch {}
     editingChannelId.value = null
     editedName.value = ''
+    showRenameServerDialog.value = false
+    renameServerName.value = ''
   }
 })
 
@@ -677,7 +701,16 @@ async function deleteChannel() {
       <div class="resizer" @mousedown.stop.prevent="startResizing" title="拖拽调整侧栏宽度"></div>
 
       <div class="server-header">
-        <h2 class="server-title">{{ chat.currentServer?.name || '选择服务器' }}</h2>
+        <div class="server-name-section">
+          <h2 class="server-title">{{ chat.currentServer?.name || '选择服务器' }}</h2>
+          <button 
+            v-if="auth.isAdmin && editMode" 
+            class="rename-server-btn"
+            @click.stop="openRenameServerDialog"
+          >
+            重命名
+          </button>
+        </div>
         <div class="server-controls">
           <button v-if="auth.isAdmin" class="edit-toggle" @click.stop="editMode = !editMode">{{ editMode ? '退出编辑' : '编辑' }}</button>
         </div>
@@ -999,6 +1032,27 @@ async function deleteChannel() {
       </template>
     </NModal>
 
+    <!-- Rename Server Modal -->
+    <NModal
+      v-model:show="showRenameServerDialog"
+      preset="card"
+      title="重命名服务器"
+      style="width: 360px"
+      :segmented="{ content: true, footer: 'soft' }"
+    >
+      <NInput
+        v-model:value="renameServerName"
+        placeholder="新名称"
+        @keyup.enter="confirmRenameServer"
+      />
+      <template #footer>
+        <NSpace justify="end">
+          <NButton @click="showRenameServerDialog = false">取消</NButton>
+          <NButton type="primary" @click="confirmRenameServer">确定</NButton>
+        </NSpace>
+      </template>
+    </NModal>
+
     <!-- Move Channel to Group Modal -->
     <NModal
       v-model:show="showMoveChannelDialog"
@@ -1111,6 +1165,14 @@ async function deleteChannel() {
   justify-content: space-between;
 }
 
+.server-name-section {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
 .server-title {
   margin: 0;
   font-size: 16px;
@@ -1119,7 +1181,24 @@ async function deleteChannel() {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 160px;
+}
+
+.rename-server-btn {
+  margin-left: auto;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: var(--color-text-muted);
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.rename-server-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--color-text-bright);
+  border-color: rgba(255, 255, 255, 0.3);
 }
 
 .server-controls {
