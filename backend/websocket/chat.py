@@ -246,12 +246,18 @@ async def chat_websocket(
                         created_str = created_beijing.strftime("%Y-%m-%d %H:%M")
 
                     # Broadcast to channel
+                    # Get avatar URL for the sender
+                    avatar_url = user.get("avatar_url")
+                    if not avatar_url:
+                        avatar_url = await SSOClient.get_avatar_url(user["id"])
+
                     broadcast_msg = {
                         "type": "message",
                         "id": message.id,
                         "channel_id": channel_id,
                         "user_id": message.user_id,
                         "username": message.username,
+                        "avatar_url": avatar_url,
                         "content": message.content,
                         "created_at": created_str,
                         "attachments": attachments_data,

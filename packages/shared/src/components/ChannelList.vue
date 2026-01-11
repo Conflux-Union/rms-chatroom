@@ -619,7 +619,14 @@ async function deleteChannel() {
                       @contextmenu="auth.isAdmin ? showUserContextMenu($event, channel.id, user.id) : undefined"
                     >
                       <div class="voice-user-avatar-wrapper">
-                        <span class="voice-user-avatar">{{ user.name.charAt(0).toUpperCase() }}</span>
+                        <img
+                          v-if="user.avatar_url"
+                          :src="user.avatar_url"
+                          :alt="user.name"
+                          class="voice-user-avatar-img"
+                          @error="(e: Event) => (e.target as HTMLImageElement).style.display = 'none'"
+                        />
+                        <span v-else class="voice-user-avatar">{{ user.name.charAt(0).toUpperCase() }}</span>
                         <Crown v-if="user.is_host" class="voice-user-host-badge" :size="10" />
                       </div>
                       <span class="voice-user-name">{{ user.name }}</span>
@@ -703,7 +710,14 @@ async function deleteChannel() {
                 @contextmenu="auth.isAdmin ? showUserContextMenu($event, item.data.id, user.id) : undefined"
               >
                 <div class="voice-user-avatar-wrapper">
-                  <span class="voice-user-avatar">{{ user.name.charAt(0).toUpperCase() }}</span>
+                  <img
+                    v-if="user.avatar_url"
+                    :src="user.avatar_url"
+                    :alt="user.name"
+                    class="voice-user-avatar-img"
+                    @error="(e: Event) => (e.target as HTMLImageElement).style.display = 'none'"
+                  />
+                  <span v-else class="voice-user-avatar">{{ user.name.charAt(0).toUpperCase() }}</span>
                   <Crown v-if="user.is_host" class="voice-user-host-badge" :size="10" />
                 </div>
                 <span class="voice-user-name">{{ user.name }}</span>
@@ -1204,6 +1218,13 @@ async function deleteChannel() {
   font-weight: 600;
   color: #fff;
   font-size: 10px;
+}
+
+.voice-user-avatar-img {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  object-fit: cover;
 }
 
 .voice-user-host-badge {

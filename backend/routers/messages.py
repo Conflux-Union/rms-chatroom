@@ -58,6 +58,7 @@ class MessageResponse(BaseModel):
     channel_id: int
     user_id: int
     username: str
+    avatar_url: str | None = None
     content: str
     created_at: datetime
     attachments: list[AttachmentResponse] = []
@@ -95,7 +96,9 @@ def _truncate_content(content: str, max_len: int = 100) -> str:
     return content[: max_len - 3] + "..."
 
 
-def _message_to_response(msg: Message) -> MessageResponse:
+def _message_to_response(
+    msg: Message, avatar_url: str | None = None
+) -> MessageResponse:
     """Convert Message model to response with attachments and reply info."""
     import re
 
@@ -145,6 +148,7 @@ def _message_to_response(msg: Message) -> MessageResponse:
         channel_id=msg.channel_id,
         user_id=msg.user_id,
         username=msg.username,
+        avatar_url=avatar_url,
         content=msg.content,
         created_at=msg.created_at,
         attachments=[_attachment_to_response(att) for att in msg.attachments],
@@ -167,6 +171,8 @@ async def get_messages(
     before: int | None = Query(None),
 ):
     """Get messages from a text channel."""
+    from ..services.sso_client import SSOClient
+
     # Verify channel exists and is text type
     channel_result = await db.execute(select(Channel).where(Channel.id == channel_id))
     channel = channel_result.scalar_one_or_none()
@@ -198,8 +204,15 @@ async def get_messages(
     result = await db.execute(query)
     messages = result.scalars().all()
 
-    # Return in chronological order with attachments
-    return [_message_to_response(msg) for msg in reversed(messages)]
+    # Batch fetch avatar URLs for all unique users
+    user_ids = list(set(msg.user_id for msg in messages))
+    avatar_map = await SSOClient.get_avatar_urls_batch(user_ids)
+
+    # Return in chronological order with attachments and avatars
+    return [
+        _message_to_response(msg, avatar_map.get(msg.user_id))
+        for msg in reversed(messages)
+    ]
 
 
 @router.post("/debug", status_code=status.HTTP_200_OK)

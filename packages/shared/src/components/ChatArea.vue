@@ -194,6 +194,7 @@ function connectWebSocket(channelId: number) {
         channel_id: data.channel_id || channelId,
         user_id: data.user_id,
         username: data.username,
+        avatar_url: data.avatar_url,
         content: data.content,
         created_at: data.created_at,
         attachments: data.attachments || [],
@@ -1040,7 +1041,14 @@ onUnmounted(() => {
         <!-- Avatar: hidden placeholder for grouped messages to maintain alignment -->
         <div class="message-avatar" :class="{ 'avatar-hidden': shouldGroupWithPrevious(index) }">
           <template v-if="!shouldGroupWithPrevious(index)">
-            {{ msg.username.charAt(0).toUpperCase() }}
+            <img
+              v-if="msg.avatar_url"
+              :src="msg.avatar_url"
+              :alt="msg.username"
+              class="avatar-img"
+              @error="(e: Event) => (e.target as HTMLImageElement).style.display = 'none'"
+            />
+            <span v-else class="avatar-fallback">{{ msg.username.charAt(0).toUpperCase() }}</span>
           </template>
         </div>
         <div class="message-content">
@@ -1439,6 +1447,17 @@ onUnmounted(() => {
   color: #fff;
   margin-right: 16px;
   flex-shrink: 0;
+  overflow: hidden;
+}
+
+.message-avatar .avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.message-avatar .avatar-fallback {
+  font-size: 16px;
 }
 
 .message-content {
