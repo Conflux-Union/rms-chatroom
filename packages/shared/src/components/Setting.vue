@@ -37,16 +37,16 @@ async function setNoiseMode(m: NoiseCancelMode) {
   tip.value = ''
   try {
     await voice.setNoiseCancelMode(m)
-    tip.value = `Noise cancellation mode switched: ${m}`
+    tip.value = `降噪模式已切换: ${m}`
   } catch (e) {
-    tip.value = `Switch failed: ${String(e)}`
+    tip.value = `切换失败: ${String(e)}`
   }
 }
 
 // Noise cancel options
 const noiseOptions = [
-  { value: 'webrtc', label: 'WebRTC (Default)' },
-  { value: 'rnnoise', label: 'RNNoise (Medium, Low CPU)' },
+  { value: 'webrtc', label: 'WebRTC（默认）' },
+  { value: 'rnnoise', label: 'RNNoise（中等，低 CPU）' },
 ]
 
 const selectedNoiseMode = computed({
@@ -56,7 +56,7 @@ const selectedNoiseMode = computed({
 
 // Device options
 const inputOptions = computed(() => {
-  const opts = [{ value: '', label: 'System Default' }]
+  const opts = [{ value: '', label: '系统默认' }]
   for (const d of voice.audioInputDevices || []) {
     opts.push({ value: d.deviceId, label: d.label || d.deviceId })
   }
@@ -64,7 +64,7 @@ const inputOptions = computed(() => {
 })
 
 const outputOptions = computed(() => {
-  const opts = [{ value: '', label: 'System Default' }]
+  const opts = [{ value: '', label: '系统默认' }]
   for (const d of voice.audioOutputDevices || []) {
     opts.push({ value: d.deviceId, label: d.label || d.deviceId })
   }
@@ -127,11 +127,11 @@ async function save(key: 'toggleWindow' | 'toggleMic') {
   tip.value = ''
   const val = (key === 'toggleWindow' ? toggleWindow.value : toggleMic.value).trim()
   const r = await window.hotkey?.set(key, val)
-  tip.value = r?.ok ? 'Saved' : r?.error || 'Save failed'
+  tip.value = r?.ok ? '已保存' : r?.error || '保存失败'
 }
 
 function startCapture(key: 'toggleWindow' | 'toggleMic') {
-  tip.value = 'Press the key combination you want (e.g. Ctrl + Alt + M)'
+  tip.value = '请按下你想要的快捷键组合（例如 Ctrl + Alt + M）'
   capturing.value = key
 }
 
@@ -150,7 +150,7 @@ function onKeyDown(e: KeyboardEvent) {
   if (capturing.value === 'toggleWindow') toggleWindow.value = acc
   if (capturing.value === 'toggleMic') toggleMic.value = acc
 
-  tip.value = `Detected: ${acc} (click Save to apply)`
+  tip.value = `检测到: ${acc}（点击保存以应用）`
   capturing.value = null
 }
 
@@ -299,7 +299,7 @@ function stopOutputTest() {
   <NModal
     v-model:show="visible"
     preset="card"
-    title="Settings"
+    title="设置"
     :bordered="false"
     :closable="true"
     :mask-closable="true"
@@ -311,7 +311,7 @@ function stopOutputTest() {
       <div class="setting-row">
         <div class="setting-label">
           <Mic :size="16" />
-          <span>Input Device</span>
+          <span>输入设备</span>
         </div>
         <div class="setting-ctrl">
           <NSelect
@@ -324,7 +324,7 @@ function stopOutputTest() {
             :type="micTestActive ? 'error' : 'default'"
             @click="micTestActive ? stopMicTest() : startMicTest()"
           >
-            {{ micTestActive ? 'Stop' : 'Test' }}
+            {{ micTestActive ? '停止' : '测试' }}
           </NButton>
         </div>
         <NProgress
@@ -340,7 +340,7 @@ function stopOutputTest() {
       <div class="setting-row">
         <div class="setting-label">
           <Volume2 :size="16" />
-          <span>Output Device</span>
+          <span>输出设备</span>
         </div>
         <div class="setting-ctrl">
           <NSelect
@@ -353,14 +353,14 @@ function stopOutputTest() {
             :type="outputTestPlaying ? 'error' : 'default'"
             @click="outputTestPlaying ? stopOutputTest() : startOutputTest()"
           >
-            {{ outputTestPlaying ? 'Stop' : 'Play' }}
+            {{ outputTestPlaying ? '停止' : '播放' }}
           </NButton>
         </div>
       </div>
 
       <!-- Hotkey: Toggle Window -->
       <div class="setting-row">
-        <div class="setting-label">Show/Hide Window (Global Hotkey)</div>
+        <div class="setting-label">显示/隐藏窗口（全局快捷键）</div>
         <div class="setting-ctrl">
           <input
             class="hotkey-input"
@@ -368,15 +368,15 @@ function stopOutputTest() {
             v-model="toggleWindow"
             readonly
             @click="startCapture('toggleWindow')"
-            placeholder="Click then press keys"
+            placeholder="点击后按下快捷键"
           />
-          <NButton size="small" @click="save('toggleWindow')">Save</NButton>
+          <NButton size="small" @click="save('toggleWindow')">保存</NButton>
         </div>
       </div>
 
       <!-- Hotkey: Toggle Mic -->
       <div class="setting-row">
-        <div class="setting-label">Toggle Microphone (Global Hotkey)</div>
+        <div class="setting-label">切换麦克风（全局快捷键）</div>
         <div class="setting-ctrl">
           <input
             class="hotkey-input"
@@ -384,15 +384,15 @@ function stopOutputTest() {
             v-model="toggleMic"
             readonly
             @click="startCapture('toggleMic')"
-            placeholder="Click then press keys"
+            placeholder="点击后按下快捷键"
           />
-          <NButton size="small" @click="save('toggleMic')">Save</NButton>
+          <NButton size="small" @click="save('toggleMic')">保存</NButton>
         </div>
       </div>
 
       <!-- Noise Cancellation -->
       <div class="setting-row">
-        <div class="setting-label">Noise Cancellation</div>
+        <div class="setting-label">降噪</div>
         <NSelect
           v-model:value="selectedNoiseMode"
           :options="noiseOptions"
@@ -405,7 +405,7 @@ function stopOutputTest() {
 
     <template #footer>
       <NSpace justify="end">
-        <NButton @click="stopCapture(); handleClose()">Close</NButton>
+        <NButton @click="stopCapture(); handleClose()">关闭</NButton>
       </NSpace>
     </template>
   </NModal>

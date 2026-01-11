@@ -356,9 +356,9 @@ async function handleStopBot() {
           <NSelect
             v-model:value="music.searchPlatform"
             :options="[
-              { label: 'All', value: 'all' },
-              { label: 'QQ Music', value: 'qq' },
-              { label: 'NetEase', value: 'netease' },
+              { label: '全部', value: 'all' },
+              { label: 'QQ 音乐', value: 'qq' },
+              { label: '网易云', value: 'netease' },
             ]"
             style="width: 100px"
             size="small"
