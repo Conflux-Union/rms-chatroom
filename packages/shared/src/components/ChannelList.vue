@@ -444,7 +444,15 @@ watch(editMode, (val) => {
 //   await chat.reorderChannels(chat.currentServer.id, ids)
 // }
 
-// Channel drag functions
+// Unified drag & drop system - eliminates special cases
+
+// Drag state
+interface DragSource {
+  type: 'group' | 'channel'
+  id: number
+  groupId: number | null  // Only for channels
+}
+
 function onChannelDragStart(event: DragEvent, channelId: number, groupId: number | null = null) {
   if (!auth.isAdmin || !editMode.value) return
   dragSourceId.value = channelId
@@ -455,7 +463,6 @@ function onChannelDragStart(event: DragEvent, channelId: number, groupId: number
   } catch {}
 }
 
-// Group drag functions
 function onGroupDragStart(event: DragEvent, groupId: number) {
   if (!auth.isAdmin || !editMode.value) return
   dragSourceId.value = groupId
@@ -471,49 +478,77 @@ function onDragOver(event: DragEvent) {
   event.preventDefault()
 }
 
-// Drop on a channel (reorder channels within same group, or reorder in mixed list if ungrouped)
+// Unified drop handler - only 2 cases: move or reorder
 async function onChannelDrop(event: DragEvent, targetId: number, targetGroupId: number | null = null) {
   if (!auth.isAdmin || !editMode.value) return
   event.preventDefault()
   event.stopPropagation()
   
-  const srcId = dragSourceId.value
-  const srcType = dragSourceType.value
-  const srcGroupId = dragSourceGroupId.value
+  const source: DragSource = {
+    type: dragSourceType.value as 'group' | 'channel',
+    id: dragSourceId.value!,
+    groupId: dragSourceGroupId.value
+  }
   resetDragState()
   
-  if (!chat.currentServer || srcId === null) return
+  if (!chat.currentServer || source.id === null) return
+  if (source.type === 'channel' && source.id === targetId) return
   
-  // Handle group drop on ungrouped channel (reorder in mixed list)
-  if (srcType === 'group' && targetGroupId === null) {
-    await reorderMixedList('group', srcId, 'channel', targetId)
-    await chat.fetchServerDetail(chat.currentServer.id)
+  await handleDrop(source, { type: 'channel', id: targetId, groupId: targetGroupId })
+}
+
+async function onGroupDrop(event: DragEvent, targetGroupId: number) {
+  if (!auth.isAdmin || !editMode.value) return
+  event.preventDefault()
+  event.stopPropagation()
+  
+  const source: DragSource = {
+    type: dragSourceType.value as 'group' | 'channel',
+    id: dragSourceId.value!,
+    groupId: dragSourceGroupId.value
+  }
+  resetDragState()
+  
+  if (!chat.currentServer || source.id === null) return
+  if (source.type === 'group' && source.id === targetGroupId) return
+  
+  await handleDrop(source, { type: 'group', id: targetGroupId, groupId: null })
+}
+
+// Core logic: only 2 operations
+async function handleDrop(source: DragSource, target: DragSource) {
+  if (!chat.currentServer) return
+  
+  // Case 1: Move channel to a different group
+  if (source.type === 'channel' && target.type === 'group' && source.groupId !== target.id) {
+    await chat.updateChannel(chat.currentServer.id, source.id, { group_id: target.id })
     return
   }
   
-  // Handle channel drop
-  if (srcType !== 'channel') return
-  if (srcId === targetId) return
+  // Case 2: Reorder items
+  await reorderItems(source, target)
+}
+
+// Unified reorder logic
+async function reorderItems(source: DragSource, target: DragSource) {
+  if (!chat.currentServer) return
+  
+  // Reorder within same group
+  if (source.type === 'channel' && target.type === 'channel' && source.groupId === target.groupId && target.groupId !== null) {
+    await reorderChannelsInGroup(source.id, target.id, target.groupId)
+    return
+  }
+  
+  // Reorder in mixed list (groups and ungrouped channels)
+  await reorderInMixedList(source, target)
+}
+
+// Reorder channels within a group
+async function reorderChannelsInGroup(srcId: number, targetId: number, groupId: number) {
+  if (!chat.currentServer) return
   
   const allChannels = [...(chat.currentServer.channels || [])].sort((a, b) => a.position - b.position)
-  
-  // If both are ungrouped, reorder in mixed list
-  if (srcGroupId === null && targetGroupId === null) {
-    await reorderMixedList('channel', srcId, 'channel', targetId)
-    await chat.fetchServerDetail(chat.currentServer.id)
-    return
-  }
-  
-  // If source and target are in different groups, move channel to target group
-  if (srcGroupId !== targetGroupId) {
-    await chat.updateChannel(chat.currentServer.id, srcId, { group_id: targetGroupId === null ? -1 : targetGroupId })
-    // 刷新服务器数据确保UI正确更新
-    await chat.fetchServerDetail(chat.currentServer.id)
-    return
-  }
-  
-  // Same group - just reorder within group
-  const groupChannels = allChannels.filter(c => c.group_id === targetGroupId)
+  const groupChannels = allChannels.filter(c => c.group_id === groupId)
   
   const srcIdx = groupChannels.findIndex(c => c.id === srcId)
   const tgtIdx = groupChannels.findIndex(c => c.id === targetId)
@@ -524,27 +559,25 @@ async function onChannelDrop(event: DragEvent, targetId: number, targetGroupId: 
   groupChannels.splice(tgtIdx, 0, moved)
   
   // Rebuild full channel list
-  const newAll: typeof allChannels = []
   const groupedChannels = new Map<number | null, typeof allChannels>()
-  
   for (const c of allChannels) {
     const gid = c.group_id ?? null
     if (!groupedChannels.has(gid)) groupedChannels.set(gid, [])
     groupedChannels.get(gid)!.push(c)
   }
+  groupedChannels.set(groupId, groupChannels)
   
-  groupedChannels.set(targetGroupId, groupChannels)
-  
-  // Flatten - use mixed list order for ungrouped
+  const newAll: typeof allChannels = []
   for (const item of mixedList.value) {
     if (item.type === 'group') {
-      const gChannels = groupedChannels.get(item.data.id) || []
-      newAll.push(...gChannels)
+      newAll.push(...(groupedChannels.get(item.data.id) || []))
+    } else if (item.type === 'channel') {
+      // Include ungrouped channels
+      const ungrouped = groupedChannels.get(null) || []
+      const channel = ungrouped.find(c => c.id === item.data.id)
+      if (channel) newAll.push(channel)
     }
   }
-  const ungrouped = groupedChannels.get(null) || []
-  // Ungrouped channels are handled by mixed list, but we need to include them
-  // Actually, ungrouped channels are part of mixedList, so we handle them there
   
   // Optimistic UI update
   try {
@@ -552,30 +585,25 @@ async function onChannelDrop(event: DragEvent, targetId: number, targetGroupId: 
       ;(chat.currentServer as any).channels = newAll.length > 0 ? newAll : allChannels
     }
   } catch (e) {
-    console.warn('Optimistic channel update failed', e)
+    console.warn('Optimistic update failed', e)
   }
   
   const ids = (newAll.length > 0 ? newAll : allChannels).map(c => c.id)
   await chat.reorderChannels(chat.currentServer.id, ids)
 }
 
-// Reorder items in the mixed list (groups and ungrouped channels)
-async function reorderMixedList(
-  srcType: 'group' | 'channel', 
-  srcId: number, 
-  targetType: 'group' | 'channel', 
-  targetId: number
-) {
+// Reorder in mixed list (groups and ungrouped channels)
+async function reorderInMixedList(source: DragSource, target: DragSource) {
   if (!chat.currentServer) return
   
   const items = [...mixedList.value]
   const srcIdx = items.findIndex(i => 
-    (srcType === 'group' && i.type === 'group' && i.data.id === srcId) ||
-    (srcType === 'channel' && i.type === 'channel' && i.data.id === srcId)
+    (source.type === 'group' && i.type === 'group' && i.data.id === source.id) ||
+    (source.type === 'channel' && i.type === 'channel' && i.data.id === source.id)
   )
   const tgtIdx = items.findIndex(i => 
-    (targetType === 'group' && i.type === 'group' && i.data.id === targetId) ||
-    (targetType === 'channel' && i.type === 'channel' && i.data.id === targetId)
+    (target.type === 'group' && i.type === 'group' && i.data.id === target.id) ||
+    (target.type === 'channel' && i.type === 'channel' && i.data.id === target.id)
   )
   
   if (srcIdx === -1 || tgtIdx === -1 || srcIdx === tgtIdx) return
@@ -584,7 +612,6 @@ async function reorderMixedList(
   if (!moved) return
   items.splice(tgtIdx, 0, moved)
   
-  // Build the new order for the API
   const newOrder = items.map(item => ({
     type: item.type,
     id: item.data.id
@@ -593,7 +620,6 @@ async function reorderMixedList(
   // Optimistic UI update
   try {
     if (chat.currentServer) {
-      // Update channel groups positions
       const newGroups = items
         .filter(i => i.type === 'group')
         .map((i, idx) => ({ ...i.data, position: items.indexOf(i) }))
@@ -601,7 +627,6 @@ async function reorderMixedList(
         ;(chat.currentServer as any).channelGroups = newGroups
       }
       
-      // Update ungrouped channels positions
       const channels = [...(chat.currentServer.channels || [])]
       for (const item of items) {
         if (item.type === 'channel') {
@@ -617,45 +642,7 @@ async function reorderMixedList(
     console.warn('Optimistic update failed', e)
   }
   
-  // Call the new API
   await chat.reorderMixedList(chat.currentServer.id, newOrder)
-}
-
-// Drop on a group header (reorder groups or move channel to group)
-async function onGroupDrop(event: DragEvent, targetGroupId: number) {
-  if (!auth.isAdmin || !editMode.value) return
-  event.preventDefault()
-  event.stopPropagation()
-  
-  const srcId = dragSourceId.value
-  const srcType = dragSourceType.value
-  const srcGroupId = dragSourceGroupId.value
-  resetDragState()
-  
-  if (!chat.currentServer || srcId === null) return
-  
-  // Handle group reordering
-  if (srcType === 'group') {
-    if (srcId === targetGroupId) return
-    await reorderMixedList('group', srcId, 'group', targetGroupId)
-    await chat.fetchServerDetail(chat.currentServer.id)
-    return
-  }
-  
-  // Handle ungrouped channel drop on group (reorder in mixed list)
-  if (srcType === 'channel' && srcGroupId === null) {
-    await reorderMixedList('channel', srcId, 'group', targetGroupId)
-    await chat.fetchServerDetail(chat.currentServer.id)
-    return
-  }
-  
-  // Handle channel drop on group (move channel to group)
-  if (srcType === 'channel') {
-    if (srcGroupId === targetGroupId) return // Already in this group
-    await chat.updateChannel(chat.currentServer.id, srcId, { group_id: targetGroupId })
-    // 刷新服务器数据确保UI正确更新
-    await chat.fetchServerDetail(chat.currentServer.id)
-  }
 }
 
 function resetDragState() {
@@ -1584,23 +1571,27 @@ async function deleteChannel() {
 
 /* Slide down animation for channel groups */
 .slide-down-enter-active {
-  transition: max-height 0.35s linear;
+  transition: max-height 0.35s ease-out, opacity 0.35s ease-out;
   overflow: hidden;
+  will-change: max-height, opacity;
 }
 
 .slide-down-leave-active {
-  transition: max-height 0.2s linear;
+  transition: max-height 0.2s ease-in, opacity 0.2s ease-in;
   overflow: hidden;
+  will-change: max-height, opacity;
 }
 
 .slide-down-enter-from,
 .slide-down-leave-to {
   max-height: 0 !important;
+  opacity: 0;
 }
 
 .slide-down-enter-to,
 .slide-down-leave-from {
-  max-height: 200px;
+  max-height: 100vh;
+  opacity: 1;
 }
 
 .group-channels .channel {

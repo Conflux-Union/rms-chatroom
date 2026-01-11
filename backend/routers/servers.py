@@ -58,15 +58,21 @@ async def list_servers(user: CurrentUser, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("", response_model=ServerResponse, status_code=status.HTTP_201_CREATED)
-async def create_server(payload: ServerCreate, user: AdminUser, db: AsyncSession = Depends(get_db)):
+async def create_server(
+    payload: ServerCreate, user: AdminUser, db: AsyncSession = Depends(get_db)
+):
     """Create a new server (admin only)."""
     server = Server(name=payload.name, icon=payload.icon, owner_id=user["id"])
     db.add(server)
     await db.flush()
 
     # Create default channels
-    general_text = Channel(server_id=server.id, name="general", type=ChannelType.TEXT, position=0)
-    general_voice = Channel(server_id=server.id, name="General", type=ChannelType.VOICE, position=1)
+    general_text = Channel(
+        server_id=server.id, name="general", type=ChannelType.TEXT, position=0
+    )
+    general_voice = Channel(
+        server_id=server.id, name="General", type=ChannelType.VOICE, position=1
+    )
     db.add_all([general_text, general_voice])
     await db.flush()
 
@@ -74,14 +80,20 @@ async def create_server(payload: ServerCreate, user: AdminUser, db: AsyncSession
 
 
 @router.get("/{server_id}", response_model=ServerDetailResponse)
-async def get_server(server_id: int, user: CurrentUser, db: AsyncSession = Depends(get_db)):
+async def get_server(
+    server_id: int, user: CurrentUser, db: AsyncSession = Depends(get_db)
+):
     """Get server details with channels."""
     result = await db.execute(
-        select(Server).where(Server.id == server_id).options(selectinload(Server.channels))
+        select(Server)
+        .where(Server.id == server_id)
+        .options(selectinload(Server.channels))
     )
     server = result.scalar_one_or_none()
     if not server:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Server not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Server not found"
+        )
 
     return ServerDetailResponse(
         id=server.id,
@@ -101,13 +113,23 @@ async def get_server(server_id: int, user: CurrentUser, db: AsyncSession = Depen
     )
 
 
-@router.put("/{server_id}", response_model=ServerResponse)
-async def update_server(server_id: int, payload: ServerUpdate, user: AdminUser, db: AsyncSession = Depends(get_db)):
+@router.patch("/{server_id}", response_model=ServerResponse)
+@router.put(
+    "/{server_id}", response_model=ServerResponse
+)  # Keep for backward compatibility
+async def update_server(
+    server_id: int,
+    payload: ServerUpdate,
+    user: AdminUser,
+    db: AsyncSession = Depends(get_db),
+):
     """Update a server (admin only)."""
     result = await db.execute(select(Server).where(Server.id == server_id))
     server = result.scalar_one_or_none()
     if not server:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Server not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Server not found"
+        )
 
     if payload.name is not None:
         server.name = payload.name
@@ -119,11 +141,15 @@ async def update_server(server_id: int, payload: ServerUpdate, user: AdminUser, 
 
 
 @router.delete("/{server_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_server(server_id: int, user: AdminUser, db: AsyncSession = Depends(get_db)):
+async def delete_server(
+    server_id: int, user: AdminUser, db: AsyncSession = Depends(get_db)
+):
     """Delete a server (admin only)."""
     result = await db.execute(select(Server).where(Server.id == server_id))
     server = result.scalar_one_or_none()
     if not server:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Server not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Server not found"
+        )
 
     await db.delete(server)

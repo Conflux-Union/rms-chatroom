@@ -15,6 +15,7 @@ Usage:
 
 Note: Android and Electron builds are handled by GitHub Actions when tags are pushed.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -43,7 +44,9 @@ PROJECT_ROOT = Path(__file__).parent.resolve()
 # Version file paths
 VERSION_FILE = PROJECT_ROOT / "current.version"
 WEB_VERSION_FILE = PROJECT_ROOT / "packages" / "web" / "src" / "version.ts"
-ELECTRON_VERSION_FILE = PROJECT_ROOT / "packages" / "electron-renderer" / "src" / "version.ts"
+ELECTRON_VERSION_FILE = (
+    PROJECT_ROOT / "packages" / "electron-renderer" / "src" / "version.ts"
+)
 BACKEND_VERSION_FILE = PROJECT_ROOT / "backend" / "version.py"
 
 # Web frontend directory (for build)
@@ -89,11 +92,11 @@ def validate_version_format(version: str, mode: str) -> tuple[bool, str]:
     """Validate version format based on deploy mode."""
     if mode == "hot-fix":
         # Must match x.x.x-fix-x (e.g., 1.0.6-fix-1)
-        if not re.match(r'^\d+\.\d+\.\d+-fix-\d+$', version):
+        if not re.match(r"^\d+\.\d+\.\d+-fix-\d+$", version):
             return False, f"Hot-fix requires version format x.x.x-fix-x, got: {version}"
     elif mode == "debug":
         # Must contain x.x.x-dev (e.g., 1.0.6-dev, 1.0.6-dev-1)
-        if not re.match(r'^\d+\.\d+\.\d+-dev', version):
+        if not re.match(r"^\d+\.\d+\.\d+-dev", version):
             return False, f"Debug requires version format x.x.x-dev*, got: {version}"
     return True, ""
 
@@ -109,23 +112,23 @@ def get_last_release_version() -> str | None:
         )
         if result.returncode != 0:
             return None
-        
+
         tags = result.stdout.strip().splitlines()
         release_versions = []
-        
+
         for tag in tags:
             # Match v{version}({code}) format, excluding -fix- and -dev
-            match = re.match(r'^v(\d+\.\d+\.\d+)\(\d+\)$', tag)
+            match = re.match(r"^v(\d+\.\d+\.\d+)\(\d+\)$", tag)
             if match:
                 release_versions.append(match.group(1))
-        
+
         if not release_versions:
             return None
-        
+
         # Sort by version number and return the latest
         def version_key(v):
-            return tuple(int(x) for x in v.split('.'))
-        
+            return tuple(int(x) for x in v.split("."))
+
         release_versions.sort(key=version_key, reverse=True)
         return release_versions[0]
     except Exception:
@@ -161,7 +164,7 @@ def git_push(with_tags: bool = False) -> tuple[bool, str]:
         )
         if result.returncode != 0:
             return False, f"Failed to push commits: {result.stderr.strip()}"
-        
+
         if with_tags:
             # Push tags
             result = subprocess.run(
@@ -172,25 +175,25 @@ def git_push(with_tags: bool = False) -> tuple[bool, str]:
             )
             if result.returncode != 0:
                 return False, f"Failed to push tags: {result.stderr.strip()}"
-        
+
         return True, ""
     except Exception as e:
         return False, f"Failed to push: {e}"
 
 
 def build_frontend() -> tuple[bool, str]:
-    """Build web frontend locally using vite."""
+    """Build web frontend locally using pnpm."""
     if not WEB_DIR.exists():
         return False, f"Web directory not found: {WEB_DIR}"
 
     try:
+        # Use pnpm workspace command from project root
         result = subprocess.run(
-            "vite build",
-            cwd=WEB_DIR,
+            ["pnpm", "run", "build:web"],
+            cwd=PROJECT_ROOT,
             capture_output=True,
             text=True,
             timeout=300,  # 5 minutes timeout
-            shell=True,
         )
         if result.returncode != 0:
             return False, f"Web build failed:\n{result.stderr[-2000:]}"
@@ -203,7 +206,7 @@ def build_frontend() -> tuple[bool, str]:
     except subprocess.TimeoutExpired:
         return False, "Web build timed out (5 minutes)"
     except FileNotFoundError:
-        return False, "vite not found. Install with: npm install -g vite"
+        return False, "pnpm not found. Install with: npm install -g pnpm"
     except Exception as e:
         return False, f"Web build error: {e}"
 
@@ -220,14 +223,19 @@ def check_git_clean() -> tuple[bool, str]:
         )
         if result.returncode != 0:
             return False, "Failed to run git status"
-        
+
         # Allow deploy.py and auto-generated version file modifications
-        lines = [line for line in result.stdout.strip().splitlines() 
-                 if not (line.endswith('deploy.py') or 
-                        'version.ts' in line or 
-                        'version.py' in line)]
+        lines = [
+            line
+            for line in result.stdout.strip().splitlines()
+            if not (
+                line.endswith("deploy.py")
+                or "version.ts" in line
+                or "version.py" in line
+            )
+        ]
         if lines:
-            return False, f"Working directory not clean:\n" + '\n'.join(lines)
+            return False, f"Working directory not clean:\n" + "\n".join(lines)
         return True, ""
     except FileNotFoundError:
         return False, "git not found"
@@ -251,7 +259,7 @@ def get_commit_hash() -> str:
 
 def read_version_file() -> tuple[str, str]:
     """Read version info from current.version file.
-    
+
     Returns:
         Tuple of (version_name, version_code)
     """
@@ -261,29 +269,31 @@ def read_version_file() -> tuple[str, str]:
         print("       version=1.0.0")
         print("       code=1")
         sys.exit(1)
-    
+
     content = VERSION_FILE.read_text()
     version_name = None
     version_code = None
-    
+
     for line in content.strip().splitlines():
         line = line.strip()
         if line.startswith("version="):
             version_name = line.split("=", 1)[1].strip()
         elif line.startswith("code="):
             version_code = line.split("=", 1)[1].strip()
-    
+
     if not version_name:
         print("Error: 'version=' not found in current.version")
         sys.exit(1)
     if not version_code:
         print("Error: 'code=' not found in current.version")
         sys.exit(1)
-    
+
     return version_name, version_code
 
 
-def generate_version_files(version_name: str, version_code: str, commit_hash: str) -> None:
+def generate_version_files(
+    version_name: str, version_code: str, commit_hash: str
+) -> None:
     """Generate version files for web, electron-renderer, and backend."""
     frontend_content = f'''// Auto-generated by deploy.py - DO NOT EDIT
 export const VERSION_NAME = "{version_name}"
@@ -309,16 +319,16 @@ COMMIT_HASH = "{commit_hash}"
 
 def cleanup_version_files() -> None:
     """Reset version files to default values after deployment."""
-    default_frontend = '''// Auto-generated by deploy.py - DO NOT EDIT
+    default_frontend = """// Auto-generated by deploy.py - DO NOT EDIT
 export const VERSION_NAME = "0.0.0"
 export const VERSION_CODE = "0"
 export const COMMIT_HASH = "unknown"
-'''
-    default_backend = '''# Auto-generated by deploy.py - DO NOT EDIT
+"""
+    default_backend = """# Auto-generated by deploy.py - DO NOT EDIT
 VERSION_NAME = "0.0.0"
 VERSION_CODE = "0"
 COMMIT_HASH = "unknown"
-'''
+"""
     if WEB_VERSION_FILE.exists():
         WEB_VERSION_FILE.write_text(default_frontend)
     if ELECTRON_VERSION_FILE.exists():
@@ -339,10 +349,7 @@ def create_archive() -> tuple[io.BytesIO, int, int]:
 
             for root, dirs, files in os.walk(dir_path):
                 # Filter directories in-place to skip excluded ones
-                dirs[:] = [
-                    d for d in dirs
-                    if not should_exclude(Path(root) / d, d)
-                ]
+                dirs[:] = [d for d in dirs if not should_exclude(Path(root) / d, d)]
 
                 for filename in files:
                     file_path = Path(root) / filename
@@ -363,24 +370,31 @@ def create_archive() -> tuple[io.BytesIO, int, int]:
 
 def format_size(size: int) -> str:
     """Format byte size to human readable string."""
+    size_float = float(size)
     for unit in ["B", "KB", "MB", "GB"]:
-        if size < 1024:
-            return f"{size:.1f}{unit}"
-        size /= 1024
-    return f"{size:.1f}TB"
+        if size_float < 1024:
+            return f"{size_float:.1f}{unit}"
+        size_float /= 1024
+    return f"{size_float:.1f}TB"
 
 
-def deploy(server_url: str, token: str, dry_run: bool = False, step_offset: int = 0, total_steps: int = 3) -> bool:
+def deploy(
+    server_url: str,
+    token: str,
+    dry_run: bool = False,
+    step_offset: int = 0,
+    total_steps: int = 3,
+) -> bool:
     """Deploy to server."""
     step = step_offset + 1
     print(f"\n[{step}/{total_steps}] Packing files...")
     start = time.time()
-    
+
     archive, file_count, size = create_archive()
     pack_time = time.time() - start
-    
+
     print(f"      {file_count} files, {format_size(size)} (took {pack_time:.1f}s)")
-    
+
     if dry_run:
         print("\n[DRY RUN] Archive created but not uploaded.")
         # Save archive locally for inspection
@@ -388,11 +402,11 @@ def deploy(server_url: str, token: str, dry_run: bool = False, step_offset: int 
         output_path.write_bytes(archive.read())
         print(f"      Saved to: {output_path}")
         return True
-    
+
     step += 1
     print(f"\n[{step}/{total_steps}] Uploading to {server_url}/api/system/update...")
     start = time.time()
-    
+
     try:
         response = requests.post(
             f"{server_url}/api/system/update",
@@ -403,10 +417,10 @@ def deploy(server_url: str, token: str, dry_run: bool = False, step_offset: int 
     except requests.RequestException as e:
         print(f"\n      ERROR: Failed to connect: {e}")
         return False
-    
+
     upload_time = time.time() - start
     print(f"      Upload completed in {upload_time:.1f}s")
-    
+
     if response.status_code != 200:
         print(f"\n      ERROR: Server returned {response.status_code}")
         try:
@@ -415,34 +429,34 @@ def deploy(server_url: str, token: str, dry_run: bool = False, step_offset: int 
             error_detail = response.text
         print(f"      {error_detail}")
         return False
-    
+
     result = response.json()
-    
+
     step += 1
     print(f"\n[{step}/{total_steps}] Server processing result:")
-    
+
     if result.get("backup"):
         print(f"      Backup: {result['backup']}")
-    
+
     print(f"      Files extracted: {result.get('extracted_files', 0)}")
-    
+
     skipped = result.get("skipped_files", [])
     if skipped:
         print(f"      Skipped (protected): {len(skipped)} files")
-    
+
     build = result.get("build", {})
     if build:
         status = "SUCCESS" if build.get("success") else "FAILED"
         print(f"      Frontend build: {status}")
-        
+
         if not build.get("success"):
             print(f"\n      Build stderr:\n{build.get('stderr', 'N/A')}")
             return False
-    
+
     restart = result.get("restart", {})
     if restart and restart.get("scheduled"):
         print(f"      Restart: Scheduled via {restart.get('method', 'unknown')}")
-    
+
     print(f"\nDeploy completed successfully!")
     return True
 
@@ -510,7 +524,9 @@ def main():
         sys.exit(1)
 
     if not args.token and not args.dry_run:
-        print("Error: Deploy token is required. Use --token or set DEPLOY_TOKEN environment variable")
+        print(
+            "Error: Deploy token is required. Use --token or set DEPLOY_TOKEN environment variable"
+        )
         sys.exit(1)
 
     # Read version from file
@@ -520,7 +536,9 @@ def main():
 
     # Calculate total steps based on mode
     # Steps: validate + version + frontend_build + (tag) + push + pack + upload + result
-    total_steps = 6  # base: validate + version + frontend + push + pack + upload + result
+    total_steps = (
+        6  # base: validate + version + frontend + push + pack + upload + result
+    )
     if create_tag:
         total_steps += 1  # tag creation
 
@@ -559,7 +577,9 @@ def main():
     try:
         # Step 3: Build web frontend locally
         step += 1
-        print(f"\n[{step}/{total_steps}] Building web frontend locally (pnpm build:web)...")
+        print(
+            f"\n[{step}/{total_steps}] Building web frontend locally (pnpm build:web)..."
+        )
         success, err = build_frontend()
         if not success:
             print(f"      ERROR: {err}")
@@ -578,7 +598,9 @@ def main():
                 sys.exit(1)
             tag_name = result
             print(f"      Tag created: {tag_name}")
-            print(f"      Note: GitHub Actions will extract version from tag and build Android/Electron")
+            print(
+                f"      Note: GitHub Actions will extract version from tag and build Android/Electron"
+            )
 
         # Step 5: Git push
         step += 1
@@ -601,7 +623,9 @@ def main():
                     sys.exit(1)
                 if create_tag:
                     print(f"      Pushed commits and tags")
-                    print(f"      GitHub Actions will build Android APK and Electron apps")
+                    print(
+                        f"      GitHub Actions will build Android APK and Electron apps"
+                    )
                 else:
                     print(f"      Pushed commits")
 
