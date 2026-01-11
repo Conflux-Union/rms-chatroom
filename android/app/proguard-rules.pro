@@ -34,11 +34,12 @@
     <fields>;
     <init>(...);
 }
-# Keep API request/response body classes
--keep class cn.net.rms.chatroom.data.api.SendMessageBody { *; }
--keep class cn.net.rms.chatroom.data.api.GuestJoinBody { *; }
--keep class cn.net.rms.chatroom.data.api.BugReportResponse { *; }
--keep class cn.net.rms.chatroom.data.api.AppUpdateResponse { *; }
+# Keep all API request/response body classes
+-keep class cn.net.rms.chatroom.data.api.** { *; }
+-keepclassmembers class cn.net.rms.chatroom.data.api.** {
+    <fields>;
+    <init>(...);
+}
 # Keep LiveKit data classes
 -keep class cn.net.rms.chatroom.data.livekit.ParticipantInfo { *; }
 -keep class cn.net.rms.chatroom.data.livekit.ConnectionState { *; }
