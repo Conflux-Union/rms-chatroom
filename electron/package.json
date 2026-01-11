@@ -27,6 +27,14 @@
       "icon": "build/icon.ico",
       "target": ["nsis"]
     },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": false,
+      "allowElevation": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    },
     "mac": {
       "icon": "assets/icon.png",
       "target": ["dmg"],
