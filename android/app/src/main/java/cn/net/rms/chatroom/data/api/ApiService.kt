@@ -49,6 +49,43 @@ interface ApiService {
         @Path("channelId") channelId: Long
     )
 
+    // Channel Groups
+    @GET("api/servers/{serverId}/channel-groups")
+    suspend fun getChannelGroups(
+        @Header("Authorization") token: String,
+        @Path("serverId") serverId: Long
+    ): List<ChannelGroupResponse>
+
+    @POST("api/servers/{serverId}/channel-groups")
+    suspend fun createChannelGroup(
+        @Header("Authorization") token: String,
+        @Path("serverId") serverId: Long,
+        @Body body: CreateChannelGroupRequest
+    ): ChannelGroupResponse
+
+    @DELETE("api/servers/{serverId}/channel-groups/{groupId}")
+    suspend fun deleteChannelGroup(
+        @Header("Authorization") token: String,
+        @Path("serverId") serverId: Long,
+        @Path("groupId") groupId: Long
+    )
+
+    // Channel Reordering
+    @POST("api/servers/{serverId}/reorder")
+    suspend fun reorderTopLevel(
+        @Header("Authorization") token: String,
+        @Path("serverId") serverId: Long,
+        @Body body: ReorderTopLevelRequest
+    )
+
+    @POST("api/servers/{serverId}/channel-groups/{groupId}/reorder-channels")
+    suspend fun reorderGroupChannels(
+        @Header("Authorization") token: String,
+        @Path("serverId") serverId: Long,
+        @Path("groupId") groupId: Long,
+        @Body body: ReorderGroupChannelsRequest
+    )
+
     // Channels
     @GET("api/channels/{id}/messages")
     suspend fun getMessages(
@@ -363,8 +400,31 @@ data class SendMessageBody(
     val replyToId: Long? = null
 )
 data class GuestJoinBody(val username: String)
-data class CreateChannelRequest(val name: String, val type: String = "text")
+data class CreateChannelRequest(val name: String, val type: String = "text", @SerializedName("group_id") val groupId: Long? = null)
 data class CreateServerRequest(val name: String, val icon: String? = null)
+
+// Channel Groups
+data class ChannelGroupResponse(
+    val id: Long,
+    @SerializedName("server_id")
+    val serverId: Long,
+    val name: String,
+    val position: Int
+)
+
+data class CreateChannelGroupRequest(val name: String)
+
+data class ReorderTopLevelItem(
+    val type: String,  // "group" or "channel"
+    val id: Long
+)
+
+data class ReorderTopLevelRequest(val items: List<ReorderTopLevelItem>)
+
+data class ReorderGroupChannelsRequest(
+    @SerializedName("channel_ids")
+    val channelIds: List<Long>
+)
 
 // Bug Report
 data class BugReportResponse(
