@@ -8,6 +8,7 @@ import { NDropdown, NModal, NInput, NButton, NSpace, NSelect } from 'naive-ui'
 import type { DropdownOption, SelectOption } from 'naive-ui'
 import type { Channel, ChannelGroup } from '../types'
 import VoiceControls from '../components/VoiceControls.vue'
+import { useDraggable } from 'vue-draggable-plus'
 
 const chat = useChatStore()
 const auth = useAuthStore()
@@ -300,10 +301,9 @@ const renameServerName = ref('')
 const editingChannelId = ref<number | null>(null)
 const editedName = ref('')
 
-// Drag & drop state
-const dragSourceId = ref<number | null>(null)
-const dragSourceType = ref<'channel' | 'group' | null>(null)
-const dragSourceGroupId = ref<number | null>(null) // The group the dragged channel belongs to
+// Draggable container refs
+const mixedListRef = ref<HTMLElement | null>(null)
+const groupChannelRefs = ref<Map<number, HTMLElement>>(new Map())
 
 // Sidebar width state for a full-height right-edge resizer
 const width = ref<number>(300)
@@ -389,276 +389,53 @@ watch(editMode, (val) => {
   }
 })
 
-// function isFirstInType(channel: Channel) {
-//   if (!chat.currentServer) return false
-//   const same = (chat.currentServer.channels || []).filter(c => c.type === channel.type).sort((a, b) => a.position - b.position)
-//   if (same.length === 0) return false
-//   const first = same[0]
-//   return !!first && first.id === channel.id
-// }
+// ============================================
+// Draggable system using vue-draggable-plus
+// ============================================
 
-// function isLastInType(channel: Channel) {
-//   if (!chat.currentServer) return false
-//   const same = (chat.currentServer.channels || []).filter(c => c.type === channel.type).sort((a, b) => a.position - b.position)
-//   if (same.length === 0) return false
-//   const last = same[same.length - 1]
-//   return !!last && last.id === channel.id
-// }
+// Writable list for draggable
+const draggableList = ref<ListItem[]>([])
 
-// async function moveChannel(channel: Channel, delta: number) {
-//   if (!chat.currentServer) return
-//   const all = [...(chat.currentServer.channels || [])].sort((a, b) => a.position - b.position)
-//   const type = channel.type
-//   const typeList = all.filter(c => c.type === type)
-//   const srcIdx = typeList.findIndex(c => c.id === channel.id)
-//   if (srcIdx === -1) return
-//   const newIdx = srcIdx + delta
-//   if (newIdx < 0 || newIdx >= typeList.length) return
+// Sync draggable list with computed mixedList
+watch(mixedList, (newList) => {
+  draggableList.value = [...newList]
+}, { immediate: true, deep: true })
 
-//   const moved = typeList.splice(srcIdx, 1)[0]
-//   if (!moved) return
-//   typeList.splice(newIdx, 0, moved)
+// Initialize draggable for mixed list
+let mixedListDraggable: ReturnType<typeof useDraggable> | null = null
 
-//   const newAll: typeof all = []
-//   let pos = 0
-//   for (const c of all) {
-//     if (c.type === type) {
-//       const r = typeList[pos++]
-//       if (r) newAll.push(r)
-//     } else {
-//       newAll.push(c)
-//     }
-//   }
-
-//   // Optimistic UI update
-//   try {
-//     if (chat.currentServer && (chat.currentServer as any).channels) {
-//       ;(chat.currentServer as any).channels = newAll
-//     }
-//   } catch (e) {
-//     console.warn('Optimistic channel update failed', e)
-//   }
-
-//   const ids = newAll.map(c => c.id)
-//   console.debug('moveChannel reorder ids:', ids)
-//   await chat.reorderChannels(chat.currentServer.id, ids)
-// }
-
-// Unified drag & drop system - eliminates special cases
-
-// Drag state
-interface DragSource {
-  type: 'group' | 'channel'
-  id: number
-  groupId: number | null  // Only for channels
-}
-
-function onChannelDragStart(event: DragEvent, channelId: number, groupId: number | null = null) {
-  if (!auth.isAdmin || !editMode.value) return
-  dragSourceId.value = channelId
-  dragSourceType.value = 'channel'
-  dragSourceGroupId.value = groupId
-  try { 
-    event.dataTransfer?.setData('text/plain', JSON.stringify({ type: 'channel', id: channelId, groupId })) 
-  } catch {}
-}
-
-function onGroupDragStart(event: DragEvent, groupId: number) {
-  if (!auth.isAdmin || !editMode.value) return
-  dragSourceId.value = groupId
-  dragSourceType.value = 'group'
-  dragSourceGroupId.value = null
-  try { 
-    event.dataTransfer?.setData('text/plain', JSON.stringify({ type: 'group', id: groupId })) 
-  } catch {}
-}
-
-function onDragOver(event: DragEvent) {
-  if (!auth.isAdmin || !editMode.value) return
-  event.preventDefault()
-}
-
-// Unified drop handler - only 2 cases: move or reorder
-async function onChannelDrop(event: DragEvent, targetId: number, targetGroupId: number | null = null) {
-  if (!auth.isAdmin || !editMode.value) return
-  event.preventDefault()
-  event.stopPropagation()
-  
-  const source: DragSource = {
-    type: dragSourceType.value as 'group' | 'channel',
-    id: dragSourceId.value!,
-    groupId: dragSourceGroupId.value
-  }
-  resetDragState()
-  
-  if (!chat.currentServer || source.id === null) return
-  if (source.type === 'channel' && source.id === targetId) return
-  
-  await handleDrop(source, { type: 'channel', id: targetId, groupId: targetGroupId })
-}
-
-async function onGroupDrop(event: DragEvent, targetGroupId: number) {
-  if (!auth.isAdmin || !editMode.value) return
-  event.preventDefault()
-  event.stopPropagation()
-  
-  const source: DragSource = {
-    type: dragSourceType.value as 'group' | 'channel',
-    id: dragSourceId.value!,
-    groupId: dragSourceGroupId.value
-  }
-  resetDragState()
-  
-  if (!chat.currentServer || source.id === null) return
-  if (source.type === 'group' && source.id === targetGroupId) return
-  
-  await handleDrop(source, { type: 'group', id: targetGroupId, groupId: null })
-}
-
-// Core logic: only 2 operations
-async function handleDrop(source: DragSource, target: DragSource) {
-  if (!chat.currentServer) return
-  
-  // Case 1: Move channel to a different group
-  if (source.type === 'channel' && target.type === 'group' && source.groupId !== target.id) {
-    await chat.updateChannel(chat.currentServer.id, source.id, { group_id: target.id })
-    return
+// Watch for mixedListRef and setup draggable
+watch([mixedListRef, editMode], ([el, isEditMode]) => {
+  if (mixedListDraggable) {
+    mixedListDraggable.destroy()
+    mixedListDraggable = null
   }
   
-  // Case 2: Reorder items
-  await reorderItems(source, target)
-}
-
-// Unified reorder logic
-async function reorderItems(source: DragSource, target: DragSource) {
-  if (!chat.currentServer) return
-  
-  // Reorder within same group
-  if (source.type === 'channel' && target.type === 'channel' && source.groupId === target.groupId && target.groupId !== null) {
-    await reorderChannelsInGroup(source.id, target.id, target.groupId)
-    return
-  }
-  
-  // Reorder in mixed list (groups and ungrouped channels)
-  await reorderInMixedList(source, target)
-}
-
-// Reorder channels within a group
-async function reorderChannelsInGroup(srcId: number, targetId: number, groupId: number) {
-  if (!chat.currentServer) return
-  
-  const allChannels = [...(chat.currentServer.channels || [])].sort((a, b) => a.position - b.position)
-  const groupChannels = allChannels.filter(c => c.group_id === groupId)
-  
-  const srcIdx = groupChannels.findIndex(c => c.id === srcId)
-  const tgtIdx = groupChannels.findIndex(c => c.id === targetId)
-  if (srcIdx === -1 || tgtIdx === -1) return
-  
-  const moved = groupChannels.splice(srcIdx, 1)[0]
-  if (!moved) return
-  groupChannels.splice(tgtIdx, 0, moved)
-  
-  // Rebuild full channel list
-  const groupedChannels = new Map<number | null, typeof allChannels>()
-  for (const c of allChannels) {
-    const gid = c.group_id ?? null
-    if (!groupedChannels.has(gid)) groupedChannels.set(gid, [])
-    groupedChannels.get(gid)!.push(c)
-  }
-  groupedChannels.set(groupId, groupChannels)
-  
-  const newAll: typeof allChannels = []
-  for (const item of mixedList.value) {
-    if (item.type === 'group') {
-      newAll.push(...(groupedChannels.get(item.data.id) || []))
-    } else if (item.type === 'channel') {
-      // Include ungrouped channels
-      const ungrouped = groupedChannels.get(null) || []
-      const channel = ungrouped.find(c => c.id === item.data.id)
-      if (channel) newAll.push(channel)
-    }
-  }
-  
-  // Optimistic UI update
-  try {
-    if (chat.currentServer && (chat.currentServer as any).channels) {
-      ;(chat.currentServer as any).channels = newAll.length > 0 ? newAll : allChannels
-    }
-  } catch (e) {
-    console.warn('Optimistic update failed', e)
-  }
-  
-  const ids = (newAll.length > 0 ? newAll : allChannels).map(c => c.id)
-  await chat.reorderChannels(chat.currentServer.id, ids)
-}
-
-// Reorder in mixed list (groups and ungrouped channels)
-async function reorderInMixedList(source: DragSource, target: DragSource) {
-  if (!chat.currentServer) return
-  
-  const items = [...mixedList.value]
-  const srcIdx = items.findIndex(i => 
-    (source.type === 'group' && i.type === 'group' && i.data.id === source.id) ||
-    (source.type === 'channel' && i.type === 'channel' && i.data.id === source.id)
-  )
-  const tgtIdx = items.findIndex(i => 
-    (target.type === 'group' && i.type === 'group' && i.data.id === target.id) ||
-    (target.type === 'channel' && i.type === 'channel' && i.data.id === target.id)
-  )
-  
-  if (srcIdx === -1 || tgtIdx === -1 || srcIdx === tgtIdx) return
-  
-  const moved = items.splice(srcIdx, 1)[0]
-  if (!moved) return
-  items.splice(tgtIdx, 0, moved)
-  
-  const newOrder = items.map(item => ({
-    type: item.type,
-    id: item.data.id
-  }))
-  
-  // Optimistic UI update
-  try {
-    if (chat.currentServer) {
-      const newGroups = items
-        .filter(i => i.type === 'group')
-        .map((i, idx) => ({ ...i.data, position: items.indexOf(i) }))
-      if ((chat.currentServer as any).channelGroups) {
-        ;(chat.currentServer as any).channelGroups = newGroups
+  if (el && isEditMode && auth.isAdmin) {
+    mixedListDraggable = useDraggable(el, draggableList, {
+      animation: 200,
+      handle: '.drag-handle',
+      ghostClass: 'drag-ghost',
+      chosenClass: 'drag-chosen',
+      dragClass: 'drag-dragging',
+      onEnd: async () => {
+        if (!chat.currentServer) return
+        const newOrder = draggableList.value.map(item => ({
+          type: item.type,
+          id: item.data.id
+        }))
+        await chat.reorderMixedList(chat.currentServer.id, newOrder)
       }
-      
-      const channels = [...(chat.currentServer.channels || [])]
-      for (const item of items) {
-        if (item.type === 'channel') {
-          const channel = channels.find(c => c.id === item.data.id)
-          if (channel) {
-            channel.position = items.indexOf(item)
-          }
-        }
-      }
-      ;(chat.currentServer as any).channels = channels
-    }
-  } catch (e) {
-    console.warn('Optimistic update failed', e)
+    })
   }
-  
-  await chat.reorderMixedList(chat.currentServer.id, newOrder)
-}
+}, { immediate: true })
 
-function resetDragState() {
-  dragSourceId.value = null
-  dragSourceType.value = null
-  dragSourceGroupId.value = null
-}
-
-// Legacy function for backward compatibility
-function onDragStart(event: DragEvent, channelId: number) {
-  onChannelDragStart(event, channelId, null)
-}
-
-async function onDrop(event: DragEvent, targetId: number, type: 'text' | 'voice') {
-  await onChannelDrop(event, targetId, null)
-}
+// Cleanup on unmount
+onUnmounted(() => {
+  if (mixedListDraggable) {
+    mixedListDraggable.destroy()
+  }
+})
 
 async function muteVoiceUser() {
   if (!userDropdown.value.channelId || !userDropdown.value.userId) return
@@ -710,18 +487,15 @@ async function deleteChannel() {
           <button v-if="auth.isAdmin" class="add-channel-btn" @click.stop="showCreate = true; newCreateType = 'text'; newChannelGroupId = 'none'" title="创建频道/频道组">+</button>
         </div>
 
-        <!-- Mixed list of channel groups and ungrouped channels -->
-        <template v-for="item in mixedList" :key="item.type + '-' + item.data.id">
+        <!-- Draggable mixed list of channel groups and ungrouped channels -->
+        <div ref="mixedListRef" class="draggable-list">
           <!-- Channel Group -->
+          <template v-for="item in mixedList" :key="item.type + '-' + item.data.id">
           <div v-if="item.type === 'group'" class="channel-group" :class="{ collapsed: collapsedGroups.has(item.data.id) }">
             <div 
               class="channel-group-header glow-effect"
-              :draggable="auth.isAdmin && editMode"
               @click.stop="toggleGroupCollapse(item.data.id)"
               @contextmenu.prevent="auth.isAdmin && editMode ? showGroupContextMenu($event, item.data.id) : undefined"
-              @dragstart="onGroupDragStart($event, item.data.id)"
-              @dragover="onDragOver($event)"
-              @drop="onGroupDrop($event, item.data.id)"
             >
               <ChevronDown v-if="!collapsedGroups.has(item.data.id)" :size="14" class="collapse-icon" />
               <ChevronRight v-else :size="14" class="collapse-icon" />
@@ -731,7 +505,7 @@ async function deleteChannel() {
               <span v-if="editMode" class="drag-handle" @click.stop>☰</span>
             </div>
             
-            <!-- Group channels (mixed text and voice) -->
+            <!-- Group channels (mixed text and voice) - nested draggable -->
             <Transition name="slide-down">
               <div v-if="!collapsedGroups.has(item.data.id)" class="group-channels">
                 <template v-for="channel in getGroupChannels(item.data.id)" :key="channel.id">
@@ -740,12 +514,9 @@ async function deleteChannel() {
                   v-if="channel.type === 'text'"
                   class="channel glow-effect"
                   :class="{ active: chat.currentChannel?.id === channel.id }"
+                  :draggable="auth.isAdmin && editMode"
                   @click="selectChannel(channel)"
                   @contextmenu="auth.isAdmin && editMode ? showChannelContextMenu($event, channel.id) : undefined"
-                  :draggable="auth.isAdmin && editMode"
-                  @dragstart="onChannelDragStart($event, channel.id, item.data.id)"
-                  @dragover="onDragOver($event)"
-                  @drop="onChannelDrop($event, channel.id, item.data.id)"
                 >
                   <svg class="channel-icon" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 24 24"><g fill="none"><path d="M12 3a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2h-7a2 2 0 0 1-2-2V3zm2.5 1a.5.5 0 0 0 0 1h6a.5.5 0 0 0 0-1h-6zm0 3a.5.5 0 0 0 0 1h6a.5.5 0 0 0 0-1h-6z" fill="currentColor"></path><path d="M5.25 3H11v1.5H5.25A1.75 1.75 0 0 0 3.5 6.25v8.5c0 .966.784 1.75 1.75 1.75h2.249v3.75l5.015-3.75h6.236a1.75 1.75 0 0 0 1.75-1.75V12h.5c.35 0 .687-.06 1-.17v2.92A3.25 3.25 0 0 1 18.75 18h-5.738L8 21.75a1.25 1.25 0 0 1-1.999-1V18h-.75A3.25 3.25 0 0 1 2 14.75v-8.5A3.25 3.25 0 0 1 5.25 3z" fill="currentColor"></path></g></svg>
                   <template v-if="editingChannelId === channel.id">
@@ -775,10 +546,6 @@ async function deleteChannel() {
                     :class="{ active: chat.currentChannel?.id === channel.id }"
                     @click="selectChannel(channel)"
                     @contextmenu="auth.isAdmin && editMode ? showChannelContextMenu($event, channel.id) : undefined"
-                    :draggable="auth.isAdmin && editMode"
-                    @dragstart="onChannelDragStart($event, channel.id, item.data.id)"
-                    @dragover="onDragOver($event)"
-                    @drop="onChannelDrop($event, channel.id, item.data.id)"
                   >
                     <Volume2 class="channel-icon" :size="18" />
                     <template v-if="editingChannelId === channel.id">
@@ -834,10 +601,6 @@ async function deleteChannel() {
             :class="{ active: chat.currentChannel?.id === item.data.id }"
             @click="selectChannel(item.data)"
             @contextmenu="auth.isAdmin && editMode ? showChannelContextMenu($event, item.data.id) : undefined"
-            :draggable="auth.isAdmin && editMode"
-            @dragstart="onChannelDragStart($event, item.data.id, null)"
-            @dragover="onDragOver($event)"
-            @drop="onChannelDrop($event, item.data.id, null)"
           >
             <svg class="channel-icon" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 24 24"><g fill="none"><path d="M12 3a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2h-7a2 2 0 0 1-2-2V3zm2.5 1a.5.5 0 0 0 0 1h6a.5.5 0 0 0 0-1h-6zm0 3a.5.5 0 0 0 0 1h6a.5.5 0 0 0 0-1h-6z" fill="currentColor"></path><path d="M5.25 3H11v1.5H5.25A1.75 1.75 0 0 0 3.5 6.25v8.5c0 .966.784 1.75 1.75 1.75h2.249v3.75l5.015-3.75h6.236a1.75 1.75 0 0 0 1.75-1.75V12h.5c.35 0 .687-.06 1-.17v2.92A3.25 3.25 0 0 1 18.75 18h-5.738L8 21.75a1.25 1.25 0 0 1-1.999-1V18h-.75A3.25 3.25 0 0 1 2 14.75v-8.5A3.25 3.25 0 0 1 5.25 3z" fill="currentColor"></path></g></svg>
             <template v-if="editingChannelId === item.data.id">
@@ -867,10 +630,6 @@ async function deleteChannel() {
               :class="{ active: chat.currentChannel?.id === item.data.id }"
               @click="selectChannel(item.data)"
               @contextmenu="auth.isAdmin && editMode ? showChannelContextMenu($event, item.data.id) : undefined"
-              :draggable="auth.isAdmin && editMode"
-              @dragstart="onChannelDragStart($event, item.data.id, null)"
-              @dragover="onDragOver($event)"
-              @drop="onChannelDrop($event, item.data.id, null)"
             >
               <Volume2 class="channel-icon" :size="18" />
               <template v-if="editingChannelId === item.data.id">
@@ -914,7 +673,8 @@ async function deleteChannel() {
               </div>
             </div>
           </div>
-        </template>
+          </template>
+        </div>
       </div>
       
       <div class="user-panel">
@@ -1605,5 +1365,31 @@ async function deleteChannel() {
 .group-channels .voice-channel-wrapper .channel.active {
   background: rgba(255, 166, 133, 0.6);
   color: var(--color-text-bright);
+}
+
+/* Draggable styles */
+.draggable-list {
+  min-height: 20px;
+}
+
+.drag-ghost {
+  opacity: 0.5;
+  background: rgba(255, 166, 133, 0.3) !important;
+  border-radius: var(--radius-sm);
+}
+
+.drag-chosen {
+  background: rgba(255, 166, 133, 0.2) !important;
+}
+
+.drag-dragging {
+  opacity: 0.8;
+  transform: scale(1.02);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.sortable-fallback {
+  opacity: 0.8 !important;
+  background: var(--surface-glass) !important;
 }
 </style>
