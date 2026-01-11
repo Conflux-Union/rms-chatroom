@@ -7,6 +7,7 @@
   --color-text-main: #1a1a1a;
   --color-text-muted: #666666;
   --color-text-light: #ffffff;
+  --color-text-bright: #000000;
 
   /* Surface (Glassmorphism) */
   --surface-glass: rgba(255, 255, 255, 0.7);
