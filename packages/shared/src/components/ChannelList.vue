@@ -507,8 +507,21 @@ async function deleteChannel() {
             
             <!-- Group channels (mixed text and voice) - nested draggable -->
             <Transition name="slide-down">
-              <div v-if="!collapsedGroups.has(item.data.id)" class="group-channels">
-                <template v-for="channel in getGroupChannels(item.data.id)" :key="channel.id">
+              <VueDraggable
+                v-if="!collapsedGroups.has(item.data.id)"
+                :model-value="getDraggableGroupChannels(item.data.id)"
+                @update:model-value="(val: Channel[]) => setDraggableGroupChannels(item.data.id, val)"
+                :disabled="!auth.isAdmin || !editMode"
+                :animation="200"
+                handle=".drag-handle"
+                ghost-class="drag-ghost"
+                chosen-class="drag-chosen"
+                drag-class="drag-dragging"
+                group="channels"
+                @end="() => onGroupChannelsUpdate(item.data.id)"
+                class="group-channels"
+              >
+                <template v-for="channel in getDraggableGroupChannels(item.data.id)" :key="channel.id">
                 <!-- Text channel in group -->
                 <div
                   v-if="channel.type === 'text'"
@@ -590,7 +603,7 @@ async function deleteChannel() {
                   </div>
                 </div>
               </template>
-              </div>
+              </VueDraggable>
             </Transition>
           </div>
 
