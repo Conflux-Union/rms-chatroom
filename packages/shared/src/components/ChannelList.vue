@@ -1098,14 +1098,24 @@ async function deleteChannel() {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 8px;
+  padding: 10px 12px;
   margin: 1px 8px;
   border-radius: var(--radius-sm);
   cursor: pointer;
   color: var(--color-text-muted);
   transition: all var(--transition-fast);
   min-width: 0; /* important so flex children can shrink */
-  min-height: 32px; /* 统一高度 */
+  min-height: 32px;
+}
+
+.channel:hover {
+  background: rgba(255, 166, 133, 0.15);
+  color: var(--color-text-main);
+}
+
+.channel.active {
+  background: rgba(255, 166, 133, 0.6);
+  color: var(--color-text-bright);
 }
 
 /* remove marquee/automatic scrolling — we use ellipsis only */
@@ -1113,13 +1123,15 @@ async function deleteChannel() {
 
 .inline-edit {
   flex: 1;
-  padding: 6px 8px;
+  padding: 4px 8px;
   border-radius: 6px;
   border: 1px solid rgba(255,255,255,0.06);
   background: var(--surface-glass-input);
   color: var(--color-text-main);
-  min-width: 0; /* allow shrink */
+  font-size: 12px;
+  min-width: 0;
   outline: none;
+  margin-right: 8px;
   box-shadow: none;
 }
 
@@ -1254,27 +1266,6 @@ async function deleteChannel() {
   color: var(--color-primary);
 }
 
-.channel {
-  display: flex;
-  align-items: center;
-  padding: 10px 12px;
-  margin: 1px 8px;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  color: var(--color-text-muted);
-  transition: all var(--transition-fast);
-}
-
-.channel:hover {
-  background: rgba(255, 166, 133, 0.15);
-  color: var(--color-text-main);
-}
-
-.channel.active {
-  background: rgba(255, 166, 133, 0.6);
-  color: var(--color-text-bright);
-}
-
 .channel-icon {
   width: 18px;
   height: 18px;
@@ -1320,14 +1311,6 @@ async function deleteChannel() {
   cursor: grabbing;
 }
 
-.edit-actions {
-  margin-left: auto;
-  display: flex;
-  gap: 6px;
-  align-items: center;
-  flex-shrink: 0;
-}
-
 .edit-actions .small {
   font-size: 12px;
   padding: 4px 6px;
@@ -1340,20 +1323,6 @@ async function deleteChannel() {
 
 .edit-actions .small:hover {
   background: var(--surface-glass-strong);
-}
-
-.inline-edit {
-  flex: 1;
-  padding: 4px 8px;
-  border-radius: 6px;
-  border: 1px solid rgba(255,255,255,0.06);
-  background: var(--surface-glass-input);
-  color: var(--color-text-main);
-  font-size: 12px;
-  min-width: 0; /* allow shrink */
-  outline: none;
-  margin-right: 8px;
-  box-shadow: none;
 }
 
 .user-info {
@@ -1471,11 +1440,7 @@ async function deleteChannel() {
 
 /* Channel Group Styles */
 .channel-group {
-  margin-bottom: 8px;
-  background: rgba(76, 76, 76, 0.164);
-  border-radius: var(--radius-md);
-  margin: 4px 8px 8px 8px;
-  overflow: hidden;
+  margin-bottom: 4px;
 }
 
 .channel-group-header {
@@ -1483,20 +1448,20 @@ async function deleteChannel() {
   align-items: center;
   gap: 6px;
   padding: 10px 12px;
+  margin: 0 8px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   color: var(--color-text-main);
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.05em;
-  background: rgba(110, 153, 255, 0.6);
-  border-left: 3px solid var(--color-primary);
   transition: all var(--transition-fast);
   user-select: none;
 }
 
 .channel-group-header:hover {
-  background: rgba(106, 145, 255, 0.779);
-  color: var(--color-text-bright);
+  background: rgba(255, 166, 133, 0.15);
+  color: var(--color-text-main);
 }
 
 .channel-group-header .drag-handle {
@@ -1563,8 +1528,7 @@ async function deleteChannel() {
 }
 
 .group-channels {
-  padding: 3px 0px 0px 0px;
-  background: rgba(255, 255, 255, 0);
+  padding: 2px 0 0 0;
   overflow: hidden;
   transition: all 0.5s linear;
 }
@@ -1595,15 +1559,13 @@ async function deleteChannel() {
 }
 
 .group-channels .channel {
-  margin: 0;
-  padding: 10px 12px;
+  margin: 0 8px 0 24px;
+  padding: 8px 12px;
   font-size: 12px;
   font-weight: 500;
   letter-spacing: 0.05em;
-  background: rgba(218, 218, 218, 0);
-  border-left: 3px solid var(--color-primary);
   border-radius: var(--radius-sm);
-  color: var(--color-text-main);
+  color: var(--color-text-muted);
 }
 
 .group-channels .channel .channel-icon {
@@ -1619,19 +1581,20 @@ async function deleteChannel() {
 .group-channels .channel.active {
   background: rgba(255, 166, 133, 0.6);
   color: var(--color-text-bright);
-  border-left-color: var(--color-primary);
+}
+
+.group-channels .voice-channel-wrapper {
+  margin: 0 8px 0 24px;
 }
 
 .group-channels .voice-channel-wrapper .channel {
   margin: 0;
-  padding: 10px 12px;
+  padding: 8px 12px;
   font-size: 12px;
   font-weight: 500;
   letter-spacing: 0.05em;
-  background:  rgba(218, 218, 218, 0);
-  border-left: 3px solid var(--color-primary);
   border-radius: var(--radius-sm);
-  color: var(--color-text-main);
+  color: var(--color-text-muted);
 }
 
 .group-channels .voice-channel-wrapper .channel:hover {
@@ -1642,11 +1605,5 @@ async function deleteChannel() {
 .group-channels .voice-channel-wrapper .channel.active {
   background: rgba(255, 166, 133, 0.6);
   color: var(--color-text-bright);
-  border-left-color: var(--color-primary);
-}
-
-/* Collapsed group indicator */
-.channel-group.collapsed .channel-group-header {
-  border-radius: var(--radius-md);
 }
 </style>
