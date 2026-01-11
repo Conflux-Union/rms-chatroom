@@ -212,10 +212,6 @@ async def reorder_mixed_list(
     )
     ungrouped_channels = {c.id: c for c in channels_result.scalars().all()}
 
-    # Assign positions within each namespace
-    group_position = 0
-    channel_position = 0
-
     # Validate all items exist before processing
     invalid_items = []
     for item in payload.items:
@@ -237,16 +233,19 @@ async def reorder_mixed_list(
             detail=f"Invalid items in reorder list: {', '.join(invalid_items)}",
         )
 
+    # Assign positions using a unified namespace
+    # Groups and ungrouped channels share the same position sequence
+    # so they can be sorted together in the frontend
+    position = 0
     for item in payload.items:
         item_type = item.get("type")
         item_id = item.get("id")
 
         if item_type == "group" and item_id is not None:
-            groups[item_id].position = group_position
-            group_position += 1
+            groups[item_id].position = position
         elif item_type == "channel" and item_id is not None:
-            ungrouped_channels[item_id].position = channel_position
-            channel_position += 1
+            ungrouped_channels[item_id].position = position
+        position += 1
 
     await db.flush()
 
