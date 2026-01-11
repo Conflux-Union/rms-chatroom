@@ -28,6 +28,18 @@ data class Channel(
     val serverId: Long,
     val name: String,
     val type: ChannelType,
+    val position: Int,
+    @SerializedName("top_position")
+    val topPosition: Int = 0,
+    @SerializedName("group_id")
+    val groupId: Long? = null
+)
+
+data class ChannelGroup(
+    val id: Long,
+    @SerializedName("server_id")
+    val serverId: Long,
+    val name: String,
     val position: Int
 )
 

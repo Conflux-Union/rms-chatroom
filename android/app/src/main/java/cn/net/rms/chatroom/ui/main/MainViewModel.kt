@@ -5,7 +5,9 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import cn.net.rms.chatroom.data.api.ChannelMember
+import cn.net.rms.chatroom.data.api.ReorderTopLevelItem
 import cn.net.rms.chatroom.data.model.Channel
+import cn.net.rms.chatroom.data.model.ChannelGroup
 import cn.net.rms.chatroom.data.model.ChannelType
 import cn.net.rms.chatroom.data.model.Server
 import cn.net.rms.chatroom.data.model.VoiceUser
@@ -33,6 +35,8 @@ data class MainState(
     val servers: List<Server> = emptyList(),
     val currentServer: Server? = null,
     val currentChannel: Channel? = null,
+    val channelGroups: List<ChannelGroup> = emptyList(),
+    val editMode: Boolean = false,
     val error: String? = null,
     val bugReportSubmitting: Boolean = false,
     val bugReportId: String? = null,
@@ -101,6 +105,8 @@ class MainViewModel @Inject constructor(
             chatRepository.fetchServer(serverId)
                 .onSuccess { server ->
                     _state.value = _state.value.copy(currentServer = server)
+                    // Fetch channel groups
+                    fetchChannelGroups(serverId)
                     // Start polling voice channel users
                     startVoiceUsersPolling()
                     // Auto-select first text channel
@@ -109,6 +115,18 @@ class MainViewModel @Inject constructor(
                 }
                 .onFailure { e ->
                     _state.value = _state.value.copy(error = e.message)
+                }
+        }
+    }
+
+    private fun fetchChannelGroups(serverId: Long) {
+        viewModelScope.launch {
+            chatRepository.fetchChannelGroups(serverId)
+                .onSuccess { groups ->
+                    _state.value = _state.value.copy(channelGroups = groups)
+                }
+                .onFailure { e ->
+                    Log.e(TAG, "Failed to fetch channel groups: ${e.message}")
                 }
         }
     }
@@ -363,6 +381,71 @@ class MainViewModel @Inject constructor(
                 }
                 .onFailure { e ->
                     _state.value = _state.value.copy(error = "删除服务器失败: ${e.message}")
+                }
+        }
+    }
+
+    // Channel edit mode and reordering
+    fun toggleEditMode() {
+        _state.value = _state.value.copy(editMode = !_state.value.editMode)
+    }
+
+    fun setEditMode(enabled: Boolean) {
+        _state.value = _state.value.copy(editMode = enabled)
+    }
+
+    fun reorderTopLevel(items: List<ReorderTopLevelItem>) {
+        val serverId = _state.value.currentServer?.id ?: return
+        viewModelScope.launch {
+            chatRepository.reorderTopLevel(serverId, items)
+                .onSuccess {
+                    // Refresh server to get updated positions
+                    selectServer(serverId)
+                }
+                .onFailure { e ->
+                    _state.value = _state.value.copy(error = "排序失败: ${e.message}")
+                }
+        }
+    }
+
+    fun reorderGroupChannels(groupId: Long, channelIds: List<Long>) {
+        val serverId = _state.value.currentServer?.id ?: return
+        viewModelScope.launch {
+            chatRepository.reorderGroupChannels(serverId, groupId, channelIds)
+                .onSuccess {
+                    // Refresh server to get updated positions
+                    selectServer(serverId)
+                }
+                .onFailure { e ->
+                    _state.value = _state.value.copy(error = "排序失败: ${e.message}")
+                }
+        }
+    }
+
+    fun createChannelGroup(name: String) {
+        val serverId = _state.value.currentServer?.id ?: return
+        viewModelScope.launch {
+            chatRepository.createChannelGroup(serverId, name)
+                .onSuccess {
+                    // Refresh server to update channel groups
+                    selectServer(serverId)
+                }
+                .onFailure { e ->
+                    _state.value = _state.value.copy(error = "创建分组失败: ${e.message}")
+                }
+        }
+    }
+
+    fun deleteChannelGroup(groupId: Long) {
+        val serverId = _state.value.currentServer?.id ?: return
+        viewModelScope.launch {
+            chatRepository.deleteChannelGroup(serverId, groupId)
+                .onSuccess {
+                    // Refresh server to update channel groups
+                    selectServer(serverId)
+                }
+                .onFailure { e ->
+                    _state.value = _state.value.copy(error = "删除分组失败: ${e.message}")
                 }
         }
     }

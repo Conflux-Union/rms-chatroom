@@ -2,6 +2,7 @@ package cn.net.rms.chatroom.ui.main.components
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
@@ -9,9 +10,11 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -24,20 +27,33 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
+import cn.net.rms.chatroom.data.api.ReorderTopLevelItem
 import cn.net.rms.chatroom.data.model.Channel
+import cn.net.rms.chatroom.data.model.ChannelGroup
 import cn.net.rms.chatroom.data.model.ChannelType
 import cn.net.rms.chatroom.data.model.Server
 import cn.net.rms.chatroom.data.model.VoiceUser
 import cn.net.rms.chatroom.ui.theme.*
 
+// Sealed class for mixed list items (groups + ungrouped channels)
+sealed class ChannelListItem {
+    data class GroupItem(val group: ChannelGroup) : ChannelListItem()
+    data class UngroupedChannel(val channel: Channel) : ChannelListItem()
+}
+
 @Composable
 fun ChannelListColumn(
     server: Server?,
+    channelGroups: List<ChannelGroup>,
     currentChannelId: Long?,
     onChannelClick: (Channel) -> Unit,
     username: String,
@@ -45,8 +61,14 @@ fun ChannelListColumn(
     onSettings: () -> Unit = {},
     voiceChannelUsers: Map<Long, List<VoiceUser>> = emptyMap(),
     isAdmin: Boolean = false,
-    onCreateChannel: (name: String, type: String) -> Unit = { _, _ -> },
+    editMode: Boolean = false,
+    onToggleEditMode: () -> Unit = {},
+    onCreateChannel: (name: String, type: String, groupId: Long?) -> Unit = { _, _, _ -> },
     onDeleteChannel: (channelId: Long) -> Unit = {},
+    onCreateChannelGroup: (name: String) -> Unit = {},
+    onDeleteChannelGroup: (groupId: Long) -> Unit = {},
+    onReorderTopLevel: (List<ReorderTopLevelItem>) -> Unit = {},
+    onReorderGroupChannels: (groupId: Long, channelIds: List<Long>) -> Unit = { _, _ -> },
     // Voice status widget parameters
     isVoiceConnected: Boolean = false,
     voiceChannelName: String? = null,
@@ -56,8 +78,46 @@ fun ChannelListColumn(
 ) {
     var showCreateDialog by remember { mutableStateOf(false) }
     var createChannelType by remember { mutableStateOf("text") }
+    var createChannelGroupId by remember { mutableStateOf<Long?>(null) }
     var showDeleteDialog by remember { mutableStateOf(false) }
     var channelToDelete by remember { mutableStateOf<Channel?>(null) }
+    var showCreateGroupDialog by remember { mutableStateOf(false) }
+    var showDeleteGroupDialog by remember { mutableStateOf(false) }
+    var groupToDelete by remember { mutableStateOf<ChannelGroup?>(null) }
+    
+    // Collapsed groups state
+    val collapsedGroups = remember { mutableStateMapOf<Long, Boolean>() }
+    
+    // Build mixed list: groups + ungrouped channels, sorted by position
+    val mixedList = remember(server, channelGroups) {
+        val items = mutableListOf<ChannelListItem>()
+        
+        // Add groups
+        channelGroups.forEach { group ->
+            items.add(ChannelListItem.GroupItem(group))
+        }
+        
+        // Add ungrouped channels
+        server?.channels?.filter { it.groupId == null }?.forEach { channel ->
+            items.add(ChannelListItem.UngroupedChannel(channel))
+        }
+        
+        // Sort by position (groups use position, ungrouped channels use topPosition)
+        items.sortedBy { item ->
+            when (item) {
+                is ChannelListItem.GroupItem -> item.group.position
+                is ChannelListItem.UngroupedChannel -> item.channel.topPosition
+            }
+        }
+    }
+    
+    // Draggable list state for top-level reordering
+    var draggableList by remember(mixedList) { mutableStateOf(mixedList) }
+    
+    // Update draggableList when mixedList changes (but not during drag)
+    LaunchedEffect(mixedList) {
+        draggableList = mixedList
+    }
 
     Column(
         modifier = Modifier
@@ -65,14 +125,14 @@ fun ChannelListColumn(
             .fillMaxHeight()
             .background(SurfaceDark)
     ) {
-        // Server header
-        Box(
+        // Server header with edit button
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(48.dp)
                 .background(SurfaceDark)
                 .padding(horizontal = 16.dp),
-            contentAlignment = Alignment.CenterStart
+            verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
                 text = server?.name ?: "选择服务器",
@@ -80,13 +140,29 @@ fun ChannelListColumn(
                 fontWeight = FontWeight.Bold,
                 color = TextPrimary,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
             )
+            
+            // Edit mode toggle button (admin only)
+            if (isAdmin) {
+                IconButton(
+                    onClick = onToggleEditMode,
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        imageVector = if (editMode) Icons.Default.Check else Icons.Default.Edit,
+                        contentDescription = if (editMode) "完成编辑" else "编辑频道",
+                        tint = if (editMode) TiColor else TextMuted,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
         }
 
         HorizontalDivider(color = Color(0xFF1E1F22), thickness = 2.dp)
 
-        // Channel list
+        // Channel list with groups
         LazyColumn(
             modifier = Modifier
                 .weight(1f)
@@ -94,59 +170,157 @@ fun ChannelListColumn(
                 .padding(horizontal = 8.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(2.dp)
         ) {
-            // Text channels section
-            val textChannels = server?.channels?.filter { it.type == ChannelType.TEXT } ?: emptyList()
-            item {
-                ChannelSectionHeader(
-                    title = "文字频道",
-                    showAddButton = isAdmin,
-                    onAddClick = {
-                        createChannelType = "text"
-                        showCreateDialog = true
-                    }
-                )
+            // Add group button in edit mode
+            if (editMode && isAdmin) {
+                item {
+                    AddGroupButton(onClick = { showCreateGroupDialog = true })
+                }
             }
-            items(textChannels, key = { it.id }) { channel ->
-                ChannelItem(
-                    channel = channel,
-                    isSelected = channel.id == currentChannelId,
-                    onClick = { onChannelClick(channel) },
-                    onLongClick = if (isAdmin) {
-                        {
-                            channelToDelete = channel
-                            showDeleteDialog = true
+            
+            // Render mixed list (groups + ungrouped channels)
+            draggableList.forEachIndexed { index, item ->
+                when (item) {
+                    is ChannelListItem.GroupItem -> {
+                        val group = item.group
+                        val isCollapsed = collapsedGroups[group.id] ?: false
+                        val groupChannels = server?.channels
+                            ?.filter { it.groupId == group.id }
+                            ?.sortedBy { it.position }
+                            ?: emptyList()
+                        
+                        item(key = "group_${group.id}") {
+                            ChannelGroupHeader(
+                                group = group,
+                                isCollapsed = isCollapsed,
+                                onToggleCollapse = { 
+                                    collapsedGroups[group.id] = !isCollapsed 
+                                },
+                                editMode = editMode,
+                                isAdmin = isAdmin,
+                                onAddChannel = {
+                                    createChannelGroupId = group.id
+                                    createChannelType = "text"
+                                    showCreateDialog = true
+                                },
+                                onDeleteGroup = {
+                                    groupToDelete = group
+                                    showDeleteGroupDialog = true
+                                },
+                                onMoveUp = if (index > 0) {
+                                    {
+                                        val newList = draggableList.toMutableList()
+                                        val temp = newList[index]
+                                        newList[index] = newList[index - 1]
+                                        newList[index - 1] = temp
+                                        draggableList = newList
+                                        submitTopLevelReorder(newList, onReorderTopLevel)
+                                    }
+                                } else null,
+                                onMoveDown = if (index < draggableList.size - 1) {
+                                    {
+                                        val newList = draggableList.toMutableList()
+                                        val temp = newList[index]
+                                        newList[index] = newList[index + 1]
+                                        newList[index + 1] = temp
+                                        draggableList = newList
+                                        submitTopLevelReorder(newList, onReorderTopLevel)
+                                    }
+                                } else null
+                            )
                         }
-                    } else null
-                )
-            }
-
-            // Voice channels section
-            val voiceChannels = server?.channels?.filter { it.type == ChannelType.VOICE } ?: emptyList()
-            item {
-                Spacer(modifier = Modifier.height(16.dp))
-                ChannelSectionHeader(
-                    title = "语音频道",
-                    showAddButton = isAdmin,
-                    onAddClick = {
-                        createChannelType = "voice"
-                        showCreateDialog = true
-                    }
-                )
-            }
-            voiceChannels.forEach { channel ->
-                val users = voiceChannelUsers[channel.id] ?: emptyList()
-                item(key = "voice_${channel.id}") {
-                    VoiceChannelItem(
-                        channel = channel,
-                        isSelected = channel.id == currentChannelId,
-                        onClick = { onChannelClick(channel) },
-                        onLongClick = if (isAdmin) {
-                            {
-                                channelToDelete = channel
-                                showDeleteDialog = true
+                        
+                        // Group channels (collapsible)
+                        if (!isCollapsed) {
+                            groupChannels.forEachIndexed { channelIndex, channel ->
+                                item(key = "channel_${channel.id}") {
+                                    GroupedChannelItem(
+                                        channel = channel,
+                                        isSelected = channel.id == currentChannelId,
+                                        onClick = { onChannelClick(channel) },
+                                        onLongClick = if (isAdmin) {
+                                            {
+                                                channelToDelete = channel
+                                                showDeleteDialog = true
+                                            }
+                                        } else null,
+                                        voiceUsers = voiceChannelUsers[channel.id] ?: emptyList(),
+                                        editMode = editMode,
+                                        onMoveUp = if (editMode && channelIndex > 0) {
+                                            {
+                                                val newOrder = groupChannels.toMutableList()
+                                                val temp = newOrder[channelIndex]
+                                                newOrder[channelIndex] = newOrder[channelIndex - 1]
+                                                newOrder[channelIndex - 1] = temp
+                                                onReorderGroupChannels(group.id, newOrder.map { it.id })
+                                            }
+                                        } else null,
+                                        onMoveDown = if (editMode && channelIndex < groupChannels.size - 1) {
+                                            {
+                                                val newOrder = groupChannels.toMutableList()
+                                                val temp = newOrder[channelIndex]
+                                                newOrder[channelIndex] = newOrder[channelIndex + 1]
+                                                newOrder[channelIndex + 1] = temp
+                                                onReorderGroupChannels(group.id, newOrder.map { it.id })
+                                            }
+                                        } else null
+                                    )
+                                }
                             }
-                        } else null,
-                        users = users
+                        }
+                    }
+                    
+                    is ChannelListItem.UngroupedChannel -> {
+                        val channel = item.channel
+                        item(key = "ungrouped_${channel.id}") {
+                            UngroupedChannelItem(
+                                channel = channel,
+                                isSelected = channel.id == currentChannelId,
+                                onClick = { onChannelClick(channel) },
+                                onLongClick = if (isAdmin) {
+                                    {
+                                        channelToDelete = channel
+                                        showDeleteDialog = true
+                                    }
+                                } else null,
+                                voiceUsers = voiceChannelUsers[channel.id] ?: emptyList(),
+                                editMode = editMode,
+                                onMoveUp = if (editMode && index > 0) {
+                                    {
+                                        val newList = draggableList.toMutableList()
+                                        val temp = newList[index]
+                                        newList[index] = newList[index - 1]
+                                        newList[index - 1] = temp
+                                        draggableList = newList
+                                        submitTopLevelReorder(newList, onReorderTopLevel)
+                                    }
+                                } else null,
+                                onMoveDown = if (editMode && index < draggableList.size - 1) {
+                                    {
+                                        val newList = draggableList.toMutableList()
+                                        val temp = newList[index]
+                                        newList[index] = newList[index + 1]
+                                        newList[index + 1] = temp
+                                        draggableList = newList
+                                        submitTopLevelReorder(newList, onReorderTopLevel)
+                                    }
+                                } else null
+                            )
+                        }
+                    }
+                }
+            }
+            
+            // Add channel button at the end (for ungrouped channels)
+            if (editMode && isAdmin) {
+                item {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    AddChannelButton(
+                        label = "添加频道",
+                        onClick = {
+                            createChannelGroupId = null
+                            createChannelType = "text"
+                            showCreateDialog = true
+                        }
                     )
                 }
             }
@@ -173,10 +347,15 @@ fun ChannelListColumn(
     if (showCreateDialog) {
         CreateChannelDialog(
             channelType = createChannelType,
-            onDismiss = { showCreateDialog = false },
-            onCreate = { name ->
-                onCreateChannel(name, createChannelType)
+            groupId = createChannelGroupId,
+            onDismiss = { 
                 showCreateDialog = false
+                createChannelGroupId = null
+            },
+            onCreate = { name, type ->
+                onCreateChannel(name, type, createChannelGroupId)
+                showCreateDialog = false
+                createChannelGroupId = null
             }
         )
     }
@@ -212,31 +391,132 @@ fun ChannelListColumn(
             }
         )
     }
+    
+    // Create Channel Group Dialog
+    if (showCreateGroupDialog) {
+        CreateChannelGroupDialog(
+            onDismiss = { showCreateGroupDialog = false },
+            onCreate = { name ->
+                onCreateChannelGroup(name)
+                showCreateGroupDialog = false
+            }
+        )
+    }
+    
+    // Delete Channel Group Dialog
+    if (showDeleteGroupDialog && groupToDelete != null) {
+        AlertDialog(
+            onDismissRequest = {
+                showDeleteGroupDialog = false
+                groupToDelete = null
+            },
+            title = { Text("删除分组") },
+            text = { Text("确定要删除分组「${groupToDelete?.name}」吗？分组内的频道将变为未分组状态。") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        groupToDelete?.let { onDeleteChannelGroup(it.id) }
+                        showDeleteGroupDialog = false
+                        groupToDelete = null
+                    },
+                    colors = ButtonDefaults.textButtonColors(contentColor = Color(0xFFED4245))
+                ) {
+                    Text("删除")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showDeleteGroupDialog = false
+                    groupToDelete = null
+                }) {
+                    Text("取消")
+                }
+            }
+        )
+    }
+}
+
+// Helper function to submit top-level reorder
+private fun submitTopLevelReorder(
+    list: List<ChannelListItem>,
+    onReorder: (List<ReorderTopLevelItem>) -> Unit
+) {
+    val items = list.map { item ->
+        when (item) {
+            is ChannelListItem.GroupItem -> ReorderTopLevelItem("group", item.group.id)
+            is ChannelListItem.UngroupedChannel -> ReorderTopLevelItem("channel", item.channel.id)
+        }
+    }
+    onReorder(items)
 }
 
 @Composable
 private fun CreateChannelDialog(
     channelType: String,
+    groupId: Long?,
     onDismiss: () -> Unit,
-    onCreate: (name: String) -> Unit
+    onCreate: (name: String, type: String) -> Unit
 ) {
     var channelName by remember { mutableStateOf("") }
+    var selectedType by remember { mutableStateOf(channelType) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("创建${if (channelType == "text") "文字" else "语音"}频道") },
+        title = { Text("创建频道") },
         text = {
-            OutlinedTextField(
-                value = channelName,
-                onValueChange = { channelName = it },
-                label = { Text("频道名称") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
+            Column {
+                OutlinedTextField(
+                    value = channelName,
+                    onValueChange = { channelName = it },
+                    label = { Text("频道名称") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                Text(
+                    text = "频道类型",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = TextMuted
+                )
+                
+                Spacer(modifier = Modifier.height(8.dp))
+                
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    FilterChip(
+                        selected = selectedType == "text",
+                        onClick = { selectedType = "text" },
+                        label = { Text("文字") },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Default.Tag,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    )
+                    FilterChip(
+                        selected = selectedType == "voice",
+                        onClick = { selectedType = "voice" },
+                        label = { Text("语音") },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.VolumeUp,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    )
+                }
+            }
         },
         confirmButton = {
             TextButton(
-                onClick = { if (channelName.isNotBlank()) onCreate(channelName.trim()) },
+                onClick = { if (channelName.isNotBlank()) onCreate(channelName.trim(), selectedType) },
                 enabled = channelName.isNotBlank()
             ) {
                 Text("创建")
@@ -251,27 +531,138 @@ private fun CreateChannelDialog(
 }
 
 @Composable
-private fun ChannelSectionHeader(
-    title: String,
-    showAddButton: Boolean = false,
-    onAddClick: () -> Unit = {}
+private fun CreateChannelGroupDialog(
+    onDismiss: () -> Unit,
+    onCreate: (name: String) -> Unit
+) {
+    var groupName by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("创建分组") },
+        text = {
+            OutlinedTextField(
+                value = groupName,
+                onValueChange = { groupName = it },
+                label = { Text("分组名称") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { if (groupName.isNotBlank()) onCreate(groupName.trim()) },
+                enabled = groupName.isNotBlank()
+            ) {
+                Text("创建")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("取消")
+            }
+        }
+    )
+}
+
+// Channel Group Header with collapse/expand
+@Composable
+private fun ChannelGroupHeader(
+    group: ChannelGroup,
+    isCollapsed: Boolean,
+    onToggleCollapse: () -> Unit,
+    editMode: Boolean,
+    isAdmin: Boolean,
+    onAddChannel: () -> Unit,
+    onDeleteGroup: () -> Unit,
+    onMoveUp: (() -> Unit)?,
+    onMoveDown: (() -> Unit)?
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 8.dp, horizontal = 8.dp),
+            .clickable { onToggleCollapse() }
+            .padding(vertical = 8.dp, horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        // Collapse/expand icon
+        Icon(
+            imageVector = if (isCollapsed) Icons.Default.ChevronRight else Icons.Default.ExpandMore,
+            contentDescription = if (isCollapsed) "展开" else "折叠",
+            modifier = Modifier.size(16.dp),
+            tint = TextMuted
+        )
+        
+        Spacer(modifier = Modifier.width(4.dp))
+        
         Text(
-            text = title,
+            text = group.name.uppercase(),
             style = MaterialTheme.typography.labelSmall,
             fontWeight = FontWeight.SemiBold,
             color = TextMuted,
             modifier = Modifier.weight(1f)
         )
-        if (showAddButton) {
+        
+        if (editMode && isAdmin) {
+            // Move up button
+            if (onMoveUp != null) {
+                IconButton(
+                    onClick = onMoveUp,
+                    modifier = Modifier.size(20.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.KeyboardArrowUp,
+                        contentDescription = "上移",
+                        tint = TextMuted,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
+            
+            // Move down button
+            if (onMoveDown != null) {
+                IconButton(
+                    onClick = onMoveDown,
+                    modifier = Modifier.size(20.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.KeyboardArrowDown,
+                        contentDescription = "下移",
+                        tint = TextMuted,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
+            
+            // Add channel button
             IconButton(
-                onClick = onAddClick,
+                onClick = onAddChannel,
+                modifier = Modifier.size(20.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Add,
+                    contentDescription = "添加频道",
+                    tint = TextMuted,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+            
+            // Delete group button
+            IconButton(
+                onClick = onDeleteGroup,
+                modifier = Modifier.size(20.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Delete,
+                    contentDescription = "删除分组",
+                    tint = Color(0xFFED4245),
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+        } else if (isAdmin) {
+            // Just show add button when not in edit mode
+            IconButton(
+                onClick = onAddChannel,
                 modifier = Modifier.size(20.dp)
             ) {
                 Icon(
@@ -285,65 +676,73 @@ private fun ChannelSectionHeader(
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
+// Add Group Button
 @Composable
-private fun ChannelItem(
-    channel: Channel,
-    isSelected: Boolean,
-    onClick: () -> Unit,
-    onLongClick: (() -> Unit)? = null
-) {
-    val backgroundColor by animateColorAsState(
-        targetValue = if (isSelected) SurfaceLighter else Color.Transparent,
-        animationSpec = tween(150),
-        label = "channelBg"
-    )
-
-    val textColor by animateColorAsState(
-        targetValue = if (isSelected) ChannelActive else ChannelDefault,
-        animationSpec = tween(150),
-        label = "channelText"
-    )
-
+private fun AddGroupButton(onClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(4.dp))
-            .background(backgroundColor)
-            .combinedClickable(
-                onClick = onClick,
-                onLongClick = onLongClick
-            )
+            .clickable { onClick() }
             .padding(horizontal = 8.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(
-            imageVector = if (channel.type == ChannelType.TEXT) Icons.Default.Tag else Icons.AutoMirrored.Filled.VolumeUp,
+            imageVector = Icons.Default.CreateNewFolder,
             contentDescription = null,
             modifier = Modifier.size(20.dp),
-            tint = textColor
+            tint = TiColor
         )
-
         Spacer(modifier = Modifier.width(8.dp))
-
         Text(
-            text = channel.name,
+            text = "添加分组",
             style = MaterialTheme.typography.bodyMedium,
-            color = textColor,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
+            color = TiColor
         )
     }
 }
 
+// Add Channel Button
+@Composable
+private fun AddChannelButton(
+    label: String,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(4.dp))
+            .clickable { onClick() }
+            .padding(horizontal = 8.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = Icons.Default.Add,
+            contentDescription = null,
+            modifier = Modifier.size(20.dp),
+            tint = TiColor
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = TiColor
+        )
+    }
+}
+
+// Grouped Channel Item (with indent)
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun VoiceChannelItem(
+private fun GroupedChannelItem(
     channel: Channel,
     isSelected: Boolean,
     onClick: () -> Unit,
-    onLongClick: (() -> Unit)? = null,
-    users: List<VoiceUser>
+    onLongClick: (() -> Unit)?,
+    voiceUsers: List<VoiceUser>,
+    editMode: Boolean,
+    onMoveUp: (() -> Unit)?,
+    onMoveDown: (() -> Unit)?
 ) {
     val backgroundColor by animateColorAsState(
         targetValue = if (isSelected) SurfaceLighter else Color.Transparent,
@@ -357,8 +756,9 @@ private fun VoiceChannelItem(
         label = "channelText"
     )
 
-    Column {
-        // Channel row
+    Column(
+        modifier = Modifier.padding(start = 12.dp)  // Indent for grouped channels
+    ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -372,7 +772,7 @@ private fun VoiceChannelItem(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
-                imageVector = Icons.AutoMirrored.Filled.VolumeUp,
+                imageVector = if (channel.type == ChannelType.TEXT) Icons.Default.Tag else Icons.AutoMirrored.Filled.VolumeUp,
                 contentDescription = null,
                 modifier = Modifier.size(20.dp),
                 tint = textColor
@@ -388,34 +788,187 @@ private fun VoiceChannelItem(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f)
             )
-
-            // User count badge
-            if (users.isNotEmpty()) {
+            
+            // Voice user count badge
+            if (channel.type == ChannelType.VOICE && voiceUsers.isNotEmpty()) {
                 Surface(
                     shape = RoundedCornerShape(10.dp),
                     color = SurfaceLighter
                 ) {
                     Text(
-                        text = "${users.size}",
+                        text = "${voiceUsers.size}",
                         style = MaterialTheme.typography.labelSmall,
                         color = TextMuted,
                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                     )
                 }
             }
+            
+            // Edit mode controls
+            if (editMode) {
+                if (onMoveUp != null) {
+                    IconButton(
+                        onClick = onMoveUp,
+                        modifier = Modifier.size(20.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.KeyboardArrowUp,
+                            contentDescription = "上移",
+                            tint = TextMuted,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
+                if (onMoveDown != null) {
+                    IconButton(
+                        onClick = onMoveDown,
+                        modifier = Modifier.size(20.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.KeyboardArrowDown,
+                            contentDescription = "下移",
+                            tint = TextMuted,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
+            }
         }
-
-        // Voice users list
-        AnimatedVisibility(
-            visible = users.isNotEmpty(),
-            enter = expandVertically(),
-            exit = shrinkVertically()
-        ) {
-            Column(
-                modifier = Modifier.padding(start = 28.dp)
+        
+        // Voice users list for voice channels
+        if (channel.type == ChannelType.VOICE) {
+            AnimatedVisibility(
+                visible = voiceUsers.isNotEmpty(),
+                enter = expandVertically(),
+                exit = shrinkVertically()
             ) {
-                users.forEach { user ->
-                    VoiceUserItem(user = user)
+                Column(
+                    modifier = Modifier.padding(start = 28.dp)
+                ) {
+                    voiceUsers.forEach { user ->
+                        VoiceUserItem(user = user)
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Ungrouped Channel Item (no indent)
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun UngroupedChannelItem(
+    channel: Channel,
+    isSelected: Boolean,
+    onClick: () -> Unit,
+    onLongClick: (() -> Unit)?,
+    voiceUsers: List<VoiceUser>,
+    editMode: Boolean,
+    onMoveUp: (() -> Unit)?,
+    onMoveDown: (() -> Unit)?
+) {
+    val backgroundColor by animateColorAsState(
+        targetValue = if (isSelected) SurfaceLighter else Color.Transparent,
+        animationSpec = tween(150),
+        label = "channelBg"
+    )
+
+    val textColor by animateColorAsState(
+        targetValue = if (isSelected) ChannelActive else ChannelDefault,
+        animationSpec = tween(150),
+        label = "channelText"
+    )
+
+    Column {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(4.dp))
+                .background(backgroundColor)
+                .combinedClickable(
+                    onClick = onClick,
+                    onLongClick = onLongClick
+                )
+                .padding(horizontal = 8.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = if (channel.type == ChannelType.TEXT) Icons.Default.Tag else Icons.AutoMirrored.Filled.VolumeUp,
+                contentDescription = null,
+                modifier = Modifier.size(20.dp),
+                tint = textColor
+            )
+
+            Spacer(modifier = Modifier.width(8.dp))
+
+            Text(
+                text = channel.name,
+                style = MaterialTheme.typography.bodyMedium,
+                color = textColor,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+            
+            // Voice user count badge
+            if (channel.type == ChannelType.VOICE && voiceUsers.isNotEmpty()) {
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = SurfaceLighter
+                ) {
+                    Text(
+                        text = "${voiceUsers.size}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = TextMuted,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
+            }
+            
+            // Edit mode controls
+            if (editMode) {
+                if (onMoveUp != null) {
+                    IconButton(
+                        onClick = onMoveUp,
+                        modifier = Modifier.size(20.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.KeyboardArrowUp,
+                            contentDescription = "上移",
+                            tint = TextMuted,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
+                if (onMoveDown != null) {
+                    IconButton(
+                        onClick = onMoveDown,
+                        modifier = Modifier.size(20.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.KeyboardArrowDown,
+                            contentDescription = "下移",
+                            tint = TextMuted,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
+            }
+        }
+        
+        // Voice users list for voice channels
+        if (channel.type == ChannelType.VOICE) {
+            AnimatedVisibility(
+                visible = voiceUsers.isNotEmpty(),
+                enter = expandVertically(),
+                exit = shrinkVertically()
+            ) {
+                Column(
+                    modifier = Modifier.padding(start = 28.dp)
+                ) {
+                    voiceUsers.forEach { user ->
+                        VoiceUserItem(user = user)
+                    }
                 }
             }
         }

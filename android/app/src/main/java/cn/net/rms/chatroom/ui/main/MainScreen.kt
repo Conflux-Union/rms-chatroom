@@ -111,6 +111,7 @@ fun MainScreen(
                     // Channel List
                     ChannelListColumn(
                         server = mainState.currentServer,
+                        channelGroups = mainState.channelGroups,
                         currentChannelId = mainState.currentChannel?.id,
                         onChannelClick = { channel ->
                             mainViewModel.selectChannel(channel)
@@ -124,11 +125,25 @@ fun MainScreen(
                         },
                         voiceChannelUsers = voiceChannelUsers,
                         isAdmin = (authState.user?.permissionLevel ?: 0) >= 3,
-                        onCreateChannel = { name, type ->
+                        editMode = mainState.editMode,
+                        onToggleEditMode = { mainViewModel.toggleEditMode() },
+                        onCreateChannel = { name, type, groupId ->
                             mainViewModel.createChannel(name, type)
                         },
                         onDeleteChannel = { channelId ->
                             mainViewModel.deleteChannel(channelId)
+                        },
+                        onCreateChannelGroup = { name ->
+                            mainViewModel.createChannelGroup(name)
+                        },
+                        onDeleteChannelGroup = { groupId ->
+                            mainViewModel.deleteChannelGroup(groupId)
+                        },
+                        onReorderTopLevel = { items ->
+                            mainViewModel.reorderTopLevel(items)
+                        },
+                        onReorderGroupChannels = { groupId, channelIds ->
+                            mainViewModel.reorderGroupChannels(groupId, channelIds)
                         },
                         isVoiceConnected = isVoiceConnected,
                         voiceChannelName = voiceChannelName,

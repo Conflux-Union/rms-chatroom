@@ -6,8 +6,13 @@ import android.net.Uri
 import cn.net.rms.chatroom.data.api.AddReactionRequest
 import cn.net.rms.chatroom.data.api.ApiService
 import cn.net.rms.chatroom.data.api.ChannelMember
+import cn.net.rms.chatroom.data.api.ChannelGroupResponse
+import cn.net.rms.chatroom.data.api.CreateChannelGroupRequest
 import cn.net.rms.chatroom.data.api.CreateChannelRequest
 import cn.net.rms.chatroom.data.api.CreateServerRequest
+import cn.net.rms.chatroom.data.api.ReorderGroupChannelsRequest
+import cn.net.rms.chatroom.data.api.ReorderTopLevelItem
+import cn.net.rms.chatroom.data.api.ReorderTopLevelRequest
 import cn.net.rms.chatroom.data.api.SendMessageBody
 import dagger.hilt.android.qualifiers.ApplicationContext
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
@@ -17,6 +22,7 @@ import cn.net.rms.chatroom.data.local.MessageDao
 import cn.net.rms.chatroom.data.local.MessageEntity
 import cn.net.rms.chatroom.data.local.SettingsPreferences
 import cn.net.rms.chatroom.data.model.Channel
+import cn.net.rms.chatroom.data.model.ChannelGroup
 import cn.net.rms.chatroom.data.model.ChannelType
 import cn.net.rms.chatroom.data.model.Message
 import cn.net.rms.chatroom.data.model.ReactionGroup
@@ -73,6 +79,10 @@ class ChatRepository @Inject constructor(
     // Voice channel users: Map<channelId, List<VoiceUser>>
     private val _voiceChannelUsers = MutableStateFlow<Map<Long, List<VoiceUser>>>(emptyMap())
     val voiceChannelUsers: StateFlow<Map<Long, List<VoiceUser>>> = _voiceChannelUsers.asStateFlow()
+
+    // Channel groups for current server
+    private val _channelGroups = MutableStateFlow<List<ChannelGroup>>(emptyList())
+    val channelGroups: StateFlow<List<ChannelGroup>> = _channelGroups.asStateFlow()
 
     val connectionState: StateFlow<ConnectionState> = webSocket.connectionState
     val webSocketEvents = webSocket.events
@@ -424,6 +434,95 @@ class ChatRepository @Inject constructor(
             Result.success(Unit)
         } catch (e: Exception) {
             Log.e(TAG, "deleteChannel failed", e)
+            Result.failure(e.toAuthException())
+        }
+    }
+
+    // Channel Group methods
+    suspend fun fetchChannelGroups(serverId: Long): Result<List<ChannelGroup>> {
+        return try {
+            val token = authRepository.getToken()
+                ?: return Result.failure(AuthException("未登录，请先登录"))
+            val groups = api.getChannelGroups(authRepository.getAuthHeader(token), serverId)
+            val channelGroups = groups.map { 
+                ChannelGroup(
+                    id = it.id,
+                    serverId = it.serverId,
+                    name = it.name,
+                    position = it.position
+                )
+            }
+            _channelGroups.value = channelGroups
+            Result.success(channelGroups)
+        } catch (e: Exception) {
+            Log.e(TAG, "fetchChannelGroups failed", e)
+            Result.failure(e.toAuthException())
+        }
+    }
+
+    suspend fun createChannelGroup(serverId: Long, name: String): Result<ChannelGroup> {
+        return try {
+            val token = authRepository.getToken()
+                ?: return Result.failure(AuthException("未登录，请先登录"))
+            val response = api.createChannelGroup(
+                authRepository.getAuthHeader(token),
+                serverId,
+                CreateChannelGroupRequest(name)
+            )
+            val group = ChannelGroup(
+                id = response.id,
+                serverId = response.serverId,
+                name = response.name,
+                position = response.position
+            )
+            Result.success(group)
+        } catch (e: Exception) {
+            Log.e(TAG, "createChannelGroup failed", e)
+            Result.failure(e.toAuthException())
+        }
+    }
+
+    suspend fun deleteChannelGroup(serverId: Long, groupId: Long): Result<Unit> {
+        return try {
+            val token = authRepository.getToken()
+                ?: return Result.failure(AuthException("未登录，请先登录"))
+            api.deleteChannelGroup(authRepository.getAuthHeader(token), serverId, groupId)
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e(TAG, "deleteChannelGroup failed", e)
+            Result.failure(e.toAuthException())
+        }
+    }
+
+    suspend fun reorderTopLevel(serverId: Long, items: List<ReorderTopLevelItem>): Result<Unit> {
+        return try {
+            val token = authRepository.getToken()
+                ?: return Result.failure(AuthException("未登录，请先登录"))
+            api.reorderTopLevel(
+                authRepository.getAuthHeader(token),
+                serverId,
+                ReorderTopLevelRequest(items)
+            )
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e(TAG, "reorderTopLevel failed", e)
+            Result.failure(e.toAuthException())
+        }
+    }
+
+    suspend fun reorderGroupChannels(serverId: Long, groupId: Long, channelIds: List<Long>): Result<Unit> {
+        return try {
+            val token = authRepository.getToken()
+                ?: return Result.failure(AuthException("未登录，请先登录"))
+            api.reorderGroupChannels(
+                authRepository.getAuthHeader(token),
+                serverId,
+                groupId,
+                ReorderGroupChannelsRequest(channelIds)
+            )
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e(TAG, "reorderGroupChannels failed", e)
             Result.failure(e.toAuthException())
         }
     }
