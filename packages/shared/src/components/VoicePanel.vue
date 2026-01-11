@@ -282,13 +282,13 @@ async function createInviteLink() {
 
     if (!response.ok) {
       const err = await response.json()
-      throw new Error(err.detail || 'Failed to create invite')
+      throw new Error(err.detail || '创建邀请失败')
     }
 
     const data = await response.json()
     inviteUrl.value = data.invite_url
   } catch (e) {
-    inviteError.value = e instanceof Error ? e.message : 'Failed to create invite'
+    inviteError.value = e instanceof Error ? e.message : '创建邀请失败'
   } finally {
     inviteLoading.value = false
   }

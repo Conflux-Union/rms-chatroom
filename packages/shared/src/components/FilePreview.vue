@@ -113,6 +113,7 @@ const openPdf = () => {
       <video v-else-if="blobUrl" controls preload="metadata">
         <source :src="blobUrl" :type="attachment.content_type" />
         Your browser does not support video playback.
+        你的浏览器不支持视频播放。
       </video>
     </div>
 
@@ -126,6 +127,7 @@ const openPdf = () => {
       <audio v-else-if="blobUrl" controls preload="metadata">
         <source :src="blobUrl" :type="attachment.content_type" />
         Your browser does not support audio playback.
+        你的浏览器不支持音频播放。
       </audio>
     </div>
 

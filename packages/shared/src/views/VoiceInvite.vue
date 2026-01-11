@@ -170,7 +170,7 @@ async function joinVoice() {
 
     if (!resp.ok) {
       const err = await resp.json()
-      throw new Error(err.detail || 'Failed to join')
+      throw new Error(err.detail || '加入失败')
     }
 
     const data = await resp.json()

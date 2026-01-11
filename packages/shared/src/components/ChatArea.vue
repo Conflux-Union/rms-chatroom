@@ -57,11 +57,11 @@ const contextMenuOptions = computed(() => {
   const msg = contextMenu.value.message
   if (!msg) return []
   const opts: Array<{ label: string; key: string }> = []
-  opts.push({ label: 'Add Reaction', key: 'reaction' })
-  opts.push({ label: 'Reply', key: 'reply' })
-  if (canEdit(msg)) opts.push({ label: 'Edit', key: 'edit' })
-  if (canDelete(msg)) opts.push({ label: 'Delete', key: 'delete' })
-  if (canMute(msg)) opts.push({ label: 'Mute User', key: 'mute' })
+  opts.push({ label: '添加表情', key: 'reaction' })
+  opts.push({ label: '回复', key: 'reply' })
+  if (canEdit(msg)) opts.push({ label: '编辑', key: 'edit' })
+  if (canDelete(msg)) opts.push({ label: '删除', key: 'delete' })
+  if (canMute(msg)) opts.push({ label: '禁言用户', key: 'mute' })
   return opts
 })
 
@@ -90,17 +90,17 @@ function handleContextMenuSelect(key: string) {
 
 // Mute dialog options
 const scopeOptions = [
-  { label: 'Current Channel', value: 'channel' },
-  { label: 'Current Server', value: 'server' },
-  { label: 'Global', value: 'global' },
+  { label: '当前频道', value: 'channel' },
+  { label: '当前服务器', value: 'server' },
+  { label: '全局', value: 'global' },
 ]
 
 const durationOptions = [
-  { label: 'Permanent', value: 'permanent' },
-  { label: '10 minutes', value: '10m' },
-  { label: '1 hour', value: '1h' },
-  { label: '1 day', value: '1d' },
-  { label: 'Custom', value: 'custom' },
+  { label: '永久', value: 'permanent' },
+  { label: '10 分钟', value: '10m' },
+  { label: '1 小时', value: '1h' },
+  { label: '1 天', value: '1d' },
+  { label: '自定义', value: 'custom' },
 ]
 
 // Edit message state
@@ -224,7 +224,7 @@ function connectWebSocket(channelId: number) {
     } else if (data.type === 'error' && data.code === 'muted') {
       // User is muted
       isMuted.value = true
-      muteReason.value = data.message || 'You are muted'
+      muteReason.value = data.message || '你已被禁言'
     } else if (data.type === 'reaction_added') {
       // Add reaction to message
       const message = chat.messages.find(m => m.id === data.message_id)
@@ -702,7 +702,7 @@ async function saveEdit() {
 
   const content = editingMessage.value.content.trim()
   if (!content) {
-    dialog.warning({ title: 'Warning', content: 'Message cannot be empty' })
+    dialog.warning({ title: '警告', content: '消息内容不能为空' })
     return
   }
 
@@ -715,8 +715,8 @@ async function saveEdit() {
     editingMessage.value = null
   } catch (error: any) {
     dialog.error({
-      title: 'Error',
-      content: error.response?.data?.detail || 'Failed to edit message',
+      title: '错误',
+      content: error.response?.data?.detail || '编辑消息失败',
     })
   }
 }
@@ -724,10 +724,10 @@ async function saveEdit() {
 // Delete message function
 function confirmDeleteMessage(message: Message) {
   dialog.warning({
-    title: 'Delete Message',
-    content: 'Are you sure you want to delete this message?',
-    positiveText: 'Delete',
-    negativeText: 'Cancel',
+    title: '删除消息',
+    content: '确定要删除这条消息吗？',
+    positiveText: '删除',
+    negativeText: '取消',
     onPositiveClick: () => deleteMessage(message),
   })
 }
@@ -742,8 +742,8 @@ async function deleteMessage(message: Message) {
     )
   } catch (error: any) {
     dialog.error({
-      title: 'Error',
-      content: error.response?.data?.detail || 'Failed to delete message',
+      title: '错误',
+      content: error.response?.data?.detail || '删除消息失败',
     })
   }
 }
@@ -802,12 +802,12 @@ async function confirmMute() {
     await axios.post(`${API_BASE}/api/mute`, payload, {
       headers: { Authorization: `Bearer ${auth.token}` },
     })
-    dialog.success({ title: 'Success', content: 'User muted successfully' })
+    dialog.success({ title: '成功', content: '用户已被禁言' })
     hideMuteDialog()
   } catch (error: any) {
     dialog.error({
-      title: 'Error',
-      content: error.response?.data?.detail || 'Failed to mute user',
+      title: '错误',
+      content: error.response?.data?.detail || '禁言用户失败',
     })
   }
 }
@@ -934,7 +934,7 @@ function hasUserReacted(reactions: ReactionGroup[] | undefined, emoji: string): 
 function getReactionTooltip(reaction: ReactionGroup): string {
   const names = reaction.users.map(u => u.username).slice(0, 5)
   if (reaction.users.length > 5) {
-    names.push(`+${reaction.users.length - 5} more`)
+    names.push(`还有 ${reaction.users.length - 5} 人`)
   }
   return names.join(', ')
 }
@@ -1095,9 +1095,9 @@ onUnmounted(() => {
               @keydown.esc="cancelEdit"
             />
             <NSpace size="small" style="margin-top: 8px">
-              <NButton size="small" type="primary" @click="saveEdit">Save</NButton>
-              <NButton size="small" @click="cancelEdit">Cancel</NButton>
-              <span class="edit-hint">Enter to save, Esc to cancel</span>
+              <NButton size="small" type="primary" @click="saveEdit">保存</NButton>
+              <NButton size="small" @click="cancelEdit">取消</NButton>
+              <span class="edit-hint">回车保存，Esc 取消</span>
             </NSpace>
           </div>
 
@@ -1154,7 +1154,7 @@ onUnmounted(() => {
               <button
                 class="reaction-add-btn"
                 @click="showReactionPicker($event, msg.id)"
-                title="Add Reaction"
+                title="添加表情"
               >
                 <SmilePlus :size="16" />
               </button>
@@ -1164,7 +1164,7 @@ onUnmounted(() => {
               <button
                 class="reaction-add-btn"
                 @click="showReactionPicker($event, msg.id)"
-                title="Add Reaction"
+                title="添加表情"
               >
                 <SmilePlus :size="16" />
               </button>
@@ -1313,31 +1313,31 @@ onUnmounted(() => {
     <NModal
       v-model:show="muteDialog.visible"
       preset="card"
-      :title="`Mute User: ${muteDialog.username}`"
+      :title="`禁言用户: ${muteDialog.username}`"
       :bordered="false"
       style="width: 420px; max-width: 90vw"
     >
       <NForm label-placement="top">
-        <NFormItem label="Scope">
+        <NFormItem label="范围">
           <NSelect v-model:value="muteDialog.scope" :options="scopeOptions" />
         </NFormItem>
 
-        <NFormItem label="Duration">
+        <NFormItem label="时长">
           <NSelect v-model:value="muteDialog.duration" :options="durationOptions" />
         </NFormItem>
 
-        <NFormItem v-if="muteDialog.duration === 'custom'" label="Custom Duration (minutes)">
+        <NFormItem v-if="muteDialog.duration === 'custom'" label="自定义时长（分钟）">
           <NInputNumber
             v-model:value="muteDialog.customMinutes"
             :min="1"
           />
         </NFormItem>
 
-        <NFormItem label="Reason (optional)">
+        <NFormItem label="原因（可选）">
           <NInput
             v-model:value="muteDialog.reason"
             type="textarea"
-            placeholder="Enter mute reason..."
+            placeholder="输入禁言原因..."
             :rows="3"
           />
         </NFormItem>
@@ -1345,8 +1345,8 @@ onUnmounted(() => {
 
       <template #footer>
         <NSpace justify="end">
-          <NButton @click="hideMuteDialog">Cancel</NButton>
-          <NButton type="primary" @click="confirmMute">Confirm</NButton>
+          <NButton @click="hideMuteDialog">取消</NButton>
+          <NButton type="primary" @click="confirmMute">确认</NButton>
         </NSpace>
       </template>
     </NModal>
