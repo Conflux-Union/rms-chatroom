@@ -304,6 +304,8 @@ const editedName = ref('')
 // Draggable list data (writable refs for vue-draggable-plus)
 const draggableMixedList = ref<ListItem[]>([])
 const draggableGroupChannels = ref<Map<number, Channel[]>>(new Map())
+// Flag to prevent watch from overwriting during drag operations
+const isReordering = ref(false)
 
 // Sidebar width state for a full-height right-edge resizer
 const width = ref<number>(300)
@@ -395,11 +397,15 @@ watch(editMode, (val) => {
 
 // Sync draggable mixed list with computed mixedList
 watch(mixedList, (newList) => {
+  // Skip sync during reordering to prevent race condition
+  if (isReordering.value) return
   draggableMixedList.value = [...newList]
 }, { immediate: true, deep: true })
 
 // Sync group channels when server changes
 watch([() => chat.currentServer?.channels, channelGroups], () => {
+  // Skip sync during reordering to prevent race condition
+  if (isReordering.value) return
   const map = new Map<number, Channel[]>()
   for (const group of channelGroups.value) {
     map.set(group.id, [...getGroupChannels(group.id)])
@@ -418,28 +424,37 @@ function getDraggableGroupChannels(groupId: number): Channel[] {
 // Handle mixed list reorder
 async function onMixedListEnd() {
   if (!chat.currentServer) return
-  const newOrder = draggableMixedList.value.map(item => ({
-    type: item.type,
-    id: item.data.id
-  }))
-  await chat.reorderMixedList(chat.currentServer.id, newOrder)
+  isReordering.value = true
+  try {
+    const newOrder = draggableMixedList.value.map(item => ({
+      type: item.type,
+      id: item.data.id
+    }))
+    await chat.reorderMixedList(chat.currentServer.id, newOrder)
+  } finally {
+    isReordering.value = false
+  }
 }
 
 // Handle group channels reorder
 async function onGroupChannelsEnd(groupId: number) {
   if (!chat.currentServer) return
-  
-  const channels = draggableGroupChannels.value.get(groupId) || []
-  
-  // Get all channels and rebuild the order
-  const allChannels = [...(chat.currentServer.channels || [])]
-  const otherChannels = allChannels.filter(c => c.group_id !== groupId)
-  
-  // Rebuild full list maintaining positions
-  const newAll = [...otherChannels, ...channels]
-  const ids = newAll.map(c => c.id)
-  
-  await chat.reorderChannels(chat.currentServer.id, ids)
+  isReordering.value = true
+  try {
+    const channels = draggableGroupChannels.value.get(groupId) || []
+    
+    // Get all channels and rebuild the order
+    const allChannels = [...(chat.currentServer.channels || [])]
+    const otherChannels = allChannels.filter(c => c.group_id !== groupId)
+    
+    // Rebuild full list maintaining positions
+    const newAll = [...otherChannels, ...channels]
+    const ids = newAll.map(c => c.id)
+    
+    await chat.reorderChannels(chat.currentServer.id, ids)
+  } finally {
+    isReordering.value = false
+  }
 }
 
 async function muteVoiceUser() {
