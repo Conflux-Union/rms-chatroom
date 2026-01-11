@@ -8,8 +8,12 @@ from datetime import datetime
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from livekit.api import (
-    AccessToken, VideoGrants, LiveKitAPI, ListParticipantsRequest,
-    RoomParticipantIdentity, MuteRoomTrackRequest
+    AccessToken,
+    VideoGrants,
+    LiveKitAPI,
+    ListParticipantsRequest,
+    RoomParticipantIdentity,
+    MuteRoomTrackRequest,
 )
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -32,16 +36,24 @@ QQ_GROUP_ID = 457054386
 async def check_room_has_real_users(room_name: str) -> bool:
     """Check if room has real users (excluding MusicBot)."""
     settings = get_settings()
-    livekit_http_url = settings.livekit_internal_host.replace("ws://", "http://").replace("wss://", "https://")
+    livekit_http_url = settings.livekit_internal_host.replace(
+        "ws://", "http://"
+    ).replace("wss://", "https://")
     api = LiveKitAPI(
         url=livekit_http_url,
         api_key=settings.livekit_api_key,
         api_secret=settings.livekit_api_secret,
     )
     try:
-        response = await api.room.list_participants(ListParticipantsRequest(room=room_name))
+        response = await api.room.list_participants(
+            ListParticipantsRequest(room=room_name)
+        )
         # Filter out MusicBot (legacy "MusicBot" and new "music-bot-{room}" format)
-        real_users = [p for p in response.participants if p.identity != "MusicBot" and not p.identity.startswith("music-bot-")]
+        real_users = [
+            p
+            for p in response.participants
+            if p.identity != "MusicBot" and not p.identity.startswith("music-bot-")
+        ]
         return len(real_users) > 0
     except Exception:
         # Room doesn't exist or error, assume no users
@@ -50,20 +62,22 @@ async def check_room_has_real_users(room_name: str) -> bool:
         await api.aclose()
 
 
-async def send_qq_group_notify(username: str, server_name: str, channel_name: str, room_name: str) -> None:
+async def send_qq_group_notify(
+    username: str, server_name: str, channel_name: str, room_name: str
+) -> None:
     """Send notification to QQ group when first user joins voice channel."""
     # Only notify if no real users in room (MusicBot excluded)
     has_users = await check_room_has_real_users(room_name)
     if has_users:
         return
-    
+
     message = f"[RMS ChatRoom] 玩家 {username} 在 {server_name}/{channel_name} 开启了新的语音聊天 😋"
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
             await client.post(
                 QQ_NOTIFY_URL,
                 json={"group_id": QQ_GROUP_ID, "message": message},
-                headers={"Authorization": "Bearer rmstoken"}
+                headers={"Authorization": "Bearer rmstoken"},
             )
     except Exception as e:
         logger.warning(f"Failed to send QQ group notification: {e}")
@@ -87,6 +101,7 @@ class LiveKitTokenResponse(BaseModel):
 class VoiceChannelUser(BaseModel):
     id: str
     name: str
+    avatar_url: str | None = None
     is_muted: bool
     is_host: bool = False
 
@@ -156,22 +171,20 @@ async def get_voice_token(
         .where(Channel.id == channel_id)
     )
     channel = result.scalar_one_or_none()
-    
+
     if not channel:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Channel not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Channel not found"
         )
-    
+
     if channel.type != ChannelType.VOICE:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Not a voice channel"
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Not a voice channel"
         )
-    
+
     settings = get_settings()
     room_name = f"voice_{channel_id}"
-    
+
     # Create access token with grants
     username = user.get("nickname") or user["username"]
     token = (
@@ -181,21 +194,30 @@ async def get_voice_token(
         )
         .with_identity(str(user["id"]))
         .with_name(username)
-        .with_grants(VideoGrants(
-            room_join=True,
-            room=room_name,
-            can_publish=True,
-            can_publish_sources=["camera", "microphone", "screen_share", "screen_share_audio"],
-            can_subscribe=True,
-        ))
+        .with_grants(
+            VideoGrants(
+                room_join=True,
+                room=room_name,
+                can_publish=True,
+                can_publish_sources=[
+                    "camera",
+                    "microphone",
+                    "screen_share",
+                    "screen_share_audio",
+                ],
+                can_subscribe=True,
+            )
+        )
     )
-    
+
     jwt_token = token.to_jwt()
-    
+
     # Send QQ group notification (fire and forget, only if first real user)
     server_name = channel.server.name if channel.server else "未知服务器"
-    asyncio.create_task(send_qq_group_notify(username, server_name, channel.name, room_name))
-    
+    asyncio.create_task(
+        send_qq_group_notify(username, server_name, channel.name, room_name)
+    )
+
     return LiveKitTokenResponse(
         token=jwt_token,
         url=settings.livekit_host,
@@ -206,7 +228,9 @@ async def get_voice_token(
 async def _get_livekit_api():
     """Create LiveKit API client."""
     settings = get_settings()
-    livekit_http_url = settings.livekit_internal_host.replace("ws://", "http://").replace("wss://", "https://")
+    livekit_http_url = settings.livekit_internal_host.replace(
+        "ws://", "http://"
+    ).replace("wss://", "https://")
     return LiveKitAPI(
         url=livekit_http_url,
         api_key=settings.livekit_api_key,
@@ -214,7 +238,9 @@ async def _get_livekit_api():
     )
 
 
-async def _mute_participant_mic(api: LiveKitAPI, room_name: str, identity: str, muted: bool) -> bool:
+async def _mute_participant_mic(
+    api: LiveKitAPI, room_name: str, identity: str, muted: bool
+) -> bool:
     """Mute or unmute a participant's microphone track."""
     try:
         participant = await api.room.get_participant(
@@ -222,12 +248,14 @@ async def _mute_participant_mic(api: LiveKitAPI, room_name: str, identity: str, 
         )
         for track in participant.tracks:
             if track.source == 2:  # MICROPHONE
-                await api.room.mute_published_track(MuteRoomTrackRequest(
-                    room=room_name,
-                    identity=identity,
-                    track_sid=track.sid,
-                    muted=muted,
-                ))
+                await api.room.mute_published_track(
+                    MuteRoomTrackRequest(
+                        room=room_name,
+                        identity=identity,
+                        track_sid=track.sid,
+                        muted=muted,
+                    )
+                )
                 return True
         return False
     except Exception:
@@ -243,42 +271,46 @@ async def get_voice_users(
     Get list of users currently in a voice channel.
     Uses LiveKit's Room Service API to fetch participants.
     """
+    from ..services.sso_client import SSOClient
+
     # Verify channel exists and is voice type
     result = await db.execute(select(Channel).where(Channel.id == channel_id))
     channel = result.scalar_one_or_none()
-    
+
     if not channel:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Channel not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Channel not found"
         )
-    
+
     if channel.type != ChannelType.VOICE:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Not a voice channel"
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Not a voice channel"
         )
-    
+
     settings = get_settings()
     room_name = f"voice_{channel_id}"
-    
+
     users: list[VoiceChannelUser] = []
-    
+
     try:
         # Create LiveKit API client with internal host (http/https)
-        livekit_http_url = settings.livekit_internal_host.replace("ws://", "http://").replace("wss://", "https://")
+        livekit_http_url = settings.livekit_internal_host.replace(
+            "ws://", "http://"
+        ).replace("wss://", "https://")
         api = LiveKitAPI(
             url=livekit_http_url,
             api_key=settings.livekit_api_key,
             api_secret=settings.livekit_api_secret,
         )
-        
+
         # Fetch participants from LiveKit room
-        response = await api.room.list_participants(ListParticipantsRequest(room=room_name))
-        
+        response = await api.room.list_participants(
+            ListParticipantsRequest(room=room_name)
+        )
+
         # Check host mode
         host_id = _host_mode_state.get(room_name)
-        
+
         # If host mode active, check if host is still in room
         if host_id:
             participant_ids = {p.identity for p in response.participants}
@@ -286,7 +318,18 @@ async def get_voice_users(
                 # Host left, disable host mode
                 _host_mode_state.pop(room_name, None)
                 host_id = None
-        
+
+        # Batch fetch avatar URLs for all participants
+        # Filter out guest identities (start with "guest_") and non-numeric IDs
+        user_ids = []
+        for p in response.participants:
+            if not p.identity.startswith("guest_"):
+                try:
+                    user_ids.append(int(p.identity))
+                except ValueError:
+                    pass
+        avatar_map = await SSOClient.get_avatar_urls_batch(user_ids) if user_ids else {}
+
         for p in response.participants:
             # Check if microphone track is muted (source=2 is MICROPHONE)
             is_muted = False
@@ -299,25 +342,36 @@ async def get_voice_users(
             # If no mic track found, consider as muted
             if not has_mic:
                 is_muted = True
-            
+
             # Host mode backup: mute non-host participants who are not muted
             if host_id and p.identity != host_id and not is_muted:
                 await _mute_participant_mic(api, room_name, p.identity, True)
                 is_muted = True
-            
-            users.append(VoiceChannelUser(
-                id=p.identity,
-                name=p.name or p.identity,
-                is_muted=is_muted,
-                is_host=(host_id == p.identity),
-            ))
-        
+
+            # Get avatar URL (only for non-guest users)
+            avatar_url = None
+            if not p.identity.startswith("guest_"):
+                try:
+                    avatar_url = avatar_map.get(int(p.identity))
+                except ValueError:
+                    pass
+
+            users.append(
+                VoiceChannelUser(
+                    id=p.identity,
+                    name=p.name or p.identity,
+                    avatar_url=avatar_url,
+                    is_muted=is_muted,
+                    is_host=(host_id == p.identity),
+                )
+            )
+
         await api.aclose()
-        
+
     except Exception:
         # Room may not exist yet (no participants)
         pass
-    
+
     return users
 
 
@@ -334,22 +388,28 @@ async def mute_participant(
     """
     result = await db.execute(select(Channel).where(Channel.id == channel_id))
     channel = result.scalar_one_or_none()
-    
+
     if not channel:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Channel not found")
-    
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Channel not found"
+        )
+
     if channel.type != ChannelType.VOICE:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Not a voice channel")
-    
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Not a voice channel"
+        )
+
     room_name = f"voice_{channel_id}"
     api = await _get_livekit_api()
-    
+
     try:
-        success = await _mute_participant_mic(api, room_name, target_user_id, payload.muted)
+        success = await _mute_participant_mic(
+            api, room_name, target_user_id, payload.muted
+        )
         if not success:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Participant not found or no microphone track"
+                detail="Participant not found or no microphone track",
             )
         return {"success": True, "muted": payload.muted}
     finally:
@@ -368,16 +428,20 @@ async def kick_participant(
     """
     result = await db.execute(select(Channel).where(Channel.id == channel_id))
     channel = result.scalar_one_or_none()
-    
+
     if not channel:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Channel not found")
-    
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Channel not found"
+        )
+
     if channel.type != ChannelType.VOICE:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Not a voice channel")
-    
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Not a voice channel"
+        )
+
     room_name = f"voice_{channel_id}"
     api = await _get_livekit_api()
-    
+
     try:
         await api.room.remove_participant(
             RoomParticipantIdentity(room=room_name, identity=target_user_id)
@@ -385,8 +449,7 @@ async def kick_participant(
         return {"success": True}
     except Exception as e:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Participant not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Participant not found"
         )
     finally:
         await api.aclose()
@@ -400,17 +463,21 @@ async def get_host_mode(
     """Get current host mode status for a voice channel."""
     result = await db.execute(select(Channel).where(Channel.id == channel_id))
     channel = result.scalar_one_or_none()
-    
+
     if not channel:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Channel not found")
-    
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Channel not found"
+        )
+
     if channel.type != ChannelType.VOICE:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Not a voice channel")
-    
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Not a voice channel"
+        )
+
     room_name = f"voice_{channel_id}"
     host_id = _host_mode_state.get(room_name)
     host_name = None
-    
+
     if host_id:
         # Fetch host name from LiveKit
         try:
@@ -424,8 +491,10 @@ async def get_host_mode(
             # Host may have left, clear host mode
             _host_mode_state.pop(room_name, None)
             host_id = None
-    
-    return HostModeResponse(enabled=host_id is not None, host_id=host_id, host_name=host_name)
+
+    return HostModeResponse(
+        enabled=host_id is not None, host_id=host_id, host_name=host_name
+    )
 
 
 @router.post("/api/voice/{channel_id}/host-mode", response_model=HostModeResponse)
@@ -441,44 +510,50 @@ async def set_host_mode(
     """
     result = await db.execute(select(Channel).where(Channel.id == channel_id))
     channel = result.scalar_one_or_none()
-    
+
     if not channel:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Channel not found")
-    
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Channel not found"
+        )
+
     if channel.type != ChannelType.VOICE:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Not a voice channel")
-    
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Not a voice channel"
+        )
+
     room_name = f"voice_{channel_id}"
     user_id = str(user["id"])
     user_name = user.get("nickname") or user["username"]
-    
+
     # Check if host mode is already active by another user
     current_host = _host_mode_state.get(room_name)
     if payload.enabled and current_host and current_host != user_id:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Host mode is already active by another user"
+            detail="Host mode is already active by another user",
         )
-    
+
     # Only the current host can disable host mode
     if not payload.enabled and current_host and current_host != user_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only the current host can disable host mode"
+            detail="Only the current host can disable host mode",
         )
-    
+
     api = await _get_livekit_api()
-    
+
     try:
         if payload.enabled:
             # Enable host mode: mute all except host
             _host_mode_state[room_name] = user_id
-            
-            response = await api.room.list_participants(ListParticipantsRequest(room=room_name))
+
+            response = await api.room.list_participants(
+                ListParticipantsRequest(room=room_name)
+            )
             for p in response.participants:
                 if p.identity != user_id:
                     await _mute_participant_mic(api, room_name, p.identity, True)
-            
+
             return HostModeResponse(enabled=True, host_id=user_id, host_name=user_name)
         else:
             # Disable host mode (don't auto-unmute, users unmute themselves)
@@ -492,7 +567,10 @@ async def set_host_mode(
 # Screen Share Lock APIs
 # ============================================================================
 
-async def _check_screen_share_lock(room_name: str) -> tuple[bool, str | None, str | None]:
+
+async def _check_screen_share_lock(
+    room_name: str,
+) -> tuple[bool, str | None, str | None]:
     """
     Check if screen share is locked and if the locker is still in the room.
     Returns (is_locked, sharer_id, sharer_name).
@@ -501,21 +579,23 @@ async def _check_screen_share_lock(room_name: str) -> tuple[bool, str | None, st
     lock_info = _screen_share_lock.get(room_name)
     if not lock_info:
         return False, None, None
-    
+
     sharer_id, sharer_name = lock_info
-    
+
     # Verify sharer is still in the room
     try:
         api = await _get_livekit_api()
-        response = await api.room.list_participants(ListParticipantsRequest(room=room_name))
+        response = await api.room.list_participants(
+            ListParticipantsRequest(room=room_name)
+        )
         participant_ids = {p.identity for p in response.participants}
         await api.aclose()
-        
+
         if sharer_id not in participant_ids:
             # Sharer left, auto-release lock
             _screen_share_lock.pop(room_name, None)
             return False, None, None
-        
+
         return True, sharer_id, sharer_name
     except Exception:
         # Room doesn't exist, release lock
@@ -523,7 +603,10 @@ async def _check_screen_share_lock(room_name: str) -> tuple[bool, str | None, st
         return False, None, None
 
 
-@router.get("/api/voice/{channel_id}/screen-share-status", response_model=ScreenShareStatusResponse)
+@router.get(
+    "/api/voice/{channel_id}/screen-share-status",
+    response_model=ScreenShareStatusResponse,
+)
 async def get_screen_share_status(
     channel_id: int,
     db: AsyncSession = Depends(get_db),
@@ -531,20 +614,28 @@ async def get_screen_share_status(
     """Get current screen share lock status for a voice channel."""
     result = await db.execute(select(Channel).where(Channel.id == channel_id))
     channel = result.scalar_one_or_none()
-    
+
     if not channel:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Channel not found")
-    
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Channel not found"
+        )
+
     if channel.type != ChannelType.VOICE:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Not a voice channel")
-    
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Not a voice channel"
+        )
+
     room_name = f"voice_{channel_id}"
     is_locked, sharer_id, sharer_name = await _check_screen_share_lock(room_name)
-    
-    return ScreenShareStatusResponse(locked=is_locked, sharer_id=sharer_id, sharer_name=sharer_name)
+
+    return ScreenShareStatusResponse(
+        locked=is_locked, sharer_id=sharer_id, sharer_name=sharer_name
+    )
 
 
-@router.post("/api/voice/{channel_id}/screen-share/lock", response_model=ScreenShareLockResponse)
+@router.post(
+    "/api/voice/{channel_id}/screen-share/lock", response_model=ScreenShareLockResponse
+)
 async def lock_screen_share(
     channel_id: int,
     user: CurrentUser,
@@ -556,33 +647,46 @@ async def lock_screen_share(
     """
     result = await db.execute(select(Channel).where(Channel.id == channel_id))
     channel = result.scalar_one_or_none()
-    
+
     if not channel:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Channel not found")
-    
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Channel not found"
+        )
+
     if channel.type != ChannelType.VOICE:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Not a voice channel")
-    
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Not a voice channel"
+        )
+
     room_name = f"voice_{channel_id}"
     user_id = str(user["id"])
     user_name = user.get("nickname") or user["username"]
-    
+
     # Check current lock status (auto-releases if sharer left)
     is_locked, sharer_id, sharer_name = await _check_screen_share_lock(room_name)
-    
+
     if is_locked:
         if sharer_id == user_id:
             # Already locked by this user
-            return ScreenShareLockResponse(success=True, sharer_id=user_id, sharer_name=user_name)
+            return ScreenShareLockResponse(
+                success=True, sharer_id=user_id, sharer_name=user_name
+            )
         # Locked by someone else
-        return ScreenShareLockResponse(success=False, sharer_id=sharer_id, sharer_name=sharer_name)
-    
+        return ScreenShareLockResponse(
+            success=False, sharer_id=sharer_id, sharer_name=sharer_name
+        )
+
     # Acquire lock
     _screen_share_lock[room_name] = (user_id, user_name)
-    return ScreenShareLockResponse(success=True, sharer_id=user_id, sharer_name=user_name)
+    return ScreenShareLockResponse(
+        success=True, sharer_id=user_id, sharer_name=user_name
+    )
 
 
-@router.post("/api/voice/{channel_id}/screen-share/unlock", response_model=ScreenShareLockResponse)
+@router.post(
+    "/api/voice/{channel_id}/screen-share/unlock",
+    response_model=ScreenShareLockResponse,
+)
 async def unlock_screen_share(
     channel_id: int,
     user: CurrentUser,
@@ -593,26 +697,31 @@ async def unlock_screen_share(
     """
     result = await db.execute(select(Channel).where(Channel.id == channel_id))
     channel = result.scalar_one_or_none()
-    
+
     if not channel:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Channel not found")
-    
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Channel not found"
+        )
+
     if channel.type != ChannelType.VOICE:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Not a voice channel")
-    
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Not a voice channel"
+        )
+
     room_name = f"voice_{channel_id}"
     user_id = str(user["id"])
-    
+
     lock_info = _screen_share_lock.get(room_name)
     if lock_info and lock_info[0] == user_id:
         _screen_share_lock.pop(room_name, None)
-    
+
     return ScreenShareLockResponse(success=True, sharer_id=None, sharer_name=None)
 
 
 # ============================================================================
 # Voice Invite APIs (Guest access without login)
 # ============================================================================
+
 
 @router.post("/api/voice/{channel_id}/invite", response_model=InviteCreateResponse)
 async def create_voice_invite(
@@ -624,13 +733,17 @@ async def create_voice_invite(
     """Create a single-use invite link for a voice channel (admin only)."""
     result = await db.execute(select(Channel).where(Channel.id == channel_id))
     channel = result.scalar_one_or_none()
-    
+
     if not channel:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Channel not found")
-    
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Channel not found"
+        )
+
     if channel.type != ChannelType.VOICE:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Not a voice channel")
-    
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Not a voice channel"
+        )
+
     token = uuid.uuid4().hex
     invite = VoiceInvite(
         channel_id=channel_id,
@@ -639,13 +752,13 @@ async def create_voice_invite(
     )
     db.add(invite)
     await db.flush()
-    
+
     # Build invite URL based on request origin
     base_url = str(request.base_url).rstrip("/")
     # Frontend runs on different port in dev, use origin header if available
     origin = request.headers.get("origin", base_url)
     invite_url = f"{origin}/voice-invite/{token}"
-    
+
     return InviteCreateResponse(invite_url=invite_url, token=token)
 
 
@@ -661,19 +774,19 @@ async def get_voice_invite_info(
         .where(VoiceInvite.token == token)
     )
     invite = result.scalar_one_or_none()
-    
+
     if not invite:
         return InviteInfoResponse(valid=False)
-    
+
     if invite.used:
         return InviteInfoResponse(valid=False)
-    
+
     # Get server name
     server_result = await db.execute(
         select(Server).where(Server.id == invite.channel.server_id)
     )
     server = server_result.scalar_one_or_none()
-    
+
     return InviteInfoResponse(
         valid=True,
         channel_name=invite.channel.name,
@@ -694,42 +807,39 @@ async def join_voice_as_guest(
     """
     if not payload.username or len(payload.username.strip()) < 1:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Username is required"
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Username is required"
         )
-    
+
     username = payload.username.strip()[:50]  # Limit length
-    
+
     result = await db.execute(
         select(VoiceInvite)
         .options(joinedload(VoiceInvite.channel))
         .where(VoiceInvite.token == token)
     )
     invite = result.scalar_one_or_none()
-    
+
     if not invite:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Invite not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Invite not found"
         )
-    
+
     if invite.used:
         raise HTTPException(
-            status_code=status.HTTP_410_GONE,
-            detail="This invite has already been used"
+            status_code=status.HTTP_410_GONE, detail="This invite has already been used"
         )
-    
+
     # Mark invite as used
     invite.used = True
     invite.used_by_name = username
     invite.used_at = datetime.utcnow()
     await db.flush()
-    
+
     # Generate LiveKit token for guest
     settings = get_settings()
     room_name = f"voice_{invite.channel_id}"
     guest_identity = f"guest_{token[:8]}"
-    
+
     lk_token = (
         AccessToken(
             api_key=settings.livekit_api_key,
@@ -737,15 +847,22 @@ async def join_voice_as_guest(
         )
         .with_identity(guest_identity)
         .with_name(f"[Guest] {username}")
-        .with_grants(VideoGrants(
-            room_join=True,
-            room=room_name,
-            can_publish=True,
-            can_publish_sources=["camera", "microphone", "screen_share", "screen_share_audio"],
-            can_subscribe=True,
-        ))
+        .with_grants(
+            VideoGrants(
+                room_join=True,
+                room=room_name,
+                can_publish=True,
+                can_publish_sources=[
+                    "camera",
+                    "microphone",
+                    "screen_share",
+                    "screen_share_audio",
+                ],
+                can_subscribe=True,
+            )
+        )
     )
-    
+
     return GuestJoinResponse(
         token=lk_token.to_jwt(),
         url=settings.livekit_host,
@@ -757,6 +874,7 @@ async def join_voice_as_guest(
 # ============================================================================
 # QQ Bot APIs
 # ============================================================================
+
 
 class VoiceChannelInfo(BaseModel):
     channel_id: int
@@ -772,6 +890,7 @@ class AllVoiceChannelsResponse(BaseModel):
 
 class AllVoiceUsersResponse(BaseModel):
     """Response model for /api/voice/user/all - optimized for frontend polling."""
+
     users: dict[int, list[VoiceChannelUser]]  # channel_id -> users
 
 
@@ -784,67 +903,111 @@ async def get_all_voice_users(
     Returns a dict mapping channel_id to list of users.
     Reduces polling overhead compared to per-channel requests.
     """
-    result = await db.execute(
-        select(Channel).where(Channel.type == ChannelType.VOICE)
-    )
+    from ..services.sso_client import SSOClient
+
+    result = await db.execute(select(Channel).where(Channel.type == ChannelType.VOICE))
     channels = result.scalars().all()
-    
+
     settings = get_settings()
-    livekit_http_url = settings.livekit_internal_host.replace("ws://", "http://").replace("wss://", "https://")
+    livekit_http_url = settings.livekit_internal_host.replace(
+        "ws://", "http://"
+    ).replace("wss://", "https://")
     api = LiveKitAPI(
         url=livekit_http_url,
         api_key=settings.livekit_api_key,
         api_secret=settings.livekit_api_secret,
     )
-    
+
     users_by_channel: dict[int, list[VoiceChannelUser]] = {}
-    
+    all_user_ids: set[int] = set()
+    all_participants: list[
+        tuple[int, str, str, bool, bool]
+    ] = []  # (channel_id, identity, name, is_muted, is_host)
+
     try:
         for channel in channels:
             room_name = f"voice_{channel.id}"
             try:
-                response = await api.room.list_participants(ListParticipantsRequest(room=room_name))
+                response = await api.room.list_participants(
+                    ListParticipantsRequest(room=room_name)
+                )
                 host_id = _host_mode_state.get(room_name)
-                
+
                 # Check if host is still in room
                 if host_id:
                     participant_ids = {p.identity for p in response.participants}
                     if host_id not in participant_ids:
                         _host_mode_state.pop(room_name, None)
                         host_id = None
-                
-                channel_users: list[VoiceChannelUser] = []
+
                 for p in response.participants:
                     is_muted = True
                     for track in p.tracks:
                         if track.source == 2:  # MICROPHONE
                             is_muted = track.muted
                             break
-                    
+
                     # Host mode enforcement
                     if host_id and p.identity != host_id and not is_muted:
                         await _mute_participant_mic(api, room_name, p.identity, True)
                         is_muted = True
-                    
-                    channel_users.append(VoiceChannelUser(
-                        id=p.identity,
-                        name=p.name or p.identity,
-                        is_muted=is_muted,
-                        is_host=(host_id == p.identity),
-                    ))
-                
-                if channel_users:
-                    users_by_channel[channel.id] = channel_users
+
+                    # Collect user ID for batch avatar fetch
+                    if not p.identity.startswith("guest_"):
+                        try:
+                            all_user_ids.add(int(p.identity))
+                        except ValueError:
+                            pass
+
+                    all_participants.append(
+                        (
+                            channel.id,
+                            p.identity,
+                            p.name or p.identity,
+                            is_muted,
+                            host_id == p.identity,
+                        )
+                    )
             except Exception:
                 # Room doesn't exist (no participants)
                 pass
+
+        # Batch fetch all avatar URLs
+        avatar_map = (
+            await SSOClient.get_avatar_urls_batch(list(all_user_ids))
+            if all_user_ids
+            else {}
+        )
+
+        # Build response with avatars
+        for channel_id, identity, name, is_muted, is_host in all_participants:
+            avatar_url = None
+            if not identity.startswith("guest_"):
+                try:
+                    avatar_url = avatar_map.get(int(identity))
+                except ValueError:
+                    pass
+
+            user = VoiceChannelUser(
+                id=identity,
+                name=name,
+                avatar_url=avatar_url,
+                is_muted=is_muted,
+                is_host=is_host,
+            )
+            if channel_id not in users_by_channel:
+                users_by_channel[channel_id] = []
+            users_by_channel[channel_id].append(user)
+
     finally:
         await api.aclose()
-    
+
     return AllVoiceUsersResponse(users=users_by_channel)
 
 
-@router.get("/api/qqbot/get_voice_channel_people", response_model=AllVoiceChannelsResponse)
+@router.get(
+    "/api/qqbot/get_voice_channel_people", response_model=AllVoiceChannelsResponse
+)
 async def get_all_voice_channel_people(
     db: AsyncSession = Depends(get_db),
 ):
@@ -856,36 +1019,44 @@ async def get_all_voice_channel_people(
         .where(Channel.type == ChannelType.VOICE)
     )
     channels = result.scalars().all()
-    
+
     settings = get_settings()
-    livekit_http_url = settings.livekit_internal_host.replace("ws://", "http://").replace("wss://", "https://")
+    livekit_http_url = settings.livekit_internal_host.replace(
+        "ws://", "http://"
+    ).replace("wss://", "https://")
     api = LiveKitAPI(
         url=livekit_http_url,
         api_key=settings.livekit_api_key,
         api_secret=settings.livekit_api_secret,
     )
-    
+
     channel_infos: list[VoiceChannelInfo] = []
     total_users = 0
-    
+
     try:
         for channel in channels:
             room_name = f"voice_{channel.id}"
             try:
-                response = await api.room.list_participants(ListParticipantsRequest(room=room_name))
+                response = await api.room.list_participants(
+                    ListParticipantsRequest(room=room_name)
+                )
                 users = [p.name or p.identity for p in response.participants]
                 if users:
-                    channel_infos.append(VoiceChannelInfo(
-                        channel_id=channel.id,
-                        channel_name=channel.name,
-                        server_name=channel.server.name if channel.server else "未知服务器",
-                        users=users,
-                    ))
+                    channel_infos.append(
+                        VoiceChannelInfo(
+                            channel_id=channel.id,
+                            channel_name=channel.name,
+                            server_name=channel.server.name
+                            if channel.server
+                            else "未知服务器",
+                            users=users,
+                        )
+                    )
                     total_users += len(users)
             except Exception:
                 # Room may not exist (no participants)
                 pass
     finally:
         await api.aclose()
-    
+
     return AllVoiceChannelsResponse(channels=channel_infos, total_users=total_users)

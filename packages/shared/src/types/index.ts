@@ -3,6 +3,7 @@ export interface User {
   username: string
   nickname: string
   email: string
+  avatar_url?: string
   permission_level: number
   is_active: boolean
 }
@@ -70,6 +71,7 @@ export interface Message {
   channel_id: number
   user_id: number
   username: string
+  avatar_url?: string
   content: string
   created_at: string
   attachments?: Attachment[]
@@ -99,6 +101,7 @@ export interface MuteRecord {
 export interface VoiceUser {
   id: number
   username: string
+  avatar_url?: string
   muted: boolean
   deafened: boolean
 }

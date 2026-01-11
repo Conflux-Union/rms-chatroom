@@ -32,6 +32,7 @@ function isIOS(): boolean {
 export interface VoiceParticipant {
   id: string
   name: string
+  avatarUrl?: string
   isMuted: boolean
   isSpeaking: boolean
   isLocal: boolean
@@ -190,6 +191,8 @@ export const useVoiceStore = defineStore('voice', () => {
 
   // Server-side mute state cache (from API)
   const serverMuteState = ref<Map<string, boolean>>(new Map())
+  // Avatar URL cache (from API)
+  const avatarUrlCache = ref<Map<string, string>>(new Map())
   let syncInterval: ReturnType<typeof setInterval> | null = null
 
   // iOS Audio Context state
@@ -362,6 +365,7 @@ export const useVoiceStore = defineStore('voice', () => {
     }
 
     const list: VoiceParticipant[] = []
+    const auth = useAuthStore()
 
     const local = room.value.localParticipant
     let localMuted: boolean
@@ -374,6 +378,7 @@ export const useVoiceStore = defineStore('voice', () => {
     list.push({
       id: local.identity,
       name: local.name || local.identity,
+      avatarUrl: auth.user?.avatar_url || avatarUrlCache.value.get(local.identity),
       isMuted: localMuted,
       isSpeaking: local.isSpeaking,
       isLocal: true,
@@ -389,6 +394,7 @@ export const useVoiceStore = defineStore('voice', () => {
       list.push({
         id: p.identity,
         name: p.name || p.identity,
+        avatarUrl: avatarUrlCache.value.get(p.identity),
         isMuted,
         isSpeaking: p.isSpeaking,
         isLocal: false,
@@ -400,7 +406,7 @@ export const useVoiceStore = defineStore('voice', () => {
   }
 
   /**
-   * Fetch mute state from server and sync with local participants.
+   * Fetch mute state and avatar URLs from server and sync with local participants.
    */
   async function syncParticipantsFromServer(): Promise<void> {
     if (!currentVoiceChannel.value || !isConnected.value) return
@@ -412,10 +418,14 @@ export const useVoiceStore = defineStore('voice', () => {
         { headers: { Authorization: `Bearer ${auth.token}` } }
       )
       if (response.ok) {
-        const users: Array<{ id: string; is_muted: boolean; is_host: boolean }> = await response.json()
+        const users: Array<{ id: string; name: string; avatar_url?: string; is_muted: boolean; is_host: boolean }> = await response.json()
         const newMuteState = new Map<string, boolean>()
         for (const user of users) {
           newMuteState.set(user.id, user.is_muted)
+          // Cache avatar URL if available
+          if (user.avatar_url) {
+            avatarUrlCache.value.set(user.id, user.avatar_url)
+          }
         }
         serverMuteState.value = newMuteState
         updateParticipants()

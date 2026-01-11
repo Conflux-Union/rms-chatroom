@@ -572,7 +572,14 @@ async function stopTranscription() {
                 >
                   <div class="user-info">
                     <div class="user-avatar">
-                      {{ participant.name.charAt(0).toUpperCase() }}
+                      <img
+                        v-if="participant.avatarUrl"
+                        :src="participant.avatarUrl"
+                        :alt="participant.name"
+                        class="avatar-img"
+                        @error="(e: Event) => (e.target as HTMLImageElement).style.display = 'none'"
+                      />
+                      <span v-else class="avatar-fallback">{{ participant.name.charAt(0).toUpperCase() }}</span>
                     </div>
                     <span class="user-name">
                       {{ participant.name }}
@@ -1180,6 +1187,17 @@ async function stopTranscription() {
   margin-right: 12px;
   font-size: 14px;
   transition: box-shadow 0.2s ease;
+  overflow: hidden;
+}
+
+.user-avatar .avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.user-avatar .avatar-fallback {
+  font-size: 14px;
 }
 
 .voice-user.speaking .user-avatar {
