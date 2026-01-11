@@ -8,7 +8,7 @@ import { NDropdown, NModal, NInput, NButton, NSpace, NSelect } from 'naive-ui'
 import type { DropdownOption, SelectOption } from 'naive-ui'
 import type { Channel, ChannelGroup } from '../types'
 import VoiceControls from '../components/VoiceControls.vue'
-import { useDraggable } from 'vue-draggable-plus'
+import { VueDraggable } from 'vue-draggable-plus'
 
 const chat = useChatStore()
 const auth = useAuthStore()
@@ -301,9 +301,9 @@ const renameServerName = ref('')
 const editingChannelId = ref<number | null>(null)
 const editedName = ref('')
 
-// Draggable container refs
-const mixedListRef = ref<HTMLElement | null>(null)
-const groupChannelRefs = ref<Map<number, HTMLElement>>(new Map())
+// Draggable list data (writable refs for vue-draggable-plus)
+const draggableMixedList = ref<ListItem[]>([])
+const draggableGroupChannels = ref<Map<number, Channel[]>>(new Map())
 
 // Sidebar width state for a full-height right-edge resizer
 const width = ref<number>(300)
@@ -393,49 +393,54 @@ watch(editMode, (val) => {
 // Draggable system using vue-draggable-plus
 // ============================================
 
-// Writable list for draggable
-const draggableList = ref<ListItem[]>([])
-
-// Sync draggable list with computed mixedList
+// Sync draggable mixed list with computed mixedList
 watch(mixedList, (newList) => {
-  draggableList.value = [...newList]
+  draggableMixedList.value = [...newList]
 }, { immediate: true, deep: true })
 
-// Initialize draggable for mixed list
-let mixedListDraggable: ReturnType<typeof useDraggable> | null = null
-
-// Watch for mixedListRef and setup draggable
-watch([mixedListRef, editMode], ([el, isEditMode]) => {
-  if (mixedListDraggable) {
-    mixedListDraggable.destroy()
-    mixedListDraggable = null
+// Sync group channels when server changes
+watch([() => chat.currentServer?.channels, channelGroups], () => {
+  const map = new Map<number, Channel[]>()
+  for (const group of channelGroups.value) {
+    map.set(group.id, [...getGroupChannels(group.id)])
   }
+  draggableGroupChannels.value = map
+}, { immediate: true, deep: true })
+
+// Get draggable channels for a group (returns writable array)
+function getDraggableGroupChannels(groupId: number): Channel[] {
+  if (!draggableGroupChannels.value.has(groupId)) {
+    draggableGroupChannels.value.set(groupId, [...getGroupChannels(groupId)])
+  }
+  return draggableGroupChannels.value.get(groupId) || []
+}
+
+// Handle mixed list reorder
+async function onMixedListEnd() {
+  if (!chat.currentServer) return
+  const newOrder = draggableMixedList.value.map(item => ({
+    type: item.type,
+    id: item.data.id
+  }))
+  await chat.reorderMixedList(chat.currentServer.id, newOrder)
+}
+
+// Handle group channels reorder
+async function onGroupChannelsEnd(groupId: number) {
+  if (!chat.currentServer) return
   
-  if (el && isEditMode && auth.isAdmin) {
-    mixedListDraggable = useDraggable(el, draggableList, {
-      animation: 200,
-      handle: '.drag-handle',
-      ghostClass: 'drag-ghost',
-      chosenClass: 'drag-chosen',
-      dragClass: 'drag-dragging',
-      onEnd: async () => {
-        if (!chat.currentServer) return
-        const newOrder = draggableList.value.map(item => ({
-          type: item.type,
-          id: item.data.id
-        }))
-        await chat.reorderMixedList(chat.currentServer.id, newOrder)
-      }
-    })
-  }
-}, { immediate: true })
-
-// Cleanup on unmount
-onUnmounted(() => {
-  if (mixedListDraggable) {
-    mixedListDraggable.destroy()
-  }
-})
+  const channels = draggableGroupChannels.value.get(groupId) || []
+  
+  // Get all channels and rebuild the order
+  const allChannels = [...(chat.currentServer.channels || [])]
+  const otherChannels = allChannels.filter(c => c.group_id !== groupId)
+  
+  // Rebuild full list maintaining positions
+  const newAll = [...otherChannels, ...channels]
+  const ids = newAll.map(c => c.id)
+  
+  await chat.reorderChannels(chat.currentServer.id, ids)
+}
 
 async function muteVoiceUser() {
   if (!userDropdown.value.channelId || !userDropdown.value.userId) return
@@ -488,9 +493,19 @@ async function deleteChannel() {
         </div>
 
         <!-- Draggable mixed list of channel groups and ungrouped channels -->
-        <div ref="mixedListRef" class="draggable-list">
+        <VueDraggable
+          v-model="draggableMixedList"
+          :disabled="!auth.isAdmin || !editMode"
+          :animation="200"
+          handle=".drag-handle-group"
+          ghost-class="drag-ghost"
+          chosen-class="drag-chosen"
+          drag-class="drag-dragging"
+          @end="onMixedListEnd"
+          class="draggable-list"
+        >
           <!-- Channel Group -->
-          <template v-for="item in mixedList" :key="item.type + '-' + item.data.id">
+          <template v-for="item in draggableMixedList" :key="item.type + '-' + item.data.id">
           <div v-if="item.type === 'group'" class="channel-group" :class="{ collapsed: collapsedGroups.has(item.data.id) }">
             <div 
               class="channel-group-header glow-effect"
@@ -502,13 +517,25 @@ async function deleteChannel() {
               <span class="group-name">{{ item.data.name }}</span>
               <span class="channel-count">({{ getGroupChannels(item.data.id).length }})</span>
               <button v-if="auth.isAdmin && editMode" class="rename-group-btn" @click.stop="openRenameGroupDialog(item.data.id)">重命名</button>
-              <span v-if="editMode" class="drag-handle" @click.stop>☰</span>
+              <span v-if="editMode" class="drag-handle drag-handle-group" @click.stop>☰</span>
             </div>
             
             <!-- Group channels (mixed text and voice) -->
             <Transition name="slide-down">
-              <div v-if="!collapsedGroups.has(item.data.id)" class="group-channels">
-                <template v-for="channel in getGroupChannels(item.data.id)" :key="channel.id">
+              <VueDraggable
+                v-if="!collapsedGroups.has(item.data.id)"
+                :model-value="getDraggableGroupChannels(item.data.id)"
+                @update:model-value="(val: Channel[]) => draggableGroupChannels.set(item.data.id, val)"
+                :disabled="!auth.isAdmin || !editMode"
+                :animation="200"
+                handle=".drag-handle-channel"
+                ghost-class="drag-ghost"
+                chosen-class="drag-chosen"
+                drag-class="drag-dragging"
+                @end="() => onGroupChannelsEnd(item.data.id)"
+                class="group-channels"
+              >
+                <template v-for="channel in getDraggableGroupChannels(item.data.id)" :key="channel.id">
                 <!-- Text channel in group -->
                 <div
                   v-if="channel.type === 'text'"
@@ -534,7 +561,7 @@ async function deleteChannel() {
                   </template>
                   <div v-if="editMode" class="edit-actions" @click.stop>
                     <button v-if="editingChannelId !== channel.id" class="small" @click="renameChannel(channel)">重命名</button>
-                    <span class="drag-handle">☰</span>
+                    <span class="drag-handle drag-handle-channel">☰</span>
                   </div>
                 </div>
                 
@@ -566,7 +593,7 @@ async function deleteChannel() {
                     </span>
                     <div v-if="editMode" class="edit-actions" @click.stop>
                       <button v-if="editingChannelId !== channel.id" class="small" @click="renameChannel(channel)">重命名</button>
-                      <span class="drag-handle">☰</span>
+                      <span class="drag-handle drag-handle-channel">☰</span>
                     </div>
                   </div>
                   <div
@@ -589,7 +616,7 @@ async function deleteChannel() {
                   </div>
                 </div>
               </template>
-              </div>
+              </VueDraggable>
             </Transition>
           </div>
 
@@ -618,7 +645,7 @@ async function deleteChannel() {
             </template>
             <div v-if="editMode" class="edit-actions" @click.stop>
               <button v-if="editingChannelId !== item.data.id" class="small" @click="renameChannel(item.data)">重命名</button>
-              <span class="drag-handle">☰</span>
+              <span class="drag-handle drag-handle-group">☰</span>
             </div>
           </div>
           
@@ -650,7 +677,7 @@ async function deleteChannel() {
               </span>
               <div v-if="editMode" class="edit-actions" @click.stop>
                 <button v-if="editingChannelId !== item.data.id" class="small" @click="renameChannel(item.data)">重命名</button>
-                <span class="drag-handle">☰</span>
+                <span class="drag-handle drag-handle-group">☰</span>
               </div>
             </div>
             <div
@@ -673,7 +700,7 @@ async function deleteChannel() {
             </div>
           </div>
           </template>
-        </div>
+        </VueDraggable>
       </div>
       
       <div class="user-panel">
