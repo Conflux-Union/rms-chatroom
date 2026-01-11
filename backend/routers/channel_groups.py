@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.database import get_db
@@ -21,10 +21,6 @@ class ChannelGroupCreate(BaseModel):
 
 class ChannelGroupUpdate(BaseModel):
     name: str | None = None
-
-
-class ReorderGroupsRequest(BaseModel):
-    group_ids: list[int]
 
 
 class ChannelGroupResponse(BaseModel):
@@ -65,7 +61,10 @@ async def create_channel_group(
     user: AdminUser,
     db: AsyncSession = Depends(get_db),
 ):
-    """Create a new channel group (admin only)."""
+    """Create a new channel group (admin only).
+
+    New groups are placed at the end of the top-level list.
+    """
     # Verify server exists
     server_result = await db.execute(select(Server).where(Server.id == server_id))
     if not server_result.scalar_one_or_none():
@@ -73,13 +72,18 @@ async def create_channel_group(
             status_code=status.HTTP_404_NOT_FOUND, detail="Server not found"
         )
 
-    # Get max position from channel groups only (separate namespace from channels)
-    pos_result = await db.execute(
-        select(ChannelGroup.position)
-        .where(ChannelGroup.server_id == server_id)
-        .order_by(ChannelGroup.position.desc())
+    # Get max top-level position from both groups and ungrouped channels
+    group_max = await db.execute(
+        select(func.max(ChannelGroup.position)).where(
+            ChannelGroup.server_id == server_id
+        )
     )
-    max_pos = pos_result.scalar() or -1
+    channel_max = await db.execute(
+        select(func.max(Channel.top_position)).where(
+            Channel.server_id == server_id, Channel.group_id == None
+        )
+    )
+    max_pos = max(group_max.scalar() or -1, channel_max.scalar() or -1)
 
     group = ChannelGroup(
         server_id=server_id,
@@ -127,125 +131,65 @@ async def update_channel_group(
     )
 
 
-@router.post("/reorder", response_model=list[ChannelGroupResponse])
-async def reorder_channel_groups(
+class ReorderGroupChannelsRequest(BaseModel):
+    """Request to reorder channels within a group."""
+
+    channel_ids: list[int]
+
+
+@router.post("/{group_id}/reorder-channels")
+async def reorder_group_channels(
     server_id: int,
-    payload: ReorderGroupsRequest,
+    group_id: int,
+    payload: ReorderGroupChannelsRequest,
     user: AdminUser,
     db: AsyncSession = Depends(get_db),
 ):
-    """Reorder channel groups for a server."""
-    # Fetch all groups for server ordered by position
-    result = await db.execute(
-        select(ChannelGroup)
-        .where(ChannelGroup.server_id == server_id)
-        .order_by(ChannelGroup.position)
-    )
-    groups = result.scalars().all()
-    id_map = {g.id: g for g in groups}
+    """Reorder channels within a specific group.
 
-    provided_ids = payload.group_ids
+    Only accepts channel IDs that belong to this group.
+    """
+    # Verify group exists
+    group_result = await db.execute(
+        select(ChannelGroup).where(
+            ChannelGroup.id == group_id, ChannelGroup.server_id == server_id
+        )
+    )
+    if not group_result.scalar_one_or_none():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Channel group not found"
+        )
+
+    # Fetch all channels in this group
+    result = await db.execute(
+        select(Channel)
+        .where(Channel.server_id == server_id, Channel.group_id == group_id)
+        .order_by(Channel.position)
+    )
+    channels = result.scalars().all()
+    id_map = {c.id: c for c in channels}
+
+    provided_ids = payload.channel_ids
     provided_set = set(provided_ids)
     existing_set = set(id_map.keys())
 
+    # Validate: all provided IDs must be in this group
     if not provided_set.issubset(existing_set):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="group_ids must refer to groups in the server",
+            detail="channel_ids must refer to channels in this group",
         )
 
-    # Reject partial reorders - all group IDs must be provided
+    # Validate: must provide all channels in the group
     if provided_set != existing_set:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="All group IDs must be provided for reordering",
+            detail="All channel IDs in the group must be provided",
         )
 
-    # Reorder according to payload (0-indexed positions)
-    for idx, gid in enumerate(provided_ids):
-        id_map[gid].position = idx
-
-    await db.flush()
-
-    # Return updated list ordered by position
-    result = await db.execute(
-        select(ChannelGroup)
-        .where(ChannelGroup.server_id == server_id)
-        .order_by(ChannelGroup.position)
-    )
-    sorted_groups = result.scalars().all()
-
-    return [
-        ChannelGroupResponse(
-            id=g.id, server_id=g.server_id, name=g.name, position=g.position
-        )
-        for g in sorted_groups
-    ]
-
-
-class ReorderMixedRequest(BaseModel):
-    """Request to reorder mixed list of groups and ungrouped channels."""
-
-    items: list[dict]  # [{"type": "group", "id": 1}, {"type": "channel", "id": 2}, ...]
-
-
-@router.post("/reorder-mixed")
-async def reorder_mixed_list(
-    server_id: int,
-    payload: ReorderMixedRequest,
-    user: AdminUser,
-    db: AsyncSession = Depends(get_db),
-):
-    """Reorder mixed list of channel groups and ungrouped channels.
-
-    Groups and ungrouped channels maintain separate position namespaces.
-    The frontend provides the visual order, and we assign positions accordingly.
-    """
-    # Fetch all groups and ungrouped channels
-    groups_result = await db.execute(
-        select(ChannelGroup).where(ChannelGroup.server_id == server_id)
-    )
-    groups = {g.id: g for g in groups_result.scalars().all()}
-
-    channels_result = await db.execute(
-        select(Channel).where(Channel.server_id == server_id, Channel.group_id == None)
-    )
-    ungrouped_channels = {c.id: c for c in channels_result.scalars().all()}
-
-    # Validate all items exist before processing
-    invalid_items = []
-    for item in payload.items:
-        item_type = item.get("type")
-        item_id = item.get("id")
-
-        if not item_type or not item_id:
-            invalid_items.append(f"missing_fields:{item}")
-        elif item_type == "group" and item_id not in groups:
-            invalid_items.append(f"group:{item_id}")
-        elif item_type == "channel" and item_id not in ungrouped_channels:
-            invalid_items.append(f"channel:{item_id}")
-        elif item_type not in ("group", "channel"):
-            invalid_items.append(f"unknown_type:{item_type}")
-
-    if invalid_items:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid items in reorder list: {', '.join(invalid_items)}",
-        )
-
-    # Assign positions using a unified namespace
-    # Groups and ungrouped channels share the same position sequence
-    # so they can be sorted together in the frontend
-    position = 0
-    for item in payload.items:
-        item_type = item.get("type")
-        item_id = item.get("id")
-
-        if item_type == "group" and item_id is not None:
-            groups[item_id].position = position
-        elif item_type == "channel" and item_id is not None:
-            ungrouped_channels[item_id].position = position
-        position += 1
+    # Assign new positions
+    for idx, cid in enumerate(provided_ids):
+        id_map[cid].position = idx
 
     await db.flush()
 
@@ -268,12 +212,26 @@ async def delete_channel_group(
             status_code=status.HTTP_404_NOT_FOUND, detail="Channel group not found"
         )
 
-    # Set all channels in this group to ungrouped (group_id = NULL)
+    # Get max top-level position for placing ungrouped channels
+    group_max = await db.execute(
+        select(func.max(ChannelGroup.position)).where(
+            ChannelGroup.server_id == server_id
+        )
+    )
+    channel_max = await db.execute(
+        select(func.max(Channel.top_position)).where(
+            Channel.server_id == server_id, Channel.group_id == None
+        )
+    )
+    max_pos = max(group_max.scalar() or -1, channel_max.scalar() or -1)
+
+    # Set all channels in this group to ungrouped and assign top_position
     channels_result = await db.execute(
-        select(Channel).where(Channel.group_id == group_id)
+        select(Channel).where(Channel.group_id == group_id).order_by(Channel.position)
     )
     channels = channels_result.scalars().all()
-    for channel in channels:
+    for i, channel in enumerate(channels):
         channel.group_id = None
+        channel.top_position = max_pos + 1 + i
 
     await db.delete(group)

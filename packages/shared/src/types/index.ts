@@ -30,6 +30,7 @@ export interface Channel {
   name: string
   type: 'text' | 'voice'
   position: number
+  top_position: number
 }
 
 export interface Attachment {

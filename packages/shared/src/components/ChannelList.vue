@@ -109,8 +109,9 @@ const channelGroups = computed(() =>
 
 // Ungrouped channels (channels without a group) - mixed text and voice
 // Use == null to match both null and undefined
+// Sort by top_position for unified top-level ordering
 const ungroupedChannels = computed(() => 
-  chat.currentServer?.channels?.filter((c) => c.group_id == null)?.sort((a, b) => a.position - b.position) || []
+  chat.currentServer?.channels?.filter((c) => c.group_id == null)?.sort((a, b) => a.top_position - b.top_position) || []
 )
 
 // Get all channels for a specific group (mixed text and voice)
@@ -118,8 +119,8 @@ function getGroupChannels(groupId: number) {
   return chat.currentServer?.channels?.filter((c) => c.group_id === groupId)?.sort((a, b) => a.position - b.position) || []
 }
 
-// Unified list of groups and ungrouped channels, sorted by position
-// This allows groups and channels to be mixed in any order
+// Unified list of groups and ungrouped channels, sorted by unified position
+// Groups use position, ungrouped channels use top_position
 type ListItem = { type: 'group'; data: ChannelGroup } | { type: 'channel'; data: Channel }
 const mixedList = computed((): ListItem[] => {
   const items: ListItem[] = []
@@ -134,8 +135,12 @@ const mixedList = computed((): ListItem[] => {
     items.push({ type: 'channel', data: channel })
   }
   
-  // Sort by position
-  items.sort((a, b) => a.data.position - b.data.position)
+  // Sort by unified position (groups use position, channels use top_position)
+  items.sort((a, b) => {
+    const posA = a.type === 'group' ? a.data.position : (a.data as Channel).top_position
+    const posB = b.type === 'group' ? b.data.position : (b.data as Channel).top_position
+    return posA - posB
+  })
   
   return items
 })
@@ -421,7 +426,7 @@ function getDraggableGroupChannels(groupId: number): Channel[] {
   return draggableGroupChannels.value.get(groupId) || []
 }
 
-// Handle mixed list reorder
+// Handle mixed list reorder (top-level: groups + ungrouped channels)
 async function onMixedListEnd() {
   if (!chat.currentServer) return
   isReordering.value = true
@@ -430,28 +435,20 @@ async function onMixedListEnd() {
       type: item.type,
       id: item.data.id
     }))
-    await chat.reorderMixedList(chat.currentServer.id, newOrder)
+    await chat.reorderTopLevel(chat.currentServer.id, newOrder)
   } finally {
     isReordering.value = false
   }
 }
 
-// Handle group channels reorder
+// Handle group channels reorder (within a specific group)
 async function onGroupChannelsEnd(groupId: number) {
   if (!chat.currentServer) return
   isReordering.value = true
   try {
     const channels = draggableGroupChannels.value.get(groupId) || []
-    
-    // Get all channels and rebuild the order
-    const allChannels = [...(chat.currentServer.channels || [])]
-    const otherChannels = allChannels.filter(c => c.group_id !== groupId)
-    
-    // Rebuild full list maintaining positions
-    const newAll = [...otherChannels, ...channels]
-    const ids = newAll.map(c => c.id)
-    
-    await chat.reorderChannels(chat.currentServer.id, ids)
+    const channelIds = channels.map(c => c.id)
+    await chat.reorderGroupChannels(chat.currentServer.id, groupId, channelIds)
   } finally {
     isReordering.value = false
   }

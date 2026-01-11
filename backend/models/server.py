@@ -48,18 +48,19 @@ class Server(Base):
 
 class ChannelGroup(Base):
     """Channel group for organizing channels."""
+
     __tablename__ = "channel_groups"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    server_id: Mapped[int] = mapped_column(ForeignKey("servers.id", ondelete="CASCADE"), nullable=False)
+    server_id: Mapped[int] = mapped_column(
+        ForeignKey("servers.id", ondelete="CASCADE"), nullable=False
+    )
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     position: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     server: Mapped["Server"] = relationship("Server", back_populates="channel_groups")
-    channels: Mapped[list["Channel"]] = relationship(
-        "Channel", back_populates="group"
-    )
+    channels: Mapped[list["Channel"]] = relationship("Channel", back_populates="group")
 
 
 class Channel(Base):
@@ -76,11 +77,17 @@ class Channel(Base):
     type: Mapped[ChannelType] = mapped_column(
         SAEnum(ChannelType), default=ChannelType.TEXT
     )
+    # Position within group (for grouped channels) or legacy position
     position: Mapped[int] = mapped_column(Integer, default=0)
+    # Top-level position for ungrouped channels (shares sequence with ChannelGroup.position)
+    # Only meaningful when group_id is NULL
+    top_position: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     server: Mapped["Server"] = relationship("Server", back_populates="channels")
-    group: Mapped["ChannelGroup | None"] = relationship("ChannelGroup", back_populates="channels")
+    group: Mapped["ChannelGroup | None"] = relationship(
+        "ChannelGroup", back_populates="channels"
+    )
     messages: Mapped[list["Message"]] = relationship(
         "Message", back_populates="channel", cascade="all, delete-orphan"
     )
