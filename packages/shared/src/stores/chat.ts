@@ -186,27 +186,11 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  // Admin: reorder channel groups by providing an ordered list of group ids
-  async function reorderChannelGroups(serverId: number, groupIds: number[]) {
+  // Admin: reorder top-level items (groups and ungrouped channels)
+  async function reorderTopLevel(serverId: number, items: Array<{ type: 'group' | 'channel'; id: number }>) {
     try {
       const resp = await axios.post(
-        `${API_BASE}/api/servers/${serverId}/channel-groups/reorder`,
-        { group_ids: groupIds },
-        { headers: getAuthHeaders() }
-      )
-      await fetchChannelGroups(serverId)
-      return resp.data
-    } catch (e) {
-      console.error('Failed to reorder channel groups:', e)
-      return null
-    }
-  }
-
-  // Admin: reorder mixed list of channel groups and ungrouped channels
-  async function reorderMixedList(serverId: number, items: Array<{ type: 'group' | 'channel'; id: number }>) {
-    try {
-      const resp = await axios.post(
-        `${API_BASE}/api/servers/${serverId}/channel-groups/reorder-mixed`,
+        `${API_BASE}/api/servers/${serverId}/reorder`,
         { items },
         { headers: getAuthHeaders() }
       )
@@ -215,24 +199,23 @@ export const useChatStore = defineStore('chat', () => {
       await fetchServer(serverId)
       return resp.data
     } catch (e) {
-      console.error('Failed to reorder mixed list:', e)
+      console.error('Failed to reorder top-level items:', e)
       return null
     }
   }
 
-  // Admin: reorder channels by providing an ordered list of channel ids
-  async function reorderChannels(serverId: number, channelIds: number[]) {
+  // Admin: reorder channels within a group
+  async function reorderGroupChannels(serverId: number, groupId: number, channelIds: number[]) {
     try {
       const resp = await axios.post(
-        `${API_BASE}/api/servers/${serverId}/channels/reorder`,
+        `${API_BASE}/api/servers/${serverId}/channel-groups/${groupId}/reorder-channels`,
         { channel_ids: channelIds },
         { headers: getAuthHeaders() }
       )
-      // Update local server channels (server response contains ordered channels)
       await fetchServer(serverId)
       return resp.data
     } catch (e) {
-      console.error('Failed to reorder channels:', e)
+      console.error('Failed to reorder group channels:', e)
       return null
     }
   }
@@ -405,7 +388,6 @@ export const useChatStore = defineStore('chat', () => {
     updateServer,
     createChannel,
     updateChannel,
-    reorderChannels,
     deleteServer,
     deleteChannel,
     fetchMessages,
@@ -421,7 +403,8 @@ export const useChatStore = defineStore('chat', () => {
     createChannelGroup,
     updateChannelGroup,
     deleteChannelGroup,
-    reorderChannelGroups,
-    reorderMixedList,
+    // Reorder functions (unified API)
+    reorderTopLevel,
+    reorderGroupChannels,
   }
 })
