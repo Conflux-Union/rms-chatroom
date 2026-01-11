@@ -152,7 +152,7 @@ export const useChatStore = defineStore('chat', () => {
 
   async function updateServer(serverId: number, payload: { name?: string; icon?: string }) {
     try {
-      const resp = await axios.put(
+      const resp = await axios.patch(
         `${API_BASE}/api/servers/${serverId}`,
         payload,
         { headers: getAuthHeaders() }
