@@ -54,6 +54,9 @@ class VoiceRepository @Inject constructor(
     private val _hostModeHostName = MutableStateFlow<String?>(null)
     val hostModeHostName: StateFlow<String?> = _hostModeHostName.asStateFlow()
 
+    // Avatar URL cache: identity -> avatarUrl
+    private val _avatarCache = MutableStateFlow<Map<String, String>>(emptyMap())
+
     // Delegate to LiveKitManager
     val connectionState: StateFlow<ConnectionState> = liveKitManager.connectionState
     val isConnected: StateFlow<Boolean> get() = MutableStateFlow(false).also { flow ->
@@ -73,7 +76,34 @@ class VoiceRepository @Inject constructor(
     val isMuted: StateFlow<Boolean> = liveKitManager.isMuted
     val isDeafened: StateFlow<Boolean> = liveKitManager.isDeafened
     val isSpeakerOn: StateFlow<Boolean> = liveKitManager.isSpeakerOn
-    val participants: StateFlow<List<ParticipantInfo>> = liveKitManager.participants
+    
+    // Participants with avatar URLs merged from cache
+    val participants: StateFlow<List<ParticipantInfo>> get() = object : StateFlow<List<ParticipantInfo>> {
+        override val replayCache: List<List<ParticipantInfo>> = listOf(mergeParticipantsWithAvatars())
+        override val value: List<ParticipantInfo> get() = mergeParticipantsWithAvatars()
+        override suspend fun collect(collector: kotlinx.coroutines.flow.FlowCollector<List<ParticipantInfo>>): Nothing {
+            kotlinx.coroutines.flow.combine(
+                liveKitManager.participants,
+                _avatarCache
+            ) { participants, avatars ->
+                participants.map { p ->
+                    p.copy(avatarUrl = avatars[p.identity])
+                }
+            }.collect { merged ->
+                collector.emit(merged)
+            }
+            // This line is never reached because collect() on a StateFlow never completes
+            throw IllegalStateException("StateFlow collection should never complete")
+        }
+    }
+    
+    private fun mergeParticipantsWithAvatars(): List<ParticipantInfo> {
+        val avatars = _avatarCache.value
+        return liveKitManager.participants.value.map { p ->
+            p.copy(avatarUrl = avatars[p.identity])
+        }
+    }
+    
     val availableDevices: StateFlow<List<AudioDeviceInfo>> = liveKitManager.availableDevices
     val selectedDevice: StateFlow<AudioDeviceInfo?> = liveKitManager.selectedDevice
     
@@ -161,6 +191,8 @@ class VoiceRepository @Inject constructor(
         _screenShareLocked.value = false
         _screenSharerId.value = null
         _screenSharerName.value = null
+        // Clear avatar cache
+        _avatarCache.value = emptyMap()
     }
 
     suspend fun fetchVoiceUsers(channelId: Long): Result<List<VoiceUser>> {
@@ -168,6 +200,14 @@ class VoiceRepository @Inject constructor(
             val token = authRepository.getToken()
                 ?: return Result.failure(AuthException("未登录，请先登录"))
             val users = api.getVoiceUsers(authRepository.getAuthHeader(token), channelId)
+            // Cache avatar URLs
+            val newAvatars = _avatarCache.value.toMutableMap()
+            users.forEach { user ->
+                user.avatarUrl?.let { url ->
+                    newAvatars[user.id] = url
+                }
+            }
+            _avatarCache.value = newAvatars
             Result.success(users)
         } catch (e: Exception) {
             Log.e(TAG, "fetchVoiceUsers failed", e)
@@ -418,6 +458,7 @@ class VoiceRepository @Inject constructor(
         return VoiceUser(
             id = identity,
             name = name,
+            avatarUrl = avatarUrl,
             isMuted = isMuted,
             isHost = _hostModeHostId.value == identity,
             isSpeaking = isSpeaking

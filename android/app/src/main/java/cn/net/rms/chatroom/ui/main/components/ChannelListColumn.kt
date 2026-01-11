@@ -31,6 +31,8 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -43,6 +45,8 @@ import cn.net.rms.chatroom.data.model.ChannelType
 import cn.net.rms.chatroom.data.model.Server
 import cn.net.rms.chatroom.data.model.VoiceUser
 import cn.net.rms.chatroom.ui.theme.*
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
 
 // Sealed class for mixed list items (groups + ungrouped channels)
 sealed class ChannelListItem {
@@ -991,12 +995,26 @@ private fun VoiceUserItem(user: VoiceUser) {
                 .background(TiColor),
             contentAlignment = Alignment.Center
         ) {
-            Text(
-                text = user.name.take(1).uppercase(),
-                style = MaterialTheme.typography.labelSmall,
-                color = Color.White,
-                fontSize = 10.sp
-            )
+            if (!user.avatarUrl.isNullOrBlank()) {
+                AsyncImage(
+                    model = ImageRequest.Builder(LocalContext.current)
+                        .data(user.avatarUrl)
+                        .crossfade(true)
+                        .build(),
+                    contentDescription = user.name,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(CircleShape),
+                    contentScale = ContentScale.Crop
+                )
+            } else {
+                Text(
+                    text = user.name.take(1).uppercase(),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color.White,
+                    fontSize = 10.sp
+                )
+            }
         }
 
         // Host badge

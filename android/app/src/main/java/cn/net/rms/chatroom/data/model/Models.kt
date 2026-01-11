@@ -94,6 +94,8 @@ data class Message(
     @SerializedName("user_id")
     val userId: Long,
     val username: String,
+    @SerializedName("avatar_url")
+    val avatarUrl: String? = null,
     val content: String,
     @SerializedName("created_at")
     val createdAt: String,
@@ -121,6 +123,8 @@ data class Message(
 data class VoiceUser(
     val id: String,
     val name: String,
+    @SerializedName("avatar_url")
+    val avatarUrl: String? = null,
     @SerializedName("is_muted")
     val isMuted: Boolean,
     @SerializedName("is_host")

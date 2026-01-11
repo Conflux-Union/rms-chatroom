@@ -52,6 +52,7 @@ enum class ConnectionState {
 data class ParticipantInfo(
     val identity: String,
     val name: String,
+    val avatarUrl: String? = null,
     val isMuted: Boolean,
     val isSpeaking: Boolean,
     val audioLevel: Float,
