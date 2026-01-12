@@ -197,6 +197,8 @@ function connectWebSocket(channelId: number) {
   ws = useWebSocket(`/ws/chat/${channelId}`)
 
   ws.onMessage((data) => {
+    console.log('[WebSocket] Received message:', JSON.stringify(data, null, 2))
+    
     if (data.type === 'message') {
       // 验证消息频道ID，但使用更宽松的检查
       const messageChannelId = data.channel_id || channelId
@@ -227,18 +229,30 @@ function connectWebSocket(channelId: number) {
       chat.addMessage(newMessage)
       
       // Check if current user is mentioned
+      console.log('[Mention Check] Message mentions:', newMessage.mentions)
+      console.log('[Mention Check] Current user:', { username: auth.user?.username, nickname: auth.user?.nickname, id: auth.user?.id })
+      
       if (newMessage.mentions && newMessage.mentions.length > 0) {
         const currentUsername = auth.user?.username || auth.user?.nickname || ''
         const isMentioned = newMessage.mentions.some(
           (mention: { username: string }) => mention.username === currentUsername
         )
         
+        console.log('[Mention Check] Current username:', currentUsername)
+        console.log('[Mention Check] Is mentioned:', isMentioned)
+        console.log('[Mention Check] Is own message:', newMessage.user_id === auth.user?.id)
+        
         if (isMentioned && newMessage.user_id !== auth.user?.id) {
+          console.log('[Mention] User is mentioned! Playing sound and marking channel')
           // Play sound if page is visible
           if (document.visibilityState === 'visible') {
+            console.log('[Mention] Page is visible, playing sound')
             playMentionSound()
+          } else {
+            console.log('[Mention] Page is NOT visible, skipping sound')
           }
           // Mark channel as having unread mention
+          console.log('[Mention] Marking channel', channelId, 'with message', newMessage.id)
           markChannelAsMentioned(channelId, newMessage.id)
         }
       }
