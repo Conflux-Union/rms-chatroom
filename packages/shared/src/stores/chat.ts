@@ -400,6 +400,8 @@ export const useChatStore = defineStore('chat', () => {
         params: { limit: 50 },
       })
       
+      console.log('[MentionPoll] Server response:', JSON.stringify(resp.data, null, 2))
+      
       const channelsData = resp.data as Array<{
         channel_id: number
         channel_name: string
@@ -411,6 +413,8 @@ export const useChatStore = defineStore('chat', () => {
       // Process each channel's messages
       for (const channelData of channelsData) {
         const { channel_id, channel_name, messages: latestMessages } = channelData
+        
+        console.log(`[MentionPoll] Channel ${channel_name} (${channel_id}):`, JSON.stringify(channelData, null, 2))
         
         const cachedMessages = channelMessagesCache.value.get(channel_id) || []
         
