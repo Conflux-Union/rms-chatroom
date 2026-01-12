@@ -390,7 +390,7 @@ export const useChatStore = defineStore('chat', () => {
     const currentNickname = auth.user?.nickname || ''
     if (!currentUsername && !currentNickname) return
 
-    const { markChannelAsMentioned, playMentionSound } = useMentionNotification()
+    const { markChannelAsMentioned, playMentionSound, setUnreadCount } = useMentionNotification()
     const { getReadTimestamp } = useReadPosition()
 
     try {
@@ -445,6 +445,24 @@ export const useChatStore = defineStore('chat', () => {
           console.log(`[MentionPoll] Channel ${channel_name} has ${latestMessages.length} messages, lastReadTimestamp:`, 
             lastReadTimestamp ? new Date(lastReadTimestamp).toISOString() : 'never',
             'isCurrentChannel:', isCurrentChannel)
+        
+        // 计算未读消息数（不在当前频道时）
+        let unreadCount = 0
+        if (!isCurrentChannel) {
+          for (const msg of latestMessages) {
+            // 跳过自己的消息
+            if (msg.user_id === auth.user?.id) continue
+            // 跳过已读的消息
+            if (lastReadTimestamp && msg.created_at <= new Date(lastReadTimestamp).toISOString()) continue
+            unreadCount++
+          }
+          if (unreadCount > 0) {
+            setUnreadCount(channel_id, unreadCount)
+          }
+        } else {
+          // 当前频道，清除未读计数
+          setUnreadCount(channel_id, 0)
+        }
         
         // Check all messages, not just new ones
         for (const message of latestMessages) {

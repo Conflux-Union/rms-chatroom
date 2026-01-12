@@ -14,6 +14,9 @@ interface MentionNotification {
 // 这样当 ChatArea 更新状态时，ChannelList 也能响应式更新
 const sharedChannelMentions = ref<Record<number, boolean>>({})
 
+// 未读消息计数的共享状态
+const sharedUnreadCounts = ref<Record<number, number>>({})
+
 function getStoredMentions(): MentionNotification {
   try {
     const stored = localStorage.getItem(STORAGE_KEY)
@@ -101,6 +104,7 @@ export function useMentionNotification() {
   // 使用模块级别的共享状态，而不是每次调用都创建新的 ref
   // 这样所有组件实例共享同一个响应式状态
   const channelMentions = sharedChannelMentions
+  const unreadCounts = sharedUnreadCounts
 
   /**
    * 播放@提及提示音，每10秒最多响一次，每条mention只响一次
@@ -197,7 +201,27 @@ export function useMentionNotification() {
     channelMentions.value[channelId] = false
     triggerRef(channelMentions)
     
-    console.log('[MentionNotification] Cleared channel', channelId, 'mention')
+    // 同时清除未读计数
+    unreadCounts.value[channelId] = 0
+    triggerRef(unreadCounts)
+    
+    console.log('[MentionNotification] Cleared channel', channelId, 'mention and unread count')
+  }
+
+  function setUnreadCount(channelId: number, count: number) {
+    unreadCounts.value[channelId] = count
+    triggerRef(unreadCounts)
+    console.log('[UnreadCount] Set channel', channelId, 'unread count to', count)
+  }
+
+  function getUnreadCount(channelId: number): number {
+    return unreadCounts.value[channelId] ?? 0
+  }
+
+  function clearUnreadCount(channelId: number) {
+    unreadCounts.value[channelId] = 0
+    triggerRef(unreadCounts)
+    console.log('[UnreadCount] Cleared channel', channelId, 'unread count')
   }
 
   function hasUnreadMention(channelId: number): boolean {
@@ -257,11 +281,15 @@ export function useMentionNotification() {
 
   return {
     channelMentions,
+    unreadCounts,
     playMentionSound,
     markChannelAsMentioned,
     clearChannelMention,
     hasUnreadMention,
     loadChannelMentions,
     checkMessagesForMentions,
+    setUnreadCount,
+    getUnreadCount,
+    clearUnreadCount,
   }
 }
