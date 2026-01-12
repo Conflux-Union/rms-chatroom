@@ -290,6 +290,12 @@ class AttachmentResponse(BaseModel):
         from_attributes = True
 
 
+class MentionResponse(BaseModel):
+    """User mentioned in a message."""
+    id: int
+    username: str
+
+
 class MessageInChannelResponse(BaseModel):
     id: int
     channel_id: int
@@ -301,6 +307,7 @@ class MessageInChannelResponse(BaseModel):
     attachments: list[AttachmentResponse] = []
     is_deleted: bool = False
     edited_at: datetime | None = None
+    mentions: list[MentionResponse] = []
 
     class Config:
         from_attributes = True
@@ -365,6 +372,8 @@ async def get_all_server_messages(
         # Convert to response format
         message_responses = []
         for msg in reversed(messages):  # Reverse to get chronological order
+            import re
+            
             attachments = [
                 AttachmentResponse(
                     id=att.id,
@@ -375,6 +384,18 @@ async def get_all_server_messages(
                 )
                 for att in msg.attachments
             ]
+            
+            # Parse mentions from content (same logic as messages.py)
+            mentions_data = []
+            if msg.content:
+                mention_pattern = re.compile(r"@(\w+)")
+                mentioned_usernames = mention_pattern.findall(msg.content)
+                # Deduplicate while preserving order
+                seen = set()
+                for username in mentioned_usernames:
+                    if username not in seen:
+                        seen.add(username)
+                        mentions_data.append(MentionResponse(id=0, username=username))
             
             message_responses.append(
                 MessageInChannelResponse(
@@ -388,6 +409,7 @@ async def get_all_server_messages(
                     attachments=attachments,
                     is_deleted=msg.is_deleted,
                     edited_at=msg.edited_at,
+                    mentions=mentions_data,
                 )
             )
 

@@ -5,9 +5,10 @@ import { resolve } from 'path'
 export default defineConfig({
   plugins: [vue()],
   define: {
-    // Electron production needs absolute API URL
-    'import.meta.env.VITE_API_BASE': JSON.stringify('https://preview-chatroom.rms.net.cn'),
-    'import.meta.env.VITE_WS_BASE': JSON.stringify('wss://preview-chatroom.rms.net.cn'),
+    // Only set absolute URLs for production build
+    // In dev mode, use empty string to enable vite proxy
+    'import.meta.env.VITE_API_BASE': JSON.stringify(process.env.NODE_ENV === 'production' ? 'https://preview-chatroom.rms.net.cn' : ''),
+    'import.meta.env.VITE_WS_BASE': JSON.stringify(process.env.NODE_ENV === 'production' ? 'wss://preview-chatroom.rms.net.cn' : ''),
   },
   resolve: {
     alias: {
@@ -22,10 +23,20 @@ export default defineConfig({
       '/api': {
         target: 'https://preview-chatroom.rms.net.cn',
         changeOrigin: true,
+        secure: false,
+        configure: (proxy, options) => {
+          proxy.on('proxyReq', (proxyReq, req, res) => {
+            console.log('[Proxy]', req.method, req.url, '->', options.target + req.url);
+          });
+          proxy.on('proxyRes', (proxyRes, req, res) => {
+            console.log('[Proxy Response]', proxyRes.statusCode, req.url);
+          });
+        },
       },
       '/ws': {
-        target: 'ws://preview-chatroom.rms.net.cn',
+        target: 'wss://preview-chatroom.rms.net.cn',
         ws: true,
+        changeOrigin: true,
       },
     },
   },
