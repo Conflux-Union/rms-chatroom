@@ -101,8 +101,9 @@ export function useMentionNotification() {
     saveMentions(mentions)
     
     // Update local state
-    channelMentions.value.set(channelId, false)    console.log('[MentionNotification] Updated channelMentions map:', Array.from(channelMentions.value.entries()))
-    console.log('[MentionNotification] Saved to localStorage:', mentions[channelId])  }
+    channelMentions.value.set(channelId, false)
+    console.log('[MentionNotification] Cleared channel', channelId, 'mention')
+  }
 
   function hasUnreadMention(channelId: number): boolean {
     const result = channelMentions.value.get(channelId) ?? false
