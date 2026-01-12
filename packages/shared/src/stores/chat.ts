@@ -395,11 +395,16 @@ export const useChatStore = defineStore('chat', () => {
 
     try {
       // Use new API to get all messages from all text channels in one request
-      const resp = await axios.get(`${API_BASE}/api/servers/${currentServer.value.id}/all-messages`, {
+      const url = `${API_BASE}/api/servers/${currentServer.value.id}/all-messages`
+      console.log('[MentionPoll] API_BASE:', API_BASE)
+      console.log('[MentionPoll] Requesting URL:', url)
+      const resp = await axios.get(url, {
         headers: getAuthHeaders(),
         params: { limit: 50 },
       })
       
+      console.log('[MentionPoll] Response status:', resp.status)
+      console.log('[MentionPoll] Response headers:', resp.headers)
       console.log('[MentionPoll] Server response:', JSON.stringify(resp.data, null, 2))
       
       const channelsData = resp.data as Array<{
@@ -432,6 +437,15 @@ export const useChatStore = defineStore('chat', () => {
         // Check new messages for mentions
         const lastReadId = getReadPosition(channel_id)
         for (const message of newMessages) {
+          console.log(`[MentionPoll] Checking message ${message.id}:`, {
+            content: message.content,
+            mentions: message.mentions,
+            user_id: message.user_id,
+            currentUserId: auth.user?.id,
+            currentUsername,
+            currentNickname,
+          })
+          
           // Skip messages before last read position
           if (lastReadId && message.id <= lastReadId) continue
           
@@ -443,6 +457,8 @@ export const useChatStore = defineStore('chat', () => {
             const isMentioned = message.mentions.some(
               mention => mention.username === currentUsername || mention.username === currentNickname
             )
+            
+            console.log(`[MentionPoll] Message ${message.id} isMentioned:`, isMentioned)
             
             if (isMentioned) {
               console.log(`[MentionPoll] Found mention in channel ${channel_name}, message ${message.id}`)
