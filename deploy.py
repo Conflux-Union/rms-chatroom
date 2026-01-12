@@ -193,7 +193,7 @@ def build_frontend() -> tuple[bool, str]:
             cwd=PROJECT_ROOT,
             capture_output=True,
             text=True,
-            timeout=300,  # 5 minutes timeout
+            timeout=1000,  # 5 minutes timeout
         )
         if result.returncode != 0:
             return False, f"Web build failed:\n{result.stderr[-2000:]}"
