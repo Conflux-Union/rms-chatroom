@@ -3,6 +3,7 @@ import { ref, computed, watch, onUnmounted, onMounted, nextTick } from 'vue'
 import { useChatStore } from '../stores/chat'
 import { useAuthStore } from '../stores/auth'
 import { useVoiceStore } from '../stores/voice'
+import { useMentionNotification } from '../composables/useMentionNotification'
 import { Volume2, MicOff, Crown, ChevronDown, ChevronRight } from 'lucide-vue-next'
 import { NDropdown, NModal, NInput, NButton, NSpace, NSelect } from 'naive-ui'
 import type { DropdownOption, SelectOption } from 'naive-ui'
@@ -13,6 +14,7 @@ import { VueDraggable } from 'vue-draggable-plus'
 const chat = useChatStore()
 const auth = useAuthStore()
 const voice = useVoiceStore()
+const { channelMentions, loadChannelMentions, hasUnreadMention } = useMentionNotification()
 const showCreate = ref(false)
 const newItemName = ref('')
 const newCreateType = ref<'text' | 'voice' | 'group'>('text') // 创建类型：文字频道、语音频道、频道组
@@ -93,13 +95,28 @@ watch(() => chat.currentServer, (server) => {
     startVoiceUsersPolling()
     // Fetch channel groups when server changes
     chat.fetchChannelGroups(server.id)
+    // Start polling for mentions
+    chat.startMentionPolling()
   } else {
     stopVoiceUsersPolling()
+    // Stop polling when no server
+    chat.stopMentionPolling()
   }
 }, { immediate: true })
 
+onMounted(() => {
+  // Load mention notifications on mount
+  loadChannelMentions()
+})
+
 onUnmounted(() => {
   stopVoiceUsersPolling()
+  chat.stopMentionPolling()
+})
+
+onUnmounted(() => {
+  stopVoiceUsersPolling()
+  chat.stopMentionPolling()
 })
 
 // Channel groups
@@ -571,6 +588,7 @@ async function deleteChannel() {
                   <template v-else>
                     <span class="channel-name" @dblclick.stop="auth.isAdmin && editMode ? startInlineEdit(channel) : undefined">{{ channel.name }}</span>
                   </template>
+                  <span v-if="hasUnreadMention(channel.id)" class="mention-badge">有人@我</span>
                   <div v-if="editMode" class="edit-actions" @click.stop>
                     <button v-if="editingChannelId !== channel.id" class="small" @click="renameChannel(channel)">重命名</button>
                     <span class="drag-handle drag-handle-channel">☰</span>
@@ -662,6 +680,7 @@ async function deleteChannel() {
             <template v-else>
               <span class="channel-name" @dblclick.stop="auth.isAdmin && editMode ? startInlineEdit(item.data) : undefined">{{ item.data.name }}</span>
             </template>
+            <span v-if="hasUnreadMention(item.data.id)" class="mention-badge">有人@我</span>
             <div v-if="editMode" class="edit-actions" @click.stop>
               <button v-if="editingChannelId !== item.data.id" class="small" @click="renameChannel(item.data)">重命名</button>
               <span class="drag-handle drag-handle-group">☰</span>
@@ -1450,5 +1469,30 @@ async function deleteChannel() {
 .sortable-fallback {
   opacity: 0.8 !important;
   background: var(--surface-glass) !important;
+}
+
+/* Mention Badge */
+.mention-badge {
+  background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%);
+  color: white;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 10px;
+  margin-left: auto;
+  white-space: nowrap;
+  box-shadow: 0 2px 4px rgba(255, 107, 107, 0.3);
+  animation: pulse-mention 2s ease-in-out infinite;
+}
+
+@keyframes pulse-mention {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.8;
+    transform: scale(0.98);
+  }
 }
 </style>

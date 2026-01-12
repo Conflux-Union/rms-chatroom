@@ -1,14 +1,15 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Literal
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from ..core.database import get_db
-from ..models.server import Server, Channel, ChannelType, ChannelGroup
+from ..models.server import Server, Channel, ChannelType, ChannelGroup, Message, Attachment
 from .deps import CurrentUser, AdminUser
 
 
@@ -275,3 +276,127 @@ async def reorder_top_level(
     await db.flush()
 
     return {"success": True}
+
+
+# Response models for all messages endpoint
+class AttachmentResponse(BaseModel):
+    id: int
+    filename: str
+    content_type: str
+    size: int
+    url: str
+
+    class Config:
+        from_attributes = True
+
+
+class MessageInChannelResponse(BaseModel):
+    id: int
+    channel_id: int
+    user_id: int
+    username: str
+    avatar_url: str | None = None
+    content: str
+    created_at: datetime
+    attachments: list[AttachmentResponse] = []
+    is_deleted: bool = False
+    edited_at: datetime | None = None
+
+    class Config:
+        from_attributes = True
+
+
+class ChannelMessagesResponse(BaseModel):
+    channel_id: int
+    channel_name: str
+    messages: list[MessageInChannelResponse]
+
+
+@router.get("/{server_id}/all-messages", response_model=list[ChannelMessagesResponse])
+async def get_all_server_messages(
+    server_id: int,
+    user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+    limit: int = Query(50, le=200, description="Max messages per channel"),
+):
+    """Get all messages from all text channels in a server.
+    
+    Returns a list of channel messages, where each item contains:
+    - channel_id: The channel's ID
+    - channel_name: The channel's name
+    - messages: List of messages in that channel (up to limit per channel)
+    """
+    # Verify server exists
+    server_result = await db.execute(select(Server).where(Server.id == server_id))
+    server = server_result.scalar_one_or_none()
+    if not server:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Server not found"
+        )
+
+    # Get all text channels in this server
+    channels_result = await db.execute(
+        select(Channel)
+        .where(
+            Channel.server_id == server_id,
+            Channel.type == ChannelType.TEXT
+        )
+        .order_by(Channel.position)
+    )
+    channels = channels_result.scalars().all()
+
+    # Get messages for each channel
+    all_channel_messages = []
+    for channel in channels:
+        # Query messages for this channel
+        messages_query = (
+            select(Message)
+            .where(
+                Message.channel_id == channel.id,
+                Message.is_deleted == False,
+            )
+            .options(selectinload(Message.attachments))
+            .order_by(Message.id.desc())
+            .limit(limit)
+        )
+        messages_result = await db.execute(messages_query)
+        messages = messages_result.scalars().all()
+
+        # Convert to response format
+        message_responses = []
+        for msg in reversed(messages):  # Reverse to get chronological order
+            attachments = [
+                AttachmentResponse(
+                    id=att.id,
+                    filename=att.filename,
+                    content_type=att.content_type,
+                    size=att.size,
+                    url=f"/api/files/{att.id}"
+                )
+                for att in msg.attachments
+            ]
+            
+            message_responses.append(
+                MessageInChannelResponse(
+                    id=msg.id,
+                    channel_id=msg.channel_id,
+                    user_id=msg.user_id,
+                    username=msg.username,
+                    avatar_url=None,  # Can be populated from SSO if needed
+                    content=msg.content,
+                    created_at=msg.created_at,
+                    attachments=attachments,
+                    is_deleted=msg.is_deleted,
+                    edited_at=msg.edited_at,
+                )
+            )
+
+        all_channel_messages.append(
+            ChannelMessagesResponse(
+                channel_id=channel.id,
+                channel_name=channel.name,
+                messages=message_responses,
+            )
+        )
+
+    return all_channel_messages
