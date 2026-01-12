@@ -56,23 +56,29 @@ export function useMentionNotification() {
   const channelMentions = ref<Map<number, boolean>>(new Map())
 
   function playMentionSound() {
+    console.log('[MentionSound] Attempting to play mention sound')
     try {
       const audio = getMentionAudio()
       if (!audio) {
-        // Audio not available, silently skip
+        console.warn('[MentionSound] Audio not available')
         return
       }
+      console.log('[MentionSound] Audio element ready, playing...')
       audio.currentTime = 0
-      audio.play().catch(e => {
-        // Play might fail due to browser autoplay policy
-        console.debug('Mention notification sound play blocked:', e)
-      })
+      audio.play()
+        .then(() => {
+          console.log('[MentionSound] Sound played successfully')
+        })
+        .catch(e => {
+          console.warn('[MentionSound] Play blocked by browser:', e)
+        })
     } catch (e) {
-      console.warn('Failed to play mention notification sound:', e)
+      console.error('[MentionSound] Failed to play:', e)
     }
   }
 
   function markChannelAsMentioned(channelId: number, messageId: number) {
+    console.log('[MentionNotification] Marking channel', channelId, 'as mentioned with message', messageId)
     const mentions = getStoredMentions()
     mentions[channelId] = {
       hasMention: true,
@@ -83,6 +89,8 @@ export function useMentionNotification() {
     
     // Update local state
     channelMentions.value.set(channelId, true)
+    console.log('[MentionNotification] Updated channelMentions map:', Array.from(channelMentions.value.entries()))
+    console.log('[MentionNotification] Saved to localStorage:', mentions[channelId])
   }
 
   function clearChannelMention(channelId: number) {
@@ -93,23 +101,31 @@ export function useMentionNotification() {
     saveMentions(mentions)
     
     // Update local state
-    channelMentions.value.set(channelId, false)
-  }
+    channelMentions.value.set(channelId, false)    console.log('[MentionNotification] Updated channelMentions map:', Array.from(channelMentions.value.entries()))
+    console.log('[MentionNotification] Saved to localStorage:', mentions[channelId])  }
 
   function hasUnreadMention(channelId: number): boolean {
-    return channelMentions.value.get(channelId) ?? false
+    const result = channelMentions.value.get(channelId) ?? false
+    console.log('[MentionCheck] Channel', channelId, 'has unread mention:', result, 'All mentions:', Array.from(channelMentions.value.entries()))
+    return result
   }
 
   function loadChannelMentions() {
+    console.log('[MentionNotification] Loading channel mentions from localStorage')
     const mentions = getStoredMentions()
+    console.log('[MentionNotification] Loaded mentions:', mentions)
     const mentionMap = new Map<number, boolean>()
     
     for (const [channelIdStr, data] of Object.entries(mentions)) {
       const channelId = parseInt(channelIdStr, 10)
       mentionMap.set(channelId, data.hasMention)
+      if (data.hasMention) {
+        console.log('[MentionNotification] Channel', channelId, 'has unread mention')
+      }
     }
     
     channelMentions.value = mentionMap
+    console.log('[MentionNotification] Final channel mentions map:', Array.from(channelMentions.value.entries()))
   }
 
   function checkMessagesForMentions(
