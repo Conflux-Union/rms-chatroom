@@ -16,6 +16,7 @@ const auth = useAuthStore()
 const voice = useVoiceStore()
 const mentionNotification = useMentionNotification()
 const channelMentions = mentionNotification.channelMentions
+const unreadCounts = mentionNotification.unreadCounts
 
 // Debug: Watch channelMentions changes
 watch(channelMentions, (newVal) => {
@@ -593,12 +594,14 @@ async function deleteChannel() {
                     />
                   </template>
                   <template v-else>
+                    
                     <span class="channel-name" @dblclick.stop="auth.isAdmin && editMode ? startInlineEdit(channel) : undefined">{{ channel.name }}</span>
                   </template>
+                  <span v-if="channelMentions[channel.id]" class="mention-badge">@</span>
                   <span 
-                    v-if="channelMentions[channel.id]" 
-                    class="mention-badge"
-                  >有人@我</span>
+                    v-if="unreadCounts[channel.id] && unreadCounts[channel.id] > 0" 
+                    class="unread-badge"
+                  >{{ unreadCounts[channel.id] > 99 ? '99+' : unreadCounts[channel.id] }}</span>
                   <div v-if="editMode" class="edit-actions" @click.stop>
                     <button v-if="editingChannelId !== channel.id" class="small" @click="renameChannel(channel)">重命名</button>
                     <span class="drag-handle drag-handle-channel">☰</span>
@@ -688,9 +691,13 @@ async function deleteChannel() {
               />
             </template>
             <template v-else>
+              <span v-if="channelMentions[item.data.id]" class="mention-badge">@</span>
               <span class="channel-name" @dblclick.stop="auth.isAdmin && editMode ? startInlineEdit(item.data) : undefined">{{ item.data.name }}</span>
             </template>
-            <span v-if="channelMentions[item.data.id]" class="mention-badge">有人@我</span>
+            <span 
+              v-if="unreadCounts[item.data.id] && unreadCounts[item.data.id] > 0" 
+              class="unread-badge"
+            >{{ unreadCounts[item.data.id] > 99 ? '99+' : unreadCounts[item.data.id] }}</span>
             <div v-if="editMode" class="edit-actions" @click.stop>
               <button v-if="editingChannelId !== item.data.id" class="small" @click="renameChannel(item.data)">重命名</button>
               <span class="drag-handle drag-handle-group">☰</span>
@@ -1481,28 +1488,61 @@ async function deleteChannel() {
   background: var(--surface-glass) !important;
 }
 
-/* Mention Badge */
+/* Channel Badges Container */
+.channel-badges {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+/* Mention Badge (left) - bigger, more pronounced pulse */
 .mention-badge {
   background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%);
   color: white;
   font-size: 10px;
-  font-weight: 600;
-  padding: 2px 6px;
+  font-weight: 800;
+  padding: 4px 6px;
   border-radius: 10px;
-  margin-left: auto;
   white-space: nowrap;
   box-shadow: 0 2px 4px rgba(255, 107, 107, 0.3);
   animation: pulse-mention 2s ease-in-out infinite;
 }
 
 @keyframes pulse-mention {
-  0%, 100% {
+  0% {
+    background-color: rgba(238, 90, 112, 0.555);
+    box-shadow: 0 4px 4px rgba(238, 90, 112, 0.126);
     opacity: 1;
-    transform: scale(1);
   }
   50% {
-    opacity: 0.8;
-    transform: scale(0.98);
+    background-color: rgba(83, 58, 62, 0.557);
+    box-shadow: 0 4px 4px rgba(238, 90, 112, 0.555);
+    color: rgb(0, 0, 0);
+    opacity: 0.7;
   }
+  100% {
+    background-color: rgba(238, 90, 112, 0.555);
+    box-shadow: 0 4px 4px rgba(238, 90, 112, 0.126);
+    opacity: 1;
+  }
+}
+
+/* Unread Count Badge */
+.unread-badge {
+  background: var(--color-text-muted, #6b7280);
+  color: white;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 5px;
+  border-radius: 8px;
+  white-space: nowrap;
+  min-width: 16px;
+  text-align: center;
+}
+.unread-badge {
+  margin-left: auto;
+  flex-shrink: 0;
 }
 </style>
