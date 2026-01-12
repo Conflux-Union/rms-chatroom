@@ -3,6 +3,8 @@ import { ref } from 'vue'
 import type { Server, Channel, ChannelGroup, Message, Attachment } from '../types'
 import axios from 'axios'
 import { useAuthStore } from './auth'
+import { useMentionNotification } from '../composables/useMentionNotification'
+import { useReadPosition } from '../composables/useReadPosition'
 
 const API_BASE = import.meta.env.VITE_API_BASE || ''
 
@@ -22,6 +24,9 @@ export const useChatStore = defineStore('chat', () => {
   const messages = ref<Message[]>([])
   // Map: channelId -> users in that voice channel
   const voiceChannelUsers = ref<Map<number, VoiceChannelUser[]>>(new Map())
+  // Map: channelId -> latest messages cache
+  const channelMessagesCache = ref<Map<number, Message[]>>(new Map())
+  let mentionPollInterval: ReturnType<typeof setInterval> | null = null
 
   function getAuthHeaders() {
     const auth = useAuthStore()
@@ -376,6 +381,101 @@ export const useChatStore = defineStore('chat', () => {
     return `${base}${params.toString() ? '?' + params.toString() : ''}`
   }
 
+  // Poll all text channels for new messages and check for mentions
+  async function pollAllChannelsForMentions() {
+    if (!currentServer.value) return
+    
+    const auth = useAuthStore()
+    const currentUsername = auth.user?.username || ''
+    const currentNickname = auth.user?.nickname || ''
+    if (!currentUsername && !currentNickname) return
+
+    const { markChannelAsMentioned, playMentionSound } = useMentionNotification()
+    const { getReadPosition } = useReadPosition()
+
+    try {
+      // Use new API to get all messages from all text channels in one request
+      const resp = await axios.get(`${API_BASE}/api/servers/${currentServer.value.id}/all-messages`, {
+        headers: getAuthHeaders(),
+        params: { limit: 50 },
+      })
+      
+      const channelsData = resp.data as Array<{
+        channel_id: number
+        channel_name: string
+        messages: Message[]
+      }>
+      
+      console.log(`[MentionPoll] Checked ${channelsData.length} channels for mentions`)
+      
+      // Process each channel's messages
+      for (const channelData of channelsData) {
+        const { channel_id, channel_name, messages: latestMessages } = channelData
+        
+        const cachedMessages = channelMessagesCache.value.get(channel_id) || []
+        
+        // Find new messages (messages not in cache)
+        const cachedIds = new Set(cachedMessages.map(m => m.id))
+        const newMessages = latestMessages.filter(m => !cachedIds.has(m.id))
+        
+        if (newMessages.length > 0) {
+          console.log(`[MentionPoll] Channel ${channel_name}: ${newMessages.length} new messages`)
+        }
+        
+        // Update cache
+        channelMessagesCache.value.set(channel_id, latestMessages)
+        
+        // Check new messages for mentions
+        const lastReadId = getReadPosition(channel_id)
+        for (const message of newMessages) {
+          // Skip messages before last read position
+          if (lastReadId && message.id <= lastReadId) continue
+          
+          // Skip own messages
+          if (message.user_id === auth.user?.id) continue
+          
+          // Check if this message mentions current user (check both username and nickname)
+          if (message.mentions && message.mentions.length > 0) {
+            const isMentioned = message.mentions.some(
+              mention => mention.username === currentUsername || mention.username === currentNickname
+            )
+            
+            if (isMentioned) {
+              console.log(`[MentionPoll] Found mention in channel ${channel_name}, message ${message.id}`)
+              // Mark channel as having unread mention
+              markChannelAsMentioned(channel_id, message.id)
+              
+              // Play sound if not on this channel and page is visible
+              if (currentChannel.value?.id !== channel_id && document.visibilityState === 'visible') {
+                console.log('[MentionPoll] Playing mention sound')
+                playMentionSound()
+              }
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.debug('Failed to poll server messages:', e)
+    }
+  }
+
+  function startMentionPolling() {
+    stopMentionPolling()
+    // Poll immediately
+    pollAllChannelsForMentions()
+    // Then poll every 10 seconds
+    mentionPollInterval = setInterval(() => {
+      pollAllChannelsForMentions()
+    }, 10000)
+  }
+
+  function stopMentionPolling() {
+    if (mentionPollInterval) {
+      clearInterval(mentionPollInterval)
+      mentionPollInterval = null
+    }
+  }
+
   return {
     servers,
     currentServer,
@@ -407,5 +507,8 @@ export const useChatStore = defineStore('chat', () => {
     // Reorder functions (unified API)
     reorderTopLevel,
     reorderGroupChannels,
+    // Mention polling
+    startMentionPolling,
+    stopMentionPolling,
   }
 })

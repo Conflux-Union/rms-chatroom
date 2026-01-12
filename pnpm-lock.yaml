@@ -7,6 +7,10 @@ settings:
 importers:
 
   .:
+    dependencies:
+      vue-draggable-plus:
+        specifier: ^0.6.1
+        version: 0.6.1(@types/sortablejs@1.15.9)
     devDependencies:
       '@rollup/rollup-linux-x64-gnu':
         specifier: 4.54.0

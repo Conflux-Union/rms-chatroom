@@ -4,6 +4,7 @@ import { useChatStore } from '../stores/chat'
 import { useAuthStore } from '../stores/auth'
 import { useWebSocket } from '../composables/useWebSocket'
 import { useReadPosition } from '../composables/useReadPosition'
+import { useMentionNotification } from '../composables/useMentionNotification'
 import {
   NDropdown,
   NModal,
@@ -178,6 +179,14 @@ const {
 } = useReadPosition()
 let scrollSaveTimeout: ReturnType<typeof setTimeout> | null = null
 
+// Mention notification tracking
+const {
+  playMentionSound,
+  markChannelAsMentioned,
+  clearChannelMention,
+  checkMessagesForMentions,
+} = useMentionNotification()
+
 let ws: ReturnType<typeof useWebSocket> | null = null
 
 function connectWebSocket(channelId: number) {
@@ -189,9 +198,18 @@ function connectWebSocket(channelId: number) {
 
   ws.onMessage((data) => {
     if (data.type === 'message') {
-      chat.addMessage({
+      // 验证消息频道ID，但使用更宽松的检查
+      const messageChannelId = data.channel_id || channelId
+      
+      // 如果消息的频道ID与当前频道不匹配，忽略（但不影响自己发送的消息）
+      if (messageChannelId !== channelId && chat.currentChannel?.id !== messageChannelId) {
+        console.debug('Ignoring message from different channel:', messageChannelId)
+        return
+      }
+      
+      const newMessage = {
         id: data.id,
-        channel_id: data.channel_id || channelId,
+        channel_id: messageChannelId,
         user_id: data.user_id,
         username: data.username,
         avatar_url: data.avatar_url,
@@ -204,7 +222,27 @@ function connectWebSocket(channelId: number) {
         edited_at: undefined,
         reply_to_id: data.reply_to_id,
         reply_to: data.reply_to,
-      })
+        mentions: data.mentions || [],
+      }
+      chat.addMessage(newMessage)
+      
+      // Check if current user is mentioned
+      if (newMessage.mentions && newMessage.mentions.length > 0) {
+        const currentUsername = auth.user?.username || auth.user?.nickname || ''
+        const isMentioned = newMessage.mentions.some(
+          (mention: { username: string }) => mention.username === currentUsername
+        )
+        
+        if (isMentioned && newMessage.user_id !== auth.user?.id) {
+          // Play sound if page is visible
+          if (document.visibilityState === 'visible') {
+            playMentionSound()
+          }
+          // Mark channel as having unread mention
+          markChannelAsMentioned(channelId, newMessage.id)
+        }
+      }
+      
       scrollToBottom()
     } else if (data.type === 'message_deleted') {
       // Update message to show as deleted
@@ -282,6 +320,25 @@ watch(
         : null
       initForChannel(channel.id, latestMessageId)
 
+      // Check for unread mentions when opening channel
+      const currentUsername = auth.user?.username || auth.user?.nickname || ''
+      const lastReadId = lastReadMessageId.value
+      
+      const { hasMention, lastMentionMessageId } = checkMessagesForMentions(
+        chat.messages,
+        currentUsername,
+        lastReadId,
+        channel.id
+      )
+      
+      if (hasMention && lastMentionMessageId) {
+        // If we found mentions after last read position, mark channel
+        markChannelAsMentioned(channel.id, lastMentionMessageId)
+      } else {
+        // Clear mention flag when viewing the channel
+        clearChannelMention(channel.id)
+      }
+
       await nextTick()
       scrollToBottom()
     }
@@ -333,6 +390,8 @@ function handleMessagesScroll() {
 
     if (lastVisibleMessageId && chat.currentChannel) {
       saveReadPosition(chat.currentChannel.id, lastVisibleMessageId)
+      // Clear mention notification when user has scrolled through messages
+      clearChannelMention(chat.currentChannel.id)
     }
   }, 500)
 }

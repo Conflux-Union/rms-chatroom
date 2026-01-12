@@ -15,5 +15,8 @@
     "@rollup/rollup-linux-x64-gnu": "4.54.0",
     "rollup": "^4.55.1",
     "typescript": "~5.9.3"
+  },
+  "dependencies": {
+    "vue-draggable-plus": "^0.6.1"
   }
 }
