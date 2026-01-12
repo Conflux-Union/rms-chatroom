@@ -174,6 +174,7 @@ const {
   lastReadMessageId,
   showContinueReading,
   saveReadPosition,
+  markChannelAsRead,
   initForChannel,
   dismissContinueReading,
 } = useReadPosition()
@@ -247,7 +248,7 @@ function connectWebSocket(channelId: number) {
           // Play sound if page is visible
           if (document.visibilityState === 'visible') {
             console.log('[Mention] Page is visible, playing sound')
-            playMentionSound()
+            playMentionSound(channelId, newMessage.id)
           } else {
             console.log('[Mention] Page is NOT visible, skipping sound')
           }
@@ -334,27 +335,18 @@ watch(
         : null
       initForChannel(channel.id, latestMessageId)
 
-      // Check for unread mentions when opening channel
-      const currentUsername = auth.user?.username || auth.user?.nickname || ''
-      const lastReadId = lastReadMessageId.value
-      
-      const { hasMention, lastMentionMessageId } = checkMessagesForMentions(
-        chat.messages,
-        currentUsername,
-        lastReadId,
-        channel.id
-      )
-      
-      if (hasMention && lastMentionMessageId) {
-        // If we found mentions after last read position, mark channel
-        markChannelAsMentioned(channel.id, lastMentionMessageId)
-      } else {
-        // Clear mention flag when viewing the channel
-        clearChannelMention(channel.id)
-      }
-
       await nextTick()
       scrollToBottom()
+      
+      // Mark as read after user has stayed on channel for 2 seconds
+      // This prevents immediate clearing of mention badges
+      setTimeout(() => {
+        if (chat.currentChannel?.id === channel.id) {
+          markChannelAsRead(channel.id)
+          clearChannelMention(channel.id)
+          console.log('[ChatArea] Marked channel', channel.id, 'as read after viewing')
+        }
+      }, 2000)
     }
   },
   { immediate: true }
@@ -404,8 +396,10 @@ function handleMessagesScroll() {
 
     if (lastVisibleMessageId && chat.currentChannel) {
       saveReadPosition(chat.currentChannel.id, lastVisibleMessageId)
-      // Clear mention notification when user has scrolled through messages
+      // Update read timestamp and clear mention notification when user scrolls
+      markChannelAsRead(chat.currentChannel.id)
       clearChannelMention(chat.currentChannel.id)
+      console.log('[ChatArea] Updated read timestamp on scroll')
     }
   }, 500)
 }

@@ -46,9 +46,57 @@ watch(
   () => chat.currentServer,
   (server) => {
     if (server && server.channels && server.channels.length > 0) {
-      const textChannel = server.channels.find((c) => c.type === 'text')
-      if (textChannel) {
-        chat.setCurrentChannel(textChannel)
+      // 按照频道列表的排序逻辑选择第一个文字频道
+      // 1. 首先检查独立频道（按 top_position 排序）
+      // 2. 然后检查频道组内的频道（按组的 position 和频道的 position 排序）
+      
+      const channelGroups = server.channelGroups?.sort((a, b) => a.position - b.position) || []
+      const ungroupedChannels = server.channels
+        .filter((c) => c.group_id == null)
+        .sort((a, b) => a.top_position - b.top_position)
+      
+      // 构建混合列表（与 ChannelList.vue 中的 mixedList 逻辑一致）
+      type ListItem = { type: 'group'; data: typeof channelGroups[0] } | { type: 'channel'; data: typeof server.channels[0] }
+      const items: ListItem[] = []
+      
+      for (const group of channelGroups) {
+        items.push({ type: 'group', data: group })
+      }
+      for (const channel of ungroupedChannels) {
+        items.push({ type: 'channel', data: channel })
+      }
+      
+      // 按统一位置排序
+      items.sort((a, b) => {
+        const posA = a.type === 'group' ? a.data.position : a.data.top_position
+        const posB = b.type === 'group' ? b.data.position : b.data.top_position
+        return posA - posB
+      })
+      
+      // 遍历排序后的列表，找到第一个文字频道
+      for (const item of items) {
+        if (item.type === 'channel' && item.data.type === 'text') {
+          // 找到独立的文字频道
+          chat.setCurrentChannel(item.data)
+          return
+        } else if (item.type === 'group') {
+          // 检查频道组内的频道
+          const groupChannels = server.channels
+            .filter((c) => c.group_id === item.data.id)
+            .sort((a, b) => a.position - b.position)
+          
+          const firstTextChannel = groupChannels.find((c) => c.type === 'text')
+          if (firstTextChannel) {
+            chat.setCurrentChannel(firstTextChannel)
+            return
+          }
+        }
+      }
+      
+      // 如果上面都没找到，回退到任意文字频道
+      const anyTextChannel = server.channels.find((c) => c.type === 'text')
+      if (anyTextChannel) {
+        chat.setCurrentChannel(anyTextChannel)
       }
     }
   }

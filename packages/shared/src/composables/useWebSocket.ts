@@ -76,9 +76,10 @@ export function useWebSocket(path: string) {
     binaryHandlers.push(handler)
   }
 
-  onUnmounted(() => {
-    disconnect()
-  })
+  // Don't use onUnmounted here - let the caller manage lifecycle
+  // onUnmounted(() => {
+  //   disconnect()
+  // })
 
   return {
     ws,

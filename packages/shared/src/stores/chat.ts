@@ -391,7 +391,7 @@ export const useChatStore = defineStore('chat', () => {
     if (!currentUsername && !currentNickname) return
 
     const { markChannelAsMentioned, playMentionSound } = useMentionNotification()
-    const { getReadPosition } = useReadPosition()
+    const { getReadTimestamp } = useReadPosition()
 
     try {
       // Use new API to get all messages from all text channels in one request
@@ -405,7 +405,7 @@ export const useChatStore = defineStore('chat', () => {
       
       console.log('[MentionPoll] Response status:', resp.status)
       console.log('[MentionPoll] Response headers:', resp.headers)
-      console.log('[MentionPoll] Server response:', JSON.stringify(resp.data, null, 2))
+      // Don't log full response - it's too large
       
       const channelsData = resp.data as Array<{
         channel_id: number
@@ -413,41 +413,59 @@ export const useChatStore = defineStore('chat', () => {
         messages: Message[]
       }>
       
-      console.log(`[MentionPoll] Checked ${channelsData.length} channels for mentions`)
+      console.log(`[MentionPoll] Received ${channelsData.length} channels from server`)
       
       // Process each channel's messages
       for (const channelData of channelsData) {
-        const { channel_id, channel_name, messages: latestMessages } = channelData
+        try {
+          const { channel_id, channel_name, messages: latestMessages } = channelData
+          
+          console.log(`[MentionPoll] Processing channel ${channel_name} (${channel_id}) with ${latestMessages.length} messages`)
+          
+          const cachedMessages = channelMessagesCache.value.get(channel_id) || []
+          
+          // Find new messages (messages not in cache)
+          const cachedIds = new Set(cachedMessages.map(m => m.id))
+          const newMessages = latestMessages.filter(m => !cachedIds.has(m.id))
+          
+          if (newMessages.length > 0) {
+            console.log(`[MentionPoll] Channel ${channel_name}: ${newMessages.length} new messages`)
+          }
+          
+          // Update cache
+          channelMessagesCache.value.set(channel_id, latestMessages)
+          
+          console.log(`[MentionPoll] About to get read timestamp for channel ${channel_id}`)
+          
+          // Check messages for mentions using timestamp-based approach
+          // Check ALL messages, not just new ones, against the lastReadTimestamp
+          const lastReadTimestamp = getReadTimestamp(channel_id)
+          const isCurrentChannel = currentChannel.value?.id === channel_id
+          
+          console.log(`[MentionPoll] Channel ${channel_name} has ${latestMessages.length} messages, lastReadTimestamp:`, 
+            lastReadTimestamp ? new Date(lastReadTimestamp).toISOString() : 'never',
+            'isCurrentChannel:', isCurrentChannel)
         
-        console.log(`[MentionPoll] Channel ${channel_name} (${channel_id}):`, JSON.stringify(channelData, null, 2))
-        
-        const cachedMessages = channelMessagesCache.value.get(channel_id) || []
-        
-        // Find new messages (messages not in cache)
-        const cachedIds = new Set(cachedMessages.map(m => m.id))
-        const newMessages = latestMessages.filter(m => !cachedIds.has(m.id))
-        
-        if (newMessages.length > 0) {
-          console.log(`[MentionPoll] Channel ${channel_name}: ${newMessages.length} new messages`)
-        }
-        
-        // Update cache
-        channelMessagesCache.value.set(channel_id, latestMessages)
-        
-        // Check new messages for mentions
-        const lastReadId = getReadPosition(channel_id)
-        for (const message of newMessages) {
+        // Check all messages, not just new ones
+        for (const message of latestMessages) {
+          // Use created_at string directly for comparison to avoid timezone issues
+          const messageCreatedAt = message.created_at
+          
           console.log(`[MentionPoll] Checking message ${message.id}:`, {
             content: message.content,
             mentions: message.mentions,
+            created_at: messageCreatedAt,
             user_id: message.user_id,
             currentUserId: auth.user?.id,
-            currentUsername,
-            currentNickname,
+            lastReadTimestamp: lastReadTimestamp ? new Date(lastReadTimestamp).toISOString() : null,
+            isAfterLastRead: !lastReadTimestamp || messageCreatedAt > new Date(lastReadTimestamp).toISOString(),
           })
           
-          // Skip messages before last read position
-          if (lastReadId && message.id <= lastReadId) continue
+          // Skip messages created before last read timestamp (string comparison)
+          if (lastReadTimestamp && messageCreatedAt <= new Date(lastReadTimestamp).toISOString()) {
+            console.log(`[MentionPoll] Skipping message ${message.id} (already read, created at ${messageCreatedAt})`)
+            continue
+          }
           
           // Skip own messages
           if (message.user_id === auth.user?.id) continue
@@ -462,16 +480,25 @@ export const useChatStore = defineStore('chat', () => {
             
             if (isMentioned) {
               console.log(`[MentionPoll] Found mention in channel ${channel_name}, message ${message.id}`)
-              // Mark channel as having unread mention
-              markChannelAsMentioned(channel_id, message.id)
               
-              // Play sound if not on this channel and page is visible
-              if (currentChannel.value?.id !== channel_id && document.visibilityState === 'visible') {
-                console.log('[MentionPoll] Playing mention sound')
-                playMentionSound()
+              // Only mark channel and play sound if NOT currently viewing this channel
+              if (!isCurrentChannel) {
+                // Mark channel as having unread mention
+                markChannelAsMentioned(channel_id, message.id)
+                
+                // Play sound if page is visible (with deduplication)
+                if (document.visibilityState === 'visible') {
+                  console.log('[MentionPoll] Playing mention sound for channel', channel_id, 'message', message.id)
+                  playMentionSound(channel_id, message.id)
+                }
+              } else {
+                console.log('[MentionPoll] Skipping notification - user is viewing this channel')
               }
             }
           }
+        }
+        } catch (channelError) {
+          console.error(`[MentionPoll] Error processing channel ${channelData?.channel_name}:`, channelError)
         }
       }
     } catch (e) {

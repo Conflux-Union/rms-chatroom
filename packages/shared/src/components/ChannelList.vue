@@ -14,7 +14,14 @@ import { VueDraggable } from 'vue-draggable-plus'
 const chat = useChatStore()
 const auth = useAuthStore()
 const voice = useVoiceStore()
-const { channelMentions, loadChannelMentions, hasUnreadMention } = useMentionNotification()
+const mentionNotification = useMentionNotification()
+const channelMentions = mentionNotification.channelMentions
+
+// Debug: Watch channelMentions changes
+watch(channelMentions, (newVal) => {
+  console.log('[ChannelList] channelMentions changed:', newVal)
+}, { deep: true })
+
 const showCreate = ref(false)
 const newItemName = ref('')
 const newCreateType = ref<'text' | 'voice' | 'group'>('text') // 创建类型：文字频道、语音频道、频道组
@@ -106,7 +113,7 @@ watch(() => chat.currentServer, (server) => {
 
 onMounted(() => {
   // Load mention notifications on mount
-  loadChannelMentions()
+  mentionNotification.loadChannelMentions()
 })
 
 onUnmounted(() => {
@@ -588,7 +595,10 @@ async function deleteChannel() {
                   <template v-else>
                     <span class="channel-name" @dblclick.stop="auth.isAdmin && editMode ? startInlineEdit(channel) : undefined">{{ channel.name }}</span>
                   </template>
-                  <span v-if="hasUnreadMention(channel.id)" class="mention-badge">有人@我</span>
+                  <span 
+                    v-if="channelMentions[channel.id]" 
+                    class="mention-badge"
+                  >有人@我</span>
                   <div v-if="editMode" class="edit-actions" @click.stop>
                     <button v-if="editingChannelId !== channel.id" class="small" @click="renameChannel(channel)">重命名</button>
                     <span class="drag-handle drag-handle-channel">☰</span>
@@ -680,7 +690,7 @@ async function deleteChannel() {
             <template v-else>
               <span class="channel-name" @dblclick.stop="auth.isAdmin && editMode ? startInlineEdit(item.data) : undefined">{{ item.data.name }}</span>
             </template>
-            <span v-if="hasUnreadMention(item.data.id)" class="mention-badge">有人@我</span>
+            <span v-if="channelMentions[item.data.id]" class="mention-badge">有人@我</span>
             <div v-if="editMode" class="edit-actions" @click.stop>
               <button v-if="editingChannelId !== item.data.id" class="small" @click="renameChannel(item.data)">重命名</button>
               <span class="drag-handle drag-handle-group">☰</span>

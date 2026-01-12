@@ -44,6 +44,28 @@ export function useReadPosition() {
     return positions[channelId]?.messageId ?? null
   }
 
+  function getReadTimestamp(channelId: number): number | null {
+    const positions = getStoredPositions()
+    const timestamp = positions[channelId]?.timestamp ?? null
+    console.log('[ReadPosition] Getting read timestamp for channel', channelId, ':', 
+      timestamp ? new Date(timestamp).toISOString() : 'null', 
+      'raw timestamp:', timestamp,
+      'All positions:', JSON.stringify(positions, null, 2))
+    return timestamp
+  }
+
+  function markChannelAsRead(channelId: number) {
+    const positions = getStoredPositions()
+    const now = Date.now()
+    positions[channelId] = {
+      messageId: 0, // Not used for timestamp-based checking
+      timestamp: now,
+    }
+    savePositions(positions)
+    console.log('[ReadPosition] Marked channel', channelId, 'as read at', new Date(now).toISOString(), 
+      'timestamp:', now, 'All positions:', JSON.stringify(positions, null, 2))
+  }
+
   function clearReadPosition(channelId: number) {
     const positions = getStoredPositions()
     delete positions[channelId]
@@ -74,6 +96,8 @@ export function useReadPosition() {
     showContinueReading,
     saveReadPosition,
     getReadPosition,
+    getReadTimestamp,
+    markChannelAsRead,
     clearReadPosition,
     initForChannel,
     dismissContinueReading,
