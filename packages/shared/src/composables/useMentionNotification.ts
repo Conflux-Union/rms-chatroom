@@ -133,7 +133,8 @@ export function useMentionNotification() {
     messages: Array<{ id: number; mentions?: Array<{ username: string }> }>,
     currentUsername: string,
     lastReadMessageId: number | null,
-    channelId: number
+    channelId: number,
+    currentUserId?: number
   ): { hasMention: boolean; lastMentionMessageId: number | null } {
     let hasMention = false
     let lastMentionMessageId: number | null = null
