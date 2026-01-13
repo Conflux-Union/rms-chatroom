@@ -511,6 +511,20 @@ export const useMusicStore = defineStore('music', () => {
         const voice = useVoiceStore()
         const currentRoom = voice.currentVoiceChannel ? `voice_${voice.currentVoiceChannel.id}` : null
 
+        // Handle global music events (no room_name check)
+        if (msg.type === 'music_login_status') {
+          // Update login status from WebSocket push
+          if (msg.status === 'success') {
+            loginStatus.value = 'success'
+            isLoggedIn.value = true
+          } else if (msg.status === 'expired') {
+            loginStatus.value = 'expired'
+          } else if (msg.status === 'refused') {
+            loginStatus.value = 'refused'
+          }
+          return
+        }
+
         // Handle playback commands - only process if for our room
         if (msg.room_name && msg.room_name !== currentRoom) {
           return // Ignore messages for other rooms

@@ -75,6 +75,43 @@ async def broadcast_music_state(event_type: str, data: dict[str, Any]) -> None:
             logger.warning(f"Removed {len(disconnected)} disconnected clients from room {room_name}")
 
 
+async def broadcast_to_all_music_clients(message: dict[str, Any]) -> None:
+    """Broadcast message to all music WebSocket clients across all rooms."""
+    async with _lock:
+        all_clients = set()
+        for clients in _room_clients.values():
+            all_clients.update(clients)
+
+        if not all_clients:
+            logger.debug("No music clients connected, skipping broadcast")
+            return
+
+        message_json = json.dumps(message)
+        logger.info(f"Broadcasting '{message.get('type')}' to {len(all_clients)} music clients across all rooms")
+
+        disconnected: list[tuple[WebSocket, str]] = []
+
+        for ws in all_clients:
+            try:
+                await ws.send_text(message_json)
+            except Exception as e:
+                logger.error(f"Failed to send to client: {e}")
+                room = _ws_to_room.get(ws)
+                if room:
+                    disconnected.append((ws, room))
+
+        # Clean up disconnected clients
+        for ws, room in disconnected:
+            if room in _room_clients:
+                _room_clients[room].discard(ws)
+                if not _room_clients[room]:
+                    del _room_clients[room]
+            _ws_to_room.pop(ws, None)
+
+        if disconnected:
+            logger.warning(f"Removed {len(disconnected)} disconnected clients during global broadcast")
+
+
 async def get_user_from_token(token: str) -> dict | None:
     """Verify token and get user info."""
     return await SSOClient.verify_token(token)
@@ -105,6 +142,7 @@ async def music_websocket(
     - {"type": "pause", "room_name": str, "server_time": float}
     - {"type": "resume", "room_name": str, "position_ms": int, "server_time": float}
     - {"type": "seek", "room_name": str, "position_ms": int, "server_time": float}
+    - {"type": "music_login_status", "status": "success|expired|refused", "platform": "qq|netease"} (global broadcast)
     - {"type": "connected", "room_name": str}
     - {"type": "song_unavailable", "room_name": str, "song_name": str, "reason": str}
     """

@@ -2,33 +2,16 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useMusicStore, type Song } from '../stores/music'
 import { useVoiceStore } from '../stores/voice'
-import { useGlobalWebSocket } from '../composables/useGlobalWebSocket'
 import { NSlider, NSelect, NModal, NButton, NSpace, NInput, NSpin } from 'naive-ui'
 import { Music, Bot, SkipBack, Pause, Play, SkipForward, Plus, Trash2, X, Search, Loader2, Volume2 } from 'lucide-vue-next'
 
 const music = useMusicStore()
 const voice = useVoiceStore()
-const globalWs = useGlobalWebSocket()
 
 const searchInput = ref('')
 const showSearch = ref(false)
 const showLoginSelect = ref(false)
 const isProcessingPlayback = ref(false)
-
-// Listen to music_login_status from global WebSocket
-globalWs.onMessage((data) => {
-  if (data.type === 'music_login_status') {
-    // Update login status from WebSocket push
-    if (data.status === 'success') {
-      music.loginStatus = 'success'
-      music.isLoggedIn = true
-    } else if (data.status === 'expired') {
-      music.loginStatus = 'expired'
-    } else if (data.status === 'refused') {
-      music.loginStatus = 'refused'
-    }
-  }
-})
 
 // Get current voice room name for music API calls
 const currentRoomName = computed(() => {
