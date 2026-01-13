@@ -97,9 +97,12 @@ class ChatRepository @Inject constructor(
             webSocket.events.collect { event ->
                 when (event) {
                     is WebSocketEvent.NewMessage -> {
-                        Log.d(TAG, "Received new message: ${event.message.id}")
+                        Log.d(TAG, "Received new message: ${event.message.id} in channel ${event.message.channelId}")
+
+                        // Add message to current channel if it matches
                         addMessage(event.message)
                         cacheMessage(event.message)
+
                         // Show notification if app is in background
                         showMessageNotificationIfNeeded(event.message)
                     }
@@ -120,7 +123,7 @@ class ChatRepository @Inject constructor(
                         updateMessageReactionRemoved(event.messageId, event.emoji, event.userId)
                     }
                     is WebSocketEvent.Connected -> {
-                        Log.d(TAG, "WebSocket connected to channel ${event.channelId}")
+                        Log.d(TAG, "WebSocket connected (global)")
                     }
                     is WebSocketEvent.Disconnected -> {
                         Log.d(TAG, "WebSocket disconnected")
@@ -347,12 +350,13 @@ class ChatRepository @Inject constructor(
             Log.e(TAG, "Cannot connect to WebSocket: no token")
             return
         }
-        Log.d(TAG, "Connecting to channel $channelId")
-        webSocket.connect(token, channelId)
+        Log.d(TAG, "Connecting to global WebSocket for channel $channelId")
+        // Connect to global WebSocket (no channel ID needed)
+        webSocket.connect(token)
     }
 
     fun disconnectFromChannel() {
-        Log.d(TAG, "Disconnecting from channel")
+        Log.d(TAG, "Disconnecting from WebSocket")
         webSocket.disconnect()
     }
 

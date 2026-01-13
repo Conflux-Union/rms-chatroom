@@ -66,7 +66,6 @@ class ChatWebSocket @Inject constructor(
     val connectionState: StateFlow<ConnectionState> = _connectionState.asStateFlow()
 
     private var currentToken: String? = null
-    private var currentChannelId: Long? = null
     private var reconnectAttempts = 0
     private var shouldReconnect = false
 
@@ -74,11 +73,10 @@ class ChatWebSocket @Inject constructor(
     private var heartbeatJob: Job? = null
     private var reconnectJob: Job? = null
 
-    fun connect(token: String, channelId: Long) {
+    fun connect(token: String) {
         disconnect(sendEvent = false)
 
         currentToken = token
-        currentChannelId = channelId
         shouldReconnect = true
         reconnectAttempts = 0
 
@@ -87,7 +85,6 @@ class ChatWebSocket @Inject constructor(
 
     private fun doConnect() {
         val token = currentToken ?: return
-        val channelId = currentChannelId ?: return
 
         if (_connectionState.value == ConnectionState.RECONNECTING) {
             // Keep reconnecting state
@@ -95,7 +92,8 @@ class ChatWebSocket @Inject constructor(
             _connectionState.value = ConnectionState.CONNECTING
         }
 
-        val url = "${BuildConfig.WS_BASE_URL}/ws/chat/$channelId?token=$token"
+        // Connect to global WebSocket endpoint (no channel ID in path)
+        val url = "${BuildConfig.WS_BASE_URL}/ws/chat?token=$token"
         Log.d(TAG, "Connecting to WebSocket: $url")
 
         val request = Request.Builder()
@@ -104,10 +102,10 @@ class ChatWebSocket @Inject constructor(
 
         webSocket = client.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
-                Log.d(TAG, "WebSocket connected to channel $channelId")
+                Log.d(TAG, "WebSocket connected to global chat")
                 _connectionState.value = ConnectionState.CONNECTED
                 reconnectAttempts = 0
-                _events.tryEmit(WebSocketEvent.Connected(channelId))
+                _events.tryEmit(WebSocketEvent.Connected(0)) // channelId = 0 for global connection
                 startHeartbeat()
             }
 
@@ -324,7 +322,7 @@ class ChatWebSocket @Inject constructor(
         return minOf(delay, MAX_RECONNECT_DELAY_MS)
     }
 
-    fun sendMessage(content: String, attachmentIds: List<Long> = emptyList(), replyToId: Long? = null): Boolean {
+    fun sendMessage(channelId: Long, content: String, attachmentIds: List<Long> = emptyList(), replyToId: Long? = null): Boolean {
         if (_connectionState.value != ConnectionState.CONNECTED) {
             Log.w(TAG, "Cannot send message, not connected")
             return false
@@ -333,6 +331,7 @@ class ChatWebSocket @Inject constructor(
         return try {
             val payload = mutableMapOf<String, Any>(
                 "type" to "message",
+                "channel_id" to channelId,
                 "content" to content
             )
             if (attachmentIds.isNotEmpty()) {
@@ -361,7 +360,6 @@ class ChatWebSocket @Inject constructor(
 
         _connectionState.value = ConnectionState.DISCONNECTED
         currentToken = null
-        currentChannelId = null
 
         if (sendEvent) {
             _events.tryEmit(WebSocketEvent.Disconnected)
@@ -370,13 +368,11 @@ class ChatWebSocket @Inject constructor(
 
     fun reconnect() {
         val token = currentToken
-        val channelId = currentChannelId
-        if (token != null && channelId != null) {
+        if (token != null) {
             Log.d(TAG, "Manual reconnect requested")
             disconnect(sendEvent = false)
-            // Restore token and channelId after disconnect cleared them
+            // Restore token after disconnect cleared it
             currentToken = token
-            currentChannelId = channelId
             shouldReconnect = true
             reconnectAttempts = 0
             doConnect()
