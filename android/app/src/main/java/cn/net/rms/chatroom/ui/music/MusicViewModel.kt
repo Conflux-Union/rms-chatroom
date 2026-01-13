@@ -78,7 +78,6 @@ class MusicViewModel @Inject constructor(
     private val _state = MutableStateFlow(MusicState())
     val state: StateFlow<MusicState> = _state.asStateFlow()
 
-    private var loginPollingJob: Job? = null
     private var webSocketObserveJob: Job? = null
 
     // ExoPlayer for client-side music playback
@@ -185,6 +184,10 @@ class MusicViewModel @Inject constructor(
                                 error = "歌曲不可用: ${event.songName}"
                             )
                         }
+                    }
+                    is MusicWebSocketEvent.MusicLoginStatus -> {
+                        Log.d(TAG, "Music login status: platform=${event.platform}, status=${event.status}")
+                        handleMusicLoginStatus(event.platform, event.status)
                     }
                     is MusicWebSocketEvent.Connected -> {
                         Log.d(TAG, "Music WebSocket connected")
@@ -310,6 +313,29 @@ class MusicViewModel @Inject constructor(
         checkAllLoginStatus()
     }
 
+    private fun handleMusicLoginStatus(platform: String, status: String) {
+        val currentPlatform = _state.value.loginPlatform
+
+        // Only handle if this is the platform we're waiting for
+        if (platform != currentPlatform) return
+
+        _state.value = _state.value.copy(loginStatus = status)
+
+        when (status) {
+            "success" -> {
+                val newState = if (platform == "qq") {
+                    _state.value.copy(qqLoggedIn = true, isLoggedIn = true, qrCodeUrl = null)
+                } else {
+                    _state.value.copy(neteaseLoggedIn = true, isLoggedIn = true, qrCodeUrl = null)
+                }
+                _state.value = newState
+            }
+            "expired", "refused" -> {
+                _state.value = _state.value.copy(qrCodeUrl = null)
+            }
+        }
+    }
+
     fun getQRCode(platform: String = "qq") {
         viewModelScope.launch {
             try {
@@ -319,43 +345,12 @@ class MusicViewModel @Inject constructor(
                     qrCodeUrl = response.qrcode,
                     loginStatus = "waiting"
                 )
-                startLoginPolling(platform)
+                // Login status is now pushed via WebSocket (music_login_status event)
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     loginStatus = "error",
                     error = "获取二维码失败: ${e.message}"
                 )
-            }
-        }
-    }
-
-    private fun startLoginPolling(platform: String) {
-        loginPollingJob?.cancel()
-        loginPollingJob = viewModelScope.launch {
-            while (true) {
-                delay(2000)
-                try {
-                    val response = api.checkMusicLoginStatus(platform)
-                    _state.value = _state.value.copy(loginStatus = response.status)
-                    
-                    when (response.status) {
-                        "success" -> {
-                            val newState = if (platform == "qq") {
-                                _state.value.copy(qqLoggedIn = true, isLoggedIn = true, qrCodeUrl = null)
-                            } else {
-                                _state.value.copy(neteaseLoggedIn = true, isLoggedIn = true, qrCodeUrl = null)
-                            }
-                            _state.value = newState
-                            break
-                        }
-                        "expired", "refused" -> {
-                            _state.value = _state.value.copy(qrCodeUrl = null)
-                            break
-                        }
-                    }
-                } catch (e: Exception) {
-                    break
-                }
             }
         }
     }
@@ -383,7 +378,6 @@ class MusicViewModel @Inject constructor(
     }
 
     fun dismissQRCode() {
-        loginPollingJob?.cancel()
         _state.value = _state.value.copy(qrCodeUrl = null, loginStatus = "idle")
     }
 
@@ -626,7 +620,6 @@ class MusicViewModel @Inject constructor(
 
     override fun onCleared() {
         super.onCleared()
-        loginPollingJob?.cancel()
         webSocketObserveJob?.cancel()
         musicWebSocket.disconnect()
         exoPlayer.release()

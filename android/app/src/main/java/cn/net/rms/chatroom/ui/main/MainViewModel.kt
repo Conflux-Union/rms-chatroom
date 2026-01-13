@@ -20,14 +20,12 @@ import cn.net.rms.chatroom.data.repository.ChatRepository
 import cn.net.rms.chatroom.data.repository.UpdateRepository
 import cn.net.rms.chatroom.data.repository.VoiceRepository
 import cn.net.rms.chatroom.data.websocket.ConnectionState
+import cn.net.rms.chatroom.data.websocket.GlobalWebSocket
 import cn.net.rms.chatroom.data.websocket.WebSocketEvent
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -59,7 +57,8 @@ class MainViewModel @Inject constructor(
     private val updateRepository: UpdateRepository,
     private val voiceRepository: VoiceRepository,
     private val mentionNotificationManager: MentionNotificationManager,
-    private val authRepository: AuthRepository
+    private val authRepository: AuthRepository,
+    private val globalWebSocket: GlobalWebSocket
 ) : ViewModel() {
     companion object {
         private const val TAG = "MainViewModel"
@@ -70,14 +69,12 @@ class MainViewModel @Inject constructor(
 
     val messages = chatRepository.messages
     val connectionState: StateFlow<ConnectionState> = chatRepository.connectionState
-    val voiceChannelUsers: StateFlow<Map<Long, List<VoiceUser>>> = chatRepository.voiceChannelUsers
+    val voiceChannelUsers: StateFlow<Map<Long, List<VoiceUser>>> = globalWebSocket.voiceChannelUsers
 
     // Voice status for sidebar widget
     val isVoiceConnected: StateFlow<Boolean> = voiceRepository.isConnected
     val voiceChannelName: StateFlow<String?> = voiceRepository.currentChannelName
     val isVoiceMuted: StateFlow<Boolean> = voiceRepository.isMuted
-
-    private var voiceUsersPollingJob: Job? = null
 
     // Current user info for mention detection
     private var currentUsername: String? = null
@@ -88,6 +85,16 @@ class MainViewModel @Inject constructor(
         checkForUpdate()
         loadMentionStates()
         loadCurrentUser()
+        connectGlobalWebSocket()
+    }
+
+    private fun connectGlobalWebSocket() {
+        viewModelScope.launch {
+            val token = authRepository.getToken()
+            if (token != null) {
+                globalWebSocket.connect(token)
+            }
+        }
     }
 
     private fun loadCurrentUser() {
@@ -133,8 +140,9 @@ class MainViewModel @Inject constructor(
                     _state.value = _state.value.copy(currentServer = server)
                     // Fetch channel groups
                     fetchChannelGroups(serverId)
-                    // Start polling voice channel users
-                    startVoiceUsersPolling()
+                    // Fetch voice channel users once and update GlobalWebSocket
+                    val voiceUsers = chatRepository.fetchAllVoiceChannelUsers()
+                    globalWebSocket.updateVoiceChannelUsers(voiceUsers)
                     // Auto-select first text channel
                     server.channels?.firstOrNull { it.type == ChannelType.TEXT }
                         ?.let { selectChannel(it) }
@@ -155,21 +163,6 @@ class MainViewModel @Inject constructor(
                     Log.e(TAG, "Failed to fetch channel groups: ${e.message}")
                 }
         }
-    }
-
-    private fun startVoiceUsersPolling() {
-        voiceUsersPollingJob?.cancel()
-        voiceUsersPollingJob = viewModelScope.launch {
-            while (isActive) {
-                chatRepository.fetchAllVoiceChannelUsers()
-                delay(5000) // Poll every 5 seconds
-            }
-        }
-    }
-
-    private fun stopVoiceUsersPolling() {
-        voiceUsersPollingJob?.cancel()
-        voiceUsersPollingJob = null
     }
 
     fun selectChannel(channel: Channel) {
@@ -585,9 +578,9 @@ class MainViewModel @Inject constructor(
 
     override fun onCleared() {
         super.onCleared()
-        stopVoiceUsersPolling()
         chatRepository.disconnectFromChannel()
         mentionNotificationManager.release()
+        globalWebSocket.disconnect()
     }
 
     // Mention notification methods

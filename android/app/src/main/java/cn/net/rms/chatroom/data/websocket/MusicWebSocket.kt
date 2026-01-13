@@ -40,6 +40,7 @@ sealed class MusicWebSocketEvent {
     data class Resume(val roomName: String, val positionMs: Long, val serverTime: Double? = null) : MusicWebSocketEvent()
     data class Seek(val roomName: String, val positionMs: Long, val serverTime: Double? = null) : MusicWebSocketEvent()
     data class SongUnavailable(val roomName: String, val songName: String, val reason: String) : MusicWebSocketEvent()
+    data class MusicLoginStatus(val status: String, val platform: String) : MusicWebSocketEvent()
     object Connected : MusicWebSocketEvent()
     object Disconnected : MusicWebSocketEvent()
     data class Error(val error: String) : MusicWebSocketEvent()
@@ -52,7 +53,8 @@ class MusicWebSocket @Inject constructor(
 ) {
     companion object {
         private const val TAG = "MusicWebSocket"
-        private const val HEARTBEAT_INTERVAL_MS = 30_000L
+        private const val HEARTBEAT_INTERVAL_MS = 5_000L
+        private const val HEARTBEAT_TIMEOUT_MS = 3_000L
         private const val INITIAL_RECONNECT_DELAY_MS = 1_000L
         private const val MAX_RECONNECT_DELAY_MS = 30_000L
         private const val MAX_RECONNECT_ATTEMPTS = 10
@@ -69,9 +71,11 @@ class MusicWebSocket @Inject constructor(
     private var currentRoomName: String? = null
     private var reconnectAttempts = 0
     private var shouldReconnect = false
+    private var waitingForPong = false
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var heartbeatJob: Job? = null
+    private var heartbeatTimeoutJob: Job? = null
     private var reconnectJob: Job? = null
 
     fun connect(token: String, roomName: String) {
@@ -233,11 +237,20 @@ class MusicWebSocket @Inject constructor(
                     Log.w(TAG, "Song unavailable: room=$roomName, song=$songName, reason=$reason")
                     _events.tryEmit(MusicWebSocketEvent.SongUnavailable(roomName, songName, reason))
                 }
+                "music_login_status" -> {
+                    val status = json.get("status")?.asString ?: ""
+                    val platform = json.get("platform")?.asString ?: "qq"
+                    Log.d(TAG, "Music login status: platform=$platform, status=$status")
+                    _events.tryEmit(MusicWebSocketEvent.MusicLoginStatus(status, platform))
+                }
                 "connected" -> {
                     Log.d(TAG, "Music WebSocket server confirmed connection")
                 }
                 "pong" -> {
-                    Log.v(TAG, "Received pong")
+                    if (json.has("data") && json.get("data").asString == "cute") {
+                        Log.v(TAG, "Received pong: cute")
+                        handlePong()
+                    }
                 }
                 else -> {
                     Log.d(TAG, "Unknown music message type: $type")
@@ -248,12 +261,18 @@ class MusicWebSocket @Inject constructor(
         }
     }
 
+    private fun handlePong() {
+        waitingForPong = false
+        heartbeatTimeoutJob?.cancel()
+        heartbeatTimeoutJob = null
+    }
+
     private fun startHeartbeat() {
         stopHeartbeat()
         heartbeatJob = scope.launch {
             while (isActive) {
                 delay(HEARTBEAT_INTERVAL_MS)
-                if (_connectionState.value == ConnectionState.CONNECTED) {
+                if (_connectionState.value == ConnectionState.CONNECTED && !waitingForPong) {
                     sendPing()
                 }
             }
@@ -263,14 +282,29 @@ class MusicWebSocket @Inject constructor(
     private fun stopHeartbeat() {
         heartbeatJob?.cancel()
         heartbeatJob = null
+        heartbeatTimeoutJob?.cancel()
+        heartbeatTimeoutJob = null
+        waitingForPong = false
     }
 
     private fun sendPing() {
         try {
-            val pingJson = gson.toJson(mapOf("type" to "ping"))
+            val pingJson = gson.toJson(mapOf("type" to "ping", "data" to "tribios"))
             val sent = webSocket?.send(pingJson) ?: false
             if (sent) {
-                Log.v(TAG, "Sent ping")
+                Log.v(TAG, "Sent ping: tribios")
+                waitingForPong = true
+
+                heartbeatTimeoutJob?.cancel()
+                heartbeatTimeoutJob = scope.launch {
+                    delay(HEARTBEAT_TIMEOUT_MS)
+                    if (waitingForPong) {
+                        Log.w(TAG, "Heartbeat timeout, reconnecting...")
+                        waitingForPong = false
+                        disconnect(sendEvent = false)
+                        scheduleReconnect()
+                    }
+                }
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error sending ping", e)
