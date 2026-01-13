@@ -62,6 +62,11 @@ async def chat_websocket(websocket: WebSocket, token: str | None = None):
             except json.JSONDecodeError:
                 continue
 
+            # Handle heartbeat ping
+            if msg.get("type") == "ping" and msg.get("data") == "tribios":
+                await websocket.send_json({"type": "pong", "data": "cute"})
+                continue
+
             if msg.get("type") == "message":
                 channel_id = msg.get("channel_id")
                 if not channel_id:
