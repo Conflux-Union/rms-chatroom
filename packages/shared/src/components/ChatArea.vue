@@ -2,7 +2,7 @@
 import { ref, watch, nextTick, onMounted, onUnmounted, computed } from 'vue'
 import { useChatStore } from '../stores/chat'
 import { useAuthStore } from '../stores/auth'
-import { useWebSocket } from '../composables/useWebSocket'
+import { useChatWebSocket } from '../composables/useChatWebSocket'
 import { useReadPosition } from '../composables/useReadPosition'
 import { useMentionNotification } from '../composables/useMentionNotification'
 import {
@@ -29,6 +29,7 @@ const API_BASE = import.meta.env.VITE_API_BASE || ''
 
 const chat = useChatStore()
 const auth = useAuthStore()
+const chatWs = useChatWebSocket()
 const messageInput = ref('')
 const messagesContainer = ref<HTMLElement | null>(null)
 const fileInput = ref<HTMLInputElement | null>(null)
@@ -157,9 +158,11 @@ const muteDialog = ref<{
   reason: '',
 })
 
-// Mute status
-const isMuted = ref(false)
-const muteReason = ref('')
+// Mute status - combine local check with WebSocket error
+const localMuted = ref(false)
+const localMuteReason = ref('')
+const isMuted = computed(() => localMuted.value || chat.isMutedByWs)
+const muteReason = computed(() => localMuteReason.value || chat.muteReasonByWs)
 
 // Reaction state
 const showEmojiPicker = ref(false)
@@ -181,149 +184,13 @@ const {
 let scrollSaveTimeout: ReturnType<typeof setTimeout> | null = null
 
 // Mention notification tracking
-const {
-  playMentionSound,
-  markChannelAsMentioned,
-  clearChannelMention,
-  checkMessagesForMentions,
-} = useMentionNotification()
-
-let ws: ReturnType<typeof useWebSocket> | null = null
-let isWebSocketInitialized = false
-
-function connectWebSocket() {
-  // Only connect once globally, not per channel
-  if (isWebSocketInitialized) {
-    return
-  }
-
-  if (ws) {
-    ws.disconnect()
-  }
-
-  // Connect to global WebSocket endpoint (no channel ID in path)
-  ws = useWebSocket(`/ws/chat`)
-
-  ws.onMessage((data) => {
-    console.log('[WebSocket] Received message:', JSON.stringify(data, null, 2))
-
-    if (data.type === 'message') {
-      const messageChannelId = data.channel_id
-
-      // Add message to store if it's for the current channel
-      if (messageChannelId === chat.currentChannel?.id) {
-        const newMessage = {
-          id: data.id,
-          channel_id: messageChannelId,
-          user_id: data.user_id,
-          username: data.username,
-          avatar_url: data.avatar_url,
-          content: data.content,
-          created_at: data.created_at,
-          attachments: data.attachments || [],
-          is_deleted: false,
-          deleted_by: undefined,
-          deleted_by_username: undefined,
-          edited_at: undefined,
-          reply_to_id: data.reply_to_id,
-          reply_to: data.reply_to,
-          mentions: data.mentions || [],
-        }
-        chat.addMessage(newMessage)
-      }
-
-      // Check if current user is mentioned (for any channel)
-      if (data.mentions && data.mentions.length > 0) {
-        const currentUserId = auth.user?.id
-        // Use user_id for matching (more reliable than username/nickname)
-        const isMentioned = data.mentions.some(
-          (mention: { id: number; username: string }) => mention.id === currentUserId
-        )
-        const isOwnMessage = data.user_id === currentUserId
-        const isCurrentChannel = messageChannelId === chat.currentChannel?.id
-
-        if (isMentioned && !isOwnMessage) {
-          // Play sound for mentions (even in current channel)
-          if (document.visibilityState === 'visible') {
-            playMentionSound(messageChannelId, data.id)
-          }
-          // Mark channel badge only if not current channel
-          if (!isCurrentChannel) {
-            markChannelAsMentioned(messageChannelId, data.id)
-          }
-        }
-      }
-
-      scrollToBottom()
-    } else if (data.type === 'message_deleted') {
-      // Update message to show as deleted
-      const message = chat.messages.find(m => m.id === data.message_id)
-      if (message) {
-        message.is_deleted = true
-        message.deleted_by = data.deleted_by
-        message.deleted_by_username = data.deleted_by_username
-      }
-    } else if (data.type === 'message_edited') {
-      // Update message content
-      const message = chat.messages.find(m => m.id === data.message_id)
-      if (message) {
-        message.content = data.content
-        message.edited_at = data.edited_at
-      }
-    } else if (data.type === 'error' && data.code === 'muted') {
-      // User is muted
-      isMuted.value = true
-      muteReason.value = data.message || '你已被禁言'
-    } else if (data.type === 'reaction_added') {
-      // Add reaction to message
-      const message = chat.messages.find(m => m.id === data.message_id)
-      if (message) {
-        if (!message.reactions) message.reactions = []
-        const existingGroup = message.reactions.find(r => r.emoji === data.emoji)
-        if (existingGroup) {
-          // Check if user already in the group
-          if (!existingGroup.users.some(u => u.id === data.user_id)) {
-            existingGroup.count++
-            existingGroup.users.push({ id: data.user_id, username: data.username })
-          }
-        } else {
-          message.reactions.push({
-            emoji: data.emoji,
-            count: 1,
-            users: [{ id: data.user_id, username: data.username }],
-          })
-        }
-      }
-    } else if (data.type === 'reaction_removed') {
-      // Remove reaction from message
-      const message = chat.messages.find(m => m.id === data.message_id)
-      if (message && message.reactions) {
-        const groupIndex = message.reactions.findIndex(r => r.emoji === data.emoji)
-        if (groupIndex !== -1) {
-          const group = message.reactions[groupIndex]
-          const userIndex = group.users.findIndex(u => u.id === data.user_id)
-          if (userIndex !== -1) {
-            group.users.splice(userIndex, 1)
-            group.count--
-            if (group.count <= 0) {
-              message.reactions.splice(groupIndex, 1)
-            }
-          }
-        }
-      }
-    }
-  })
-
-  ws.connect()
-  isWebSocketInitialized = true
-}
+const { clearChannelMention } = useMentionNotification()
 
 watch(
   () => chat.currentChannel,
   async (channel) => {
     if (channel && channel.type === 'text') {
       await chat.fetchMessages(channel.id)
-      connectWebSocket()
       await checkMuteStatus()
 
       // Initialize read position tracking
@@ -341,12 +208,19 @@ watch(
         if (chat.currentChannel?.id === channel.id) {
           markChannelAsRead(channel.id)
           clearChannelMention(channel.id)
-          console.log('[ChatArea] Marked channel', channel.id, 'as read after viewing')
         }
       }, 2000)
     }
   },
   { immediate: true }
+)
+
+// Auto-scroll when new messages arrive
+watch(
+  () => chat.messages.length,
+  () => {
+    scrollToBottom()
+  }
 )
 
 onMounted(() => {
@@ -483,7 +357,7 @@ const canSend = computed(() => {
 })
 
 async function sendMessage() {
-  if (!canSend.value || !ws) return
+  if (!canSend.value) return
 
   // Upload pending files first
   if (pendingFiles.value.length > 0) {
@@ -498,7 +372,7 @@ async function sendMessage() {
 
   if (!chat.currentChannel?.id) return
 
-  ws.send({
+  chatWs.send({
     type: 'message',
     channel_id: chat.currentChannel.id,
     content: content,
@@ -901,11 +775,13 @@ async function checkMuteStatus() {
     })
 
     if (activeMute) {
-      isMuted.value = true
-      muteReason.value = activeMute.reason || '你已被禁言'
+      localMuted.value = true
+      localMuteReason.value = activeMute.reason || '你已被禁言'
     } else {
-      isMuted.value = false
-      muteReason.value = ''
+      localMuted.value = false
+      localMuteReason.value = ''
+      // Also clear WebSocket mute status when API says not muted
+      chat.setMutedByWs(false, '')
     }
   } catch (error) {
     console.error('Failed to check mute status:', error)
@@ -1049,9 +925,6 @@ function getReplyThumbnailUrl(attachmentId: number, attachmentUrl: string): stri
 
 // Cleanup blob URLs on unmount
 onUnmounted(() => {
-  if (ws) {
-    ws.disconnect()
-  }
   if (scrollSaveTimeout) {
     clearTimeout(scrollSaveTimeout)
   }

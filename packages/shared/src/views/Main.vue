@@ -3,7 +3,10 @@ import { ref, onMounted, watch } from 'vue'
 import { useChatStore } from '../stores/chat'
 import { useVoiceStore } from '../stores/voice'
 import { useMusicStore } from '../stores/music'
+import { useAuthStore } from '../stores/auth'
 import { useSwipe } from '../composables/useSwipe'
+import { useChatWebSocket } from '../composables/useChatWebSocket'
+import { useMentionNotification } from '../composables/useMentionNotification'
 import ServerList from '../components/ServerList.vue'
 import ChannelList from '../components/ChannelList.vue'
 import ChatArea from '../components/ChatArea.vue'
@@ -11,11 +14,115 @@ import VoicePanel from '../components/VoicePanel.vue'
 import MusicPanel from '../components/MusicPanel.vue'
 import { Music, Menu, X } from 'lucide-vue-next'
 
-// const auth = useAuthStore()
+const auth = useAuthStore()
 const chat = useChatStore()
 const voice = useVoiceStore()
 // Initialize music store early so WebSocket auto-connects when joining voice
 useMusicStore()
+
+// Initialize global chat WebSocket (persists across channel switches)
+const chatWs = useChatWebSocket()
+const { playMentionSound, markChannelAsMentioned } = useMentionNotification()
+
+// Handle incoming chat WebSocket messages
+chatWs.onMessage((data) => {
+  if (data.type === 'message') {
+    const messageChannelId = data.channel_id
+
+    // Add message to store if it's for the current channel
+    if (messageChannelId === chat.currentChannel?.id) {
+      const newMessage = {
+        id: data.id,
+        channel_id: messageChannelId,
+        user_id: data.user_id,
+        username: data.username,
+        avatar_url: data.avatar_url,
+        content: data.content,
+        created_at: data.created_at,
+        attachments: data.attachments || [],
+        is_deleted: false,
+        deleted_by: undefined,
+        deleted_by_username: undefined,
+        edited_at: undefined,
+        reply_to_id: data.reply_to_id,
+        reply_to: data.reply_to,
+        mentions: data.mentions || [],
+      }
+      chat.addMessage(newMessage)
+    }
+
+    // Check if current user is mentioned (for any channel)
+    if (data.mentions && data.mentions.length > 0) {
+      const currentUserId = auth.user?.id
+      const isMentioned = data.mentions.some(
+        (mention: { id: number; username: string }) => mention.id === currentUserId
+      )
+      const isOwnMessage = data.user_id === currentUserId
+      const isCurrentChannel = messageChannelId === chat.currentChannel?.id
+
+      if (isMentioned && !isOwnMessage) {
+        // Play sound for mentions (even in current channel)
+        if (document.visibilityState === 'visible') {
+          playMentionSound(messageChannelId, data.id)
+        }
+        // Mark channel badge only if not current channel
+        if (!isCurrentChannel) {
+          markChannelAsMentioned(messageChannelId, data.id)
+        }
+      }
+    }
+  } else if (data.type === 'message_deleted') {
+    const message = chat.messages.find(m => m.id === data.message_id)
+    if (message) {
+      message.is_deleted = true
+      message.deleted_by = data.deleted_by
+      message.deleted_by_username = data.deleted_by_username
+    }
+  } else if (data.type === 'message_edited') {
+    const message = chat.messages.find(m => m.id === data.message_id)
+    if (message) {
+      message.content = data.content
+      message.edited_at = data.edited_at
+    }
+  } else if (data.type === 'reaction_added') {
+    const message = chat.messages.find(m => m.id === data.message_id)
+    if (message) {
+      if (!message.reactions) message.reactions = []
+      const existingGroup = message.reactions.find(r => r.emoji === data.emoji)
+      if (existingGroup) {
+        if (!existingGroup.users.some(u => u.id === data.user_id)) {
+          existingGroup.count++
+          existingGroup.users.push({ id: data.user_id, username: data.username })
+        }
+      } else {
+        message.reactions.push({
+          emoji: data.emoji,
+          count: 1,
+          users: [{ id: data.user_id, username: data.username }],
+        })
+      }
+    }
+  } else if (data.type === 'reaction_removed') {
+    const message = chat.messages.find(m => m.id === data.message_id)
+    if (message && message.reactions) {
+      const groupIndex = message.reactions.findIndex(r => r.emoji === data.emoji)
+      if (groupIndex !== -1) {
+        const group = message.reactions[groupIndex]
+        const userIndex = group.users.findIndex(u => u.id === data.user_id)
+        if (userIndex !== -1) {
+          group.users.splice(userIndex, 1)
+          group.count--
+          if (group.count <= 0) {
+            message.reactions.splice(groupIndex, 1)
+          }
+        }
+      }
+    }
+  } else if (data.type === 'error' && data.code === 'muted') {
+    // User is muted - update store so ChatArea can display it
+    chat.setMutedByWs(true, data.message || '你已被禁言')
+  }
+})
 
 const showMusicPanel = ref(false)
 const showMobileSidebar = ref(false)
@@ -35,6 +142,9 @@ onSwipeLeft(() => {
 })
 
 onMounted(async () => {
+  // Connect global chat WebSocket
+  chatWs.connect()
+  
   await chat.fetchServers()
   const firstServer = chat.servers[0]
   if (firstServer) {
