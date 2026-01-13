@@ -137,8 +137,10 @@ class GlobalWebSocket @Inject constructor(
 
     private fun handleMessage(text: String) {
         try {
+            Log.v(TAG, "Received message: $text")
             val json = JsonParser.parseString(text).asJsonObject
             val type = json.get("type")?.asString
+            Log.d(TAG, "Message type: $type")
 
             when (type) {
                 "voice_users_update" -> {
@@ -167,7 +169,12 @@ class GlobalWebSocket @Inject constructor(
                     val channelId = json.get("channel_id")?.asLong ?: return
                     val lastReadMessageId = json.get("last_read_message_id")?.asLong ?: return
                     val hasMention = json.get("has_mention")?.asBoolean ?: false
-                    val lastMentionMessageId = json.get("last_mention_message_id")?.asLong
+                    val lastMentionMessageIdElement = json.get("last_mention_message_id")
+                    val lastMentionMessageId = if (lastMentionMessageIdElement != null && !lastMentionMessageIdElement.isJsonNull) {
+                        lastMentionMessageIdElement.asLong
+                    } else {
+                        null
+                    }
 
                     Log.d(TAG, "Read position sync: channel=$channelId, lastRead=$lastReadMessageId, hasMention=$hasMention")
                     _events.tryEmit(GlobalWebSocketEvent.ReadPositionSync(

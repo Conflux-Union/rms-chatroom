@@ -75,10 +75,20 @@ class ReadPositionRepository @Inject constructor(
     }
 
     private suspend fun handleReadPositionSync(event: GlobalWebSocketEvent.ReadPositionSync) {
-        Log.d(TAG, "Received read position sync: channel=${event.channelId}, lastRead=${event.lastReadMessageId}")
+        Log.d(TAG, "Received read position sync: channel=${event.channelId}, lastRead=${event.lastReadMessageId}, hasMention=${event.hasMention}")
 
-        // Update local cache
         val current = _readPositions.value[event.channelId]
+
+        // Always update mention state from server (server is authoritative)
+        if (event.hasMention && event.lastMentionMessageId != null) {
+            Log.d(TAG, "Marking channel ${event.channelId} as mentioned (messageId=${event.lastMentionMessageId})")
+            mentionManager.markChannelAsMentioned(event.channelId, event.lastMentionMessageId)
+        } else {
+            Log.d(TAG, "Clearing mention for channel ${event.channelId}")
+            mentionManager.clearChannelMention(event.channelId)
+        }
+
+        // Update read position if server has newer data
         if (current == null || event.lastReadMessageId > current.lastReadMessageId) {
             val newPosition = ReadPositionItem(
                 channelId = event.channelId,
@@ -87,16 +97,14 @@ class ReadPositionRepository @Inject constructor(
                 lastMentionMessageId = event.lastMentionMessageId
             )
             _readPositions.value = _readPositions.value + (event.channelId to newPosition)
-
-            // Update local storage
             settingsPreferences.setLastReadMessageId(event.channelId, event.lastReadMessageId)
-
-            // Update mention state
-            if (event.hasMention && event.lastMentionMessageId != null) {
-                mentionManager.markChannelAsMentioned(event.channelId, event.lastMentionMessageId)
-            } else {
-                mentionManager.clearChannelMention(event.channelId)
-            }
+        } else {
+            // Still update mention fields in cached position even if read position is same/older
+            val updatedPosition = current.copy(
+                hasMention = event.hasMention,
+                lastMentionMessageId = event.lastMentionMessageId
+            )
+            _readPositions.value = _readPositions.value + (event.channelId to updatedPosition)
         }
     }
 
@@ -124,19 +132,24 @@ class ReadPositionRepository @Inject constructor(
             // Merge server positions with local cache
             for (pos in response.positions) {
                 val local = _readPositions.value[pos.channelId]
-                // Server wins if local doesn't exist or server has higher message ID
+
+                // Always update mention state from server (server is authoritative)
+                if (pos.hasMention && pos.lastMentionMessageId != null) {
+                    mentionManager.markChannelAsMentioned(pos.channelId, pos.lastMentionMessageId)
+                } else {
+                    mentionManager.clearChannelMention(pos.channelId)
+                }
+
+                // Server wins for read position if local doesn't exist or server has higher message ID
                 if (local == null || pos.lastReadMessageId > local.lastReadMessageId) {
                     mergedPositions[pos.channelId] = pos
-                    // Update local storage
                     settingsPreferences.setLastReadMessageId(pos.channelId, pos.lastReadMessageId)
-                    // Update mention state
-                    if (pos.hasMention && pos.lastMentionMessageId != null) {
-                        mentionManager.markChannelAsMentioned(pos.channelId, pos.lastMentionMessageId)
-                    } else {
-                        mentionManager.clearChannelMention(pos.channelId)
-                    }
                 } else {
-                    mergedPositions[pos.channelId] = local
+                    // Keep local read position but use server's mention state
+                    mergedPositions[pos.channelId] = local.copy(
+                        hasMention = pos.hasMention,
+                        lastMentionMessageId = pos.lastMentionMessageId
+                    )
                 }
             }
 
