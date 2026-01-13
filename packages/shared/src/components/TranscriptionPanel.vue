@@ -2,6 +2,7 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useAuthStore } from '../stores/auth'
 import { useChatStore } from '../stores/chat'
+import { formatTimeFromDate } from '../utils/datetime'
 import { MessageSquare, ChevronUp, ChevronDown, User, Clock } from 'lucide-vue-next'
 import { NAlert, NProgress, NSpin, NButton } from 'naive-ui'
 
@@ -421,15 +422,6 @@ function clearResults() {
   }
 }
 
-function formatTime(date: Date): string {
-  return date.toLocaleTimeString('zh-CN', {
-    hour12: false,
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit'
-  })
-}
-
 // Lifecycle
 onMounted(() => {
   console.log('[TranscriptionPanel] Component mounted - Initial state report')
@@ -551,7 +543,7 @@ defineExpose({
                 </div>
                 <div class="result-time">
                   <Clock :size="12" />
-                  <span class="time-text">{{ formatTime(result.timestamp) }}</span>
+                  <span class="time-text">{{ formatTimeFromDate(result.timestamp) }}</span>
                 </div>
               </div>
               <div class="result-text">{{ result.text }}</div>

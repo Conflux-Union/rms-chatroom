@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel
@@ -13,7 +13,12 @@ from sqlalchemy.orm import selectinload
 from ..core.database import get_db
 from ..models.server import Attachment, Channel, ChannelType, Message
 from .deps import CurrentUser
-from .schemas import ReactionGroupResponse, ReactionUserResponse
+from .schemas import (
+    ReactionGroupResponse,
+    ReactionUserResponse,
+    UTCDateTimeModel,
+    serialize_datetime,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +58,7 @@ class MentionResponse(BaseModel):
     username: str
 
 
-class MessageResponse(BaseModel):
+class MessageResponse(UTCDateTimeModel):
     id: int
     channel_id: int
     user_id: int
@@ -73,9 +78,6 @@ class MessageResponse(BaseModel):
     mentions: list[MentionResponse] = []
     # Reactions feature
     reactions: list[ReactionGroupResponse] = []
-
-    class Config:
-        from_attributes = True
 
 
 def _attachment_to_response(att: Attachment) -> AttachmentResponse:
@@ -363,12 +365,12 @@ async def edit_message(
 
     # Update content
     message.content = payload.content.strip()
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     message.edited_at = now
 
     # Extract data before commit (to avoid lazy loading issues)
     content = message.content
-    edited_at_str = now.isoformat()
+    edited_at_str = now.isoformat().replace("+00:00", "Z")
 
     await db.commit()
     await db.refresh(message)
@@ -419,7 +421,7 @@ async def delete_message(
 
     # Non-admins need to check 2-minute limit
     if not is_admin:
-        elapsed = (datetime.utcnow() - message.created_at).total_seconds()
+        elapsed = (datetime.now(timezone.utc) - message.created_at).total_seconds()
         if elapsed > 120:
             raise HTTPException(
                 status_code=403, detail="Can only delete messages within 2 minutes"
@@ -427,7 +429,7 @@ async def delete_message(
 
     # Soft delete
     message.is_deleted = True
-    message.deleted_at = datetime.utcnow()
+    message.deleted_at = datetime.now(timezone.utc)
     message.deleted_by = user["id"]
     await db.commit()
 

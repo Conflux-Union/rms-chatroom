@@ -16,5 +16,17 @@ export { useSwipe } from './composables/useSwipe'
 export { startNoiseCancel } from './composables/noiseCancle'
 export type { NoiseCancelMode, NoiseCancelSession } from './composables/noiseCancle'
 
+// Utils
+export {
+  parseUTCDateTime,
+  formatDateTime,
+  formatTime,
+  formatTimeFromDate,
+  getTimestamp,
+  diffMinutes,
+  isWithinMinutes,
+  formatDuration,
+} from './utils/datetime'
+
 // Platform detection
 export const isElectron = typeof window !== 'undefined' && !!(window as any).electronAPI

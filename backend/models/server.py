@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import TYPE_CHECKING
 
@@ -16,6 +16,11 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..core.database import Base
+
+
+def utc_now() -> datetime:
+    """Return current UTC time as timezone-aware datetime."""
+    return datetime.now(timezone.utc)
 
 
 class ChannelType(str, Enum):
@@ -36,7 +41,9 @@ class Server(Base):
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     icon: Mapped[str | None] = mapped_column(String(255), nullable=True)
     owner_id: Mapped[int] = mapped_column(Integer, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now
+    )
 
     channels: Mapped[list["Channel"]] = relationship(
         "Channel", back_populates="server", cascade="all, delete-orphan"
@@ -57,7 +64,9 @@ class ChannelGroup(Base):
     )
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     position: Mapped[int] = mapped_column(Integer, default=0)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now
+    )
 
     server: Mapped["Server"] = relationship("Server", back_populates="channel_groups")
     channels: Mapped[list["Channel"]] = relationship("Channel", back_populates="group")
@@ -82,7 +91,9 @@ class Channel(Base):
     # Top-level position for ungrouped channels (shares sequence with ChannelGroup.position)
     # Only meaningful when group_id is NULL
     top_position: Mapped[int] = mapped_column(Integer, default=0)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now
+    )
 
     server: Mapped["Server"] = relationship("Server", back_populates="channels")
     group: Mapped["ChannelGroup | None"] = relationship(
@@ -112,11 +123,15 @@ class Message(Base):
 
     # Message recall/deletion fields
     is_deleted: Mapped[bool] = mapped_column(default=False, index=True)
-    deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    deleted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     deleted_by: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     # Message editing field
-    edited_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    edited_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     # Reply feature
     reply_to_id: Mapped[int | None] = mapped_column(
@@ -158,7 +173,9 @@ class Attachment(Base):
     stored_name: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
     content_type: Mapped[str] = mapped_column(String(100), nullable=False)
     size: Mapped[int] = mapped_column(Integer, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now
+    )
 
     message: Mapped["Message | None"] = relationship(
         "Message", back_populates="attachments"
@@ -176,7 +193,9 @@ class VoiceState(Base):
     username: Mapped[str] = mapped_column(String(100), nullable=False)
     muted: Mapped[bool] = mapped_column(default=False)
     deafened: Mapped[bool] = mapped_column(default=False)
-    joined_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    joined_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now
+    )
 
     channel: Mapped["Channel"] = relationship("Channel", back_populates="voice_states")
 
@@ -194,10 +213,14 @@ class VoiceInvite(Base):
         String(64), unique=True, index=True, nullable=False
     )
     created_by: Mapped[int] = mapped_column(Integer, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now
+    )
     used: Mapped[bool] = mapped_column(default=False)
     used_by_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    used_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     channel: Mapped["Channel"] = relationship("Channel")
 
@@ -220,11 +243,13 @@ class MuteRecord(Base):
     )
 
     muted_until: Mapped[datetime | None] = mapped_column(
-        DateTime, nullable=True
+        DateTime(timezone=True), nullable=True
     )  # NULL = permanent mute
     muted_by: Mapped[int] = mapped_column(Integer, nullable=False)
     reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now
+    )
 
     # Relationships
     server: Mapped["Server | None"] = relationship("Server")
@@ -243,7 +268,9 @@ class Reaction(Base):
     user_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
     username: Mapped[str] = mapped_column(String(100), nullable=False)
     emoji: Mapped[str] = mapped_column(String(32), nullable=False)  # Unicode emoji
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now
+    )
 
     # Unique constraint: one reaction per user per emoji per message
     __table_args__ = (
@@ -268,7 +295,7 @@ class ReadPosition(Base):
     has_mention: Mapped[bool] = mapped_column(default=False)
     last_mention_message_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
     )
 
     # Unique constraint: one read position per user per channel

@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useMusicStore, type Song } from '../stores/music'
 import { useVoiceStore } from '../stores/voice'
+import { formatDuration } from '../utils/datetime'
 import { NSlider, NSelect, NModal, NButton, NSpace, NInput, NSpin } from 'naive-ui'
 import { Music, Bot, SkipBack, Pause, Play, SkipForward, Plus, Trash2, X, Search, Loader2, Volume2 } from 'lucide-vue-next'
 
@@ -34,14 +35,6 @@ const progressValue = computed({
     }
   }
 })
-
-// Format milliseconds to mm:ss
-function formatTime(ms: number): string {
-  const seconds = Math.floor(ms / 1000)
-  const mins = Math.floor(seconds / 60)
-  const secs = seconds % 60
-  return `${mins}:${secs.toString().padStart(2, '0')}`
-}
 
 // Volume control handler - use store's setVolume
 function handleVolumeChange(value: number) {
@@ -261,7 +254,7 @@ async function handleStopBot() {
         </div>
         <!-- Progress Bar - Full Width -->
         <div class="progress-container">
-          <span class="time-current">{{ formatTime(music.positionMs) }}</span>
+          <span class="time-current">{{ formatDuration(music.positionMs) }}</span>
           <NSlider
             v-model:value="progressValue"
             :min="0"
@@ -269,7 +262,7 @@ async function handleStopBot() {
             :tooltip="false"
             :step="0.1"
           />
-          <span class="time-total">{{ formatTime(music.durationMs) }}</span>
+          <span class="time-total">{{ formatDuration(music.durationMs) }}</span>
         </div>
         <!-- Volume Control - Full Width -->
         <div class="volume-control">
