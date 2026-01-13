@@ -29,17 +29,17 @@ async def get_user_from_token(token: str) -> dict | None:
     return await SSOClient.verify_token(token)
 
 
-@router.websocket("/ws/chat/{channel_id}")
-async def chat_websocket(
-    websocket: WebSocket, channel_id: int, token: str | None = None
-):
+@router.websocket("/ws/chat")
+async def chat_websocket(websocket: WebSocket, token: str | None = None):
     """
-    WebSocket endpoint for real-time chat.
+    Global WebSocket endpoint for real-time chat across all channels.
 
-    Messages:
-    - Client sends: {"type": "message", "content": "...", "attachment_ids": [...]}
-    - Server broadcasts: {"type": "message", "id": ..., "user_id": ..., "username": ..., "content": ..., "created_at": ..., "attachments": [...]}
-    - Server sends on connect: {"type": "connected", "channel_id": ...}
+    Client sends:
+    - {"type": "message", "channel_id": 123, "content": "...", "attachment_ids": [...], "reply_to_id": 456}
+
+    Server broadcasts:
+    - {"type": "message", "id": ..., "channel_id": ..., "user_id": ..., "username": ..., "content": ..., "created_at": ..., "attachments": [...], "mentions": [...]}
+    - {"type": "connected"}
     """
     if not token:
         await websocket.close(code=4001, reason="Missing token")
@@ -50,20 +50,10 @@ async def chat_websocket(
         await websocket.close(code=4001, reason="Invalid token")
         return
 
-    # Verify channel exists and is text type
-    async with async_session_maker() as db:
-        result = await db.execute(select(Channel).where(Channel.id == channel_id))
-        channel = result.scalar_one_or_none()
-        if not channel or channel.type != ChannelType.TEXT:
-            await websocket.close(
-                code=4004, reason="Channel not found or not a text channel"
-            )
-            return
-
-    await chat_manager.connect(websocket, channel_id, user)
+    await chat_manager.connect_global(websocket, user)
 
     try:
-        await websocket.send_json({"type": "connected", "channel_id": channel_id})
+        await websocket.send_json({"type": "connected"})
 
         while True:
             data = await websocket.receive_text()
@@ -73,20 +63,29 @@ async def chat_websocket(
                 continue
 
             if msg.get("type") == "message":
-                # Check if user is muted before processing message
-                from ..services.moderation import check_user_muted
-
-                async with async_session_maker() as db:
-                    is_muted, reason = await check_user_muted(
-                        user["id"], channel_id, db
+                channel_id = msg.get("channel_id")
+                if not channel_id:
+                    await websocket.send_json(
+                        {"type": "error", "code": "missing_channel_id", "message": "channel_id is required"}
                     )
+                    continue
+
+                # Verify channel exists and is text type
+                async with async_session_maker() as db:
+                    result = await db.execute(select(Channel).where(Channel.id == channel_id))
+                    channel = result.scalar_one_or_none()
+                    if not channel or channel.type != ChannelType.TEXT:
+                        await websocket.send_json(
+                            {"type": "error", "code": "invalid_channel", "message": "Channel not found or not a text channel"}
+                        )
+                        continue
+
+                    # Check if user is muted
+                    from ..services.moderation import check_user_muted
+                    is_muted, reason = await check_user_muted(user["id"], channel_id, db)
                     if is_muted:
                         await websocket.send_json(
-                            {
-                                "type": "error",
-                                "code": "muted",
-                                "message": reason or "You are muted",
-                            }
+                            {"type": "error", "code": "muted", "message": reason or "You are muted"}
                         )
                         continue
 
@@ -111,7 +110,6 @@ async def chat_websocket(
                         )
                         reply_to_msg = reply_result.scalar_one_or_none()
                         if reply_to_msg:
-                            # Truncate content for preview
                             preview_content = (
                                 "[Message deleted]"
                                 if reply_to_msg.is_deleted
@@ -124,18 +122,16 @@ async def chat_websocket(
                                 "content": preview_content,
                             }
                         else:
-                            reply_to_id = None  # Invalid reply target, ignore
+                            reply_to_id = None
 
                     # Parse @mentions from content
                     mentioned_user_ids_json = None
                     mentions_data = []
                     if content:
-                        # Find all @username patterns
                         mention_pattern = re.compile(r"@(\w+)")
                         mentioned_usernames = set(mention_pattern.findall(content))
 
                         if mentioned_usernames:
-                            # Get distinct users who match the mentioned usernames
                             mention_result = await db.execute(
                                 select(Message.user_id, Message.username)
                                 .where(
@@ -191,24 +187,19 @@ async def chat_websocket(
 
                     await db.commit()
 
-                    # Determine created time to broadcast: prefer client-sent timestamp if valid
+                    # Determine created time to broadcast
                     def parse_client_time(val):
                         if val is None:
                             return None
-                        # numeric epoch (ms or s)
                         try:
                             if isinstance(val, (int, float)):
                                 v = float(val)
-                                # heuristic: > 1e12 -> ms
                                 if v > 1e12:
-                                    return datetime.fromtimestamp(
-                                        v / 1000.0, tz=timezone.utc
-                                    )
+                                    return datetime.fromtimestamp(v / 1000.0, tz=timezone.utc)
                                 return datetime.fromtimestamp(v, tz=timezone.utc)
                         except Exception:
                             pass
 
-                        # string ISO or numeric string
                         if isinstance(val, str):
                             s = val.strip()
                             try:
@@ -220,9 +211,7 @@ async def chat_websocket(
                                 try:
                                     v = float(s)
                                     if v > 1e12:
-                                        return datetime.fromtimestamp(
-                                            v / 1000.0, tz=timezone.utc
-                                        )
+                                        return datetime.fromtimestamp(v / 1000.0, tz=timezone.utc)
                                     return datetime.fromtimestamp(v, tz=timezone.utc)
                                 except Exception:
                                     return None
@@ -232,20 +221,17 @@ async def chat_websocket(
                     parsed = parse_client_time(client_ts)
                     beijing = timezone(timedelta(hours=8))
                     if parsed is not None:
-                        # if parsed has no tzinfo, assume UTC
                         if parsed.tzinfo is None:
                             parsed = parsed.replace(tzinfo=timezone.utc)
                         created_beijing = parsed.astimezone(beijing)
                         created_str = created_beijing.strftime("%Y-%m-%d %H:%M")
                     else:
-                        # fallback to DB timestamp
                         created = message.created_at
                         if created.tzinfo is None:
                             created = created.replace(tzinfo=timezone.utc)
                         created_beijing = created.astimezone(beijing)
                         created_str = created_beijing.strftime("%Y-%m-%d %H:%M")
 
-                    # Broadcast to channel
                     # Get avatar URL for the sender
                     avatar_url = user.get("avatar_url")
                     if not avatar_url:
@@ -266,9 +252,11 @@ async def chat_websocket(
                         "mentions": mentions_data,
                         "reactions": [],
                     }
-                    await chat_manager.broadcast_to_channel(channel_id, broadcast_msg)
+
+                    # Broadcast to all global connections
+                    await chat_manager.broadcast_to_all_users(broadcast_msg)
 
     except WebSocketDisconnect:
         pass
     finally:
-        await chat_manager.disconnect(websocket, channel_id)
+        await chat_manager.disconnect_global(websocket, user["id"])

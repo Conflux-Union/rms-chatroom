@@ -190,74 +190,72 @@ const {
 
 let ws: ReturnType<typeof useWebSocket> | null = null
 
-function connectWebSocket(channelId: number) {
+function connectWebSocket() {
   if (ws) {
     ws.disconnect()
   }
 
-  ws = useWebSocket(`/ws/chat/${channelId}`)
+  // Connect to global WebSocket endpoint (no channel ID in path)
+  ws = useWebSocket(`/ws/chat`)
 
   ws.onMessage((data) => {
     console.log('[WebSocket] Received message:', JSON.stringify(data, null, 2))
-    
+
     if (data.type === 'message') {
-      // 验证消息频道ID，但使用更宽松的检查
-      const messageChannelId = data.channel_id || channelId
-      
-      // 如果消息的频道ID与当前频道不匹配，忽略（但不影响自己发送的消息）
-      if (messageChannelId !== channelId && chat.currentChannel?.id !== messageChannelId) {
-        console.debug('Ignoring message from different channel:', messageChannelId)
-        return
+      const messageChannelId = data.channel_id
+
+      // Add message to store if it's for the current channel
+      if (messageChannelId === chat.currentChannel?.id) {
+        const newMessage = {
+          id: data.id,
+          channel_id: messageChannelId,
+          user_id: data.user_id,
+          username: data.username,
+          avatar_url: data.avatar_url,
+          content: data.content,
+          created_at: data.created_at,
+          attachments: data.attachments || [],
+          is_deleted: false,
+          deleted_by: undefined,
+          deleted_by_username: undefined,
+          edited_at: undefined,
+          reply_to_id: data.reply_to_id,
+          reply_to: data.reply_to,
+          mentions: data.mentions || [],
+        }
+        chat.addMessage(newMessage)
       }
-      
-      const newMessage = {
-        id: data.id,
-        channel_id: messageChannelId,
-        user_id: data.user_id,
-        username: data.username,
-        avatar_url: data.avatar_url,
-        content: data.content,
-        created_at: data.created_at,
-        attachments: data.attachments || [],
-        is_deleted: false,
-        deleted_by: undefined,
-        deleted_by_username: undefined,
-        edited_at: undefined,
-        reply_to_id: data.reply_to_id,
-        reply_to: data.reply_to,
-        mentions: data.mentions || [],
-      }
-      chat.addMessage(newMessage)
-      
-      // Check if current user is mentioned
-      console.log('[Mention Check] Message mentions:', newMessage.mentions)
+
+      // Check if current user is mentioned (for any channel)
+      console.log('[Mention Check] Message mentions:', data.mentions)
       console.log('[Mention Check] Current user:', { username: auth.user?.username, nickname: auth.user?.nickname, id: auth.user?.id })
-      
-      if (newMessage.mentions && newMessage.mentions.length > 0) {
+
+      if (data.mentions && data.mentions.length > 0) {
         const currentUsername = auth.user?.username || auth.user?.nickname || ''
-        const isMentioned = newMessage.mentions.some(
+        const isMentioned = data.mentions.some(
           (mention: { username: string }) => mention.username === currentUsername
         )
-        
+
         console.log('[Mention Check] Current username:', currentUsername)
         console.log('[Mention Check] Is mentioned:', isMentioned)
-        console.log('[Mention Check] Is own message:', newMessage.user_id === auth.user?.id)
-        
-        if (isMentioned && newMessage.user_id !== auth.user?.id) {
-          console.log('[Mention] User is mentioned! Playing sound and marking channel')
+        console.log('[Mention Check] Is own message:', data.user_id === auth.user?.id)
+
+        // Only notify if mentioned in a different channel
+        if (isMentioned && data.user_id !== auth.user?.id && messageChannelId !== chat.currentChannel?.id) {
+          console.log('[Mention] User is mentioned in another channel! Playing sound and marking channel')
           // Play sound if page is visible
           if (document.visibilityState === 'visible') {
             console.log('[Mention] Page is visible, playing sound')
-            playMentionSound(channelId, newMessage.id)
+            playMentionSound(messageChannelId, data.id)
           } else {
             console.log('[Mention] Page is NOT visible, skipping sound')
           }
           // Mark channel as having unread mention
-          console.log('[Mention] Marking channel', channelId, 'with message', newMessage.id)
-          markChannelAsMentioned(channelId, newMessage.id)
+          console.log('[Mention] Marking channel', messageChannelId, 'with message', data.id)
+          markChannelAsMentioned(messageChannelId, data.id)
         }
       }
-      
+
       scrollToBottom()
     } else if (data.type === 'message_deleted') {
       // Update message to show as deleted
@@ -326,7 +324,7 @@ watch(
   async (channel) => {
     if (channel && channel.type === 'text') {
       await chat.fetchMessages(channel.id)
-      connectWebSocket(channel.id)
+      connectWebSocket()
       await checkMuteStatus()
 
       // Initialize read position tracking
@@ -337,7 +335,7 @@ watch(
 
       await nextTick()
       scrollToBottom()
-      
+
       // Mark as read after user has stayed on channel for 2 seconds
       // This prevents immediate clearing of mention badges
       setTimeout(() => {
@@ -498,14 +496,17 @@ async function sendMessage() {
 
   // Must have content or attachments
   if (!content && attachmentIds.length === 0) return
-  
+
+  if (!chat.currentChannel?.id) return
+
   ws.send({
     type: 'message',
+    channel_id: chat.currentChannel.id,
     content: content,
     attachment_ids: attachmentIds,
     reply_to_id: replyingTo.value?.id || null,
   })
-  
+
   messageInput.value = ''
   uploadedAttachments.value = []
   replyingTo.value = null
