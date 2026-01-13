@@ -1656,9 +1656,11 @@ private fun MessageInput(
 
 private fun formatTimestamp(timestamp: String): String {
     return try {
+        // Backend always returns UTC ISO 8601 with Z suffix
         val normalizedTimestamp = if (timestamp.endsWith("Z")) timestamp else "${timestamp}Z"
         val instant = Instant.parse(normalizedTimestamp)
-        val formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
+        // Format in device's local timezone
+        val formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
             .withZone(ZoneId.systemDefault())
         formatter.format(instant)
     } catch (e: Exception) {
@@ -1670,22 +1672,16 @@ private fun formatTimestamp(timestamp: String): String {
 private const val MESSAGE_GROUP_ADJACENT_THRESHOLD_MINUTES = 1L
 private const val MESSAGE_GROUP_TOTAL_THRESHOLD_MINUTES = 7L
 
-// Parse timestamp from either ISO 8601 format or "yyyy-MM-dd HH:mm" format
+/**
+ * Parse UTC ISO 8601 timestamp to epoch milliseconds.
+ * Backend always returns UTC time with Z suffix (e.g., "2026-01-14T10:30:00Z").
+ */
 private fun parseTimestamp(timestamp: String): Long? {
     return try {
-        // Try ISO 8601 format first (from REST API)
-        val isoTimestamp = if (timestamp.endsWith("Z")) timestamp else "${timestamp}Z"
-        Instant.parse(isoTimestamp).toEpochMilli()
+        val normalizedTimestamp = if (timestamp.endsWith("Z")) timestamp else "${timestamp}Z"
+        Instant.parse(normalizedTimestamp).toEpochMilli()
     } catch (e: Exception) {
-        try {
-            // Try "yyyy-MM-dd HH:mm" format (from WebSocket, Beijing time)
-            val formatter = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
-            val beijingZone = java.time.ZoneId.of("Asia/Shanghai")
-            val localDateTime = java.time.LocalDateTime.parse(timestamp, formatter)
-            localDateTime.atZone(beijingZone).toInstant().toEpochMilli()
-        } catch (e2: Exception) {
-            null
-        }
+        null
     }
 }
 
