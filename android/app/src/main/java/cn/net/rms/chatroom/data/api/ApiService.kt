@@ -390,6 +390,10 @@ interface ApiService {
     // App Update - GitHub Release
     @GET
     suspend fun checkGitHubRelease(@Url url: String): GitHubReleaseResponse
+
+    // Read Positions (cross-device sync)
+    @GET("read-positions")
+    suspend fun getReadPositions(@Header("Authorization") token: String): ReadPositionsResponse
 }
 
 data class SendMessageBody(
@@ -480,4 +484,20 @@ data class AppUpdateResponse(
     val forceUpdate: Boolean,
     @SerializedName("download_url")
     val downloadUrl: String
+)
+
+// Read Positions (cross-device sync)
+data class ReadPositionItem(
+    @SerializedName("channel_id")
+    val channelId: Long,
+    @SerializedName("last_read_message_id")
+    val lastReadMessageId: Long,
+    @SerializedName("has_mention")
+    val hasMention: Boolean,
+    @SerializedName("last_mention_message_id")
+    val lastMentionMessageId: Long?
+)
+
+data class ReadPositionsResponse(
+    val positions: List<ReadPositionItem>
 )

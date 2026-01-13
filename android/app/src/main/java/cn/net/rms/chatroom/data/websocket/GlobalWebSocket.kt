@@ -19,6 +19,12 @@ import javax.inject.Singleton
 
 sealed class GlobalWebSocketEvent {
     data class VoiceUsersUpdate(val users: Map<Long, List<VoiceUser>>) : GlobalWebSocketEvent()
+    data class ReadPositionSync(
+        val channelId: Long,
+        val lastReadMessageId: Long,
+        val hasMention: Boolean,
+        val lastMentionMessageId: Long?
+    ) : GlobalWebSocketEvent()
     object Connected : GlobalWebSocketEvent()
     object Disconnected : GlobalWebSocketEvent()
     data class Error(val error: String) : GlobalWebSocketEvent()
@@ -157,6 +163,20 @@ class GlobalWebSocket @Inject constructor(
                         handlePong()
                     }
                 }
+                "read_position_sync" -> {
+                    val channelId = json.get("channel_id")?.asLong ?: return
+                    val lastReadMessageId = json.get("last_read_message_id")?.asLong ?: return
+                    val hasMention = json.get("has_mention")?.asBoolean ?: false
+                    val lastMentionMessageId = json.get("last_mention_message_id")?.asLong
+
+                    Log.d(TAG, "Read position sync: channel=$channelId, lastRead=$lastReadMessageId, hasMention=$hasMention")
+                    _events.tryEmit(GlobalWebSocketEvent.ReadPositionSync(
+                        channelId = channelId,
+                        lastReadMessageId = lastReadMessageId,
+                        hasMention = hasMention,
+                        lastMentionMessageId = lastMentionMessageId
+                    ))
+                }
                 "connected" -> {
                     Log.d(TAG, "Global WebSocket server confirmed connection")
                 }
@@ -268,6 +288,40 @@ class GlobalWebSocket @Inject constructor(
     }
 
     fun isConnected(): Boolean = _connectionState.value == ConnectionState.CONNECTED
+
+    /**
+     * Send read position update to server for cross-device sync.
+     */
+    fun sendReadPositionUpdate(
+        channelId: Long,
+        lastReadMessageId: Long,
+        hasMention: Boolean = false,
+        lastMentionMessageId: Long? = null
+    ) {
+        if (_connectionState.value != ConnectionState.CONNECTED) {
+            Log.w(TAG, "Cannot send read position update: not connected")
+            return
+        }
+
+        try {
+            val message = buildMap {
+                put("type", "read_position_update")
+                put("channel_id", channelId)
+                put("last_read_message_id", lastReadMessageId)
+                put("has_mention", hasMention)
+                if (lastMentionMessageId != null) {
+                    put("last_mention_message_id", lastMentionMessageId)
+                }
+            }
+            val json = gson.toJson(message)
+            val sent = webSocket?.send(json) ?: false
+            if (sent) {
+                Log.d(TAG, "Sent read position update: channel=$channelId, lastRead=$lastReadMessageId")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error sending read position update", e)
+        }
+    }
 
     fun updateVoiceChannelUsers(users: Map<Long, List<VoiceUser>>) {
         _voiceChannelUsers.value = users
