@@ -13,7 +13,7 @@ import cn.net.rms.chatroom.data.api.CreateServerRequest
 import cn.net.rms.chatroom.data.api.ReorderGroupChannelsRequest
 import cn.net.rms.chatroom.data.api.ReorderTopLevelItem
 import cn.net.rms.chatroom.data.api.ReorderTopLevelRequest
-import cn.net.rms.chatroom.data.api.SendMessageBody
+
 import dagger.hilt.android.qualifiers.ApplicationContext
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
@@ -268,22 +268,17 @@ class ChatRepository @Inject constructor(
         }
     }
 
-    suspend fun sendMessage(channelId: Long, content: String, attachmentIds: List<Long> = emptyList(), replyToId: Long? = null): Result<Message> {
+    suspend fun sendMessage(channelId: Long, content: String, attachmentIds: List<Long> = emptyList(), replyToId: Long? = null): Result<Unit> {
         return try {
-            val token = authRepository.getToken()
-                ?: return Result.failure(AuthException("未登录，请先登录"))
-            val message = api.sendMessage(
-                authRepository.getAuthHeader(token),
-                channelId,
-                SendMessageBody(content, attachmentIds, replyToId)
-            )
-            // Check for duplicate before adding (WebSocket may have already added this message)
-            if (_messages.value.none { it.id == message.id }) {
-                _messages.value = _messages.value + message
+            // Use WebSocket to send message (server will broadcast to all clients including sender)
+            val success = webSocket.sendMessage(channelId, content, attachmentIds, replyToId)
+            if (success) {
+                Log.d(TAG, "Message sent via WebSocket")
+                Result.success(Unit)
+            } else {
+                Log.e(TAG, "WebSocket sendMessage returned false")
+                Result.failure(Exception("发送失败，请检查网络连接"))
             }
-            // Cache sent message
-            cacheMessage(message)
-            Result.success(message)
         } catch (e: Exception) {
             Log.e(TAG, "sendMessage failed", e)
             Result.failure(e.toAuthException())
