@@ -187,11 +187,19 @@ class ChatWebSocket @Inject constructor(
                         null
                     }
 
+                    // Parse avatar_url if present
+                    val avatarUrl = if (json.has("avatar_url") && !json.get("avatar_url").isJsonNull) {
+                        json.get("avatar_url").asString
+                    } else {
+                        null
+                    }
+
                     val message = Message(
                         id = json.get("id").asLong,
                         channelId = json.get("channel_id")?.asLong ?: 0L,
                         userId = json.get("user_id").asLong,
                         username = json.get("username").asString,
+                        avatarUrl = avatarUrl,
                         content = json.get("content")?.asString ?: "",
                         createdAt = json.get("created_at").asString,
                         attachments = attachments,

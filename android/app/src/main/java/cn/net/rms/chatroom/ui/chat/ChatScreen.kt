@@ -1667,6 +1667,25 @@ private fun formatTimestamp(timestamp: String): String {
 private const val MESSAGE_GROUP_ADJACENT_THRESHOLD_MINUTES = 1L
 private const val MESSAGE_GROUP_TOTAL_THRESHOLD_MINUTES = 7L
 
+// Parse timestamp from either ISO 8601 format or "yyyy-MM-dd HH:mm" format
+private fun parseTimestamp(timestamp: String): Long? {
+    return try {
+        // Try ISO 8601 format first (from REST API)
+        val isoTimestamp = if (timestamp.endsWith("Z")) timestamp else "${timestamp}Z"
+        Instant.parse(isoTimestamp).toEpochMilli()
+    } catch (e: Exception) {
+        try {
+            // Try "yyyy-MM-dd HH:mm" format (from WebSocket, Beijing time)
+            val formatter = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
+            val beijingZone = java.time.ZoneId.of("Asia/Shanghai")
+            val localDateTime = java.time.LocalDateTime.parse(timestamp, formatter)
+            localDateTime.atZone(beijingZone).toInstant().toEpochMilli()
+        } catch (e2: Exception) {
+            null
+        }
+    }
+}
+
 private fun shouldGroupWithPrevious(messages: List<Message>, index: Int): Boolean {
     if (index == 0) return false
 
@@ -1680,49 +1699,40 @@ private fun shouldGroupWithPrevious(messages: List<Message>, index: Int): Boolea
     if (prevMsg.isDeleted) return false
 
     // Time gap exceeds threshold, don't group
-    return try {
-        val currentTimestamp = if (currentMsg.createdAt.endsWith("Z")) currentMsg.createdAt else "${currentMsg.createdAt}Z"
-        val prevTimestamp = if (prevMsg.createdAt.endsWith("Z")) prevMsg.createdAt else "${prevMsg.createdAt}Z"
-        val currentTime = Instant.parse(currentTimestamp)
-        val prevTime = Instant.parse(prevTimestamp)
-        val diffMinutes = java.time.Duration.between(prevTime, currentTime).toMinutes()
+    val currentTime = parseTimestamp(currentMsg.createdAt) ?: return false
+    val prevTime = parseTimestamp(prevMsg.createdAt) ?: return false
+    val diffMinutes = (currentTime - prevTime) / 1000 / 60
 
-        // Adjacent messages must be within 1 minute
-        if (diffMinutes > MESSAGE_GROUP_ADJACENT_THRESHOLD_MINUTES) return false
+    // Adjacent messages must be within 1 minute
+    if (diffMinutes > MESSAGE_GROUP_ADJACENT_THRESHOLD_MINUTES) return false
 
-        // Find the first message in this group (walk backwards)
-        var firstMsgIndex = index - 1
-        while (firstMsgIndex > 0) {
-            val msg = messages[firstMsgIndex]
-            val prevMsgInChain = messages[firstMsgIndex - 1]
+    // Find the first message in this group (walk backwards)
+    var firstMsgIndex = index - 1
+    while (firstMsgIndex > 0) {
+        val msg = messages[firstMsgIndex]
+        val prevMsgInChain = messages[firstMsgIndex - 1]
 
-            // Different user breaks the chain
-            if (msg.userId != prevMsgInChain.userId) break
-            // Deleted message breaks the chain
-            if (prevMsgInChain.isDeleted) break
+        // Different user breaks the chain
+        if (msg.userId != prevMsgInChain.userId) break
+        // Deleted message breaks the chain
+        if (prevMsgInChain.isDeleted) break
 
-            val msgTimestamp = if (msg.createdAt.endsWith("Z")) msg.createdAt else "${msg.createdAt}Z"
-            val prevMsgTimestamp = if (prevMsgInChain.createdAt.endsWith("Z")) prevMsgInChain.createdAt else "${prevMsgInChain.createdAt}Z"
-            val msgTime = Instant.parse(msgTimestamp)
-            val prevMsgTime = Instant.parse(prevMsgTimestamp)
-            val chainDiff = java.time.Duration.between(prevMsgTime, msgTime).toMinutes()
+        val msgTime = parseTimestamp(msg.createdAt) ?: break
+        val prevMsgTime = parseTimestamp(prevMsgInChain.createdAt) ?: break
+        val chainDiff = (msgTime - prevMsgTime) / 1000 / 60
 
-            // Gap > 1 minute breaks the chain
-            if (chainDiff > MESSAGE_GROUP_ADJACENT_THRESHOLD_MINUTES) break
+        // Gap > 1 minute breaks the chain
+        if (chainDiff > MESSAGE_GROUP_ADJACENT_THRESHOLD_MINUTES) break
 
-            firstMsgIndex--
-        }
-
-        // Check total time from first message in group
-        val firstMsg = messages[firstMsgIndex]
-        val firstMsgTimestamp = if (firstMsg.createdAt.endsWith("Z")) firstMsg.createdAt else "${firstMsg.createdAt}Z"
-        val firstMsgTime = Instant.parse(firstMsgTimestamp)
-        val totalDiffMinutes = java.time.Duration.between(firstMsgTime, currentTime).toMinutes()
-
-        totalDiffMinutes <= MESSAGE_GROUP_TOTAL_THRESHOLD_MINUTES
-    } catch (e: Exception) {
-        false
+        firstMsgIndex--
     }
+
+    // Check total time from first message in group
+    val firstMsg = messages[firstMsgIndex]
+    val firstMsgTime = parseTimestamp(firstMsg.createdAt) ?: return false
+    val totalDiffMinutes = (currentTime - firstMsgTime) / 1000 / 60
+
+    return totalDiffMinutes <= MESSAGE_GROUP_TOTAL_THRESHOLD_MINUTES
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
