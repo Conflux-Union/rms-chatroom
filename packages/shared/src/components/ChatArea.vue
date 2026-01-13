@@ -189,8 +189,14 @@ const {
 } = useMentionNotification()
 
 let ws: ReturnType<typeof useWebSocket> | null = null
+let isWebSocketInitialized = false
 
 function connectWebSocket() {
+  // Only connect once globally, not per channel
+  if (isWebSocketInitialized) {
+    return
+  }
+
   if (ws) {
     ws.disconnect()
   }
@@ -317,6 +323,7 @@ function connectWebSocket() {
   })
 
   ws.connect()
+  isWebSocketInitialized = true
 }
 
 watch(
