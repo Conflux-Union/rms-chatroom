@@ -17,6 +17,7 @@ import cn.net.rms.chatroom.data.manager.MentionNotificationManager
 import cn.net.rms.chatroom.data.repository.AuthRepository
 import cn.net.rms.chatroom.data.repository.BugReportRepository
 import cn.net.rms.chatroom.data.repository.ChatRepository
+import cn.net.rms.chatroom.data.repository.ReadPositionRepository
 import cn.net.rms.chatroom.data.repository.UpdateRepository
 import cn.net.rms.chatroom.data.repository.VoiceRepository
 import cn.net.rms.chatroom.data.websocket.ConnectionState
@@ -58,7 +59,8 @@ class MainViewModel @Inject constructor(
     private val voiceRepository: VoiceRepository,
     private val mentionNotificationManager: MentionNotificationManager,
     private val authRepository: AuthRepository,
-    private val globalWebSocket: GlobalWebSocket
+    private val globalWebSocket: GlobalWebSocket,
+    private val readPositionRepository: ReadPositionRepository
 ) : ViewModel() {
     companion object {
         private const val TAG = "MainViewModel"
@@ -86,6 +88,13 @@ class MainViewModel @Inject constructor(
         loadMentionStates()
         loadCurrentUser()
         connectGlobalWebSocket()
+        initializeReadPositions()
+    }
+
+    private fun initializeReadPositions() {
+        viewModelScope.launch {
+            readPositionRepository.initialize()
+        }
     }
 
     private fun connectGlobalWebSocket() {
@@ -190,7 +199,7 @@ class MainViewModel @Inject constructor(
 
     private fun loadLastReadPosition(channelId: Long) {
         viewModelScope.launch {
-            val lastReadId = chatRepository.getLastReadMessageId(channelId)
+            val lastReadId = readPositionRepository.getLastReadMessageId(channelId)
             if (lastReadId != null) {
                 _state.value = _state.value.copy(
                     lastReadMessageId = lastReadId,
@@ -250,6 +259,8 @@ class MainViewModel @Inject constructor(
                                     // Update unread count
                                     val currentCount = mentionNotificationManager.getUnreadCount(channelId)
                                     mentionNotificationManager.setUnreadCount(channelId, currentCount + 1)
+                                    // Sync mention to server
+                                    readPositionRepository.markChannelAsMentioned(channelId, message.id, message.id)
                                 }
                             }
                         }
@@ -296,9 +307,7 @@ class MainViewModel @Inject constructor(
 
     fun saveReadPosition(messageId: Long) {
         val channelId = _state.value.currentChannel?.id ?: return
-        viewModelScope.launch {
-            chatRepository.setLastReadMessageId(channelId, messageId)
-        }
+        readPositionRepository.saveReadPosition(channelId, messageId)
     }
 
     fun dismissContinueReading() {
@@ -633,6 +642,11 @@ class MainViewModel @Inject constructor(
     fun clearChannelMention(channelId: Long) {
         viewModelScope.launch {
             mentionNotificationManager.clearChannelMention(channelId)
+            // Also mark as read on server
+            val latestMessageId = messages.value.lastOrNull()?.id
+            if (latestMessageId != null) {
+                readPositionRepository.markChannelAsRead(channelId, latestMessageId)
+            }
         }
     }
 }
