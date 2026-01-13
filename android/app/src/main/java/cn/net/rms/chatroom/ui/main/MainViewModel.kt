@@ -173,8 +173,8 @@ class MainViewModel @Inject constructor(
     }
 
     fun selectChannel(channel: Channel) {
-        // Disconnect from previous channel
-        chatRepository.disconnectFromChannel()
+        // Don't disconnect - we use a global WebSocket connection now
+        // chatRepository.disconnectFromChannel()
 
         chatRepository.setCurrentChannel(channel)
         _state.value = _state.value.copy(
@@ -186,8 +186,10 @@ class MainViewModel @Inject constructor(
         // Load messages for text channels
         if (channel.type == ChannelType.TEXT) {
             loadMessages(channel.id)
-            // Connect WebSocket for real-time messages
-            chatRepository.connectToChannel(channel.id)
+            // Connect WebSocket once if not already connected
+            if (!chatRepository.isWebSocketConnected()) {
+                chatRepository.connectToChannel(channel.id)
+            }
             // Load last read position
             loadLastReadPosition(channel.id)
         }
