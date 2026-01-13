@@ -119,11 +119,11 @@ async def add_reaction(
     # Broadcast reaction added via WebSocket
     from ..websocket.manager import chat_manager
 
-    await chat_manager.broadcast_to_channel(
-        message.channel_id,
+    await chat_manager.broadcast_to_all_users(
         {
             "type": "reaction_added",
             "message_id": message_id,
+            "channel_id": message.channel_id,
             "emoji": emoji,
             "user_id": user["id"],
             "username": user.get("nickname") or user["username"],
@@ -174,11 +174,11 @@ async def remove_reaction(
     # Broadcast reaction removed via WebSocket
     from ..websocket.manager import chat_manager
 
-    await chat_manager.broadcast_to_channel(
-        message.channel_id,
+    await chat_manager.broadcast_to_all_users(
         {
             "type": "reaction_removed",
             "message_id": message_id,
+            "channel_id": message.channel_id,
             "emoji": emoji,
             "user_id": user["id"],
         },
