@@ -10,6 +10,7 @@ export type { VoiceParticipant, AudioDevice, ScreenShareInfo } from './stores/vo
 
 // Composables
 export { useWebSocket } from './composables/useWebSocket'
+export { useChatWebSocket } from './composables/useChatWebSocket'
 export { useGlowEffect } from './composables/useGlowEffect'
 export { useSwipe } from './composables/useSwipe'
 export { startNoiseCancel } from './composables/noiseCancle'

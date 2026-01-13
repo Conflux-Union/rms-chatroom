@@ -24,6 +24,14 @@ export const useChatStore = defineStore('chat', () => {
   const messages = ref<Message[]>([])
   // Map: channelId -> users in that voice channel
   const voiceChannelUsers = ref<Map<number, VoiceChannelUser[]>>(new Map())
+  // Mute status from WebSocket error
+  const isMutedByWs = ref(false)
+  const muteReasonByWs = ref('')
+
+  function setMutedByWs(muted: boolean, reason: string = '') {
+    isMutedByWs.value = muted
+    muteReasonByWs.value = reason
+  }
 
   function getAuthHeaders() {
     const auth = useAuthStore()
@@ -401,6 +409,9 @@ export const useChatStore = defineStore('chat', () => {
     currentChannel,
     messages,
     voiceChannelUsers,
+    isMutedByWs,
+    muteReasonByWs,
+    setMutedByWs,
     fetchServers,
     fetchServer,
     fetchServerDetail,
