@@ -78,7 +78,10 @@ fun ChannelListColumn(
     voiceChannelName: String? = null,
     isVoiceMuted: Boolean = false,
     onToggleMute: () -> Unit = {},
-    onDisconnectVoice: () -> Unit = {}
+    onDisconnectVoice: () -> Unit = {},
+    // Mention notification parameters
+    channelMentions: Set<Long> = emptySet(),
+    unreadCounts: Map<Long, Int> = emptyMap()
 ) {
     var showCreateDialog by remember { mutableStateOf(false) }
     var createChannelType by remember { mutableStateOf("text") }
@@ -266,7 +269,9 @@ fun ChannelListColumn(
                                                 newOrder[channelIndex + 1] = temp
                                                 onReorderGroupChannels(group.id, newOrder.map { it.id })
                                             }
-                                        } else null
+                                        } else null,
+                                        hasMention = channelMentions.contains(channel.id),
+                                        unreadCount = unreadCounts[channel.id] ?: 0
                                     )
                                 }
                             }
@@ -307,7 +312,9 @@ fun ChannelListColumn(
                                         draggableList = newList
                                         submitTopLevelReorder(newList, onReorderTopLevel)
                                     }
-                                } else null
+                                } else null,
+                                hasMention = channelMentions.contains(channel.id),
+                                unreadCount = unreadCounts[channel.id] ?: 0
                             )
                         }
                     }
@@ -746,7 +753,9 @@ private fun GroupedChannelItem(
     voiceUsers: List<VoiceUser>,
     editMode: Boolean,
     onMoveUp: (() -> Unit)?,
-    onMoveDown: (() -> Unit)?
+    onMoveDown: (() -> Unit)?,
+    hasMention: Boolean = false,
+    unreadCount: Int = 0
 ) {
     val backgroundColor by animateColorAsState(
         targetValue = if (isSelected) SurfaceLighter else Color.Transparent,
@@ -792,7 +801,38 @@ private fun GroupedChannelItem(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f)
             )
-            
+
+            // Mention badge (@)
+            if (hasMention && channel.type == ChannelType.TEXT) {
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = Color(0xFFEE5A6F)
+                ) {
+                    Text(
+                        text = "@",
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                        color = Color.White,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(4.dp))
+            }
+
+            // Unread count badge
+            if (unreadCount > 0 && channel.type == ChannelType.TEXT) {
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = TextMuted
+                ) {
+                    Text(
+                        text = if (unreadCount > 99) "99+" else unreadCount.toString(),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.White,
+                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                    )
+                }
+            }
+
             // Voice user count badge
             if (channel.type == ChannelType.VOICE && voiceUsers.isNotEmpty()) {
                 Surface(
@@ -807,7 +847,7 @@ private fun GroupedChannelItem(
                     )
                 }
             }
-            
+
             // Edit mode controls
             if (editMode) {
                 if (onMoveUp != null) {
@@ -869,7 +909,9 @@ private fun UngroupedChannelItem(
     voiceUsers: List<VoiceUser>,
     editMode: Boolean,
     onMoveUp: (() -> Unit)?,
-    onMoveDown: (() -> Unit)?
+    onMoveDown: (() -> Unit)?,
+    hasMention: Boolean = false,
+    unreadCount: Int = 0
 ) {
     val backgroundColor by animateColorAsState(
         targetValue = if (isSelected) SurfaceLighter else Color.Transparent,
@@ -913,7 +955,38 @@ private fun UngroupedChannelItem(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f)
             )
-            
+
+            // Mention badge (@)
+            if (hasMention && channel.type == ChannelType.TEXT) {
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = Color(0xFFEE5A6F)
+                ) {
+                    Text(
+                        text = "@",
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                        color = Color.White,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(4.dp))
+            }
+
+            // Unread count badge
+            if (unreadCount > 0 && channel.type == ChannelType.TEXT) {
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = TextMuted
+                ) {
+                    Text(
+                        text = if (unreadCount > 99) "99+" else unreadCount.toString(),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.White,
+                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                    )
+                }
+            }
+
             // Voice user count badge
             if (channel.type == ChannelType.VOICE && voiceUsers.isNotEmpty()) {
                 Surface(
@@ -928,7 +1001,7 @@ private fun UngroupedChannelItem(
                     )
                 }
             }
-            
+
             // Edit mode controls
             if (editMode) {
                 if (onMoveUp != null) {

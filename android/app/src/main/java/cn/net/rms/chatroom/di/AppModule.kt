@@ -11,6 +11,7 @@ import cn.net.rms.chatroom.BuildConfig
 import cn.net.rms.chatroom.data.api.ApiService
 import cn.net.rms.chatroom.data.local.AppDatabase
 import cn.net.rms.chatroom.data.local.MessageDao
+import cn.net.rms.chatroom.data.manager.MentionNotificationManager
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -89,5 +90,11 @@ object AppModule {
     @Singleton
     fun provideMessageDao(database: AppDatabase): MessageDao {
         return database.messageDao()
+    }
+
+    @Provides
+    @Singleton
+    fun provideMentionNotificationManager(@ApplicationContext context: Context): MentionNotificationManager {
+        return MentionNotificationManager(context)
     }
 }
