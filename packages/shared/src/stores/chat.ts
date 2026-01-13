@@ -340,6 +340,23 @@ export const useChatStore = defineStore('chat', () => {
     return voiceChannelUsers.value.get(channelId) || []
   }
 
+  function updateVoiceChannelUsersFromPush(users: Record<number, VoiceChannelUser[]>) {
+    const newMap = new Map<number, VoiceChannelUser[]>()
+    for (const [channelId, userList] of Object.entries(users)) {
+      newMap.set(Number(channelId), userList)
+    }
+    // Set empty array for voice channels not in response
+    if (currentServer.value?.channels) {
+      const voiceChannels = currentServer.value.channels.filter(c => c.type === 'voice')
+      for (const ch of voiceChannels) {
+        if (!newMap.has(ch.id)) {
+          newMap.set(ch.id, [])
+        }
+      }
+    }
+    voiceChannelUsers.value = newMap
+  }
+
   async function uploadFile(
     channelId: number,
     file: File,
@@ -399,6 +416,7 @@ export const useChatStore = defineStore('chat', () => {
     fetchVoiceChannelUsers,
     fetchAllVoiceChannelUsers,
     getVoiceChannelUsers,
+    updateVoiceChannelUsersFromPush,
     uploadFile,
     getFileUrl,
     // Channel Group functions

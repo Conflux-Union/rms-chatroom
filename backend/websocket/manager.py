@@ -149,3 +149,4 @@ class ConnectionManager:
 # Global manager instance
 chat_manager = ConnectionManager()
 voice_manager = ConnectionManager()
+global_state_manager = ConnectionManager()

@@ -218,6 +218,9 @@ async def get_voice_token(
         send_qq_group_notify(username, server_name, channel.name, room_name)
     )
 
+    # Broadcast voice users update (fire and forget)
+    asyncio.create_task(broadcast_voice_users_update())
+
     return LiveKitTokenResponse(
         token=jwt_token,
         url=settings.livekit_host,
@@ -411,6 +414,10 @@ async def mute_participant(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Participant not found or no microphone track",
             )
+
+        # Broadcast voice users update (fire and forget)
+        asyncio.create_task(broadcast_voice_users_update())
+
         return {"success": True, "muted": payload.muted}
     finally:
         await api.aclose()
@@ -446,6 +453,10 @@ async def kick_participant(
         await api.room.remove_participant(
             RoomParticipantIdentity(room=room_name, identity=target_user_id)
         )
+
+        # Broadcast voice users update (fire and forget)
+        asyncio.create_task(broadcast_voice_users_update())
+
         return {"success": True}
     except Exception as e:
         raise HTTPException(
@@ -554,10 +565,17 @@ async def set_host_mode(
                 if p.identity != user_id:
                     await _mute_participant_mic(api, room_name, p.identity, True)
 
+            # Broadcast voice users update (fire and forget)
+            asyncio.create_task(broadcast_voice_users_update())
+
             return HostModeResponse(enabled=True, host_id=user_id, host_name=user_name)
         else:
             # Disable host mode (don't auto-unmute, users unmute themselves)
             _host_mode_state.pop(room_name, None)
+
+            # Broadcast voice users update (fire and forget)
+            asyncio.create_task(broadcast_voice_users_update())
+
             return HostModeResponse(enabled=False, host_id=None, host_name=None)
     finally:
         await api.aclose()
@@ -1060,3 +1078,119 @@ async def get_all_voice_channel_people(
         await api.aclose()
 
     return AllVoiceChannelsResponse(channels=channel_infos, total_users=total_users)
+
+
+# Helper function to broadcast voice users update via global WebSocket
+async def broadcast_voice_users_update():
+    """
+    Broadcast voice_users_update event to all connected clients via /ws/global.
+    Called when users join/leave voice channels or their state changes.
+    """
+    from .manager import global_state_manager
+    from ..core.database import async_session_maker
+
+    async with async_session_maker() as db:
+        try:
+            # Reuse the logic from get_all_voice_users
+            from ..services.sso_client import SSOClient
+
+            result = await db.execute(select(Channel).where(Channel.type == ChannelType.VOICE))
+            channels = result.scalars().all()
+
+            settings = get_settings()
+            livekit_http_url = settings.livekit_internal_host.replace(
+                "ws://", "http://"
+            ).replace("wss://", "https://")
+            api = LiveKitAPI(
+                url=livekit_http_url,
+                api_key=settings.livekit_api_key,
+                api_secret=settings.livekit_api_secret,
+            )
+
+            users_by_channel: dict[int, list[dict]] = {}
+            all_user_ids: set[int] = set()
+            all_participants: list[
+                tuple[int, str, str, bool, bool]
+            ] = []  # (channel_id, identity, name, is_muted, is_host)
+
+            try:
+                for channel in channels:
+                    room_name = f"voice_{channel.id}"
+                    try:
+                        response = await api.room.list_participants(
+                            ListParticipantsRequest(room=room_name)
+                        )
+                        host_id = _host_mode_state.get(room_name)
+
+                        # Check if host is still in room
+                        if host_id:
+                            participant_ids = {p.identity for p in response.participants}
+                            if host_id not in participant_ids:
+                                _host_mode_state.pop(room_name, None)
+                                host_id = None
+
+                        for p in response.participants:
+                            is_muted = True
+                            for track in p.tracks:
+                                if track.source == 2:  # MICROPHONE
+                                    is_muted = track.muted
+                                    break
+
+                            # Collect user ID for batch avatar fetch
+                            if not p.identity.startswith("guest_"):
+                                try:
+                                    all_user_ids.add(int(p.identity))
+                                except ValueError:
+                                    pass
+
+                            all_participants.append(
+                                (
+                                    channel.id,
+                                    p.identity,
+                                    p.name or p.identity,
+                                    is_muted,
+                                    host_id == p.identity,
+                                )
+                            )
+                    except Exception:
+                        # Room doesn't exist (no participants)
+                        pass
+
+                # Batch fetch all avatar URLs
+                avatar_map = (
+                    await SSOClient.get_avatar_urls_batch(list(all_user_ids))
+                    if all_user_ids
+                    else {}
+                )
+
+                # Build response with avatars
+                for channel_id, identity, name, is_muted, is_host in all_participants:
+                    avatar_url = None
+                    if not identity.startswith("guest_"):
+                        try:
+                            avatar_url = avatar_map.get(int(identity))
+                        except ValueError:
+                            pass
+
+                    user_dict = {
+                        "id": identity,
+                        "name": name,
+                        "avatar_url": avatar_url,
+                        "is_muted": is_muted,
+                        "is_host": is_host,
+                    }
+                    if channel_id not in users_by_channel:
+                        users_by_channel[channel_id] = []
+                    users_by_channel[channel_id].append(user_dict)
+
+            finally:
+                await api.aclose()
+
+            # Broadcast to all global connections
+            await global_state_manager.broadcast_to_all_users({
+                "type": "voice_users_update",
+                "users": users_by_channel
+            })
+
+        except Exception as e:
+            logger.error(f"Failed to broadcast voice users update: {e}")

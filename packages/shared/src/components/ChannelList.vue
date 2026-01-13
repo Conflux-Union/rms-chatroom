@@ -4,6 +4,7 @@ import { useChatStore } from '../stores/chat'
 import { useAuthStore } from '../stores/auth'
 import { useVoiceStore } from '../stores/voice'
 import { useMentionNotification } from '../composables/useMentionNotification'
+import { useGlobalWebSocket } from '../composables/useGlobalWebSocket'
 import { Volume2, MicOff, Crown, ChevronDown, ChevronRight } from 'lucide-vue-next'
 import { NDropdown, NModal, NInput, NButton, NSpace, NSelect } from 'naive-ui'
 import type { DropdownOption, SelectOption } from 'naive-ui'
@@ -17,6 +18,7 @@ const voice = useVoiceStore()
 const mentionNotification = useMentionNotification()
 const channelMentions = mentionNotification.channelMentions
 const unreadCounts = mentionNotification.unreadCounts
+const globalWs = useGlobalWebSocket()
 
 // Debug: Watch channelMentions changes
 watch(channelMentions, (newVal) => {
@@ -73,39 +75,24 @@ const userDropdownOptions: DropdownOption[] = [
   { label: '踢出频道', key: 'kick', props: { style: { color: 'var(--color-danger)' } } }
 ]
 
-// Refresh interval for voice channel users
-let voiceUsersInterval: ReturnType<typeof setInterval> | null = null
-
-function startVoiceUsersPolling() {
-  stopVoiceUsersPolling()
-  chat.fetchAllVoiceChannelUsers()
-  // Also sync host mode status if connected to voice
-  if (voice.isConnected) {
-    voice.fetchHostModeStatus()
+// Listen to voice_users_update from global WebSocket
+globalWs.onMessage((data) => {
+  if (data.type === 'voice_users_update') {
+    // Update voice channel users from WebSocket push
+    chat.updateVoiceChannelUsersFromPush(data.users)
   }
-  // Poll every 10 seconds (reduced from 5s to lower server load)
-  voiceUsersInterval = setInterval(() => {
-    chat.fetchAllVoiceChannelUsers()
-    if (voice.isConnected) {
-      voice.fetchHostModeStatus()
-    }
-  }, 10000)
-}
-
-function stopVoiceUsersPolling() {
-  if (voiceUsersInterval) {
-    clearInterval(voiceUsersInterval)
-    voiceUsersInterval = null
-  }
-}
+})
 
 watch(() => chat.currentServer, (server) => {
   if (server) {
-    startVoiceUsersPolling()
+    // Initial fetch
+    chat.fetchAllVoiceChannelUsers()
     // Fetch channel groups when server changes
     chat.fetchChannelGroups(server.id)
-  } else {
-    stopVoiceUsersPolling()
+    // Also sync host mode status if connected to voice
+    if (voice.isConnected) {
+      voice.fetchHostModeStatus()
+    }
   }
 }, { immediate: true })
 
@@ -114,19 +101,15 @@ onMounted(() => {
   mentionNotification.loadChannelMentions()
 })
 
-onUnmounted(() => {
-  stopVoiceUsersPolling()
-})
-
 // Channel groups
-const channelGroups = computed(() => 
+const channelGroups = computed(() =>
   chat.currentServer?.channelGroups?.sort((a, b) => a.position - b.position) || []
 )
 
 // Ungrouped channels (channels without a group) - mixed text and voice
 // Use == null to match both null and undefined
 // Sort by top_position for unified top-level ordering
-const ungroupedChannels = computed(() => 
+const ungroupedChannels = computed(() =>
   chat.currentServer?.channels?.filter((c) => c.group_id == null)?.sort((a, b) => a.top_position - b.top_position) || []
 )
 
