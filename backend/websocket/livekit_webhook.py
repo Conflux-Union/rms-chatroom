@@ -25,18 +25,21 @@ async def livekit_webhook(request: Request):
     - track_published: User published a track (mic/camera)
     - track_unpublished: User unpublished a track
     """
+    logger.info("=== LiveKit webhook endpoint called ===")
     settings = get_settings()
 
     # Verify webhook signature
     body = await request.body()
     auth_header = request.headers.get("Authorization", "")
+    logger.info(f"Webhook body length: {len(body)}, has auth: {bool(auth_header)}")
 
     try:
         # Verify the webhook token
-        receiver = api.WebhookReceiver(
-            settings.livekit_api_key,
-            settings.livekit_api_secret
+        token_verifier = api.TokenVerifier(
+            api_key=settings.livekit_api_key,
+            api_secret=settings.livekit_api_secret
         )
+        receiver = api.WebhookReceiver(token_verifier)
         event = receiver.receive(body.decode(), auth_header)
     except Exception as e:
         logger.error(f"Failed to verify webhook: {e}")
