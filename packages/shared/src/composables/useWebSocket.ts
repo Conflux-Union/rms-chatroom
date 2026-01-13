@@ -10,6 +10,51 @@ export function useWebSocket(path: string) {
 
   const messageHandlers: ((data: any) => void)[] = []
 
+  // Heartbeat state
+  let heartbeatInterval: number | null = null
+  let heartbeatTimeout: number | null = null
+  let waitingForPong = false
+
+  function clearHeartbeat() {
+    if (heartbeatInterval) {
+      clearInterval(heartbeatInterval)
+      heartbeatInterval = null
+    }
+    if (heartbeatTimeout) {
+      clearTimeout(heartbeatTimeout)
+      heartbeatTimeout = null
+    }
+    waitingForPong = false
+  }
+
+  function startHeartbeat() {
+    clearHeartbeat()
+
+    // Send heartbeat every 5 seconds
+    heartbeatInterval = window.setInterval(() => {
+      if (ws.value && ws.value.readyState === WebSocket.OPEN && !waitingForPong) {
+        waitingForPong = true
+        ws.value.send(JSON.stringify({ type: 'ping', data: 'tribios' }))
+
+        // Set 3 second timeout
+        heartbeatTimeout = window.setTimeout(() => {
+          console.warn('Heartbeat timeout, reconnecting...')
+          waitingForPong = false
+          disconnect()
+          connect()
+        }, 3000)
+      }
+    }, 5000)
+  }
+
+  function handlePong() {
+    waitingForPong = false
+    if (heartbeatTimeout) {
+      clearTimeout(heartbeatTimeout)
+      heartbeatTimeout = null
+    }
+  }
+
   function connect() {
     const auth = useAuthStore()
     if (!auth.token) return
@@ -19,10 +64,12 @@ export function useWebSocket(path: string) {
 
     ws.value.onopen = () => {
       isConnected.value = true
+      startHeartbeat()
     }
 
     ws.value.onclose = () => {
       isConnected.value = false
+      clearHeartbeat()
     }
 
     ws.value.onerror = (e) => {
@@ -38,6 +85,13 @@ export function useWebSocket(path: string) {
       // Handle text (JSON) data
       try {
         const data = JSON.parse(event.data)
+
+        // Handle pong response
+        if (data.type === 'pong' && data.data === 'cute') {
+          handlePong()
+          return
+        }
+
         lastMessage.value = data
         messageHandlers.forEach((handler) => handler(data))
       } catch {
@@ -47,6 +101,7 @@ export function useWebSocket(path: string) {
   }
 
   function disconnect() {
+    clearHeartbeat()
     if (ws.value) {
       ws.value.close()
       ws.value = null

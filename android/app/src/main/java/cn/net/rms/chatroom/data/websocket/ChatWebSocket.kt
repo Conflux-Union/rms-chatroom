@@ -52,7 +52,8 @@ class ChatWebSocket @Inject constructor(
 ) {
     companion object {
         private const val TAG = "ChatWebSocket"
-        private const val HEARTBEAT_INTERVAL_MS = 30_000L
+        private const val HEARTBEAT_INTERVAL_MS = 5_000L
+        private const val HEARTBEAT_TIMEOUT_MS = 3_000L
         private const val INITIAL_RECONNECT_DELAY_MS = 1_000L
         private const val MAX_RECONNECT_DELAY_MS = 30_000L
         private const val MAX_RECONNECT_ATTEMPTS = 10
@@ -68,9 +69,11 @@ class ChatWebSocket @Inject constructor(
     private var currentToken: String? = null
     private var reconnectAttempts = 0
     private var shouldReconnect = false
+    private var waitingForPong = false
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var heartbeatJob: Job? = null
+    private var heartbeatTimeoutJob: Job? = null
     private var reconnectJob: Job? = null
 
     fun connect(token: String) {
@@ -243,8 +246,14 @@ class ChatWebSocket @Inject constructor(
                     val userId = json.get("user_id").asLong
                     _events.tryEmit(WebSocketEvent.UserLeft(userId))
                 }
-                "pong", "connected" -> {
-                    Log.v(TAG, "Received $type")
+                "pong" -> {
+                    if (json.has("data") && json.get("data").asString == "cute") {
+                        Log.v(TAG, "Received pong: cute")
+                        handlePong()
+                    }
+                }
+                "connected" -> {
+                    Log.v(TAG, "Received connected")
                 }
                 else -> {
                     Log.d(TAG, "Unknown message type: $type")
@@ -256,12 +265,18 @@ class ChatWebSocket @Inject constructor(
         }
     }
 
+    private fun handlePong() {
+        waitingForPong = false
+        heartbeatTimeoutJob?.cancel()
+        heartbeatTimeoutJob = null
+    }
+
     private fun startHeartbeat() {
         stopHeartbeat()
         heartbeatJob = scope.launch {
             while (isActive) {
                 delay(HEARTBEAT_INTERVAL_MS)
-                if (_connectionState.value == ConnectionState.CONNECTED) {
+                if (_connectionState.value == ConnectionState.CONNECTED && !waitingForPong) {
                     sendPing()
                 }
             }
@@ -271,14 +286,30 @@ class ChatWebSocket @Inject constructor(
     private fun stopHeartbeat() {
         heartbeatJob?.cancel()
         heartbeatJob = null
+        heartbeatTimeoutJob?.cancel()
+        heartbeatTimeoutJob = null
+        waitingForPong = false
     }
 
     private fun sendPing() {
         try {
-            val pingJson = gson.toJson(mapOf("type" to "ping"))
+            val pingJson = gson.toJson(mapOf("type" to "ping", "data" to "tribios"))
             val sent = webSocket?.send(pingJson) ?: false
             if (sent) {
-                Log.v(TAG, "Sent ping")
+                Log.v(TAG, "Sent ping: tribios")
+                waitingForPong = true
+
+                // Start timeout timer
+                heartbeatTimeoutJob?.cancel()
+                heartbeatTimeoutJob = scope.launch {
+                    delay(HEARTBEAT_TIMEOUT_MS)
+                    if (waitingForPong) {
+                        Log.w(TAG, "Heartbeat timeout, reconnecting...")
+                        waitingForPong = false
+                        disconnect(sendEvent = false)
+                        scheduleReconnect()
+                    }
+                }
             } else {
                 Log.w(TAG, "Failed to send ping, connection may be lost")
             }
