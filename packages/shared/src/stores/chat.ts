@@ -24,9 +24,6 @@ export const useChatStore = defineStore('chat', () => {
   const messages = ref<Message[]>([])
   // Map: channelId -> users in that voice channel
   const voiceChannelUsers = ref<Map<number, VoiceChannelUser[]>>(new Map())
-  // Map: channelId -> latest messages cache
-  const channelMessagesCache = ref<Map<number, Message[]>>(new Map())
-  let mentionPollInterval: ReturnType<typeof setInterval> | null = null
 
   function getAuthHeaders() {
     const auth = useAuthStore()
@@ -381,166 +378,6 @@ export const useChatStore = defineStore('chat', () => {
     return `${base}${params.toString() ? '?' + params.toString() : ''}`
   }
 
-  // Poll all text channels for new messages and check for mentions
-  async function pollAllChannelsForMentions() {
-    if (!currentServer.value) return
-    
-    const auth = useAuthStore()
-    const currentUsername = auth.user?.username || ''
-    const currentNickname = auth.user?.nickname || ''
-    if (!currentUsername && !currentNickname) return
-
-    const { markChannelAsMentioned, playMentionSound, setUnreadCount } = useMentionNotification()
-    const { getReadTimestamp } = useReadPosition()
-
-    try {
-      // Use new API to get all messages from all text channels in one request
-      const url = `${API_BASE}/api/servers/${currentServer.value.id}/all-messages`
-      console.log('[MentionPoll] API_BASE:', API_BASE)
-      console.log('[MentionPoll] Requesting URL:', url)
-      const resp = await axios.get(url, {
-        headers: getAuthHeaders(),
-        params: { limit: 50 },
-      })
-      
-      console.log('[MentionPoll] Response status:', resp.status)
-      console.log('[MentionPoll] Response headers:', resp.headers)
-      // Don't log full response - it's too large
-      
-      const channelsData = resp.data as Array<{
-        channel_id: number
-        channel_name: string
-        messages: Message[]
-      }>
-      
-      console.log(`[MentionPoll] Received ${channelsData.length} channels from server`)
-      
-      // Process each channel's messages
-      for (const channelData of channelsData) {
-        try {
-          const { channel_id, channel_name, messages: latestMessages } = channelData
-          
-          console.log(`[MentionPoll] Processing channel ${channel_name} (${channel_id}) with ${latestMessages.length} messages`)
-          
-          const cachedMessages = channelMessagesCache.value.get(channel_id) || []
-          
-          // Find new messages (messages not in cache)
-          const cachedIds = new Set(cachedMessages.map(m => m.id))
-          const newMessages = latestMessages.filter(m => !cachedIds.has(m.id))
-          
-          if (newMessages.length > 0) {
-            console.log(`[MentionPoll] Channel ${channel_name}: ${newMessages.length} new messages`)
-          }
-          
-          // Update cache
-          channelMessagesCache.value.set(channel_id, latestMessages)
-          
-          console.log(`[MentionPoll] About to get read timestamp for channel ${channel_id}`)
-          
-          // Check messages for mentions using timestamp-based approach
-          // Check ALL messages, not just new ones, against the lastReadTimestamp
-          const lastReadTimestamp = getReadTimestamp(channel_id)
-          const isCurrentChannel = currentChannel.value?.id === channel_id
-          
-          console.log(`[MentionPoll] Channel ${channel_name} has ${latestMessages.length} messages, lastReadTimestamp:`, 
-            lastReadTimestamp ? new Date(lastReadTimestamp).toISOString() : 'never',
-            'isCurrentChannel:', isCurrentChannel)
-        
-        // 计算未读消息数（不在当前频道时）
-        let unreadCount = 0
-        if (!isCurrentChannel) {
-          for (const msg of latestMessages) {
-            // 跳过自己的消息
-            if (msg.user_id === auth.user?.id) continue
-            // 跳过已读的消息
-            if (lastReadTimestamp && msg.created_at <= new Date(lastReadTimestamp).toISOString()) continue
-            unreadCount++
-          }
-          if (unreadCount > 0) {
-            setUnreadCount(channel_id, unreadCount)
-          }
-        } else {
-          // 当前频道，清除未读计数
-          setUnreadCount(channel_id, 0)
-        }
-        
-        // Check all messages, not just new ones
-        for (const message of latestMessages) {
-          // Use created_at string directly for comparison to avoid timezone issues
-          const messageCreatedAt = message.created_at
-          
-          console.log(`[MentionPoll] Checking message ${message.id}:`, {
-            content: message.content,
-            mentions: message.mentions,
-            created_at: messageCreatedAt,
-            user_id: message.user_id,
-            currentUserId: auth.user?.id,
-            lastReadTimestamp: lastReadTimestamp ? new Date(lastReadTimestamp).toISOString() : null,
-            isAfterLastRead: !lastReadTimestamp || messageCreatedAt > new Date(lastReadTimestamp).toISOString(),
-          })
-          
-          // Skip messages created before last read timestamp (string comparison)
-          if (lastReadTimestamp && messageCreatedAt <= new Date(lastReadTimestamp).toISOString()) {
-            console.log(`[MentionPoll] Skipping message ${message.id} (already read, created at ${messageCreatedAt})`)
-            continue
-          }
-          
-          // Skip own messages
-          if (message.user_id === auth.user?.id) continue
-          
-          // Check if this message mentions current user (check both username and nickname)
-          if (message.mentions && message.mentions.length > 0) {
-            const isMentioned = message.mentions.some(
-              mention => mention.username === currentUsername || mention.username === currentNickname
-            )
-            
-            console.log(`[MentionPoll] Message ${message.id} isMentioned:`, isMentioned)
-            
-            if (isMentioned) {
-              console.log(`[MentionPoll] Found mention in channel ${channel_name}, message ${message.id}`)
-              
-              // Only mark channel and play sound if NOT currently viewing this channel
-              if (!isCurrentChannel) {
-                // Mark channel as having unread mention
-                markChannelAsMentioned(channel_id, message.id)
-                
-                // Play sound if page is visible (with deduplication)
-                if (document.visibilityState === 'visible') {
-                  console.log('[MentionPoll] Playing mention sound for channel', channel_id, 'message', message.id)
-                  playMentionSound(channel_id, message.id)
-                }
-              } else {
-                console.log('[MentionPoll] Skipping notification - user is viewing this channel')
-              }
-            }
-          }
-        }
-        } catch (channelError) {
-          console.error(`[MentionPoll] Error processing channel ${channelData?.channel_name}:`, channelError)
-        }
-      }
-    } catch (e) {
-      console.debug('Failed to poll server messages:', e)
-    }
-  }
-
-  function startMentionPolling() {
-    stopMentionPolling()
-    // Poll immediately
-    pollAllChannelsForMentions()
-    // Then poll every 10 seconds
-    mentionPollInterval = setInterval(() => {
-      pollAllChannelsForMentions()
-    }, 10000)
-  }
-
-  function stopMentionPolling() {
-    if (mentionPollInterval) {
-      clearInterval(mentionPollInterval)
-      mentionPollInterval = null
-    }
-  }
-
   return {
     servers,
     currentServer,
@@ -572,8 +409,5 @@ export const useChatStore = defineStore('chat', () => {
     // Reorder functions (unified API)
     reorderTopLevel,
     reorderGroupChannels,
-    // Mention polling
-    startMentionPolling,
-    stopMentionPolling,
   }
 })

@@ -83,12 +83,13 @@ function startVoiceUsersPolling() {
   if (voice.isConnected) {
     voice.fetchHostModeStatus()
   }
+  // Poll every 10 seconds (reduced from 5s to lower server load)
   voiceUsersInterval = setInterval(() => {
     chat.fetchAllVoiceChannelUsers()
     if (voice.isConnected) {
       voice.fetchHostModeStatus()
     }
-  }, 5000)
+  }, 10000)
 }
 
 function stopVoiceUsersPolling() {
@@ -103,12 +104,8 @@ watch(() => chat.currentServer, (server) => {
     startVoiceUsersPolling()
     // Fetch channel groups when server changes
     chat.fetchChannelGroups(server.id)
-    // Start polling for mentions
-    chat.startMentionPolling()
   } else {
     stopVoiceUsersPolling()
-    // Stop polling when no server
-    chat.stopMentionPolling()
   }
 }, { immediate: true })
 
@@ -119,12 +116,6 @@ onMounted(() => {
 
 onUnmounted(() => {
   stopVoiceUsersPolling()
-  chat.stopMentionPolling()
-})
-
-onUnmounted(() => {
-  stopVoiceUsersPolling()
-  chat.stopMentionPolling()
 })
 
 // Channel groups
