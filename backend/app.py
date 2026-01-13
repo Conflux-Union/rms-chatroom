@@ -31,7 +31,7 @@ from .routers import (
     moderation,
     reactions,
 )
-from .websocket import chat, voice, music as music_ws, transcription, global_state
+from .websocket import chat, voice, music as music_ws, transcription, global_state, livekit_webhook
 
 
 settings = get_settings()
@@ -93,6 +93,7 @@ app.include_router(voice.router)
 app.include_router(music_ws.router)
 app.include_router(transcription.router)
 app.include_router(global_state.router)
+app.include_router(livekit_webhook.router)
 
 
 # Health check

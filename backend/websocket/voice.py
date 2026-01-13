@@ -218,9 +218,6 @@ async def get_voice_token(
         send_qq_group_notify(username, server_name, channel.name, room_name)
     )
 
-    # Broadcast voice users update (fire and forget)
-    asyncio.create_task(broadcast_voice_users_update())
-
     return LiveKitTokenResponse(
         token=jwt_token,
         url=settings.livekit_host,
