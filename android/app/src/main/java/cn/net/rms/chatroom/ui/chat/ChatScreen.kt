@@ -316,9 +316,11 @@ fun ChatScreen(
                             items(messages.size, key = { messages[it].id }) { index ->
                                 val message = messages[index]
                                 val isGrouped = shouldGroupWithPrevious(messages, index)
+                                val groupLatestEditedAt = if (!isGrouped) getGroupLatestEditedAt(messages, index) else null
                                 MessageItem(
                                     message = message,
                                     isGrouped = isGrouped,
+                                    groupLatestEditedAt = groupLatestEditedAt,
                                     authToken = authToken,
                                     currentUserId = currentUserId,
                                     currentUserPermission = currentUserPermission,
@@ -711,6 +713,7 @@ private fun ConnectionBanner(
 private fun MessageItem(
     message: Message,
     isGrouped: Boolean = false,
+    groupLatestEditedAt: String? = null,
     authToken: String?,
     currentUserId: Long?,
     currentUserPermission: Int?,
@@ -789,10 +792,10 @@ private fun MessageItem(
                     )
                 }
 
-                // Edited indicator
-                if (message.editedAt != null) {
+                // Edited indicator - show latest edited_at from the group
+                if (groupLatestEditedAt != null) {
                     Text(
-                        text = "(已编辑于 ${formatTimestamp(message.editedAt)})",
+                        text = "(已编辑于 ${formatTimestamp(groupLatestEditedAt)})",
                         style = MaterialTheme.typography.labelSmall,
                         color = TextMuted
                     )
@@ -1733,6 +1736,38 @@ private fun shouldGroupWithPrevious(messages: List<Message>, index: Int): Boolea
     val totalDiffMinutes = (currentTime - firstMsgTime) / 1000 / 60
 
     return totalDiffMinutes <= MESSAGE_GROUP_TOTAL_THRESHOLD_MINUTES
+}
+
+// Get the latest edited_at timestamp from a message group (for header display)
+private fun getGroupLatestEditedAt(messages: List<Message>, index: Int): String? {
+    // Find the first message in this group (the one with header)
+    var firstMsgIndex = index
+    while (firstMsgIndex > 0 && shouldGroupWithPrevious(messages, firstMsgIndex)) {
+        firstMsgIndex--
+    }
+
+    // Find the last message in this group
+    var lastMsgIndex = index
+    while (lastMsgIndex < messages.size - 1 && shouldGroupWithPrevious(messages, lastMsgIndex + 1)) {
+        lastMsgIndex++
+    }
+
+    // Find the latest edited_at in the group
+    var latestEditedAt: String? = null
+    var latestTime: Long? = null
+    for (i in firstMsgIndex..lastMsgIndex) {
+        val msg = messages[i]
+        val editedAt = msg.editedAt
+        if (editedAt != null) {
+            val editedTime = parseTimestamp(editedAt)
+            if (editedTime != null && (latestTime == null || editedTime > latestTime)) {
+                latestTime = editedTime
+                latestEditedAt = editedAt
+            }
+        }
+    }
+
+    return latestEditedAt
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
