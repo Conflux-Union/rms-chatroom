@@ -76,6 +76,20 @@ def _get_seek_lock(room_name: str) -> asyncio.Lock:
     return _seek_locks[room_name]
 
 
+async def _broadcast_login_status(status: str, platform: str) -> None:
+    """Broadcast music login status change to all connected clients via /ws/global."""
+    try:
+        from ..websocket.manager import global_state_manager
+
+        await global_state_manager.broadcast_to_all_users({
+            "type": "music_login_status",
+            "status": status,
+            "platform": platform
+        })
+    except Exception as e:
+        logger.error(f"Failed to broadcast login status: {e}")
+
+
 async def _broadcast_playback_state(room_name: str) -> None:
     """Broadcast current playback state to all connected clients for a specific room."""
     global _ws_broadcast
@@ -487,7 +501,13 @@ def _check_netease_login_status() -> dict:
             logger.warning(f"Failed to save NetEase session: {e}")
         response["logged_in"] = True
         _netease_unikey = None
-    
+
+        # Broadcast login success
+        asyncio.create_task(_broadcast_login_status("success", "netease"))
+    elif code == 800:
+        # Broadcast login expired
+        asyncio.create_task(_broadcast_login_status("expired", "netease"))
+
     return response
 
 
@@ -516,12 +536,21 @@ async def check_login_status(platform: str = "qq"):
         }
         
         result = {"status": status_map.get(status, "unknown"), "platform": "qq"}
-        
+
         if status == QRCodeLoginEvents.DONE and cred:
             _credential = cred
             _save_credential(cred)
             result["logged_in"] = True
-            
+
+            # Broadcast login success via global WebSocket
+            asyncio.create_task(_broadcast_login_status("success", "qq"))
+        elif status == QRCodeLoginEvents.TIMEOUT:
+            # Broadcast login expired
+            asyncio.create_task(_broadcast_login_status("expired", "qq"))
+        elif status == QRCodeLoginEvents.REFUSE:
+            # Broadcast login refused
+            asyncio.create_task(_broadcast_login_status("refused", "qq"))
+
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to check status: {e}")

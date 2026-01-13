@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref, shallowRef } from 'vue'
+import { ref, shallowRef, watch } from 'vue'
 import {
   Room,
   RoomEvent,
@@ -13,6 +13,7 @@ import {
 } from 'livekit-client'
 import type { Channel } from '../types'
 import { useAuthStore } from './auth'
+import { useChatStore } from './chat'
 import { startNoiseCancel, type NoiseCancelMode, type NoiseCancelSession } from '../composables/noiseCancle'
 
 const API_BASE = import.meta.env.VITE_API_BASE || ''
@@ -193,7 +194,6 @@ export const useVoiceStore = defineStore('voice', () => {
   const serverMuteState = ref<Map<string, boolean>>(new Map())
   // Avatar URL cache (from API)
   const avatarUrlCache = ref<Map<string, string>>(new Map())
-  let syncInterval: ReturnType<typeof setInterval> | null = null
 
   // iOS Audio Context state
   const audioContextInitialized = ref(false)
@@ -406,48 +406,41 @@ export const useVoiceStore = defineStore('voice', () => {
   }
 
   /**
-   * Fetch mute state and avatar URLs from server and sync with local participants.
+   * Sync participant state from chat store's voice users data (pushed via WebSocket).
+   * This replaces the old polling mechanism.
    */
-  async function syncParticipantsFromServer(): Promise<void> {
+  function syncParticipantsFromChatStore(): void {
     if (!currentVoiceChannel.value || !isConnected.value) return
 
-    const auth = useAuthStore()
-    try {
-      const response = await fetch(
-        `${API_BASE}/api/voice/${currentVoiceChannel.value.id}/users`,
-        { headers: { Authorization: `Bearer ${auth.token}` } }
-      )
-      if (response.ok) {
-        const users: Array<{ id: string; name: string; avatar_url?: string; is_muted: boolean; is_host: boolean }> = await response.json()
-        const newMuteState = new Map<string, boolean>()
-        for (const user of users) {
-          newMuteState.set(user.id, user.is_muted)
-          // Cache avatar URL if available
-          if (user.avatar_url) {
-            avatarUrlCache.value.set(user.id, user.avatar_url)
-          }
-        }
-        serverMuteState.value = newMuteState
-        updateParticipants()
+    const chat = useChatStore()
+    const users = chat.getVoiceChannelUsers(currentVoiceChannel.value.id)
+
+    const newMuteState = new Map<string, boolean>()
+    for (const user of users) {
+      newMuteState.set(user.id, user.is_muted)
+      // Cache avatar URL if available
+      if (user.avatar_url) {
+        avatarUrlCache.value.set(user.id, user.avatar_url)
       }
-    } catch (e) {
-      console.log('Failed to sync participants from server:' + e)
     }
+    serverMuteState.value = newMuteState
+    updateParticipants()
   }
 
+  // Watch chat store's voice channel users for updates
+  const chat = useChatStore()
+  watch(() => chat.voiceChannelUsers, () => {
+    syncParticipantsFromChatStore()
+  }, { deep: true })
+
   function startSyncInterval() {
-    stopSyncInterval()
-    syncParticipantsFromServer()
-    syncInterval = setInterval(() => {
-      syncParticipantsFromServer()
-    }, 2000)
+    // No longer needed - using WebSocket push instead
+    // Initial sync from chat store
+    syncParticipantsFromChatStore()
   }
 
   function stopSyncInterval() {
-    if (syncInterval) {
-      clearInterval(syncInterval)
-      syncInterval = null
-    }
+    // No longer needed - using WebSocket push instead
   }
 
   async function enumerateDevices(): Promise<void> {
