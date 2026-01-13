@@ -511,6 +511,34 @@ function shouldGroupWithPrevious(index: number): boolean {
   return totalDiffMinutes <= MESSAGE_GROUP_TOTAL_THRESHOLD_MINUTES
 }
 
+// Get the latest edited_at timestamp from a message group (for header display)
+function getGroupLatestEditedAt(index: number): string | undefined {
+  // Find the first message in this group (the one with header)
+  let firstMsgIndex = index
+  while (firstMsgIndex > 0 && shouldGroupWithPrevious(firstMsgIndex)) {
+    firstMsgIndex--
+  }
+
+  // Find the last message in this group
+  let lastMsgIndex = index
+  while (lastMsgIndex < chat.messages.length - 1 && shouldGroupWithPrevious(lastMsgIndex + 1)) {
+    lastMsgIndex++
+  }
+
+  // Find the latest edited_at in the group
+  let latestEditedAt: string | undefined
+  for (let i = firstMsgIndex; i <= lastMsgIndex; i++) {
+    const msg = chat.messages[i]
+    if (msg.edited_at) {
+      if (!latestEditedAt || new Date(msg.edited_at) > new Date(latestEditedAt)) {
+        latestEditedAt = msg.edited_at
+      }
+    }
+  }
+
+  return latestEditedAt
+}
+
 // Edit message functions
 function startEdit(message: Message) {
   editingMessage.value = {
@@ -997,7 +1025,7 @@ onUnmounted(() => {
             <span class="message-author">{{ msg.username }}</span>
             <span class="message-time">
               {{ formatTime(msg.created_at) }}
-              <span v-if="msg.edited_at" class="edited-indicator">(已编辑于 {{ formatTime(msg.edited_at) }})</span>
+              <span v-if="getGroupLatestEditedAt(index)" class="edited-indicator">(已编辑于 {{ formatTime(getGroupLatestEditedAt(index)!) }})</span>
             </span>
             <button
               v-if="!msg.is_deleted"
