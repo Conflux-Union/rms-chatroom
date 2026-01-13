@@ -376,11 +376,11 @@ async def edit_message(
     # Broadcast edit event via WebSocket
     from ..websocket.manager import chat_manager
 
-    await chat_manager.broadcast_to_channel(
-        channel_id,
+    await chat_manager.broadcast_to_all_users(
         {
             "type": "message_edited",
             "message_id": message_id,
+            "channel_id": channel_id,
             "content": content,
             "edited_at": edited_at_str,
         },
@@ -434,11 +434,11 @@ async def delete_message(
     # Broadcast delete event via WebSocket
     from ..websocket.manager import chat_manager
 
-    await chat_manager.broadcast_to_channel(
-        channel_id,
+    await chat_manager.broadcast_to_all_users(
         {
             "type": "message_deleted",
             "message_id": message_id,
+            "channel_id": channel_id,
             "deleted_by": user["id"],
             "deleted_by_username": user.get("nickname") or user["username"],
         },
