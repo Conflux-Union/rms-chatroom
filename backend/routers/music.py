@@ -77,11 +77,11 @@ def _get_seek_lock(room_name: str) -> asyncio.Lock:
 
 
 async def _broadcast_login_status(status: str, platform: str) -> None:
-    """Broadcast music login status change to all connected clients via /ws/global."""
+    """Broadcast music login status change to all connected music clients via /ws/music."""
     try:
-        from ..websocket.manager import global_state_manager
+        from ..websocket.music import broadcast_to_all_music_clients
 
-        await global_state_manager.broadcast_to_all_users({
+        await broadcast_to_all_music_clients({
             "type": "music_login_status",
             "status": status,
             "platform": platform

@@ -25,7 +25,6 @@ async def global_state_websocket(websocket: WebSocket, token: str | None = None)
     - {"type": "voice_users_update", "channel_id": 123, "users": [...]}
     - {"type": "participant_state_update", "channel_id": 123, "participants": [...]}
     - {"type": "host_mode_update", "channel_id": 123, "enabled": true, "host_name": "..."}
-    - {"type": "music_login_status", "status": "success", "platform": "qq"}
     - {"type": "connected"}
 
     Client sends:
