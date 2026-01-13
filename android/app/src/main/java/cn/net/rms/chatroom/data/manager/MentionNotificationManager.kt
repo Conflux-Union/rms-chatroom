@@ -38,10 +38,11 @@ class MentionNotificationManager(private val context: Context) {
     private var mediaPlayer: MediaPlayer? = null
 
     /**
-     * Check if a message mentions the current user
+     * Check if a message mentions the current user by user ID
+     * (More reliable than username matching since backend stores nickname in username field)
      */
-    fun isMentioned(message: Message, currentUsername: String): Boolean {
-        return message.mentions?.any { it.username == currentUsername } == true
+    fun isMentioned(message: Message, currentUserId: Long): Boolean {
+        return message.mentions?.any { it.id == currentUserId } == true
     }
 
     /**
@@ -49,7 +50,7 @@ class MentionNotificationManager(private val context: Context) {
      */
     suspend fun checkMessagesForMentions(
         messages: List<Message>,
-        currentUsername: String,
+        currentUserId: Long,
         channelId: Long
     ): MentionInfo {
         val lastReadMessageId = getLastReadMessageId(channelId)
@@ -67,7 +68,7 @@ class MentionNotificationManager(private val context: Context) {
             unreadCount++
 
             // Check if this message mentions the current user
-            if (isMentioned(message, currentUsername)) {
+            if (isMentioned(message, currentUserId)) {
                 hasMention = true
                 lastMentionMessageId = message.id
             }

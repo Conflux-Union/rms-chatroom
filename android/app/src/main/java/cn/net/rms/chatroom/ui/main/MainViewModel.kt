@@ -77,7 +77,7 @@ class MainViewModel @Inject constructor(
     val isVoiceMuted: StateFlow<Boolean> = voiceRepository.isMuted
 
     // Current user info for mention detection
-    private var currentUsername: String? = null
+    private var currentUserId: Long? = null
 
     init {
         loadServers()
@@ -102,8 +102,8 @@ class MainViewModel @Inject constructor(
             authRepository.getToken()?.let { token ->
                 authRepository.verifyToken(token)
                     .onSuccess { user ->
-                        currentUsername = user.username
-                        Log.d(TAG, "Loaded current username: $currentUsername")
+                        currentUserId = user.id
+                        Log.d(TAG, "Loaded current user ID: $currentUserId")
                     }
                     .onFailure { e ->
                         Log.e(TAG, "Failed to load current user: ${e.message}")
@@ -230,19 +230,23 @@ class MainViewModel @Inject constructor(
 
                         // Check if this message mentions the current user
                         val message = event.message
-                        val username = currentUsername
-                        if (username != null && message.mentions?.any { it.username == username } == true) {
+                        val userId = currentUserId
+                        val isOwnMessage = message.userId == userId
+                        
+                        if (userId != null && !isOwnMessage && message.mentions?.any { it.id == userId } == true) {
                             // This message mentions the current user
                             val channelId = message.channelId
                             val currentChannelId = _state.value.currentChannel?.id
+                            val isCurrentChannel = channelId == currentChannelId
 
-                            // Only play sound and mark as mentioned if not in the current channel
-                            if (channelId != currentChannelId) {
-                                Log.d(TAG, "Mention detected in channel $channelId (current: $currentChannelId)")
-                                viewModelScope.launch {
+                            Log.d(TAG, "Mention detected in channel $channelId (current: $currentChannelId)")
+                            viewModelScope.launch {
+                                // Always play sound for mentions
+                                mentionNotificationManager.playMentionSound(channelId, message.id)
+                                
+                                // Only mark channel badge if not in current channel
+                                if (!isCurrentChannel) {
                                     mentionNotificationManager.markChannelAsMentioned(channelId, message.id)
-                                    mentionNotificationManager.playMentionSound(channelId, message.id)
-
                                     // Update unread count
                                     val currentCount = mentionNotificationManager.getUnreadCount(channelId)
                                     mentionNotificationManager.setUnreadCount(channelId, currentCount + 1)
@@ -597,15 +601,15 @@ class MainViewModel @Inject constructor(
         }
     }
 
-    fun checkAndUpdateMentions(currentUsername: String?) {
-        if (currentUsername == null) return
+    fun checkAndUpdateMentions(currentUserId: Long?) {
+        if (currentUserId == null) return
         val channelId = _state.value.currentChannel?.id ?: return
         val currentMessages = messages.value
 
         viewModelScope.launch {
             val mentionInfo = mentionNotificationManager.checkMessagesForMentions(
                 messages = currentMessages,
-                currentUsername = currentUsername,
+                currentUserId = currentUserId,
                 channelId = channelId
             )
 
