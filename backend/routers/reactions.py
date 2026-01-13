@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..core.database import get_db
 from ..models.server import Message, Reaction
 from .deps import CurrentUser
-from .schemas import ReactionGroupResponse, ReactionUserResponse
+from .schemas import ReactionGroupResponse, ReactionUserResponse, UTCDateTimeModel
 
 logger = logging.getLogger(__name__)
 
@@ -30,16 +30,13 @@ class ReactionGroupWithReacted(ReactionGroupResponse):
     reacted: bool  # Whether current user has reacted with this emoji
 
 
-class ReactionResponse(BaseModel):
+class ReactionResponse(UTCDateTimeModel):
     id: int
     message_id: int
     user_id: int
     username: str
     emoji: str
     created_at: datetime
-
-    class Config:
-        from_attributes = True
 
 
 def group_reactions(

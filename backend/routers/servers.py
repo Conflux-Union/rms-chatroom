@@ -9,8 +9,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from ..core.database import get_db
-from ..models.server import Server, Channel, ChannelType, ChannelGroup, Message, Attachment
+from ..models.server import (
+    Server,
+    Channel,
+    ChannelType,
+    ChannelGroup,
+    Message,
+    Attachment,
+)
 from .deps import CurrentUser, AdminUser
+from .schemas import UTCDateTimeModel
 
 
 router = APIRouter(prefix="/api/servers", tags=["servers"])
@@ -292,11 +300,12 @@ class AttachmentResponse(BaseModel):
 
 class MentionResponse(BaseModel):
     """User mentioned in a message."""
+
     id: int
     username: str
 
 
-class MessageInChannelResponse(BaseModel):
+class MessageInChannelResponse(UTCDateTimeModel):
     id: int
     channel_id: int
     user_id: int
@@ -308,9 +317,6 @@ class MessageInChannelResponse(BaseModel):
     is_deleted: bool = False
     edited_at: datetime | None = None
     mentions: list[MentionResponse] = []
-
-    class Config:
-        from_attributes = True
 
 
 class ChannelMessagesResponse(BaseModel):
@@ -327,7 +333,7 @@ async def get_all_server_messages(
     limit: int = Query(50, le=200, description="Max messages per channel"),
 ):
     """Get all messages from all text channels in a server.
-    
+
     Returns a list of channel messages, where each item contains:
     - channel_id: The channel's ID
     - channel_name: The channel's name
@@ -344,10 +350,7 @@ async def get_all_server_messages(
     # Get all text channels in this server
     channels_result = await db.execute(
         select(Channel)
-        .where(
-            Channel.server_id == server_id,
-            Channel.type == ChannelType.TEXT
-        )
+        .where(Channel.server_id == server_id, Channel.type == ChannelType.TEXT)
         .order_by(Channel.position)
     )
     channels = channels_result.scalars().all()
@@ -373,18 +376,18 @@ async def get_all_server_messages(
         message_responses = []
         for msg in reversed(messages):  # Reverse to get chronological order
             import re
-            
+
             attachments = [
                 AttachmentResponse(
                     id=att.id,
                     filename=att.filename,
                     content_type=att.content_type,
                     size=att.size,
-                    url=f"/api/files/{att.id}"
+                    url=f"/api/files/{att.id}",
                 )
                 for att in msg.attachments
             ]
-            
+
             # Parse mentions from content (same logic as messages.py)
             mentions_data = []
             if msg.content:
@@ -396,7 +399,7 @@ async def get_all_server_messages(
                     if username not in seen:
                         seen.add(username)
                         mentions_data.append(MentionResponse(id=0, username=username))
-            
+
             message_responses.append(
                 MessageInChannelResponse(
                     id=msg.id,

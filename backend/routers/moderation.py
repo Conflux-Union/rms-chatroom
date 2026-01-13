@@ -1,7 +1,8 @@
 """Moderation API endpoints for mute management."""
+
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
@@ -34,7 +35,9 @@ async def create_mute(
     # Validate scope and corresponding IDs
     if payload.scope == "global":
         if payload.server_id or payload.channel_id:
-            raise HTTPException(400, "Global mute should not have server_id or channel_id")
+            raise HTTPException(
+                400, "Global mute should not have server_id or channel_id"
+            )
     elif payload.scope == "server":
         if not payload.server_id or payload.channel_id:
             raise HTTPException(400, "Server mute requires server_id only")
@@ -47,7 +50,9 @@ async def create_mute(
     # Calculate muted_until
     muted_until = None
     if payload.duration_minutes:
-        muted_until = datetime.utcnow() + timedelta(minutes=payload.duration_minutes)
+        muted_until = datetime.now(timezone.utc) + timedelta(
+            minutes=payload.duration_minutes
+        )
 
     # Check if mute record already exists
     existing = await db.execute(
@@ -101,17 +106,12 @@ async def get_user_mutes(
     db: AsyncSession = Depends(get_db),
 ):
     """Get all active mute records for a user."""
-    result = await db.execute(
-        select(MuteRecord).where(MuteRecord.user_id == user_id)
-    )
+    result = await db.execute(select(MuteRecord).where(MuteRecord.user_id == user_id))
     mutes = result.scalars().all()
 
     # Filter out expired temporary mutes
-    now = datetime.utcnow()
-    active_mutes = [
-        m for m in mutes
-        if m.muted_until is None or m.muted_until > now
-    ]
+    now = datetime.now(timezone.utc)
+    active_mutes = [m for m in mutes if m.muted_until is None or m.muted_until > now]
 
     return [
         {
@@ -119,7 +119,9 @@ async def get_user_mutes(
             "scope": m.scope,
             "server_id": m.server_id,
             "channel_id": m.channel_id,
-            "muted_until": m.muted_until.isoformat() if m.muted_until else None,
+            "muted_until": m.muted_until.isoformat().replace("+00:00", "Z")
+            if m.muted_until
+            else None,
             "reason": m.reason,
         }
         for m in active_mutes

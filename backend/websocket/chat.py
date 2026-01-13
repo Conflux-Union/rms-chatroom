@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
 from sqlalchemy import select
@@ -12,6 +12,14 @@ from ..core.database import async_session_maker
 from ..models.server import Attachment, Channel, ChannelType, Message
 from ..services.sso_client import SSOClient
 from .manager import chat_manager
+
+
+def format_utc_datetime(dt: datetime) -> str:
+    """Format datetime to ISO 8601 with Z suffix for UTC."""
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    utc_dt = dt.astimezone(timezone.utc)
+    return utc_dt.strftime("%Y-%m-%dT%H:%M:%S") + "Z"
 
 
 def _truncate_content(content: str, max_len: int = 100) -> str:
@@ -215,54 +223,8 @@ async def chat_websocket(websocket: WebSocket, token: str | None = None):
 
                     await db.commit()
 
-                    # Determine created time to broadcast
-                    def parse_client_time(val):
-                        if val is None:
-                            return None
-                        try:
-                            if isinstance(val, (int, float)):
-                                v = float(val)
-                                if v > 1e12:
-                                    return datetime.fromtimestamp(
-                                        v / 1000.0, tz=timezone.utc
-                                    )
-                                return datetime.fromtimestamp(v, tz=timezone.utc)
-                        except Exception:
-                            pass
-
-                        if isinstance(val, str):
-                            s = val.strip()
-                            try:
-                                if s.endswith("Z"):
-                                    s2 = s[:-1] + "+00:00"
-                                    return datetime.fromisoformat(s2)
-                                return datetime.fromisoformat(s)
-                            except Exception:
-                                try:
-                                    v = float(s)
-                                    if v > 1e12:
-                                        return datetime.fromtimestamp(
-                                            v / 1000.0, tz=timezone.utc
-                                        )
-                                    return datetime.fromtimestamp(v, tz=timezone.utc)
-                                except Exception:
-                                    return None
-                        return None
-
-                    client_ts = msg.get("created_at") if isinstance(msg, dict) else None
-                    parsed = parse_client_time(client_ts)
-                    beijing = timezone(timedelta(hours=8))
-                    if parsed is not None:
-                        if parsed.tzinfo is None:
-                            parsed = parsed.replace(tzinfo=timezone.utc)
-                        created_beijing = parsed.astimezone(beijing)
-                        created_str = created_beijing.strftime("%Y-%m-%d %H:%M")
-                    else:
-                        created = message.created_at
-                        if created.tzinfo is None:
-                            created = created.replace(tzinfo=timezone.utc)
-                        created_beijing = created.astimezone(beijing)
-                        created_str = created_beijing.strftime("%Y-%m-%d %H:%M")
+                    # Format created_at as UTC ISO 8601 with Z suffix
+                    created_str = format_utc_datetime(message.created_at)
 
                     # Get avatar URL for the sender
                     avatar_url = user.get("avatar_url")

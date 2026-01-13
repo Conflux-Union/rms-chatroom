@@ -5,6 +5,7 @@ import { useAuthStore } from '../stores/auth'
 import { useChatWebSocket } from '../composables/useChatWebSocket'
 import { useReadPosition } from '../composables/useReadPosition'
 import { useMentionNotification } from '../composables/useMentionNotification'
+import { formatDateTime, parseUTCDateTime, isWithinMinutes } from '../utils/datetime'
 import {
   NDropdown,
   NModal,
@@ -385,18 +386,6 @@ async function sendMessage() {
   replyingTo.value = null
 }
 
-function formatTime(dateStr: string) {
-  const utcStr = dateStr.endsWith('Z') ? dateStr : dateStr + 'Z'
-  const date = new Date(utcStr)
-  const pad = (n: number) => String(n).padStart(2, '0')
-  const y = date.getFullYear()
-  const m = pad(date.getMonth() + 1)
-  const d = pad(date.getDate())
-  const hh = pad(date.getHours())
-  const mm = pad(date.getMinutes())
-  return `${y}-${m}-${d} ${hh}:${mm}`
-}
-
 function formatFileSize(bytes: number) {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
@@ -450,10 +439,7 @@ function canDelete(message: Message) {
   if (!isOwnMessage(message)) return false
 
   // Check 2-minute time limit for non-admin users
-  const messageTime = new Date(message.created_at.endsWith('Z') ? message.created_at : message.created_at + 'Z')
-  const now = new Date()
-  const diffMinutes = (now.getTime() - messageTime.getTime()) / 1000 / 60
-  return diffMinutes <= 2
+  return isWithinMinutes(message.created_at, 2)
 }
 
 function canMute(message: Message) {
@@ -476,8 +462,8 @@ function shouldGroupWithPrevious(index: number): boolean {
   // Previous message is deleted, don't group (keep visual separation)
   if (prevMsg.is_deleted) return false
 
-  const currentTime = new Date(currentMsg.created_at).getTime()
-  const prevTime = new Date(prevMsg.created_at).getTime()
+  const currentTime = parseUTCDateTime(currentMsg.created_at).getTime()
+  const prevTime = parseUTCDateTime(prevMsg.created_at).getTime()
   const diffMinutes = (currentTime - prevTime) / 1000 / 60
 
   // Adjacent messages must be within 1 minute
@@ -494,8 +480,8 @@ function shouldGroupWithPrevious(index: number): boolean {
     // Deleted message breaks the chain
     if (prevMsgInChain.is_deleted) break
 
-    const msgTime = new Date(msg.created_at).getTime()
-    const prevMsgTime = new Date(prevMsgInChain.created_at).getTime()
+    const msgTime = parseUTCDateTime(msg.created_at).getTime()
+    const prevMsgTime = parseUTCDateTime(prevMsgInChain.created_at).getTime()
     const chainDiff = (msgTime - prevMsgTime) / 1000 / 60
 
     // Gap > 1 minute breaks the chain
@@ -505,7 +491,7 @@ function shouldGroupWithPrevious(index: number): boolean {
   }
 
   // Check total time from first message in group
-  const firstMsgTime = new Date(chat.messages[firstMsgIndex].created_at).getTime()
+  const firstMsgTime = parseUTCDateTime(chat.messages[firstMsgIndex].created_at).getTime()
   const totalDiffMinutes = (currentTime - firstMsgTime) / 1000 / 60
 
   return totalDiffMinutes <= MESSAGE_GROUP_TOTAL_THRESHOLD_MINUTES
@@ -1024,8 +1010,8 @@ onUnmounted(() => {
           <div v-if="!shouldGroupWithPrevious(index)" class="message-header">
             <span class="message-author">{{ msg.username }}</span>
             <span class="message-time">
-              {{ formatTime(msg.created_at) }}
-              <span v-if="getGroupLatestEditedAt(index)" class="edited-indicator">(已编辑于 {{ formatTime(getGroupLatestEditedAt(index)!) }})</span>
+              {{ formatDateTime(msg.created_at) }}
+              <span v-if="getGroupLatestEditedAt(index)" class="edited-indicator">(已编辑于 {{ formatDateTime(getGroupLatestEditedAt(index)!) }})</span>
             </span>
             <button
               v-if="!msg.is_deleted"
