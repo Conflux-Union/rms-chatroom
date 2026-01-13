@@ -149,7 +149,9 @@ fun MainScreen(
                         voiceChannelName = voiceChannelName,
                         isVoiceMuted = isVoiceMuted,
                         onToggleMute = { mainViewModel.toggleVoiceMute() },
-                        onDisconnectVoice = { mainViewModel.disconnectVoice() }
+                        onDisconnectVoice = { mainViewModel.disconnectVoice() },
+                        channelMentions = mainState.channelMentions,
+                        unreadCounts = mainState.unreadCounts
                     )
                 }
             }
@@ -225,8 +227,24 @@ fun MainScreen(
 
                     mainState.currentChannel?.type == ChannelType.TEXT -> {
                         val connectionState by mainViewModel.connectionState.collectAsState()
+                        val messages = mainViewModel.messages.collectAsState().value
+
+                        // Check for mentions when messages change
+                        LaunchedEffect(messages, mainState.currentChannel?.id) {
+                            if (messages.isNotEmpty()) {
+                                mainViewModel.checkAndUpdateMentions(authState.user?.username)
+                            }
+                        }
+
+                        // Clear mention state when entering this channel
+                        LaunchedEffect(mainState.currentChannel?.id) {
+                            mainState.currentChannel?.id?.let { channelId ->
+                                mainViewModel.clearChannelMention(channelId)
+                            }
+                        }
+
                         ChatScreen(
-                            messages = mainViewModel.messages.collectAsState().value,
+                            messages = messages,
                             isLoading = mainState.isMessagesLoading,
                             connectionState = connectionState,
                             authToken = authState.token,
@@ -235,8 +253,8 @@ fun MainScreen(
                             lastReadMessageId = mainState.lastReadMessageId,
                             showContinueReading = mainState.showContinueReading,
                             channelMembers = mainState.channelMembers,
-                            onSendMessage = { content, attachmentIds, replyToId -> 
-                                mainViewModel.sendMessage(content, attachmentIds, replyToId) 
+                            onSendMessage = { content, attachmentIds, replyToId ->
+                                mainViewModel.sendMessage(content, attachmentIds, replyToId)
                             },
                             onUploadFile = { uri -> mainViewModel.uploadFile(uri) },
                             onRefresh = { mainViewModel.refreshMessages() },

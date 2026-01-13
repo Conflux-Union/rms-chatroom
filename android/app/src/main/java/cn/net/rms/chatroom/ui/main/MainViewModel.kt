@@ -13,6 +13,8 @@ import cn.net.rms.chatroom.data.model.Server
 import cn.net.rms.chatroom.data.model.VoiceUser
 import cn.net.rms.chatroom.data.api.AppUpdateResponse
 import cn.net.rms.chatroom.data.model.AttachmentResponse
+import cn.net.rms.chatroom.data.manager.MentionNotificationManager
+import cn.net.rms.chatroom.data.repository.AuthRepository
 import cn.net.rms.chatroom.data.repository.BugReportRepository
 import cn.net.rms.chatroom.data.repository.ChatRepository
 import cn.net.rms.chatroom.data.repository.UpdateRepository
@@ -45,7 +47,9 @@ data class MainState(
     val downloadComplete: Boolean = false,
     val lastReadMessageId: Long? = null,
     val showContinueReading: Boolean = false,
-    val channelMembers: List<ChannelMember> = emptyList()
+    val channelMembers: List<ChannelMember> = emptyList(),
+    val channelMentions: Set<Long> = emptySet(),
+    val unreadCounts: Map<Long, Int> = emptyMap()
 )
 
 @HiltViewModel
@@ -53,7 +57,9 @@ class MainViewModel @Inject constructor(
     private val chatRepository: ChatRepository,
     private val bugReportRepository: BugReportRepository,
     private val updateRepository: UpdateRepository,
-    private val voiceRepository: VoiceRepository
+    private val voiceRepository: VoiceRepository,
+    private val mentionNotificationManager: MentionNotificationManager,
+    private val authRepository: AuthRepository
 ) : ViewModel() {
     companion object {
         private const val TAG = "MainViewModel"
@@ -73,10 +79,30 @@ class MainViewModel @Inject constructor(
 
     private var voiceUsersPollingJob: Job? = null
 
+    // Current user info for mention detection
+    private var currentUsername: String? = null
+
     init {
         loadServers()
         observeWebSocket()
         checkForUpdate()
+        loadMentionStates()
+        loadCurrentUser()
+    }
+
+    private fun loadCurrentUser() {
+        viewModelScope.launch {
+            authRepository.getToken()?.let { token ->
+                authRepository.verifyToken(token)
+                    .onSuccess { user ->
+                        currentUsername = user.username
+                        Log.d(TAG, "Loaded current username: $currentUsername")
+                    }
+                    .onFailure { e ->
+                        Log.e(TAG, "Failed to load current user: ${e.message}")
+                    }
+            }
+        }
     }
 
     private fun loadServers() {
@@ -206,6 +232,28 @@ class MainViewModel @Inject constructor(
                 when (event) {
                     is WebSocketEvent.NewMessage -> {
                         Log.d(TAG, "New message received: ${event.message.id}")
+
+                        // Check if this message mentions the current user
+                        val message = event.message
+                        val username = currentUsername
+                        if (username != null && message.mentions?.any { it.username == username } == true) {
+                            // This message mentions the current user
+                            val channelId = message.channelId
+                            val currentChannelId = _state.value.currentChannel?.id
+
+                            // Only play sound and mark as mentioned if not in the current channel
+                            if (channelId != currentChannelId) {
+                                Log.d(TAG, "Mention detected in channel $channelId (current: $currentChannelId)")
+                                viewModelScope.launch {
+                                    mentionNotificationManager.markChannelAsMentioned(channelId, message.id)
+                                    mentionNotificationManager.playMentionSound(channelId, message.id)
+
+                                    // Update unread count
+                                    val currentCount = mentionNotificationManager.getUnreadCount(channelId)
+                                    mentionNotificationManager.setUnreadCount(channelId, currentCount + 1)
+                                }
+                            }
+                        }
                     }
                     is WebSocketEvent.Connected -> {
                         Log.d(TAG, "WebSocket connected to channel ${event.channelId}")
@@ -537,5 +585,55 @@ class MainViewModel @Inject constructor(
         super.onCleared()
         stopVoiceUsersPolling()
         chatRepository.disconnectFromChannel()
+        mentionNotificationManager.release()
+    }
+
+    // Mention notification methods
+    private fun loadMentionStates() {
+        viewModelScope.launch {
+            mentionNotificationManager.getChannelsWithMentions().collect { mentions ->
+                _state.value = _state.value.copy(channelMentions = mentions)
+            }
+        }
+        viewModelScope.launch {
+            mentionNotificationManager.getAllUnreadCounts().collect { counts ->
+                _state.value = _state.value.copy(unreadCounts = counts)
+            }
+        }
+    }
+
+    fun checkAndUpdateMentions(currentUsername: String?) {
+        if (currentUsername == null) return
+        val channelId = _state.value.currentChannel?.id ?: return
+        val currentMessages = messages.value
+
+        viewModelScope.launch {
+            val mentionInfo = mentionNotificationManager.checkMessagesForMentions(
+                messages = currentMessages,
+                currentUsername = currentUsername,
+                channelId = channelId
+            )
+
+            // Update unread count
+            mentionNotificationManager.setUnreadCount(channelId, mentionInfo.unreadCount)
+
+            // If there's a mention, mark it and play sound
+            if (mentionInfo.hasMention && mentionInfo.lastMentionMessageId != null) {
+                mentionNotificationManager.markChannelAsMentioned(
+                    channelId,
+                    mentionInfo.lastMentionMessageId
+                )
+                mentionNotificationManager.playMentionSound(
+                    channelId,
+                    mentionInfo.lastMentionMessageId
+                )
+            }
+        }
+    }
+
+    fun clearChannelMention(channelId: Long) {
+        viewModelScope.launch {
+            mentionNotificationManager.clearChannelMention(channelId)
+        }
     }
 }
