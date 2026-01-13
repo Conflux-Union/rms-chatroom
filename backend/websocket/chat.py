@@ -71,26 +71,46 @@ async def chat_websocket(websocket: WebSocket, token: str | None = None):
                 channel_id = msg.get("channel_id")
                 if not channel_id:
                     await websocket.send_json(
-                        {"type": "error", "code": "missing_channel_id", "message": "channel_id is required"}
+                        {
+                            "type": "error",
+                            "code": "missing_channel_id",
+                            "message": "channel_id is required",
+                        }
                     )
                     continue
 
                 # Verify channel exists and is text type
                 async with async_session_maker() as db:
-                    result = await db.execute(select(Channel).where(Channel.id == channel_id))
+                    result = await db.execute(
+                        select(Channel).where(Channel.id == channel_id)
+                    )
                     channel = result.scalar_one_or_none()
                     if not channel or channel.type != ChannelType.TEXT:
                         await websocket.send_json(
-                            {"type": "error", "code": "invalid_channel", "message": "Channel not found or not a text channel"}
+                            {
+                                "type": "error",
+                                "code": "invalid_channel",
+                                "message": "Channel not found or not a text channel",
+                            }
                         )
                         continue
 
+                    # Store server_id before session closes (to avoid DetachedInstanceError)
+                    server_id = channel.server_id
+
                     # Check if user is muted
                     from ..services.moderation import check_user_muted
-                    is_muted, reason = await check_user_muted(user["id"], channel_id, db)
+
+                    is_muted, reason = await check_user_muted(
+                        user["id"], channel_id, db
+                    )
                     if is_muted:
                         await websocket.send_json(
-                            {"type": "error", "code": "muted", "message": reason or "You are muted"}
+                            {
+                                "type": "error",
+                                "code": "muted",
+                                "message": reason or "You are muted",
+                            }
                         )
                         continue
 
@@ -130,6 +150,7 @@ async def chat_websocket(websocket: WebSocket, token: str | None = None):
                             reply_to_id = None
 
                     # Parse @mentions from content
+                    # Search server-wide for mentioned users (not just current channel)
                     mentioned_user_ids_json = None
                     mentions_data = []
                     if content:
@@ -137,10 +158,12 @@ async def chat_websocket(websocket: WebSocket, token: str | None = None):
                         mentioned_usernames = set(mention_pattern.findall(content))
 
                         if mentioned_usernames:
+                            # Find users who have sent messages in ANY channel of this server
                             mention_result = await db.execute(
                                 select(Message.user_id, Message.username)
+                                .join(Channel, Message.channel_id == Channel.id)
                                 .where(
-                                    Message.channel_id == channel_id,
+                                    Channel.server_id == server_id,
                                     Message.username.in_(mentioned_usernames),
                                 )
                                 .group_by(Message.user_id, Message.username)
@@ -200,7 +223,9 @@ async def chat_websocket(websocket: WebSocket, token: str | None = None):
                             if isinstance(val, (int, float)):
                                 v = float(val)
                                 if v > 1e12:
-                                    return datetime.fromtimestamp(v / 1000.0, tz=timezone.utc)
+                                    return datetime.fromtimestamp(
+                                        v / 1000.0, tz=timezone.utc
+                                    )
                                 return datetime.fromtimestamp(v, tz=timezone.utc)
                         except Exception:
                             pass
@@ -216,7 +241,9 @@ async def chat_websocket(websocket: WebSocket, token: str | None = None):
                                 try:
                                     v = float(s)
                                     if v > 1e12:
-                                        return datetime.fromtimestamp(v / 1000.0, tz=timezone.utc)
+                                        return datetime.fromtimestamp(
+                                            v / 1000.0, tz=timezone.utc
+                                        )
                                     return datetime.fromtimestamp(v, tz=timezone.utc)
                                 except Exception:
                                     return None

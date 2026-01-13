@@ -232,7 +232,7 @@ fun MainScreen(
                         // Check for mentions when messages change
                         LaunchedEffect(messages, mainState.currentChannel?.id) {
                             if (messages.isNotEmpty()) {
-                                mainViewModel.checkAndUpdateMentions(authState.user?.username)
+                                mainViewModel.checkAndUpdateMentions(authState.user?.id)
                             }
                         }
 

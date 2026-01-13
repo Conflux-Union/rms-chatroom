@@ -233,32 +233,24 @@ function connectWebSocket() {
       }
 
       // Check if current user is mentioned (for any channel)
-      console.log('[Mention Check] Message mentions:', data.mentions)
-      console.log('[Mention Check] Current user:', { username: auth.user?.username, nickname: auth.user?.nickname, id: auth.user?.id })
-
       if (data.mentions && data.mentions.length > 0) {
-        const currentUsername = auth.user?.username || auth.user?.nickname || ''
+        const currentUserId = auth.user?.id
+        // Use user_id for matching (more reliable than username/nickname)
         const isMentioned = data.mentions.some(
-          (mention: { username: string }) => mention.username === currentUsername
+          (mention: { id: number; username: string }) => mention.id === currentUserId
         )
+        const isOwnMessage = data.user_id === currentUserId
+        const isCurrentChannel = messageChannelId === chat.currentChannel?.id
 
-        console.log('[Mention Check] Current username:', currentUsername)
-        console.log('[Mention Check] Is mentioned:', isMentioned)
-        console.log('[Mention Check] Is own message:', data.user_id === auth.user?.id)
-
-        // Only notify if mentioned in a different channel
-        if (isMentioned && data.user_id !== auth.user?.id && messageChannelId !== chat.currentChannel?.id) {
-          console.log('[Mention] User is mentioned in another channel! Playing sound and marking channel')
-          // Play sound if page is visible
+        if (isMentioned && !isOwnMessage) {
+          // Play sound for mentions (even in current channel)
           if (document.visibilityState === 'visible') {
-            console.log('[Mention] Page is visible, playing sound')
             playMentionSound(messageChannelId, data.id)
-          } else {
-            console.log('[Mention] Page is NOT visible, skipping sound')
           }
-          // Mark channel as having unread mention
-          console.log('[Mention] Marking channel', messageChannelId, 'with message', data.id)
-          markChannelAsMentioned(messageChannelId, data.id)
+          // Mark channel badge only if not current channel
+          if (!isCurrentChannel) {
+            markChannelAsMentioned(messageChannelId, data.id)
+          }
         }
       }
 
