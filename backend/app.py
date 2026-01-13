@@ -30,8 +30,16 @@ from .routers import (
     voice_recognition,
     moderation,
     reactions,
+    read_positions,
 )
-from .websocket import chat, voice, music as music_ws, transcription, global_state, livekit_webhook
+from .websocket import (
+    chat,
+    voice,
+    music as music_ws,
+    transcription,
+    global_state,
+    livekit_webhook,
+)
 
 
 settings = get_settings()
@@ -86,6 +94,7 @@ app.include_router(app_update.router)
 app.include_router(voice_recognition.router)
 app.include_router(moderation.router)
 app.include_router(reactions.router)
+app.include_router(read_positions.router)
 
 # WebSocket routes
 app.include_router(chat.router)

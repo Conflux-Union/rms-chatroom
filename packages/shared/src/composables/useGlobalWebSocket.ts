@@ -143,6 +143,13 @@ export function useGlobalWebSocket() {
     })
   }
 
+  // Send message through global WebSocket
+  function send(data: any) {
+    if (globalWs && globalWs.readyState === WebSocket.OPEN) {
+      globalWs.send(JSON.stringify(data))
+    }
+  }
+
   // Connect if not already connected
   if (!globalWs || globalWs.readyState === WebSocket.CLOSED) {
     connectGlobal()
@@ -151,6 +158,7 @@ export function useGlobalWebSocket() {
   return {
     isConnected: isGlobalConnected,
     onMessage,
+    send,
     connect: connectGlobal,
     disconnect: disconnectGlobal,
   }

@@ -1,5 +1,9 @@
 import { ref, triggerRef } from 'vue'
+import { useGlobalWebSocket } from './useGlobalWebSocket'
+import { useAuthStore } from '../stores/auth'
+import axios from 'axios'
 
+const API_BASE = import.meta.env.VITE_API_BASE || ''
 const STORAGE_KEY = 'rms-mention-notifications'
 
 interface MentionNotification {
@@ -10,9 +14,17 @@ interface MentionNotification {
   }
 }
 
+interface ServerReadPosition {
+  channel_id: number
+  last_read_message_id: number
+  has_mention: boolean
+  last_mention_message_id: number | null
+}
+
 // Shared reactive state across all component instances
 const sharedChannelMentions = ref<Record<number, boolean>>({})
 const sharedUnreadCounts = ref<Record<number, number>>({})
+let initialized = false
 
 function getStoredMentions(): MentionNotification {
   try {
@@ -69,9 +81,77 @@ const playedSounds = new Set<string>()
 let lastSoundPlayTime = 0
 const SOUND_COOLDOWN_MS = 10000 // 10 seconds
 
+/**
+ * Fetch mention states from server and merge with local storage.
+ */
+async function fetchAndMergeServerMentions(): Promise<void> {
+  const auth = useAuthStore()
+  if (!auth.token) return
+
+  try {
+    const resp = await axios.get<{ positions: ServerReadPosition[] }>(
+      `${API_BASE}/read-positions`,
+      { headers: { Authorization: `Bearer ${auth.token}` } }
+    )
+
+    const serverPositions = resp.data.positions
+    const localMentions = getStoredMentions()
+
+    for (const pos of serverPositions) {
+      // Server mention state takes precedence
+      if (pos.has_mention) {
+        localMentions[pos.channel_id] = {
+          hasMention: true,
+          lastMentionMessageId: pos.last_mention_message_id,
+          timestamp: Date.now(),
+        }
+        sharedChannelMentions.value[pos.channel_id] = true
+      } else if (localMentions[pos.channel_id]?.hasMention) {
+        // If server says no mention but local says yes, clear it
+        localMentions[pos.channel_id].hasMention = false
+        sharedChannelMentions.value[pos.channel_id] = false
+      }
+    }
+
+    saveMentions(localMentions)
+    triggerRef(sharedChannelMentions)
+  } catch (e) {
+    console.error('[MentionNotification] Failed to fetch server mentions:', e)
+  }
+}
+
 export function useMentionNotification() {
+  const { send, onMessage } = useGlobalWebSocket()
   const channelMentions = sharedChannelMentions
   const unreadCounts = sharedUnreadCounts
+
+  // Initialize on first use
+  if (!initialized) {
+    initialized = true
+    loadChannelMentions()
+    // Fetch server mentions after a short delay
+    setTimeout(() => {
+      fetchAndMergeServerMentions()
+    }, 150)
+  }
+
+  // Listen for read position sync from other devices (includes mention state)
+  onMessage((data: any) => {
+    if (data.type === 'read_position_sync') {
+      const { channel_id, has_mention, last_mention_message_id } = data
+
+      const mentions = getStoredMentions()
+      mentions[channel_id] = {
+        hasMention: has_mention,
+        lastMentionMessageId: last_mention_message_id,
+        timestamp: Date.now(),
+      }
+      saveMentions(mentions)
+
+      channelMentions.value[channel_id] = has_mention
+      triggerRef(channelMentions)
+    }
+  })
 
   /**
    * Play mention notification sound
@@ -126,10 +206,14 @@ export function useMentionNotification() {
     
     channelMentions.value[channelId] = true
     triggerRef(channelMentions)
+
+    // Sync to server
+    syncMentionToServer(channelId, messageId, true)
   }
 
   function clearChannelMention(channelId: number) {
     const mentions = getStoredMentions()
+    const lastMentionId = mentions[channelId]?.lastMentionMessageId ?? null
     if (mentions[channelId]) {
       mentions[channelId].hasMention = false
     }
@@ -140,6 +224,30 @@ export function useMentionNotification() {
     
     unreadCounts.value[channelId] = 0
     triggerRef(unreadCounts)
+
+    // Sync cleared mention to server (will be handled by useReadPosition)
+  }
+
+  /**
+   * Sync mention state to server via WebSocket.
+   */
+  function syncMentionToServer(
+    channelId: number,
+    lastMentionMessageId: number | null,
+    hasMention: boolean
+  ) {
+    // Get current read position to include in sync
+    const mentions = getStoredMentions()
+    const readPositions = JSON.parse(localStorage.getItem('rms-discord-read-positions') || '{}')
+    const lastReadMessageId = readPositions[channelId]?.messageId ?? lastMentionMessageId ?? 0
+
+    send({
+      type: 'read_position_update',
+      channel_id: channelId,
+      last_read_message_id: lastReadMessageId,
+      has_mention: hasMention,
+      last_mention_message_id: lastMentionMessageId,
+    })
   }
 
   function setUnreadCount(channelId: number, count: number) {
@@ -213,5 +321,6 @@ export function useMentionNotification() {
     setUnreadCount,
     getUnreadCount,
     clearUnreadCount,
+    refetchFromServer: fetchAndMergeServerMentions,
   }
 }

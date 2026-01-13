@@ -251,3 +251,29 @@ class Reaction(Base):
     )
 
     message: Mapped["Message"] = relationship("Message", back_populates="reactions")
+
+
+class ReadPosition(Base):
+    """User's read position per channel for cross-device sync."""
+
+    __tablename__ = "read_positions"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    channel_id: Mapped[int] = mapped_column(
+        ForeignKey("channels.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    last_read_message_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    # Track if user has unread mentions in this channel
+    has_mention: Mapped[bool] = mapped_column(default=False)
+    last_mention_message_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+    # Unique constraint: one read position per user per channel
+    __table_args__ = (
+        UniqueConstraint("user_id", "channel_id", name="uq_read_position"),
+    )
+
+    channel: Mapped["Channel"] = relationship("Channel")
