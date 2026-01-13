@@ -2,6 +2,7 @@ package cn.net.rms.chatroom.data.manager
 
 import android.content.Context
 import android.media.MediaPlayer
+import android.util.Log
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
@@ -26,6 +27,10 @@ private val Context.mentionDataStore: DataStore<Preferences> by preferencesDataS
  * - Persisting mention state in DataStore
  */
 class MentionNotificationManager(private val context: Context) {
+
+    companion object {
+        private const val TAG = "MentionManager"
+    }
 
     private val dataStore = context.mentionDataStore
 
@@ -131,21 +136,25 @@ class MentionNotificationManager(private val context: Context) {
      * Mark a channel as having a mention
      */
     suspend fun markChannelAsMentioned(channelId: Long, messageId: Long) {
+        Log.d(TAG, "markChannelAsMentioned: channelId=$channelId, messageId=$messageId")
         dataStore.edit { prefs ->
             prefs[getMentionKey(channelId)] = true
             prefs[getLastMentionMessageIdKey(channelId)] = messageId
             prefs[getMentionTimestampKey(channelId)] = System.currentTimeMillis()
         }
+        Log.d(TAG, "DataStore updated for channel $channelId (mention=true)")
     }
 
     /**
      * Clear mention state for a channel
      */
     suspend fun clearChannelMention(channelId: Long) {
+        Log.d(TAG, "clearChannelMention: channelId=$channelId")
         dataStore.edit { prefs ->
             prefs[getMentionKey(channelId)] = false
             prefs[getUnreadCountKey(channelId)] = 0
         }
+        Log.d(TAG, "DataStore updated for channel $channelId (mention=false, unread=0)")
     }
 
     /**
@@ -176,13 +185,15 @@ class MentionNotificationManager(private val context: Context) {
      */
     fun getChannelsWithMentions(): Flow<Set<Long>> {
         return dataStore.data.map { prefs ->
-            prefs.asMap().keys
+            val mentions = prefs.asMap().keys
                 .filter { it.name.startsWith("mention_") }
                 .mapNotNull { key ->
                     val channelId = key.name.removePrefix("mention_").toLongOrNull()
                     if (channelId != null && prefs[key] == true) channelId else null
                 }
                 .toSet()
+            Log.d(TAG, "getChannelsWithMentions emitted: $mentions")
+            mentions
         }
     }
 
@@ -191,7 +202,7 @@ class MentionNotificationManager(private val context: Context) {
      */
     fun getAllUnreadCounts(): Flow<Map<Long, Int>> {
         return dataStore.data.map { prefs ->
-            prefs.asMap().keys
+            val counts = prefs.asMap().keys
                 .filter { it.name.startsWith("unread_count_") }
                 .mapNotNull { key ->
                     val channelId = key.name.removePrefix("unread_count_").toLongOrNull()
@@ -201,6 +212,8 @@ class MentionNotificationManager(private val context: Context) {
                     } else null
                 }
                 .toMap()
+            Log.d(TAG, "getAllUnreadCounts emitted: $counts")
+            counts
         }
     }
 

@@ -88,6 +88,7 @@ class MainViewModel @Inject constructor(
         loadMentionStates()
         loadCurrentUser()
         connectGlobalWebSocket()
+        connectChatWebSocket()
         initializeReadPositions()
     }
 
@@ -102,6 +103,17 @@ class MainViewModel @Inject constructor(
             val token = authRepository.getToken()
             if (token != null) {
                 globalWebSocket.connect(token)
+            }
+        }
+    }
+
+    private fun connectChatWebSocket() {
+        viewModelScope.launch {
+            val token = authRepository.getToken()
+            if (token != null && !chatRepository.isWebSocketConnected()) {
+                // Connect to global chat WebSocket immediately (like Web does)
+                // This ensures we receive @mentions even before selecting a channel
+                chatRepository.connectToChannel(0) // channelId is ignored for global connection
             }
         }
     }
@@ -188,10 +200,6 @@ class MainViewModel @Inject constructor(
         // Load messages for text channels
         if (channel.type == ChannelType.TEXT) {
             loadMessages(channel.id)
-            // Connect WebSocket once if not already connected
-            if (!chatRepository.isWebSocketConnected()) {
-                chatRepository.connectToChannel(channel.id)
-            }
             // Load last read position
             loadLastReadPosition(channel.id)
         }
@@ -235,14 +243,19 @@ class MainViewModel @Inject constructor(
             chatRepository.webSocketEvents.collect { event ->
                 when (event) {
                     is WebSocketEvent.NewMessage -> {
-                        Log.d(TAG, "New message received: ${event.message.id}")
-
-                        // Check if this message mentions the current user
                         val message = event.message
                         val userId = currentUserId
                         val isOwnMessage = message.userId == userId
+                        val hasMentions = message.mentions?.isNotEmpty() == true
+                        val mentionIds = message.mentions?.map { it.id } ?: emptyList()
+                        val isMentioned = message.mentions?.any { it.id == userId } == true
                         
-                        if (userId != null && !isOwnMessage && message.mentions?.any { it.id == userId } == true) {
+                        Log.d(TAG, "New message received: id=${message.id}, channelId=${message.channelId}, " +
+                            "currentUserId=$userId, messageUserId=${message.userId}, isOwnMessage=$isOwnMessage, " +
+                            "hasMentions=$hasMentions, mentionIds=$mentionIds, isMentioned=$isMentioned")
+
+                        // Check if this message mentions the current user
+                        if (userId != null && !isOwnMessage && isMentioned) {
                             // This message mentions the current user
                             val channelId = message.channelId
                             val currentChannelId = _state.value.currentChannel?.id
@@ -600,11 +613,13 @@ class MainViewModel @Inject constructor(
     private fun loadMentionStates() {
         viewModelScope.launch {
             mentionNotificationManager.getChannelsWithMentions().collect { mentions ->
+                Log.d(TAG, "MainViewModel received mention update: $mentions")
                 _state.value = _state.value.copy(channelMentions = mentions)
             }
         }
         viewModelScope.launch {
             mentionNotificationManager.getAllUnreadCounts().collect { counts ->
+                Log.d(TAG, "MainViewModel received unread counts update: $counts")
                 _state.value = _state.value.copy(unreadCounts = counts)
             }
         }
