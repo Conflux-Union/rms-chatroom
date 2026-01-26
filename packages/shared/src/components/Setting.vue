@@ -199,13 +199,17 @@ async function startMicTest() {
       }
       const rms = Math.sqrt(sum / data.length)
       micLevel.value = Math.min(100, rms * 150)
-    }, 100)
+    }, 200)
   } catch (e) {
     micTestActive.value = false
     micLevel.value = 0
     console.log('Mic test failed', e)
   }
 }
+
+onUnmounted(() => {
+  stopMicTest()
+})
 
 function stopMicTest() {
   if (!micTestActive.value) return
