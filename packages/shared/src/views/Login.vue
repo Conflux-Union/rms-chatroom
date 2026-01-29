@@ -10,9 +10,14 @@ const electronAPI = (window as any).electronAPI
 
 if (electronAPI?.onAuthCallback) {
   electronAPI.onAuthCallback((data: any) => {
-    const { token, code } = data || {}
-    if (token) {
-      router.replace({ path: '/callback', query: { token } })
+    const { access_token, token, refresh_token, code } = data || {}
+    const accessToken = access_token || token
+    if (accessToken) {
+      const query: Record<string, string> = { access_token: accessToken }
+      if (refresh_token) {
+        query.refresh_token = refresh_token
+      }
+      router.replace({ path: '/callback', query })
     } else if (code) {
       router.replace({ path: '/callback', query: { code } })
     }

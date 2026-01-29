@@ -45,8 +45,7 @@ import cn.net.rms.chatroom.data.model.ChannelType
 import cn.net.rms.chatroom.data.model.Server
 import cn.net.rms.chatroom.data.model.VoiceUser
 import cn.net.rms.chatroom.ui.theme.*
-import coil.compose.AsyncImage
-import coil.request.ImageRequest
+import cn.net.rms.chatroom.ui.components.UserAvatar
 
 // Sealed class for mixed list items (groups + ungrouped channels)
 sealed class ChannelListItem {
@@ -1061,34 +1060,10 @@ private fun VoiceUserItem(user: VoiceUser) {
         verticalAlignment = Alignment.CenterVertically
     ) {
         // Avatar
-        Box(
-            modifier = Modifier
-                .size(20.dp)
-                .clip(CircleShape)
-                .background(TiColor),
-            contentAlignment = Alignment.Center
-        ) {
-            if (!user.avatarUrl.isNullOrBlank()) {
-                AsyncImage(
-                    model = ImageRequest.Builder(LocalContext.current)
-                        .data(user.avatarUrl)
-                        .crossfade(true)
-                        .build(),
-                    contentDescription = user.name,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .clip(CircleShape),
-                    contentScale = ContentScale.Crop
-                )
-            } else {
-                Text(
-                    text = user.name.take(1).uppercase(),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = Color.White,
-                    fontSize = 10.sp
-                )
-            }
-        }
+        UserAvatar(
+            username = user.name,
+            size = 20.dp
+        )
 
         // Host badge
         if (user.isHost) {

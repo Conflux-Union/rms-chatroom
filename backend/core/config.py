@@ -14,8 +14,21 @@ CONFIG_PATH = RUNTIME_ROOT / "config.json"
 
 DEFAULT_CONFIG: dict[str, Any] = {
     "database_url": "sqlite+aiosqlite:///./discord.db",
-    "sso_base_url": "https://sso.rms.net.cn",
-    "sso_verify_endpoint": "/api/user",
+    # OAuth 2.0 configuration
+    "oauth_base_url": "https://sso.rms.net.cn",
+    "oauth_authorize_endpoint": "/oauth/authorize",
+    "oauth_token_endpoint": "/oauth/token",
+    "oauth_userinfo_endpoint": "/oauth/userinfo",
+    "oauth_client_id": "",
+    "oauth_client_secret": "",
+    "oauth_redirect_uri": "http://localhost:8000/api/auth/callback",
+    "oauth_scope": "openid profile",
+    # JWT configuration
+    "jwt_secret": "",
+    "jwt_algorithm": "HS256",
+    "access_token_expire_minutes": 60,
+    "refresh_token_expire_days": 30,
+    # Server configuration
     "host": "0.0.0.0",
     "port": 8000,
     "debug": True,
@@ -53,8 +66,21 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(extra="ignore")
 
     database_url: str = "sqlite+aiosqlite:///./discord.db"
-    sso_base_url: str = "https://sso.rms.net.cn"
-    sso_verify_endpoint: str = "/api/user"
+    # OAuth 2.0 configuration
+    oauth_base_url: str = "https://sso.rms.net.cn"
+    oauth_authorize_endpoint: str = "/oauth/authorize"
+    oauth_token_endpoint: str = "/oauth/token"
+    oauth_userinfo_endpoint: str = "/oauth/userinfo"
+    oauth_client_id: str = ""
+    oauth_client_secret: str = ""
+    oauth_redirect_uri: str = "http://localhost:8000/api/auth/callback"
+    oauth_scope: str = "openid profile"
+    # JWT configuration
+    jwt_secret: str = ""
+    jwt_algorithm: str = "HS256"
+    access_token_expire_minutes: int = 60
+    refresh_token_expire_days: int = 30
+    # Server configuration
     host: str = "0.0.0.0"
     port: int = 8000
     debug: bool = True

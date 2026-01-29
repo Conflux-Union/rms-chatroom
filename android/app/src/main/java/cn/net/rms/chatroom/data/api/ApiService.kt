@@ -11,6 +11,9 @@ interface ApiService {
     @GET("api/auth/me")
     suspend fun verifyToken(@Header("Authorization") token: String): AuthMeResponse
 
+    @POST("api/auth/refresh")
+    suspend fun refreshToken(@Body body: RefreshTokenRequest): RefreshTokenResponse
+
     // Servers
     @GET("api/servers")
     suspend fun getServers(@Header("Authorization") token: String): List<Server>
@@ -500,4 +503,17 @@ data class ReadPositionItem(
 
 data class ReadPositionsResponse(
     val positions: List<ReadPositionItem>
+)
+
+// OAuth 2.0 Token Refresh
+data class RefreshTokenRequest(
+    @SerializedName("refresh_token")
+    val refreshToken: String
+)
+
+data class RefreshTokenResponse(
+    @SerializedName("access_token")
+    val accessToken: String,
+    @SerializedName("token_type")
+    val tokenType: String
 )

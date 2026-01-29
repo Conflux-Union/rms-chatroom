@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import cn.net.rms.chatroom.data.api.ApiService
+import cn.net.rms.chatroom.data.api.RefreshTokenRequest
 import cn.net.rms.chatroom.data.model.User
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -25,30 +26,74 @@ class AuthRepository @Inject constructor(
 ) {
     companion object {
         private const val TAG = "AuthRepository"
-        private val TOKEN_KEY = stringPreferencesKey("auth_token")
+        private val ACCESS_TOKEN_KEY = stringPreferencesKey("access_token")
+        private val REFRESH_TOKEN_KEY = stringPreferencesKey("refresh_token")
+        private val LEGACY_AUTH_TOKEN_KEY = stringPreferencesKey("auth_token")
     }
 
-    val tokenFlow: Flow<String?> = dataStore.data.map { prefs ->
-        prefs[TOKEN_KEY]
+    val accessTokenFlow: Flow<String?> = dataStore.data.map { prefs ->
+        prefs[ACCESS_TOKEN_KEY]
     }
 
-    suspend fun getToken(): String? {
-        return dataStore.data.first()[TOKEN_KEY]
+    suspend fun getAccessToken(): String? {
+        val prefs = dataStore.data.first()
+        val token = prefs[ACCESS_TOKEN_KEY]
+        if (token != null) return token
+
+        val legacyToken = prefs[LEGACY_AUTH_TOKEN_KEY]
+        if (legacyToken != null) {
+            // Backward compatibility: migrate auth_token -> access_token to avoid forced logout on upgrade.
+            dataStore.edit { p ->
+                p[ACCESS_TOKEN_KEY] = legacyToken
+                p.remove(LEGACY_AUTH_TOKEN_KEY)
+            }
+            return legacyToken
+        }
+
+        return null
     }
 
-    fun getTokenBlocking(): String? = runBlocking {
-        getToken()
+    suspend fun getRefreshToken(): String? {
+        return dataStore.data.first()[REFRESH_TOKEN_KEY]
     }
 
-    suspend fun saveToken(token: String) {
+    fun getAccessTokenBlocking(): String? = runBlocking {
+        getAccessToken()
+    }
+
+    suspend fun saveTokens(accessToken: String, refreshToken: String) {
         dataStore.edit { prefs ->
-            prefs[TOKEN_KEY] = token
+            prefs[ACCESS_TOKEN_KEY] = accessToken
+            prefs[REFRESH_TOKEN_KEY] = refreshToken
         }
     }
 
-    suspend fun clearToken() {
+    suspend fun clearTokens() {
         dataStore.edit { prefs ->
-            prefs.remove(TOKEN_KEY)
+            prefs.remove(ACCESS_TOKEN_KEY)
+            prefs.remove(REFRESH_TOKEN_KEY)
+        }
+    }
+
+    suspend fun refreshAccessToken(): Result<String> {
+        return try {
+            val refreshToken = getRefreshToken()
+            if (refreshToken == null) {
+                Log.e(TAG, "refreshAccessToken: no refresh token")
+                return Result.failure(AuthException("No refresh token", isUnauthorized = true))
+            }
+            Log.d(TAG, "refreshAccessToken start")
+            val response = api.refreshToken(RefreshTokenRequest(refreshToken))
+            val newAccessToken = response.accessToken
+            Log.d(TAG, "refreshAccessToken success, new token length=${newAccessToken.length}")
+            // Update only access token, keep refresh token
+            dataStore.edit { prefs ->
+                prefs[ACCESS_TOKEN_KEY] = newAccessToken
+            }
+            Result.success(newAccessToken)
+        } catch (e: Exception) {
+            Log.e(TAG, "refreshAccessToken failed", e)
+            Result.failure(e.toAuthException())
         }
     }
 

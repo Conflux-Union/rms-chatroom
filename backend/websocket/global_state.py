@@ -8,16 +8,16 @@ from sqlalchemy import select
 
 from ..core.database import async_session_maker
 from ..models.server import ReadPosition
-from ..services.sso_client import SSOClient
+from ..services.token_service import TokenService
 from .manager import global_state_manager
 
 
 router = APIRouter()
 
 
-async def get_user_from_token(token: str) -> dict | None:
+def get_user_from_token(token: str) -> dict | None:
     """Verify token and get user info."""
-    return await SSOClient.verify_token(token)
+    return TokenService.verify_access_token(token)
 
 
 async def update_read_position(
@@ -78,7 +78,7 @@ async def global_state_websocket(websocket: WebSocket, token: str | None = None)
         await websocket.close(code=4001, reason="Missing token")
         return
 
-    user = await get_user_from_token(token)
+    user = get_user_from_token(token)
     if not user:
         await websocket.close(code=4001, reason="Invalid token")
         return

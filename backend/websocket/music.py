@@ -9,7 +9,7 @@ from typing import Any, Callable, Awaitable
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from ..services.sso_client import SSOClient
+from ..services.token_service import TokenService
 
 
 logger = logging.getLogger(__name__)
@@ -114,7 +114,7 @@ async def broadcast_to_all_music_clients(message: dict[str, Any]) -> None:
 
 async def get_user_from_token(token: str) -> dict | None:
     """Verify token and get user info."""
-    return await SSOClient.verify_token(token)
+    return TokenService.verify_access_token(token)
 
 
 def get_room_client_count(room_name: str) -> int:

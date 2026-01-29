@@ -66,13 +66,15 @@ function startCallbackServer(win) {
         const u = new URL(req.url, "http://127.0.0.1");
 
         if (u.pathname === "/callback") {
-          const token = u.searchParams.get("token");
+          const token = u.searchParams.get("access_token") || u.searchParams.get("token");
+          const refreshToken = u.searchParams.get("refresh_token");
           const code = u.searchParams.get("code");
           const state = u.searchParams.get("state");
 
           if (win && !win.isDestroyed()) {
             win.webContents.send("auth:callback", {
               token: token || null,
+              refresh_token: refreshToken || null,
               code: code || null,
               state: state || null,
               raw: req.url,

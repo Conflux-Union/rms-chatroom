@@ -100,7 +100,7 @@ class MainViewModel @Inject constructor(
 
     private fun connectGlobalWebSocket() {
         viewModelScope.launch {
-            val token = authRepository.getToken()
+            val token = authRepository.getAccessToken()
             if (token != null) {
                 globalWebSocket.connect(token)
             }
@@ -109,7 +109,7 @@ class MainViewModel @Inject constructor(
 
     private fun connectChatWebSocket() {
         viewModelScope.launch {
-            val token = authRepository.getToken()
+            val token = authRepository.getAccessToken()
             if (token != null && !chatRepository.isWebSocketConnected()) {
                 // Connect to global chat WebSocket immediately (like Web does)
                 // This ensures we receive @mentions even before selecting a channel
@@ -120,7 +120,7 @@ class MainViewModel @Inject constructor(
 
     private fun loadCurrentUser() {
         viewModelScope.launch {
-            authRepository.getToken()?.let { token ->
+            authRepository.getAccessToken()?.let { token ->
                 authRepository.verifyToken(token)
                     .onSuccess { user ->
                         currentUserId = user.id

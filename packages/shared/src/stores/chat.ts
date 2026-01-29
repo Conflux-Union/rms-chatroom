@@ -12,7 +12,6 @@ const API_BASE = import.meta.env.VITE_API_BASE || ''
 interface VoiceChannelUser {
   id: string
   name: string
-  avatar_url?: string
   is_muted: boolean
   is_host: boolean
 }

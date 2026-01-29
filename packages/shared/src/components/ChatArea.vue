@@ -22,6 +22,7 @@ import {
 } from 'naive-ui'
 import { Paperclip, Send, Upload, X, Image, Video, Music, FileText, File, MoreVertical, ArrowUp, Reply, CornerUpLeft, SmilePlus } from 'lucide-vue-next'
 import FilePreview from './FilePreview.vue'
+import UserAvatar from './UserAvatar.vue'
 import type { Attachment, Message, ReactionGroup } from '../types'
 import axios from 'axios'
 
@@ -1113,14 +1114,7 @@ onUnmounted(() => {
         <!-- Avatar: hidden placeholder for grouped messages to maintain alignment -->
         <div class="message-avatar" :class="{ 'avatar-hidden': shouldGroupWithPrevious(index) }">
           <template v-if="!shouldGroupWithPrevious(index)">
-            <img
-              v-if="msg.avatar_url"
-              :src="msg.avatar_url"
-              :alt="msg.username"
-              class="avatar-img"
-              @error="(e: Event) => (e.target as HTMLImageElement).style.display = 'none'"
-            />
-            <span v-else class="avatar-fallback">{{ msg.username.charAt(0).toUpperCase() }}</span>
+            <UserAvatar :username="msg.username" :size="40" />
           </template>
         </div>
         <div class="message-content">
@@ -1327,7 +1321,7 @@ onUnmounted(() => {
             @click="selectMention(user)"
             @mouseenter="selectedMentionIndex = index"
           >
-            <div class="mention-avatar">{{ user.username.charAt(0).toUpperCase() }}</div>
+            <UserAvatar :username="user.username" :size="24" class="mention-avatar" />
             <span class="mention-username">{{ user.username }}</span>
           </div>
         </div>

@@ -10,6 +10,7 @@ import { NDropdown, NModal, NInput, NButton, NSpace, NSelect } from 'naive-ui'
 import type { DropdownOption, SelectOption } from 'naive-ui'
 import type { Channel, ChannelGroup } from '../types'
 import VoiceControls from '../components/VoiceControls.vue'
+import UserAvatar from '../components/UserAvatar.vue'
 import { VueDraggable } from 'vue-draggable-plus'
 
 const chat = useChatStore()
@@ -624,14 +625,7 @@ async function deleteChannel() {
                       @contextmenu="auth.isAdmin ? showUserContextMenu($event, channel.id, user.id) : undefined"
                     >
                       <div class="voice-user-avatar-wrapper">
-                        <img
-                          v-if="user.avatar_url"
-                          :src="user.avatar_url"
-                          :alt="user.name"
-                          class="voice-user-avatar-img"
-                          @error="(e: Event) => (e.target as HTMLImageElement).style.display = 'none'"
-                        />
-                        <span v-else class="voice-user-avatar">{{ user.name.charAt(0).toUpperCase() }}</span>
+                        <UserAvatar :username="user.name" :size="20" class="voice-user-avatar-img" />
                         <Crown v-if="user.is_host" class="voice-user-host-badge" :size="10" />
                       </div>
                       <span class="voice-user-name">{{ user.name }}</span>
@@ -720,14 +714,7 @@ async function deleteChannel() {
                 @contextmenu="auth.isAdmin ? showUserContextMenu($event, item.data.id, user.id) : undefined"
               >
                 <div class="voice-user-avatar-wrapper">
-                  <img
-                    v-if="user.avatar_url"
-                    :src="user.avatar_url"
-                    :alt="user.name"
-                    class="voice-user-avatar-img"
-                    @error="(e: Event) => (e.target as HTMLImageElement).style.display = 'none'"
-                  />
-                  <span v-else class="voice-user-avatar">{{ user.name.charAt(0).toUpperCase() }}</span>
+                  <UserAvatar :username="user.name" :size="20" class="voice-user-avatar-img" />
                   <Crown v-if="user.is_host" class="voice-user-host-badge" :size="10" />
                 </div>
                 <span class="voice-user-name">{{ user.name }}</span>

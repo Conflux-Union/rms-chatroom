@@ -8,17 +8,34 @@ const route = useRoute()
 const auth = useAuthStore()
 
 onMounted(async () => {
-  const token = route.query.token as string
-  
+  const hash = window.location.hash.startsWith('#') ? window.location.hash.slice(1) : ''
+  const hashParams = new URLSearchParams(hash.startsWith('?') ? hash.slice(1) : hash)
+  const token =
+    hashParams.get('access_token') ||
+    hashParams.get('token') ||
+    ((route.query.access_token as string) || (route.query.token as string))
+  const refreshToken = hashParams.get('refresh_token') || (route.query.refresh_token as string)
+
+  // Strip tokens from address bar ASAP (avoid leaking via referrer/logs)
+  if (window.location.search || window.location.hash) {
+    window.history.replaceState({}, document.title, window.location.pathname)
+  }
+
   if (token) {
-    auth.setToken(token)
+    // Use setTokens if refresh_token is provided, otherwise fall back to setToken
+    if (refreshToken) {
+      auth.setTokens(token, refreshToken)
+    } else {
+      auth.setToken(token)
+    }
+
     const valid = await auth.verifyToken()
     if (valid) {
       router.push('/')
       return
     }
   }
-  
+
   // If we only got sso_user, redirect to login
   router.push('/login')
 })

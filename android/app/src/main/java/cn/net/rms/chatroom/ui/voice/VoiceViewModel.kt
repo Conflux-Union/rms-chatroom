@@ -89,7 +89,7 @@ class VoiceViewModel @Inject constructor(
 
     private fun loadUserInfo() {
         viewModelScope.launch {
-            val token = authRepository.getToken() ?: return@launch
+            val token = authRepository.getAccessToken() ?: return@launch
             val result = authRepository.verifyToken(token)
             result.onSuccess { user ->
                 _isAdmin.value = user.permissionLevel >= 3

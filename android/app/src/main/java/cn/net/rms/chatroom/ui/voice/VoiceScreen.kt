@@ -65,8 +65,7 @@ import cn.net.rms.chatroom.ui.music.MusicSearchDialog
 import cn.net.rms.chatroom.ui.music.MusicViewModel
 import cn.net.rms.chatroom.ui.music.PlatformSelectDialog
 import cn.net.rms.chatroom.ui.theme.*
-import coil.compose.AsyncImage
-import coil.request.ImageRequest
+import cn.net.rms.chatroom.ui.components.UserAvatar
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -586,34 +585,10 @@ private fun VoiceUserItem(
                 ),
             contentAlignment = Alignment.Center
         ) {
-            Box(
-                modifier = Modifier
-                    .size(48.dp)
-                    .clip(CircleShape)
-                    .background(TiColor),
-                contentAlignment = Alignment.Center
-            ) {
-                if (!participant.avatarUrl.isNullOrBlank()) {
-                    AsyncImage(
-                        model = ImageRequest.Builder(LocalContext.current)
-                            .data(participant.avatarUrl)
-                            .crossfade(true)
-                            .build(),
-                        contentDescription = participant.name,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .clip(CircleShape),
-                        contentScale = ContentScale.Crop
-                    )
-                } else {
-                    Text(
-                        text = participant.name.take(1).uppercase(),
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
-                }
-            }
+            UserAvatar(
+                username = participant.name,
+                size = 48.dp
+            )
         }
 
         Spacer(modifier = Modifier.height(8.dp))
@@ -819,34 +794,10 @@ private fun ParticipantSettingsSheet(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            Box(
-                modifier = Modifier
-                    .size(48.dp)
-                    .clip(CircleShape)
-                    .background(TiColor),
-                contentAlignment = Alignment.Center
-            ) {
-                if (!participant.avatarUrl.isNullOrBlank()) {
-                    AsyncImage(
-                        model = ImageRequest.Builder(LocalContext.current)
-                            .data(participant.avatarUrl)
-                            .crossfade(true)
-                            .build(),
-                        contentDescription = participant.name,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .clip(CircleShape),
-                        contentScale = ContentScale.Crop
-                    )
-                } else {
-                    Text(
-                        text = participant.name.take(1).uppercase(),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
-                }
-            }
+            UserAvatar(
+                username = participant.name,
+                size = 48.dp
+            )
             Column {
                 Text(
                     text = participant.name,

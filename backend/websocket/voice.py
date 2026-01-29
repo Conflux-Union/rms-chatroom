@@ -271,8 +271,6 @@ async def get_voice_users(
     Get list of users currently in a voice channel.
     Uses LiveKit's Room Service API to fetch participants.
     """
-    from ..services.sso_client import SSOClient
-
     # Verify channel exists and is voice type
     result = await db.execute(select(Channel).where(Channel.id == channel_id))
     channel = result.scalar_one_or_none()
@@ -319,17 +317,6 @@ async def get_voice_users(
                 _host_mode_state.pop(room_name, None)
                 host_id = None
 
-        # Batch fetch avatar URLs for all participants
-        # Filter out guest identities (start with "guest_") and non-numeric IDs
-        user_ids = []
-        for p in response.participants:
-            if not p.identity.startswith("guest_"):
-                try:
-                    user_ids.append(int(p.identity))
-                except ValueError:
-                    pass
-        avatar_map = await SSOClient.get_avatar_urls_batch(user_ids) if user_ids else {}
-
         for p in response.participants:
             # Check if microphone track is muted (source=2 is MICROPHONE)
             is_muted = False
@@ -348,19 +335,11 @@ async def get_voice_users(
                 await _mute_participant_mic(api, room_name, p.identity, True)
                 is_muted = True
 
-            # Get avatar URL (only for non-guest users)
-            avatar_url = None
-            if not p.identity.startswith("guest_"):
-                try:
-                    avatar_url = avatar_map.get(int(p.identity))
-                except ValueError:
-                    pass
-
             users.append(
                 VoiceChannelUser(
                     id=p.identity,
                     name=p.name or p.identity,
-                    avatar_url=avatar_url,
+                    avatar_url=None,
                     is_muted=is_muted,
                     is_host=(host_id == p.identity),
                 )
@@ -918,8 +897,6 @@ async def get_all_voice_users(
     Returns a dict mapping channel_id to list of users.
     Reduces polling overhead compared to per-channel requests.
     """
-    from ..services.sso_client import SSOClient
-
     result = await db.execute(select(Channel).where(Channel.type == ChannelType.VOICE))
     channels = result.scalars().all()
 
@@ -934,10 +911,6 @@ async def get_all_voice_users(
     )
 
     users_by_channel: dict[int, list[VoiceChannelUser]] = {}
-    all_user_ids: set[int] = set()
-    all_participants: list[
-        tuple[int, str, str, bool, bool]
-    ] = []  # (channel_id, identity, name, is_muted, is_host)
 
     try:
         for channel in channels:
@@ -967,52 +940,19 @@ async def get_all_voice_users(
                         await _mute_participant_mic(api, room_name, p.identity, True)
                         is_muted = True
 
-                    # Collect user ID for batch avatar fetch
-                    if not p.identity.startswith("guest_"):
-                        try:
-                            all_user_ids.add(int(p.identity))
-                        except ValueError:
-                            pass
-
-                    all_participants.append(
-                        (
-                            channel.id,
-                            p.identity,
-                            p.name or p.identity,
-                            is_muted,
-                            host_id == p.identity,
-                        )
+                    user = VoiceChannelUser(
+                        id=p.identity,
+                        name=p.name or p.identity,
+                        avatar_url=None,
+                        is_muted=is_muted,
+                        is_host=host_id == p.identity,
                     )
+                    if channel.id not in users_by_channel:
+                        users_by_channel[channel.id] = []
+                    users_by_channel[channel.id].append(user)
             except Exception:
                 # Room doesn't exist (no participants)
                 pass
-
-        # Batch fetch all avatar URLs
-        avatar_map = (
-            await SSOClient.get_avatar_urls_batch(list(all_user_ids))
-            if all_user_ids
-            else {}
-        )
-
-        # Build response with avatars
-        for channel_id, identity, name, is_muted, is_host in all_participants:
-            avatar_url = None
-            if not identity.startswith("guest_"):
-                try:
-                    avatar_url = avatar_map.get(int(identity))
-                except ValueError:
-                    pass
-
-            user = VoiceChannelUser(
-                id=identity,
-                name=name,
-                avatar_url=avatar_url,
-                is_muted=is_muted,
-                is_host=is_host,
-            )
-            if channel_id not in users_by_channel:
-                users_by_channel[channel_id] = []
-            users_by_channel[channel_id].append(user)
 
     finally:
         await api.aclose()
@@ -1088,9 +1028,6 @@ async def broadcast_voice_users_update():
 
     async with async_session_maker() as db:
         try:
-            # Reuse the logic from get_all_voice_users
-            from ..services.sso_client import SSOClient
-
             result = await db.execute(select(Channel).where(Channel.type == ChannelType.VOICE))
             channels = result.scalars().all()
 
@@ -1105,10 +1042,6 @@ async def broadcast_voice_users_update():
             )
 
             users_by_channel: dict[int, list[dict]] = {}
-            all_user_ids: set[int] = set()
-            all_participants: list[
-                tuple[int, str, str, bool, bool]
-            ] = []  # (channel_id, identity, name, is_muted, is_host)
 
             try:
                 for channel in channels:
@@ -1133,52 +1066,19 @@ async def broadcast_voice_users_update():
                                     is_muted = track.muted
                                     break
 
-                            # Collect user ID for batch avatar fetch
-                            if not p.identity.startswith("guest_"):
-                                try:
-                                    all_user_ids.add(int(p.identity))
-                                except ValueError:
-                                    pass
-
-                            all_participants.append(
-                                (
-                                    channel.id,
-                                    p.identity,
-                                    p.name or p.identity,
-                                    is_muted,
-                                    host_id == p.identity,
-                                )
-                            )
+                            user_dict = {
+                                "id": p.identity,
+                                "name": p.name or p.identity,
+                                "avatar_url": None,
+                                "is_muted": is_muted,
+                                "is_host": host_id == p.identity,
+                            }
+                            if channel.id not in users_by_channel:
+                                users_by_channel[channel.id] = []
+                            users_by_channel[channel.id].append(user_dict)
                     except Exception:
                         # Room doesn't exist (no participants)
                         pass
-
-                # Batch fetch all avatar URLs
-                avatar_map = (
-                    await SSOClient.get_avatar_urls_batch(list(all_user_ids))
-                    if all_user_ids
-                    else {}
-                )
-
-                # Build response with avatars
-                for channel_id, identity, name, is_muted, is_host in all_participants:
-                    avatar_url = None
-                    if not identity.startswith("guest_"):
-                        try:
-                            avatar_url = avatar_map.get(int(identity))
-                        except ValueError:
-                            pass
-
-                    user_dict = {
-                        "id": identity,
-                        "name": name,
-                        "avatar_url": avatar_url,
-                        "is_muted": is_muted,
-                        "is_host": is_host,
-                    }
-                    if channel_id not in users_by_channel:
-                        users_by_channel[channel_id] = []
-                    users_by_channel[channel_id].append(user_dict)
 
             finally:
                 await api.aclose()

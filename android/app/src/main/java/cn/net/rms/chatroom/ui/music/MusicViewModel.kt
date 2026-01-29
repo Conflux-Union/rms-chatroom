@@ -277,7 +277,7 @@ class MusicViewModel @Inject constructor(
 
     private fun connectMusicWebSocket(roomName: String) {
         viewModelScope.launch {
-            val token = authRepository.getToken()
+            val token = authRepository.getAccessToken()
             if (token != null) {
                 musicWebSocket.connect(token, roomName)
             }
@@ -285,7 +285,7 @@ class MusicViewModel @Inject constructor(
     }
 
     private suspend fun getAuthHeader(): String {
-        val token = authRepository.getToken() ?: ""
+        val token = authRepository.getAccessToken() ?: ""
         return "Bearer $token"
     }
 

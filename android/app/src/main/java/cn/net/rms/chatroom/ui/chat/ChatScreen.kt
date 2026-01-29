@@ -139,6 +139,7 @@ import cn.net.rms.chatroom.ui.theme.TextMuted
 import cn.net.rms.chatroom.ui.theme.TextPrimary
 import cn.net.rms.chatroom.ui.theme.TextSecondary
 import cn.net.rms.chatroom.ui.theme.TiColor
+import cn.net.rms.chatroom.ui.components.UserAvatar
 import java.io.File
 import java.time.Instant
 import java.time.ZoneId
@@ -741,34 +742,10 @@ private fun MessageItem(
             // Invisible placeholder to maintain alignment (width only, not height)
             Spacer(modifier = Modifier.width(40.dp))
         } else {
-            Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .clip(CircleShape)
-                    .background(TiColor),
-                contentAlignment = Alignment.Center
-            ) {
-                if (!message.avatarUrl.isNullOrBlank()) {
-                    AsyncImage(
-                        model = ImageRequest.Builder(LocalContext.current)
-                            .data(message.avatarUrl)
-                            .crossfade(true)
-                            .build(),
-                        contentDescription = message.username,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .clip(CircleShape),
-                        contentScale = ContentScale.Crop
-                    )
-                } else {
-                    Text(
-                        text = message.username.take(1).uppercase(),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
-                }
-            }
+            UserAvatar(
+                username = message.username,
+                size = 40.dp
+            )
         }
 
         Column(modifier = Modifier.weight(1f)) {

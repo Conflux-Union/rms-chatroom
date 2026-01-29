@@ -1296,20 +1296,20 @@ async def websocket_voice_transcription(
 async def authenticate_websocket_token(token: str) -> Optional[Dict[str, Any]]:
     """
     验证WebSocket连接的token
-    
+
     Args:
         token: JWT token
-        
+
     Returns:
         用户信息字典，验证失败返回None
     """
     try:
-        from ..services.sso_client import SSOClient
-        
-        # 使用SSO客户端验证token
-        user = await SSOClient.verify_token(token)
+        from ..services.token_service import TokenService
+
+        # Use TokenService to verify JWT
+        user = TokenService.verify_access_token(token)
         return user
-        
+
     except Exception as e:
         logger.warning(f"WebSocket token authentication failed: {e}")
         return None

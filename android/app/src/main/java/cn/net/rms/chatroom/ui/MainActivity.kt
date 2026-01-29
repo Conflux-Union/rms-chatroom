@@ -184,11 +184,13 @@ class MainActivity : ComponentActivity() {
                 "rmschatroom" -> {
                     when (uri.host) {
                         "callback" -> {
-                            uri.getQueryParameter("token")?.let { token ->
-                                Log.d("MainActivity", "callback token length=${token.length}")
-                                authViewModel.handleSsoCallback(token)
-                            } ?: run {
-                                Log.e("MainActivity", "callback token missing")
+                            val accessToken = uri.getQueryParameter("access_token") ?: uri.getQueryParameter("token")
+                            val refreshToken = uri.getQueryParameter("refresh_token")
+                            if (accessToken != null && refreshToken != null) {
+                                Log.d("MainActivity", "callback accessToken length=${accessToken.length}, refreshToken length=${refreshToken.length}")
+                                authViewModel.handleSsoCallback(accessToken, refreshToken)
+                            } else {
+                                Log.e("MainActivity", "callback token missing: accessToken=${accessToken != null}, refreshToken=${refreshToken != null}")
                             }
                         }
                         "voice-invite" -> {

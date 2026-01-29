@@ -18,7 +18,7 @@ data class AuthState(
     val isAuthenticated: Boolean = false,
     val user: User? = null,
     val error: String? = null,
-    val token: String? = null
+    val accessToken: String? = null
 )
 
 @HiltViewModel
@@ -41,62 +41,89 @@ class AuthViewModel @Inject constructor(
         viewModelScope.launch {
             Log.d(TAG, "checkAuth start")
             _state.value = _state.value.copy(isLoading = true, error = null)
-            val token = authRepository.getToken()
-            if (token != null) {
-                Log.d(TAG, "checkAuth token found length=${token.length}")
-                authRepository.verifyToken(token)
+            val accessToken = authRepository.getAccessToken()
+            if (accessToken != null) {
+                Log.d(TAG, "checkAuth accessToken found length=${accessToken.length}")
+                authRepository.verifyToken(accessToken)
                     .onSuccess { user ->
                         Log.d(TAG, "checkAuth verify success user=${user.username}")
                         _state.value = AuthState(
                             isLoading = false,
                             isAuthenticated = true,
                             user = user,
-                            token = token
+                            accessToken = accessToken
                         )
                     }
                     .onFailure { e ->
                         Log.e(TAG, "checkAuth verify failed", e)
                         val isUnauthorized = (e as? AuthException)?.isUnauthorized == true
                         if (isUnauthorized) {
-                            // 401: Token invalid, clear and redirect to login
-                            authRepository.clearToken()
-                            _state.value = AuthState(
-                                isLoading = false,
-                                isAuthenticated = false,
-                                token = null,
-                                error = "登录已过期，请重新登录"
-                            )
+                            // Try to refresh token
+                            Log.d(TAG, "checkAuth attempting token refresh")
+                            authRepository.refreshAccessToken()
+                                .onSuccess { newToken ->
+                                    Log.d(TAG, "checkAuth refresh success, verifying new token")
+                                    authRepository.verifyToken(newToken)
+                                        .onSuccess { user ->
+                                            _state.value = AuthState(
+                                                isLoading = false,
+                                                isAuthenticated = true,
+                                                user = user,
+                                                accessToken = newToken
+                                            )
+                                        }
+                                        .onFailure { verifyError ->
+                                            Log.e(TAG, "checkAuth verify after refresh failed", verifyError)
+                                            authRepository.clearTokens()
+                                            _state.value = AuthState(
+                                                isLoading = false,
+                                                isAuthenticated = false,
+                                                accessToken = null,
+                                                error = "登录已过期，请重新登录"
+                                            )
+                                        }
+                                }
+                                .onFailure { refreshError ->
+                                    Log.e(TAG, "checkAuth refresh failed", refreshError)
+                                    authRepository.clearTokens()
+                                    _state.value = AuthState(
+                                        isLoading = false,
+                                        isAuthenticated = false,
+                                        accessToken = null,
+                                        error = "登录已过期，请重新登录"
+                                    )
+                                }
                         } else {
                             // Other errors (network, server): proceed to main with error message
                             _state.value = AuthState(
                                 isLoading = false,
                                 isAuthenticated = true,
                                 user = null,
-                                token = token,
+                                accessToken = accessToken,
                                 error = e.message
                             )
                         }
                     }
             } else {
-                Log.d(TAG, "checkAuth no token")
+                Log.d(TAG, "checkAuth no accessToken")
                 _state.value = AuthState(isLoading = false, isAuthenticated = false)
             }
         }
     }
 
-    fun handleSsoCallback(token: String) {
+    fun handleSsoCallback(accessToken: String, refreshToken: String) {
         viewModelScope.launch {
-            Log.d(TAG, "handleSsoCallback start length=${token.length}")
+            Log.d(TAG, "handleSsoCallback start accessToken length=${accessToken.length}")
             _state.value = _state.value.copy(isLoading = true, error = null)
-            authRepository.verifyToken(token)
+            authRepository.verifyToken(accessToken)
                 .onSuccess { user ->
                     Log.d(TAG, "handleSsoCallback verify success user=${user.username}")
-                    authRepository.saveToken(token)
+                    authRepository.saveTokens(accessToken, refreshToken)
                     _state.value = AuthState(
                         isLoading = false,
                         isAuthenticated = true,
                         user = user,
-                        token = token
+                        accessToken = accessToken
                     )
                 }
                 .onFailure { e ->
@@ -104,7 +131,7 @@ class AuthViewModel @Inject constructor(
                     _state.value = AuthState(
                         isLoading = false,
                         isAuthenticated = false,
-                        token = null,
+                        accessToken = null,
                         error = "登录失败: ${e.message}"
                     )
                 }
@@ -113,8 +140,8 @@ class AuthViewModel @Inject constructor(
 
     fun logout() {
         viewModelScope.launch {
-            authRepository.clearToken()
-            _state.value = AuthState(isLoading = false, isAuthenticated = false, token = null)
+            authRepository.clearTokens()
+            _state.value = AuthState(isLoading = false, isAuthenticated = false, accessToken = null)
         }
     }
 

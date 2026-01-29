@@ -247,7 +247,7 @@ fun MainScreen(
                             messages = messages,
                             isLoading = mainState.isMessagesLoading,
                             connectionState = connectionState,
-                            authToken = authState.token,
+                            authToken = authState.accessToken,
                             currentUserId = authState.user?.id,
                             currentUserPermission = authState.user?.permissionLevel,
                             lastReadMessageId = mainState.lastReadMessageId,

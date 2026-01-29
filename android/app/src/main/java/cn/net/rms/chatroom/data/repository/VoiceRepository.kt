@@ -134,7 +134,7 @@ class VoiceRepository @Inject constructor(
 
     suspend fun getVoiceToken(channelId: Long): Result<VoiceTokenResponse> {
         return try {
-            val token = authRepository.getToken()
+            val token = authRepository.getAccessToken()
                 ?: return Result.failure(AuthException("未登录，请先登录"))
             val response = api.getVoiceToken(authRepository.getAuthHeader(token), channelId)
             _currentChannelId.value = channelId
@@ -197,7 +197,7 @@ class VoiceRepository @Inject constructor(
 
     suspend fun fetchVoiceUsers(channelId: Long): Result<List<VoiceUser>> {
         return try {
-            val token = authRepository.getToken()
+            val token = authRepository.getAccessToken()
                 ?: return Result.failure(AuthException("未登录，请先登录"))
             val users = api.getVoiceUsers(authRepository.getAuthHeader(token), channelId)
             // Cache avatar URLs
@@ -293,7 +293,7 @@ class VoiceRepository @Inject constructor(
     // Voice Admin APIs
     suspend fun muteParticipant(channelId: Long, userId: String, muted: Boolean = true): Result<Boolean> {
         return try {
-            val token = authRepository.getToken()
+            val token = authRepository.getAccessToken()
                 ?: return Result.failure(AuthException("Not logged in"))
             val response = api.muteParticipant(
                 authRepository.getAuthHeader(token),
@@ -310,7 +310,7 @@ class VoiceRepository @Inject constructor(
 
     suspend fun kickParticipant(channelId: Long, userId: String): Result<Boolean> {
         return try {
-            val token = authRepository.getToken()
+            val token = authRepository.getAccessToken()
                 ?: return Result.failure(AuthException("Not logged in"))
             val response = api.kickParticipant(
                 authRepository.getAuthHeader(token),
@@ -326,7 +326,7 @@ class VoiceRepository @Inject constructor(
 
     suspend fun fetchHostMode(channelId: Long): Result<HostModeResponse> {
         return try {
-            val token = authRepository.getToken()
+            val token = authRepository.getAccessToken()
                 ?: return Result.failure(AuthException("Not logged in"))
             val response = api.getHostMode(authRepository.getAuthHeader(token), channelId)
             _hostModeEnabled.value = response.enabled
@@ -341,7 +341,7 @@ class VoiceRepository @Inject constructor(
 
     suspend fun setHostMode(channelId: Long, enabled: Boolean): Result<HostModeResponse> {
         return try {
-            val token = authRepository.getToken()
+            val token = authRepository.getAccessToken()
                 ?: return Result.failure(AuthException("Not logged in"))
             val response = api.setHostMode(
                 authRepository.getAuthHeader(token),
@@ -360,7 +360,7 @@ class VoiceRepository @Inject constructor(
 
     suspend fun createVoiceInvite(channelId: Long): Result<InviteCreateResponse> {
         return try {
-            val token = authRepository.getToken()
+            val token = authRepository.getAccessToken()
                 ?: return Result.failure(AuthException("Not logged in"))
             val response = api.createVoiceInvite(authRepository.getAuthHeader(token), channelId)
             Result.success(response)
@@ -411,7 +411,7 @@ class VoiceRepository @Inject constructor(
     
     suspend fun fetchScreenShareStatus(channelId: Long): Result<ScreenShareStatusResponse> {
         return try {
-            val token = authRepository.getToken()
+            val token = authRepository.getAccessToken()
                 ?: return Result.failure(AuthException("Not logged in"))
             val response = api.getScreenShareStatus(authRepository.getAuthHeader(token), channelId)
             _screenShareLocked.value = response.locked
@@ -426,7 +426,7 @@ class VoiceRepository @Inject constructor(
     
     suspend fun lockScreenShare(channelId: Long): Result<ScreenShareLockResponse> {
         return try {
-            val token = authRepository.getToken()
+            val token = authRepository.getAccessToken()
                 ?: return Result.failure(AuthException("Not logged in"))
             val response = api.lockScreenShare(authRepository.getAuthHeader(token), channelId)
             _screenShareLocked.value = response.success || response.sharerId != null
@@ -441,7 +441,7 @@ class VoiceRepository @Inject constructor(
     
     suspend fun unlockScreenShare(channelId: Long): Result<ScreenShareLockResponse> {
         return try {
-            val token = authRepository.getToken()
+            val token = authRepository.getAccessToken()
                 ?: return Result.failure(AuthException("Not logged in"))
             val response = api.unlockScreenShare(authRepository.getAuthHeader(token), channelId)
             _screenShareLocked.value = false

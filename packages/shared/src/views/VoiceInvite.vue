@@ -3,6 +3,7 @@ import { ref, onMounted, onUnmounted, shallowRef } from 'vue'
 import { useRoute } from 'vue-router'
 import { Room, RoomEvent, Track, RemoteParticipant, AudioPresets } from 'livekit-client'
 import { Volume2, VolumeX, Mic, MicOff, Phone, AlertCircle, UserPlus, Crown } from 'lucide-vue-next'
+import UserAvatar from '../components/UserAvatar.vue'
 
 const API_BASE = import.meta.env.VITE_API_BASE || ''
 
@@ -342,9 +343,7 @@ function disconnect() {
               class="voice-user"
               :class="{ speaking: participant.isSpeaking }"
             >
-              <div class="user-avatar">
-                {{ participant.name.replace('[Guest] ', '').charAt(0).toUpperCase() }}
-              </div>
+              <UserAvatar :username="participant.name.replace('[Guest] ', '')" :size="32" class="user-avatar" />
               <span class="user-name">
                 {{ participant.name }}
                 <span v-if="participant.isLocal" class="local-tag">(你)</span>

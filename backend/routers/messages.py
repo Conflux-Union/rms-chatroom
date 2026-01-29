@@ -173,8 +173,6 @@ async def get_messages(
     before: int | None = Query(None),
 ):
     """Get messages from a text channel."""
-    from ..services.sso_client import SSOClient
-
     # Verify channel exists and is text type
     channel_result = await db.execute(select(Channel).where(Channel.id == channel_id))
     channel = channel_result.scalar_one_or_none()
@@ -206,13 +204,9 @@ async def get_messages(
     result = await db.execute(query)
     messages = result.scalars().all()
 
-    # Batch fetch avatar URLs for all unique users
-    user_ids = list(set(msg.user_id for msg in messages))
-    avatar_map = await SSOClient.get_avatar_urls_batch(user_ids)
-
-    # Return in chronological order with attachments and avatars
+    # Return in chronological order with attachments (avatar_url is None)
     return [
-        _message_to_response(msg, avatar_map.get(msg.user_id))
+        _message_to_response(msg, None)
         for msg in reversed(messages)
     ]
 

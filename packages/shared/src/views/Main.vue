@@ -36,7 +36,6 @@ chatWs.onMessage((data) => {
         channel_id: messageChannelId,
         user_id: data.user_id,
         username: data.username,
-        avatar_url: data.avatar_url,
         content: data.content,
         created_at: data.created_at,
         attachments: data.attachments || [],

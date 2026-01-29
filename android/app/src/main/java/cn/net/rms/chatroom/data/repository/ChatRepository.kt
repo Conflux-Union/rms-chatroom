@@ -204,7 +204,7 @@ class ChatRepository @Inject constructor(
 
     suspend fun fetchServers(): Result<List<Server>> {
         return try {
-            val token = authRepository.getToken()
+            val token = authRepository.getAccessToken()
                 ?: return Result.failure(AuthException("未登录，请先登录"))
             val serverList = api.getServers(authRepository.getAuthHeader(token))
             _servers.value = serverList
@@ -217,7 +217,7 @@ class ChatRepository @Inject constructor(
 
     suspend fun fetchServer(serverId: Long): Result<Server> {
         return try {
-            val token = authRepository.getToken()
+            val token = authRepository.getAccessToken()
                 ?: return Result.failure(AuthException("未登录，请先登录"))
             val server = api.getServer(authRepository.getAuthHeader(token), serverId)
             _currentServer.value = server
@@ -237,7 +237,7 @@ class ChatRepository @Inject constructor(
         loadCachedMessages(channelId)
 
         return try {
-            val token = authRepository.getToken()
+            val token = authRepository.getAccessToken()
                 ?: return Result.failure(AuthException("未登录，请先登录"))
             val messageList = api.getMessages(authRepository.getAuthHeader(token), channelId)
             _messages.value = messageList
@@ -287,7 +287,7 @@ class ChatRepository @Inject constructor(
 
     suspend fun uploadFile(channelId: Long, uri: Uri): Result<AttachmentResponse> {
         return try {
-            val token = authRepository.getToken()
+            val token = authRepository.getAccessToken()
                 ?: return Result.failure(AuthException("未登录，请先登录"))
 
             val contentResolver = context.contentResolver
@@ -341,7 +341,7 @@ class ChatRepository @Inject constructor(
     }
 
     fun connectToChannel(channelId: Long) {
-        val token = authRepository.getTokenBlocking() ?: run {
+        val token = authRepository.getAccessTokenBlocking() ?: run {
             Log.e(TAG, "Cannot connect to WebSocket: no token")
             return
         }
@@ -364,7 +364,7 @@ class ChatRepository @Inject constructor(
 
     suspend fun fetchVoiceChannelUsers(channelId: Long): Result<List<VoiceUser>> {
         return try {
-            val token = authRepository.getToken()
+            val token = authRepository.getAccessToken()
                 ?: return Result.failure(AuthException("未登录，请先登录"))
             val users = api.getVoiceUsers(authRepository.getAuthHeader(token), channelId)
             _voiceChannelUsers.value = _voiceChannelUsers.value.toMutableMap().apply {
@@ -383,7 +383,7 @@ class ChatRepository @Inject constructor(
     suspend fun fetchAllVoiceChannelUsers(): Map<Long, List<VoiceUser>> {
         val server = _currentServer.value ?: return emptyMap()
         return try {
-            val token = authRepository.getToken() ?: return emptyMap()
+            val token = authRepository.getAccessToken() ?: return emptyMap()
             val response = api.getAllVoiceUsers(authRepository.getAuthHeader(token))
             val newMap = mutableMapOf<Long, List<VoiceUser>>()
             response.users.forEach { (channelId, users) ->
@@ -414,7 +414,7 @@ class ChatRepository @Inject constructor(
 
     suspend fun createChannel(serverId: Long, name: String, type: String): Result<Channel> {
         return try {
-            val token = authRepository.getToken()
+            val token = authRepository.getAccessToken()
                 ?: return Result.failure(AuthException("未登录，请先登录"))
             val channel = api.createChannel(
                 authRepository.getAuthHeader(token),
@@ -430,7 +430,7 @@ class ChatRepository @Inject constructor(
 
     suspend fun deleteChannel(serverId: Long, channelId: Long): Result<Unit> {
         return try {
-            val token = authRepository.getToken()
+            val token = authRepository.getAccessToken()
                 ?: return Result.failure(AuthException("未登录，请先登录"))
             api.deleteChannel(authRepository.getAuthHeader(token), serverId, channelId)
             Result.success(Unit)
@@ -443,7 +443,7 @@ class ChatRepository @Inject constructor(
     // Channel Group methods
     suspend fun fetchChannelGroups(serverId: Long): Result<List<ChannelGroup>> {
         return try {
-            val token = authRepository.getToken()
+            val token = authRepository.getAccessToken()
                 ?: return Result.failure(AuthException("未登录，请先登录"))
             val groups = api.getChannelGroups(authRepository.getAuthHeader(token), serverId)
             val channelGroups = groups.map { 
@@ -464,7 +464,7 @@ class ChatRepository @Inject constructor(
 
     suspend fun createChannelGroup(serverId: Long, name: String): Result<ChannelGroup> {
         return try {
-            val token = authRepository.getToken()
+            val token = authRepository.getAccessToken()
                 ?: return Result.failure(AuthException("未登录，请先登录"))
             val response = api.createChannelGroup(
                 authRepository.getAuthHeader(token),
@@ -486,7 +486,7 @@ class ChatRepository @Inject constructor(
 
     suspend fun deleteChannelGroup(serverId: Long, groupId: Long): Result<Unit> {
         return try {
-            val token = authRepository.getToken()
+            val token = authRepository.getAccessToken()
                 ?: return Result.failure(AuthException("未登录，请先登录"))
             api.deleteChannelGroup(authRepository.getAuthHeader(token), serverId, groupId)
             Result.success(Unit)
@@ -498,7 +498,7 @@ class ChatRepository @Inject constructor(
 
     suspend fun reorderTopLevel(serverId: Long, items: List<ReorderTopLevelItem>): Result<Unit> {
         return try {
-            val token = authRepository.getToken()
+            val token = authRepository.getAccessToken()
                 ?: return Result.failure(AuthException("未登录，请先登录"))
             api.reorderTopLevel(
                 authRepository.getAuthHeader(token),
@@ -514,7 +514,7 @@ class ChatRepository @Inject constructor(
 
     suspend fun reorderGroupChannels(serverId: Long, groupId: Long, channelIds: List<Long>): Result<Unit> {
         return try {
-            val token = authRepository.getToken()
+            val token = authRepository.getAccessToken()
                 ?: return Result.failure(AuthException("未登录，请先登录"))
             api.reorderGroupChannels(
                 authRepository.getAuthHeader(token),
@@ -531,7 +531,7 @@ class ChatRepository @Inject constructor(
 
     suspend fun createServer(name: String): Result<Server> {
         return try {
-            val token = authRepository.getToken()
+            val token = authRepository.getAccessToken()
                 ?: return Result.failure(AuthException("未登录，请先登录"))
             val server = api.createServer(
                 authRepository.getAuthHeader(token),
@@ -546,7 +546,7 @@ class ChatRepository @Inject constructor(
 
     suspend fun deleteServer(serverId: Long): Result<Unit> {
         return try {
-            val token = authRepository.getToken()
+            val token = authRepository.getAccessToken()
                 ?: return Result.failure(AuthException("未登录，请先登录"))
             api.deleteServer(authRepository.getAuthHeader(token), serverId)
             Result.success(Unit)
@@ -559,7 +559,7 @@ class ChatRepository @Inject constructor(
     // Message management methods
     suspend fun editMessage(channelId: Long, messageId: Long, content: String): Result<Message> {
         return try {
-            val token = authRepository.getToken()
+            val token = authRepository.getAccessToken()
                 ?: return Result.failure(AuthException("未登录，请先登录"))
             val message = api.editMessage(
                 authRepository.getAuthHeader(token),
@@ -577,7 +577,7 @@ class ChatRepository @Inject constructor(
 
     suspend fun deleteMessage(channelId: Long, messageId: Long): Result<Unit> {
         return try {
-            val token = authRepository.getToken()
+            val token = authRepository.getAccessToken()
                 ?: return Result.failure(AuthException("未登录，请先登录"))
             api.deleteMessage(authRepository.getAuthHeader(token), channelId, messageId)
             Result.success(Unit)
@@ -624,7 +624,7 @@ class ChatRepository @Inject constructor(
         reason: String?
     ): Result<cn.net.rms.chatroom.data.model.MuteResponse> {
         return try {
-            val token = authRepository.getToken()
+            val token = authRepository.getAccessToken()
                 ?: return Result.failure(AuthException("未登录，请先登录"))
             val response = api.createMute(
                 authRepository.getAuthHeader(token),
@@ -646,7 +646,7 @@ class ChatRepository @Inject constructor(
 
     suspend fun getUserMutes(userId: Long): Result<List<cn.net.rms.chatroom.data.model.MuteRecord>> {
         return try {
-            val token = authRepository.getToken()
+            val token = authRepository.getAccessToken()
                 ?: return Result.failure(AuthException("未登录，请先登录"))
             val mutes = api.getUserMutes(authRepository.getAuthHeader(token), userId)
             Result.success(mutes)
@@ -668,7 +668,7 @@ class ChatRepository @Inject constructor(
     // Reaction methods
     suspend fun addReaction(messageId: Long, emoji: String): Result<Unit> {
         return try {
-            val token = authRepository.getToken()
+            val token = authRepository.getAccessToken()
                 ?: return Result.failure(AuthException("未登录，请先登录"))
             api.addReaction(authRepository.getAuthHeader(token), messageId, AddReactionRequest(emoji))
             Result.success(Unit)
@@ -680,7 +680,7 @@ class ChatRepository @Inject constructor(
 
     suspend fun removeReaction(messageId: Long, emoji: String): Result<Unit> {
         return try {
-            val token = authRepository.getToken()
+            val token = authRepository.getAccessToken()
                 ?: return Result.failure(AuthException("未登录，请先登录"))
             api.removeReaction(authRepository.getAuthHeader(token), messageId, emoji)
             Result.success(Unit)
@@ -756,7 +756,7 @@ class ChatRepository @Inject constructor(
     // Channel members for @mention autocomplete
     suspend fun getChannelMembers(channelId: Long): Result<List<ChannelMember>> {
         return try {
-            val token = authRepository.getToken()
+            val token = authRepository.getAccessToken()
                 ?: return Result.failure(AuthException("未登录，请先登录"))
             val members = api.getChannelMembers(authRepository.getAuthHeader(token), channelId)
             Result.success(members)

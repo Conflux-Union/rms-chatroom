@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.database import async_session_maker
 from ..models.server import Attachment, Channel, ChannelType, Message
-from ..services.sso_client import SSOClient
+from ..services.token_service import TokenService
 from .manager import chat_manager
 
 
@@ -32,9 +32,9 @@ def _truncate_content(content: str, max_len: int = 100) -> str:
 router = APIRouter()
 
 
-async def get_user_from_token(token: str) -> dict | None:
+def get_user_from_token(token: str) -> dict | None:
     """Verify token and get user info."""
-    return await SSOClient.verify_token(token)
+    return TokenService.verify_access_token(token)
 
 
 @router.websocket("/ws/chat")
@@ -53,7 +53,7 @@ async def chat_websocket(websocket: WebSocket, token: str | None = None):
         await websocket.close(code=4001, reason="Missing token")
         return
 
-    user = await get_user_from_token(token)
+    user = get_user_from_token(token)
     if not user:
         await websocket.close(code=4001, reason="Invalid token")
         return
@@ -226,18 +226,13 @@ async def chat_websocket(websocket: WebSocket, token: str | None = None):
                     # Format created_at as UTC ISO 8601 with Z suffix
                     created_str = format_utc_datetime(message.created_at)
 
-                    # Get avatar URL for the sender
-                    avatar_url = user.get("avatar_url")
-                    if not avatar_url:
-                        avatar_url = await SSOClient.get_avatar_url(user["id"])
-
                     broadcast_msg = {
                         "type": "message",
                         "id": message.id,
                         "channel_id": channel_id,
                         "user_id": message.user_id,
                         "username": message.username,
-                        "avatar_url": avatar_url,
+                        "avatar_url": None,
                         "content": message.content,
                         "created_at": created_str,
                         "attachments": attachments_data,

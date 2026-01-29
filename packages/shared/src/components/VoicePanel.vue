@@ -7,6 +7,7 @@ import { Volume2, VolumeX, Mic, MicOff, Phone, AlertTriangle, Crown, Link, Copy,
 import { NModal, NButton, NSpace, NInput, NDropdown, NSpin } from 'naive-ui'
 import type { DropdownOption } from 'naive-ui'
 import TranscriptionPanel from './TranscriptionPanel.vue'
+import UserAvatar from './UserAvatar.vue'
 
 // Detect iOS devices
 const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
@@ -572,14 +573,7 @@ async function stopTranscription() {
                 >
                   <div class="user-info">
                     <div class="user-avatar">
-                      <img
-                        v-if="participant.avatarUrl"
-                        :src="participant.avatarUrl"
-                        :alt="participant.name"
-                        class="avatar-img"
-                        @error="(e: Event) => (e.target as HTMLImageElement).style.display = 'none'"
-                      />
-                      <span v-else class="avatar-fallback">{{ participant.name.charAt(0).toUpperCase() }}</span>
+                      <UserAvatar :username="participant.name" :size="32" />
                     </div>
                     <span class="user-name">
                       {{ participant.name }}

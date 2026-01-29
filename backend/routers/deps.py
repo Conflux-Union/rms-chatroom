@@ -4,7 +4,7 @@ from typing import Annotated, Any
 
 from fastapi import Depends, HTTPException, Header, status
 
-from ..services.sso_client import SSOClient
+from ..services.token_service import TokenService
 
 
 async def get_current_user(authorization: Annotated[str | None, Header()] = None) -> dict[str, Any]:
@@ -16,7 +16,7 @@ async def get_current_user(authorization: Annotated[str | None, Header()] = None
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid authorization format")
 
     token = authorization[7:]
-    user = await SSOClient.verify_token(token)
+    user = TokenService.verify_access_token(token)
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token")
 

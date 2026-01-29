@@ -123,7 +123,7 @@ class ReadPositionRepository @Inject constructor(
      */
     suspend fun fetchServerPositions(): Result<Unit> {
         return try {
-            val token = authRepository.getToken() ?: return Result.failure(Exception("Not logged in"))
+            val token = authRepository.getAccessToken() ?: return Result.failure(Exception("Not logged in"))
             val response = api.getReadPositions(authRepository.getAuthHeader(token))
 
             val serverPositions = response.positions.associateBy { it.channelId }

@@ -33,7 +33,6 @@ function isIOS(): boolean {
 export interface VoiceParticipant {
   id: string
   name: string
-  avatarUrl?: string
   isMuted: boolean
   isSpeaking: boolean
   isLocal: boolean
@@ -192,8 +191,6 @@ export const useVoiceStore = defineStore('voice', () => {
 
   // Server-side mute state cache (from API)
   const serverMuteState = ref<Map<string, boolean>>(new Map())
-  // Avatar URL cache (from API)
-  const avatarUrlCache = ref<Map<string, string>>(new Map())
 
   // iOS Audio Context state
   const audioContextInitialized = ref(false)
@@ -378,7 +375,6 @@ export const useVoiceStore = defineStore('voice', () => {
     list.push({
       id: local.identity,
       name: local.name || local.identity,
-      avatarUrl: auth.user?.avatar_url || avatarUrlCache.value.get(local.identity),
       isMuted: localMuted,
       isSpeaking: local.isSpeaking,
       isLocal: true,
@@ -394,7 +390,6 @@ export const useVoiceStore = defineStore('voice', () => {
       list.push({
         id: p.identity,
         name: p.name || p.identity,
-        avatarUrl: avatarUrlCache.value.get(p.identity),
         isMuted,
         isSpeaking: p.isSpeaking,
         isLocal: false,
@@ -418,10 +413,6 @@ export const useVoiceStore = defineStore('voice', () => {
     const newMuteState = new Map<string, boolean>()
     for (const user of users) {
       newMuteState.set(user.id, user.is_muted)
-      // Cache avatar URL if available
-      if (user.avatar_url) {
-        avatarUrlCache.value.set(user.id, user.avatar_url)
-      }
     }
     serverMuteState.value = newMuteState
     updateParticipants()
