@@ -1,11 +1,18 @@
 {
   "database_url": "sqlite+aiosqlite:///./discord.db",
-  "sso_base_url": "https://sso.rms.net.cn",
-  "sso_verify_endpoint": "/api/user",
+  "oauth_base_url": "https://sso.rms.net.cn",
+  "oauth_authorize_endpoint": "/oauth/authorize",
+  "oauth_token_endpoint": "/oauth/token",
+  "oauth_userinfo_endpoint": "/oauth/userinfo",
+  "oauth_client_id": "",
+  "oauth_client_secret": "",
+  "oauth_redirect_uri": "http://localhost:8000/api/auth/callback",
+  "oauth_scope": "openid profile",
+  "jwt_secret": "",
   "host": "0.0.0.0",
   "port": 8000,
   "debug": true,
-  "frontend_dist_path": "../frontend/dist",
+  "frontend_dist_path": "../packages/web/dist",
   "cors_origins": [
     "http://localhost:5173",
     "http://127.0.0.1:5173"
