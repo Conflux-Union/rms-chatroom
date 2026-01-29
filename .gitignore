@@ -2,24 +2,55 @@
 __pycache__/
 *.py[cod]
 *$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
 .venv/
 venv/
-*.db
+ENV/
+env/
 
 # Node
 node_modules/
 dist/
+pnpm-lock.yaml
+package-lock.json
+yarn.lock
+*.tsbuildinfo
 
 # IDE
 .idea/
 .vscode/
 *.swp
 *.swo
+*~
+.DS_Store
 
 # Logs
 *.log
+logs/
 
 # Environment
+.env
 .env.local
 .env.*.local
 
@@ -31,6 +62,12 @@ android/app/release.keystore
 *.jks
 *.keystore
 
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Debug
 debug/
 
 # Scripts
@@ -38,3 +75,18 @@ git-commit-ai.sh
 
 # Claude Context
 .claude-context/
+
+# Temporary files
+*.tmp
+*.temp
+
+# OS
+Thumbs.db
+
+# Uploads
+uploads/
+
+# Electron build artifacts
+electron/dist/
+electron/out/
+electron/release/

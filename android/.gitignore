@@ -2,28 +2,55 @@
 .gradle/
 build/
 !gradle/wrapper/gradle-wrapper.jar
+.gradletasknamecache
 
 # IDE
 .idea/
 *.iml
+*.iws
+*.ipr
 local.properties
+.vscode/
+*.swp
+*.swo
+*~
 
 # Android
 *.apk
+*.aab
 *.aar
 *.ap_
 *.dex
 /captures
-*.keystore
-!debug.keystore
+.externalNativeBuild/
+.cxx/
+lint-baseline.xml
 
 # Generated
 /app/build/
 /app/release/
 
-# Misc
+# Keystore (sensitive)
+*.keystore
+*.jks
+!debug.keystore
+release.keystore
+
+# Kotlin
+.kotlin/
+
+# Logs
 *.log
+
+# OS
 .DS_Store
 Thumbs.db
 
-.kotlin/
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Temporary files
+*.tmp
+*.temp
