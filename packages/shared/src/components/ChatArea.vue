@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, watch, nextTick, onMounted, onUnmounted, computed } from 'vue'
+import type { CSSProperties } from 'vue'
 import { useChatStore } from '../stores/chat'
 import { useAuthStore } from '../stores/auth'
 import { useChatWebSocket } from '../composables/useChatWebSocket'
@@ -169,6 +170,15 @@ const muteReason = computed(() => localMuteReason.value || chat.muteReasonByWs)
 const showEmojiPicker = ref(false)
 const emojiPickerMessageId = ref<number | null>(null)
 const emojiPickerPosition = ref({ x: 0, y: 0, showBelow: false })
+const isWheelScrolling = ref(false)
+const isScrollActive = ref(false)
+let wheelScrollTimeout: ReturnType<typeof setTimeout> | null = null
+const hoveredMessageId = ref<number | null>(null)
+const latestVisibleMessageId = ref<number | null>(null)
+const messageIndexMap = new Map<number, number>()
+const visibleMessageIndices = new Set<number>()
+const maxVisibleIndex = ref<number | null>(null)
+let messageObserver: IntersectionObserver | null = null
 
 // Common emojis for quick reactions
 const commonEmojis = ['👍', '❤️', '😂', '😮', '😢', '🎉', '🔥', '👀']
@@ -202,6 +212,7 @@ watch(
 
       await nextTick()
       scrollToBottom()
+      refreshMessageObserver()
 
       // Mark as read after user has stayed on channel for 2 seconds
       // This prevents immediate clearing of mention badges
@@ -219,14 +230,19 @@ watch(
 // Auto-scroll when new messages arrive
 watch(
   () => chat.messages.length,
-  () => {
+  async () => {
+    await nextTick()
     scrollToBottom()
+    refreshMessageObserver()
   }
 )
 
 onMounted(() => {
   // Close context menu on click outside
   document.addEventListener('click', hideContextMenu)
+  nextTick(() => {
+    setupMessageObserver()
+  })
 })
 
 function scrollToBottom() {
@@ -237,9 +253,11 @@ function scrollToBottom() {
   })
 }
 
-// Save read position when user scrolls (debounced)
+// Save read position when user stops scrolling (debounced)
 function handleMessagesScroll() {
   if (!chat.currentChannel || chat.messages.length === 0) return
+
+  isScrollActive.value = true
 
   // Debounce: only save after user stops scrolling for 500ms
   if (scrollSaveTimeout) {
@@ -247,33 +265,92 @@ function handleMessagesScroll() {
   }
 
   scrollSaveTimeout = setTimeout(() => {
-    const container = messagesContainer.value
-    if (!container) return
-
-    // Find the last visible message
-    const containerRect = container.getBoundingClientRect()
-    const messageElements = container.querySelectorAll('.message[data-message-id]')
-
-    let lastVisibleMessageId: number | null = null
-    for (const el of messageElements) {
-      const rect = el.getBoundingClientRect()
-      // Check if message is visible in the container
-      if (rect.top < containerRect.bottom && rect.bottom > containerRect.top) {
-        const id = parseInt(el.getAttribute('data-message-id') || '0', 10)
-        if (id > 0) {
-          lastVisibleMessageId = id
-        }
-      }
-    }
-
-    if (lastVisibleMessageId && chat.currentChannel) {
-      saveReadPosition(chat.currentChannel.id, lastVisibleMessageId)
+    isScrollActive.value = false
+    if (latestVisibleMessageId.value && chat.currentChannel) {
+      saveReadPosition(chat.currentChannel.id, latestVisibleMessageId.value)
       // Update read timestamp and clear mention notification when user scrolls
       markChannelAsRead(chat.currentChannel.id)
       clearChannelMention(chat.currentChannel.id)
       console.log('[ChatArea] Updated read timestamp on scroll')
     }
-  }, 500)
+  }, 120)
+}
+
+function handleWheelScroll() {
+  isWheelScrolling.value = true
+  if (wheelScrollTimeout) {
+    clearTimeout(wheelScrollTimeout)
+  }
+  wheelScrollTimeout = setTimeout(() => {
+    isWheelScrolling.value = false
+  }, 200)
+}
+
+function setupMessageObserver() {
+  if (!messagesContainer.value) return
+  messageObserver = new IntersectionObserver(handleMessageIntersections, {
+    root: messagesContainer.value,
+    threshold: 0.01,
+  })
+  observeAllMessages()
+}
+
+function refreshMessageObserver() {
+  if (!messageObserver) {
+    setupMessageObserver()
+    return
+  }
+  observeAllMessages()
+}
+
+function observeAllMessages() {
+  if (!messageObserver || !messagesContainer.value) return
+  messageObserver.disconnect()
+  visibleMessageIndices.clear()
+  maxVisibleIndex.value = null
+  latestVisibleMessageId.value = null
+  messageIndexMap.clear()
+  chat.messages.forEach((msg, idx) => {
+    messageIndexMap.set(msg.id, idx)
+  })
+
+  const elements = messagesContainer.value.querySelectorAll('.message[data-message-id]')
+  elements.forEach((el) => messageObserver!.observe(el))
+}
+
+function updateLatestVisibleFromIndex(startIndex: number) {
+  for (let i = startIndex; i >= 0; i--) {
+    if (visibleMessageIndices.has(i)) {
+      maxVisibleIndex.value = i
+      latestVisibleMessageId.value = chat.messages[i]?.id ?? null
+      return
+    }
+  }
+  maxVisibleIndex.value = null
+  latestVisibleMessageId.value = null
+}
+
+function handleMessageIntersections(entries: IntersectionObserverEntry[]) {
+  for (const entry of entries) {
+    const el = entry.target as HTMLElement
+    const id = parseInt(el.getAttribute('data-message-id') || '0', 10)
+    if (!id) continue
+    const index = messageIndexMap.get(id)
+    if (index === undefined) continue
+
+    if (entry.isIntersecting) {
+      visibleMessageIndices.add(index)
+      if (maxVisibleIndex.value === null || index > maxVisibleIndex.value) {
+        maxVisibleIndex.value = index
+        latestVisibleMessageId.value = chat.messages[index]?.id ?? null
+      }
+    } else {
+      visibleMessageIndices.delete(index)
+      if (maxVisibleIndex.value === index) {
+        updateLatestVisibleFromIndex(index - 1)
+      }
+    }
+  }
 }
 
 // Scroll to a specific message by ID
@@ -816,6 +893,7 @@ function handleClickOutside(event: MouseEvent) {
 
 // Reaction functions
 function showReactionPicker(event: MouseEvent, messageId: number) {
+  if (isWheelScrolling.value) return
   event.stopPropagation()
   const rect = (event.target as HTMLElement).getBoundingClientRect()
   // Emoji picker height is approximately 180px (4 rows * 36px + padding)
@@ -835,6 +913,31 @@ function showReactionPicker(event: MouseEvent, messageId: number) {
 function hideReactionPicker() {
   showEmojiPicker.value = false
   emojiPickerMessageId.value = null
+}
+
+function handleMessageMouseEnter(messageId: number) {
+  hoveredMessageId.value = messageId
+}
+
+function handleMessageMouseLeave(messageId: number) {
+  if (hoveredMessageId.value === messageId) {
+    hoveredMessageId.value = null
+  }
+}
+
+function shouldShowEmptyReactions(message: Message): boolean {
+  return !message.reactions?.length && hoveredMessageId.value === message.id && !isWheelScrolling.value
+}
+
+function getEmptyReactionsStyle(message: Message): CSSProperties {
+  const show = shouldShowEmptyReactions(message)
+  return {
+    maxHeight: show ? '40px' : '0',
+    opacity: show ? 1 : 0,
+    marginTop: show ? '6px' : '0',
+    // pointerEvents typed strictly in CSSProperties, cast to satisfy TS
+    pointerEvents: (show ? 'auto' : 'none') as CSSProperties['pointerEvents'],
+  } as CSSProperties
 }
 
 async function addReaction(messageId: number, emoji: string) {
@@ -942,6 +1045,12 @@ onUnmounted(() => {
   if (scrollSaveTimeout) {
     clearTimeout(scrollSaveTimeout)
   }
+  if (wheelScrollTimeout) {
+    clearTimeout(wheelScrollTimeout)
+  }
+  if (messageObserver) {
+    messageObserver.disconnect()
+  }
   document.removeEventListener('click', hideContextMenu)
   // Revoke all cached blob URLs
   for (const url of replyThumbnailCache.value.values()) {
@@ -983,7 +1092,14 @@ onUnmounted(() => {
       </Transition>
     </div>
 
-    <div class="messages" ref="messagesContainer" @scroll="handleMessagesScroll">
+    <div
+      class="messages"
+      :class="{ 'is-scroll-active': isScrollActive }"
+      ref="messagesContainer"
+      @scroll="handleMessagesScroll"
+      @wheel.passive="handleWheelScroll"
+      @touchmove.passive="handleWheelScroll"
+    >
       <div
         v-for="(msg, index) in chat.messages"
         :key="msg.id"
@@ -991,6 +1107,8 @@ onUnmounted(() => {
         class="message"
         :class="{ 'message-grouped': shouldGroupWithPrevious(index) }"
         @contextmenu="!msg.is_deleted && showContextMenu($event, msg)"
+        @mouseenter="handleMessageMouseEnter(msg.id)"
+        @mouseleave="handleMessageMouseLeave(msg.id)"
       >
         <!-- Avatar: hidden placeholder for grouped messages to maintain alignment -->
         <div class="message-avatar" :class="{ 'avatar-hidden': shouldGroupWithPrevious(index) }">
@@ -1114,7 +1232,7 @@ onUnmounted(() => {
               </button>
             </div>
             <!-- Add reaction button when no reactions yet -->
-            <div v-else class="message-reactions-empty">
+            <div v-else class="message-reactions-empty" :style="getEmptyReactionsStyle(msg)">
               <button
                 class="reaction-add-btn"
                 @click="showReactionPicker($event, msg.id)"
@@ -1968,11 +2086,6 @@ onUnmounted(() => {
   transition: max-height 0.2s ease, opacity 0.2s ease, margin-top 0.2s ease;
 }
 
-.message:hover .message-reactions-empty {
-  max-height: 40px;
-  opacity: 1;
-  margin-top: 6px;
-}
 
 .reaction-badge {
   display: flex;
