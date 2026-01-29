@@ -199,9 +199,71 @@ jobs:
           path: electron/dist/*.exe
           retention-days: 7
 
+  build-standalone:
+    name: Build Standalone Executables
+    runs-on: ${{ matrix.os }}
+    needs: extract-version
+
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install pnpm
+        run: npm install -g pnpm
+
+      - name: Install Python dependencies
+        run: |
+          cd backend
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Install frontend dependencies
+        run: pnpm install
+
+      - name: Build standalone executable
+        run: python build_standalone.py
+
+      - name: Upload Windows standalone
+        if: matrix.os == 'windows-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: standalone-windows
+          path: dist/rms-discord-standalone-windows-x64.zip
+          retention-days: 7
+
+      - name: Upload Linux standalone
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: standalone-linux
+          path: dist/rms-discord-standalone-linux-x64.tar.gz
+          retention-days: 7
+
+      - name: Upload macOS standalone
+        if: matrix.os == 'macos-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: standalone-macos
+          path: dist/rms-discord-standalone-macos-universal.tar.gz
+          retention-days: 7
+
   create-release:
     name: Create GitHub Release
-    needs: [extract-version, build-android, build-electron]
+    needs: [extract-version, build-android, build-electron, build-standalone]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -364,6 +426,17 @@ jobs:
             cp artifacts/electron-windows/*.exe release-assets/ 2>/dev/null || true
           fi
 
+          # Standalone executables
+          if [ -d artifacts/standalone-windows ]; then
+            cp artifacts/standalone-windows/*.zip release-assets/ 2>/dev/null || true
+          fi
+          if [ -d artifacts/standalone-linux ]; then
+            cp artifacts/standalone-linux/*.tar.gz release-assets/ 2>/dev/null || true
+          fi
+          if [ -d artifacts/standalone-macos ]; then
+            cp artifacts/standalone-macos/*.tar.gz release-assets/ 2>/dev/null || true
+          fi
+
           ls -lh release-assets/
 
       - name: Create Release
@@ -387,10 +460,18 @@ jobs:
 
             ## 📦 Downloads
 
+            ### Mobile
             - **Android APK:** `rms-chatroom-${{ needs.extract-version.outputs.version_name }}.apk`
+
+            ### Desktop (Electron)
             - **Windows:** `.exe` installer
             - **macOS:** `.dmg` installer
             - **Linux:** `.AppImage` portable app or `.deb` package
+
+            ### Standalone (Single Executable)
+            - **Windows:** `rms-discord-standalone-windows-x64.zip`
+            - **Linux:** `rms-discord-standalone-linux-x64.tar.gz`
+            - **macOS:** `rms-discord-standalone-macos-universal.tar.gz`
 
             ## 📖 Installation
 
@@ -405,6 +486,16 @@ jobs:
             - **Linux:**
               - **Debian/Ubuntu:** Install the `.deb` package with `sudo dpkg -i <filename>.deb` (recommended, no sandbox issues)
               - **Other distros:** Make the `.AppImage` executable and run it
+
+            ### Standalone (For Server Deployment)
+            1. Download the appropriate package for your platform
+            2. Extract the archive
+            3. Run the executable (generates `config.json` on first run)
+            4. Edit `config.json` with your OAuth credentials
+            5. Restart the application
+            6. Open http://localhost:8000 in your browser
+
+            **Note:** Standalone version includes both frontend and backend in a single executable. No Python or Node.js installation required.
 
             ---
 

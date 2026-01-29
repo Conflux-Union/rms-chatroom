@@ -10,7 +10,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 RUNTIME_ROOT = Path(__file__).resolve().parent.parent
-CONFIG_PATH = RUNTIME_ROOT / "config.json"
+# Allow overriding config path via environment variable (for standalone builds)
+CONFIG_PATH = Path(os.environ.get('CONFIG_PATH', RUNTIME_ROOT / "config.json"))
 
 DEFAULT_CONFIG: dict[str, Any] = {
     "database_url": "sqlite+aiosqlite:///./discord.db",

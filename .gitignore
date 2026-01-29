@@ -90,3 +90,9 @@ uploads/
 electron/dist/
 electron/out/
 electron/release/
+
+# PyInstaller standalone build
+*.spec
+rms-discord.spec
+deploy_package.tar.gz
+frontend_dist/
