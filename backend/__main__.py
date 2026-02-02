@@ -33,6 +33,7 @@ if __name__ == "__main__":
             host=settings.host,
             port=settings.port,
             reload=settings.debug,
+            reload_excludes=["**/*.db", "**/*.db-*", "**/discord.db"] if settings.debug else None,
             log_level="info"
         )
     except KeyboardInterrupt:

@@ -15,17 +15,12 @@ backend_dir = Path(__file__).resolve().parent.parent
 if str(backend_dir) not in sys.path:
     sys.path.insert(0, str(backend_dir))
 
-from core.config import get_settings
+from backend.core.config import get_settings
+from backend.core.database import Base
 
-# Import Base for metadata (we define a local one to avoid circular imports)
-from sqlalchemy.orm import DeclarativeBase
-
-
-class Base(DeclarativeBase):
-    """Local Base class for Alembic - mirrors core.database.Base"""
-
-    pass
-
+# Import all models so Alembic can detect schema changes
+import backend.models.server
+import backend.models.auth
 
 target_metadata = Base.metadata
 
