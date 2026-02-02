@@ -20,6 +20,19 @@ import shutil
 import sys
 from pathlib import Path
 
+# Import backend modules at top level for PyInstaller analysis
+# These imports ensure all dependencies are detected during bundling
+import uvicorn
+import sqlalchemy
+import sqlalchemy.ext.asyncio
+import sqlalchemy.dialects.sqlite
+import aiosqlite
+import fastapi
+import starlette
+import pydantic
+import alembic
+import websockets
+
 # Determine if running as PyInstaller bundle
 if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
     # Running as PyInstaller bundle
@@ -169,8 +182,6 @@ def check_config_validity() -> bool:
 
 def start_server():
     """Start the FastAPI server."""
-    import uvicorn
-
     # Override config path for backend
     os.environ['CONFIG_PATH'] = str(CONFIG_FILE)
 

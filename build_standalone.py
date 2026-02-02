@@ -27,6 +27,9 @@ WEB_DIST_DIR = PROJECT_ROOT / "packages" / "web" / "dist"
 BUILD_DIR = PROJECT_ROOT / "build"
 DIST_DIR = PROJECT_ROOT / "dist"
 SPEC_FILE = PROJECT_ROOT / "rms-discord.spec"
+VENV_DIR = BACKEND_DIR / ".venv"
+VENV_PYTHON = VENV_DIR / "bin" / "python"
+VENV_PYINSTALLER = VENV_DIR / "bin" / "pyinstaller"
 
 
 def get_platform_name() -> str:
@@ -48,13 +51,28 @@ def check_dependencies() -> bool:
     """Check if required dependencies are installed."""
     print("[1/7] Checking dependencies...")
 
-    # Check PyInstaller
+    # Check virtual environment
+    if not VENV_DIR.exists():
+        print(f"      ERROR: Virtual environment not found: {VENV_DIR}")
+        print("      Run: cd backend && python -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt")
+        return False
+
+    # Check PyInstaller in venv
+    if not VENV_PYINSTALLER.exists():
+        print(f"      ERROR: PyInstaller not found in virtual environment")
+        print("      Run: cd backend && source .venv/bin/activate && pip install pyinstaller")
+        return False
+
     try:
-        import PyInstaller
-        print(f"      PyInstaller {PyInstaller.__version__} found")
-    except ImportError:
-        print("      ERROR: PyInstaller not found")
-        print("      Install with: pip install pyinstaller")
+        result = subprocess.run(
+            [str(VENV_PYTHON), "-c", "import PyInstaller; print(PyInstaller.__version__)"],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        print(f"      PyInstaller {result.stdout.strip()} found (venv)")
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        print("      ERROR: PyInstaller not working in venv")
         return False
 
     # Check pnpm
@@ -137,6 +155,7 @@ def generate_spec_file(onefile: bool = False) -> bool:
 
     # Hidden imports (packages that PyInstaller might miss)
     hidden_imports = [
+        # Uvicorn
         'uvicorn.logging',
         'uvicorn.loops',
         'uvicorn.loops.auto',
@@ -147,12 +166,58 @@ def generate_spec_file(onefile: bool = False) -> bool:
         'uvicorn.protocols.websockets.auto',
         'uvicorn.lifespan',
         'uvicorn.lifespan.on',
+        # SQLAlchemy core
+        'sqlalchemy',
+        'sqlalchemy.sql',
+        'sqlalchemy.sql.default_comparator',
         'sqlalchemy.ext.asyncio',
+        'sqlalchemy.ext.asyncio.engine',
+        'sqlalchemy.ext.asyncio.session',
+        'sqlalchemy.ext.declarative',
+        'sqlalchemy.orm',
+        'sqlalchemy.orm.decl_api',
+        'sqlalchemy.orm.session',
+        'sqlalchemy.orm.strategies',
+        'sqlalchemy.orm.query',
+        'sqlalchemy.orm.attributes',
+        'sqlalchemy.orm.relationships',
+        'sqlalchemy.orm.mapper',
+        'sqlalchemy.orm.state',
+        'sqlalchemy.orm.util',
+        'sqlalchemy.pool',
+        'sqlalchemy.engine',
+        'sqlalchemy.engine.default',
+        'sqlalchemy.engine.reflection',
+        'sqlalchemy.dialects',
         'sqlalchemy.dialects.sqlite',
+        'sqlalchemy.dialects.sqlite.aiosqlite',
+        'sqlalchemy.dialects.sqlite.pysqlite',
+        # Async database drivers
         'aiosqlite',
+        'aiomysql',
+        # WebSockets
         'websockets',
         'websockets.legacy',
         'websockets.legacy.server',
+        # Alembic
+        'alembic',
+        'alembic.runtime',
+        'alembic.runtime.migration',
+        'alembic.script',
+        'alembic.config',
+        'alembic.operations',
+        'alembic.ddl',
+        # FastAPI dependencies
+        'starlette.middleware',
+        'starlette.middleware.cors',
+        'starlette.responses',
+        'starlette.staticfiles',
+        # Pydantic
+        'pydantic',
+        'pydantic.fields',
+        'pydantic.main',
+        # Other
+        'pkg_resources',
     ]
 
     hidden_imports_str = ",\n    ".join(f"'{imp}'" for imp in hidden_imports)
@@ -277,7 +342,7 @@ def run_pyinstaller() -> bool:
 
     try:
         result = subprocess.run(
-            ["pyinstaller", "--clean", "-y", str(SPEC_FILE)],
+            [str(VENV_PYINSTALLER), "--clean", "-y", str(SPEC_FILE)],
             cwd=PROJECT_ROOT,
             capture_output=True,
             text=True
