@@ -26,10 +26,12 @@ export default defineConfig({
         secure: false,
         configure: (proxy, options) => {
           proxy.on('proxyReq', (proxyReq, req, res) => {
-            console.log('[Proxy]', req.method, req.url, '->', options.target + req.url);
+            const target = options.target || '';
+            const url = req.url || '';
+            console.log('[Proxy]', req.method, url, '->', target + url);
           });
           proxy.on('proxyRes', (proxyRes, req, res) => {
-            console.log('[Proxy Response]', proxyRes.statusCode, req.url);
+            console.log('[Proxy Response]', proxyRes.statusCode, req.url || '');
           });
         },
       },
