@@ -29,6 +29,18 @@
 # Gson
 # ================================
 -keepattributes *Annotation*
+-keepattributes Signature
+-keepattributes InnerClasses
+-keepattributes EnclosingMethod
+
+# Keep Gson TypeToken and generic signatures
+-keep class com.google.gson.reflect.TypeToken { *; }
+-keep class * extends com.google.gson.reflect.TypeToken
+-keepclassmembers class * extends com.google.gson.reflect.TypeToken {
+    <init>();
+}
+
+# Keep all data model classes
 -keep class cn.net.rms.chatroom.data.model.** { *; }
 -keepclassmembers class cn.net.rms.chatroom.data.model.** {
     <fields>;
