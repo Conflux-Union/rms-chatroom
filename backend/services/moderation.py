@@ -10,7 +10,7 @@ from ..models.server import Channel, MuteRecord, MuteScope
 
 
 async def check_user_muted(
-    user_id: int,
+    user_id: str,
     channel_id: int,
     db: AsyncSession,
 ) -> tuple[bool, str | None]:

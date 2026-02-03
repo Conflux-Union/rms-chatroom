@@ -14,7 +14,7 @@ class ConnectionManager:
         # channel_id -> list of (websocket, user_info)
         self.active_connections: dict[int, list[tuple[WebSocket, dict[str, Any]]]] = {}
         # Global connections: user_id -> list of (websocket, user_info)
-        self.global_connections: dict[int, list[tuple[WebSocket, dict[str, Any]]]] = {}
+        self.global_connections: dict[str, list[tuple[WebSocket, dict[str, Any]]]] = {}
         self._lock = asyncio.Lock()
 
     async def connect(self, websocket: WebSocket, channel_id: int, user: dict[str, Any]):
@@ -53,7 +53,7 @@ class ConnectionManager:
         for ws in disconnected:
             await self.disconnect(ws, channel_id)
 
-    async def send_to_user(self, channel_id: int, user_id: int, message: dict[str, Any]):
+    async def send_to_user(self, channel_id: int, user_id: str, message: dict[str, Any]):
         """Send message to a specific user in a channel."""
         if channel_id not in self.active_connections:
             return
@@ -100,7 +100,7 @@ class ConnectionManager:
                 self.global_connections[user_id] = []
             self.global_connections[user_id].append((websocket, user))
 
-    async def disconnect_global(self, websocket: WebSocket, user_id: int):
+    async def disconnect_global(self, websocket: WebSocket, user_id: str):
         """Disconnect a user from global chat."""
         async with self._lock:
             if user_id in self.global_connections:
@@ -127,7 +127,7 @@ class ConnectionManager:
         for ws, user_id in disconnected:
             await self.disconnect_global(ws, user_id)
 
-    async def send_to_user_global(self, user_id: int, message: dict[str, Any]):
+    async def send_to_user_global(self, user_id: str, message: dict[str, Any]):
         """Send message to a specific user's global connections."""
         if user_id not in self.global_connections:
             return

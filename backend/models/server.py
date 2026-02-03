@@ -40,7 +40,7 @@ class Server(Base):
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     icon: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    owner_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    owner_id: Mapped[str] = mapped_column(String(255), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now
     )
@@ -114,7 +114,7 @@ class Message(Base):
     channel_id: Mapped[int] = mapped_column(
         ForeignKey("channels.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    user_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    user_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     username: Mapped[str] = mapped_column(String(100), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False, default="")
     created_at: Mapped[datetime] = mapped_column(
@@ -126,7 +126,7 @@ class Message(Base):
     deleted_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    deleted_by: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    deleted_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     # Message editing field
     edited_at: Mapped[datetime | None] = mapped_column(
@@ -168,7 +168,7 @@ class Attachment(Base):
     channel_id: Mapped[int] = mapped_column(
         ForeignKey("channels.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    user_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    user_id: Mapped[str] = mapped_column(String(255), nullable=False)
     filename: Mapped[str] = mapped_column(String(255), nullable=False)
     stored_name: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
     content_type: Mapped[str] = mapped_column(String(100), nullable=False)
@@ -189,7 +189,7 @@ class VoiceState(Base):
     channel_id: Mapped[int] = mapped_column(
         ForeignKey("channels.id", ondelete="CASCADE"), nullable=False
     )
-    user_id: Mapped[int] = mapped_column(Integer, nullable=False, unique=True)
+    user_id: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
     username: Mapped[str] = mapped_column(String(100), nullable=False)
     muted: Mapped[bool] = mapped_column(default=False)
     deafened: Mapped[bool] = mapped_column(default=False)
@@ -212,7 +212,7 @@ class VoiceInvite(Base):
     token: Mapped[str] = mapped_column(
         String(64), unique=True, index=True, nullable=False
     )
-    created_by: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_by: Mapped[str] = mapped_column(String(255), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now
     )
@@ -231,7 +231,7 @@ class MuteRecord(Base):
     __tablename__ = "mute_records"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    user_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    user_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     scope: Mapped[MuteScope] = mapped_column(SAEnum(MuteScope), nullable=False)
 
     # Nullable foreign keys for scope targeting
@@ -245,7 +245,7 @@ class MuteRecord(Base):
     muted_until: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )  # NULL = permanent mute
-    muted_by: Mapped[int] = mapped_column(Integer, nullable=False)
+    muted_by: Mapped[str] = mapped_column(String(255), nullable=False)
     reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now
@@ -265,7 +265,7 @@ class Reaction(Base):
     message_id: Mapped[int] = mapped_column(
         ForeignKey("messages.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    user_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    user_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     username: Mapped[str] = mapped_column(String(100), nullable=False)
     emoji: Mapped[str] = mapped_column(String(32), nullable=False)  # Unicode emoji
     created_at: Mapped[datetime] = mapped_column(
@@ -286,7 +286,7 @@ class ReadPosition(Base):
     __tablename__ = "read_positions"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    user_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    user_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     channel_id: Mapped[int] = mapped_column(
         ForeignKey("channels.id", ondelete="CASCADE"), nullable=False, index=True
     )

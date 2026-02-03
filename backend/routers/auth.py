@@ -238,24 +238,19 @@ async def callback(
             content={"error": "invalid_userinfo", "message": "Missing user id or username"},
         )
 
-    try:
-        user_id_int = int(str(user_id))
-    except (TypeError, ValueError):
-        return JSONResponse(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            content={"error": "invalid_user_id", "message": "Unsupported user id format"},
-        )
+    # Convert user_id to string (OAuth2 standard allows any string format)
+    user_id_str = str(user_id)
 
     # Create local JWT tokens
     access_token = TokenService.create_access_token(
-        user_id=user_id_int,
+        user_id=user_id_str,
         username=username,
         permission_level=permission_level,
         nickname=nickname,
     )
     refresh_token = await TokenService.create_refresh_token(
         db=db,
-        user_id=user_id_int,
+        user_id=user_id_str,
         username=username,
         permission_level=permission_level,
         nickname=nickname,

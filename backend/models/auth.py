@@ -18,7 +18,7 @@ class RefreshToken(Base):
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
 
-    user_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    user_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     username: Mapped[str] = mapped_column(String(100), nullable=False)
     nickname: Mapped[str | None] = mapped_column(String(100), nullable=True)
     permission_level: Mapped[int] = mapped_column(Integer, nullable=False)

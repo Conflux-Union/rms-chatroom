@@ -21,7 +21,7 @@ class TokenService:
 
     @staticmethod
     def create_access_token(
-        user_id: int,
+        user_id: str,
         username: str,
         permission_level: int,
         nickname: str | None = None,
@@ -42,7 +42,7 @@ class TokenService:
         expire = now + timedelta(minutes=settings.access_token_expire_minutes)
 
         payload = {
-            "sub": str(user_id),
+            "sub": user_id,
             "id": user_id,
             "username": username,
             "nickname": nickname,
@@ -61,7 +61,7 @@ class TokenService:
     @staticmethod
     async def create_refresh_token(
         db: AsyncSession,
-        user_id: int,
+        user_id: str,
         username: str,
         permission_level: int,
         nickname: str | None = None,
@@ -184,7 +184,7 @@ class TokenService:
         return (result.rowcount or 0) > 0
 
     @staticmethod
-    async def revoke_all_user_tokens(db: AsyncSession, user_id: int) -> int:
+    async def revoke_all_user_tokens(db: AsyncSession, user_id: str) -> int:
         """
         Revoke all refresh tokens for a user.
 

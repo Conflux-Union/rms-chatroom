@@ -21,7 +21,7 @@ def get_user_from_token(token: str) -> dict | None:
 
 
 async def update_read_position(
-    user_id: int,
+    user_id: str,
     channel_id: int,
     last_read_message_id: int,
     has_mention: bool = False,
