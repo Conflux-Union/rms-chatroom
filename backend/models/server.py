@@ -44,6 +44,13 @@ class Server(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now
     )
+    
+    # Permission settings for server visibility
+    # min_server_level: 1-4, minimum server permission level to see this server (1=lowest, 4=highest)
+    # min_internal_level: 1-2, minimum internal/external level (1=external, 2=internal)
+    # Default: accessible to all (min_server_level=1, min_internal_level=1)
+    min_server_level: Mapped[int] = mapped_column(Integer, default=1)  # 1-4
+    min_internal_level: Mapped[int] = mapped_column(Integer, default=1)  # 1-2
 
     channels: Mapped[list["Channel"]] = relationship(
         "Channel", back_populates="server", cascade="all, delete-orphan"
@@ -67,6 +74,13 @@ class ChannelGroup(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now
     )
+    
+    # Permission settings for channel group visibility
+    # min_server_level: 1-4, minimum server permission level to see this group (1=lowest, 4=highest)
+    # min_internal_level: 1-2, minimum internal/external level (1=external, 2=internal)
+    # Default: accessible to all (min_server_level=1, min_internal_level=1)
+    min_server_level: Mapped[int] = mapped_column(Integer, default=1)  # 1-4
+    min_internal_level: Mapped[int] = mapped_column(Integer, default=1)  # 1-2
 
     server: Mapped["Server"] = relationship("Server", back_populates="channel_groups")
     channels: Mapped[list["Channel"]] = relationship("Channel", back_populates="group")
@@ -94,6 +108,17 @@ class Channel(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now
     )
+    
+    # Permission settings for channel visibility and speech permissions
+    # visibility_min_server_level: 1-4, minimum server permission level to see this channel
+    # visibility_min_internal_level: 1-2, minimum internal/external level to see this channel
+    # speak_min_server_level: 1-4, minimum server permission level to speak/post in this channel
+    # speak_min_internal_level: 1-2, minimum internal/external level to speak/post in this channel
+    # Default: accessible to all and all can speak (min level = 1)
+    visibility_min_server_level: Mapped[int] = mapped_column(Integer, default=1)  # 1-4
+    visibility_min_internal_level: Mapped[int] = mapped_column(Integer, default=1)  # 1-2
+    speak_min_server_level: Mapped[int] = mapped_column(Integer, default=1)  # 1-4
+    speak_min_internal_level: Mapped[int] = mapped_column(Integer, default=1)  # 1-2
 
     server: Mapped["Server"] = relationship("Server", back_populates="channels")
     group: Mapped["ChannelGroup | None"] = relationship(
