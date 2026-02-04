@@ -13,6 +13,7 @@ export interface Server {
   name: string
   icon: string | null
   owner_id: number
+  min_internal_level?: number
   channels?: Channel[]
   channelGroups?: ChannelGroup[]
 }
@@ -22,6 +23,8 @@ export interface ChannelGroup {
   server_id: number
   name: string
   position: number
+  min_server_level?: number
+  min_internal_level?: number
 }
 
 export interface Channel {
@@ -32,6 +35,10 @@ export interface Channel {
   type: 'text' | 'voice'
   position: number
   top_position: number
+  visibility_min_server_level?: number
+  visibility_min_internal_level?: number
+  speak_min_server_level?: number
+  speak_min_internal_level?: number
 }
 
 export interface Attachment {

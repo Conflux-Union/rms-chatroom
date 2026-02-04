@@ -13,6 +13,7 @@ from sqlalchemy.orm import selectinload
 from ..core.database import get_db
 from ..models.server import Attachment, Channel, ChannelType, Message
 from .deps import CurrentUser
+from ..core.permissions import check_channel_visibility, check_channel_speak_permission
 from .schemas import (
     ReactionGroupResponse,
     ReactionUserResponse,
@@ -186,6 +187,17 @@ async def get_messages(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="Not a text channel"
         )
+    
+    # Check if user has permission to view this channel
+    if not check_channel_visibility(
+        user,
+        channel.visibility_min_server_level,
+        channel.visibility_min_internal_level
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to view this channel"
+        )
 
     query = (
         select(Message)
@@ -256,6 +268,17 @@ async def create_message(
     if channel.type != ChannelType.TEXT:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="Not a text channel"
+        )
+    
+    # Check if user has permission to speak in this channel
+    if not check_channel_speak_permission(
+        user,
+        channel.speak_min_server_level,
+        channel.speak_min_internal_level
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to speak in this channel"
         )
 
     # Validate reply_to_id if provided

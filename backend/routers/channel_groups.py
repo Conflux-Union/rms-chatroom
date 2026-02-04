@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..core.database import get_db
 from ..models.server import ChannelGroup, Server, Channel
 from .deps import CurrentUser, AdminUser
+from ..core.permissions import check_channel_group_access
 
 
 router = APIRouter(
@@ -17,10 +18,14 @@ router = APIRouter(
 
 class ChannelGroupCreate(BaseModel):
     name: str
+    min_server_level: int = 1  # 1-4, default accessible to all
+    min_internal_level: int = 1  # 1-2, default accessible to all
 
 
 class ChannelGroupUpdate(BaseModel):
     name: str | None = None
+    min_server_level: int | None = None  # 1-4
+    min_internal_level: int | None = None  # 1-2
 
 
 class ChannelGroupResponse(BaseModel):
@@ -28,6 +33,8 @@ class ChannelGroupResponse(BaseModel):
     server_id: int
     name: str
     position: int
+    min_server_level: int = 1
+    min_internal_level: int = 1
 
     class Config:
         from_attributes = True
@@ -37,18 +44,34 @@ class ChannelGroupResponse(BaseModel):
 async def list_channel_groups(
     server_id: int, user: CurrentUser, db: AsyncSession = Depends(get_db)
 ):
-    """List all channel groups in a server."""
+    """List all channel groups in a server user has access to."""
     result = await db.execute(
         select(ChannelGroup)
         .where(ChannelGroup.server_id == server_id)
         .order_by(ChannelGroup.position)
     )
     groups = result.scalars().all()
+    
+    # Filter groups based on user's permission levels
+    filtered_groups = [
+        g for g in groups
+        if check_channel_group_access(
+            user,
+            g.min_server_level,
+            g.min_internal_level
+        )
+    ]
+    
     return [
         ChannelGroupResponse(
-            id=g.id, server_id=g.server_id, name=g.name, position=g.position
+            id=g.id,
+            server_id=g.server_id,
+            name=g.name,
+            position=g.position,
+            min_server_level=g.min_server_level,
+            min_internal_level=g.min_internal_level
         )
-        for g in groups
+        for g in filtered_groups
     ]
 
 
@@ -89,6 +112,8 @@ async def create_channel_group(
         server_id=server_id,
         name=payload.name,
         position=max_pos + 1,
+        min_server_level=payload.min_server_level,
+        min_internal_level=payload.min_internal_level,
     )
     db.add(group)
     await db.flush()
@@ -98,6 +123,8 @@ async def create_channel_group(
         server_id=group.server_id,
         name=group.name,
         position=group.position,
+        min_server_level=group.min_server_level,
+        min_internal_level=group.min_internal_level,
     )
 
 
@@ -123,11 +150,30 @@ async def update_channel_group(
 
     if payload.name is not None:
         group.name = payload.name
+    if payload.min_server_level is not None:
+        if not (1 <= payload.min_server_level <= 4):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="min_server_level must be between 1 and 4"
+            )
+        group.min_server_level = payload.min_server_level
+    if payload.min_internal_level is not None:
+        if not (1 <= payload.min_internal_level <= 2):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="min_internal_level must be 1 or 2"
+            )
+        group.min_internal_level = payload.min_internal_level
 
     await db.flush()
 
     return ChannelGroupResponse(
-        id=group.id, server_id=group.server_id, name=group.name, position=group.position
+        id=group.id,
+        server_id=group.server_id,
+        name=group.name,
+        position=group.position,
+        min_server_level=group.min_server_level,
+        min_internal_level=group.min_internal_level
     )
 
 
