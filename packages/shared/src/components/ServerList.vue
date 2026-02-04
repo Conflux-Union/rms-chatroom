@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { useChatStore } from '../stores/chat'
 import { useAuthStore } from '../stores/auth'
 import { NModal, NInput, NButton, NSpace, NDropdown } from 'naive-ui'
 import type { DropdownOption } from 'naive-ui'
 import Settings from './Setting.vue'
+import ServerPermissionModal from './ServerPermissionModal.vue'
 
 const chat = useChatStore()
 const auth = useAuthStore()
@@ -13,15 +14,29 @@ const showCreate = ref(false)
 const newServerName = ref('')
 const showSettings = ref(false)
 
+// Server Permission Modal state
+const showServerPermissionModal = ref(false)
+const selectedServerForPermission = ref<number | null>(null)
+
 // Context menu state (NDropdown)
 const serverDropdown = ref<{ show: boolean; x: number; y: number; serverId: number | null }>({
   show: false, x: 0, y: 0, serverId: null
 })
 
-// Dropdown options
-const serverDropdownOptions: DropdownOption[] = [
-  { label: '删除服务器', key: 'delete', props: { style: { color: 'var(--color-danger)' } } }
-]
+// Dropdown options - 根据用户权限动态生成
+const serverDropdownOptions = computed((): DropdownOption[] => {
+  const options: DropdownOption[] = [
+    { label: '权限设置', key: 'permissions' },
+    { label: '删除服务器', key: 'delete', props: { style: { color: 'var(--color-danger)' } } }
+  ]
+  return options
+})
+
+function canShowContextMenu(): boolean {
+  // 只有权限3-4的用户才能看到右键菜单
+  const userPermLevel = auth.user?.permission_level || 1
+  return userPermLevel >= 3
+}
 
 async function selectServer(serverId: number) {
   await chat.fetchServer(serverId)
@@ -36,6 +51,10 @@ async function createServer() {
 
 function showContextMenu(event: MouseEvent, serverId: number) {
   event.preventDefault()
+  // 只有权限3-4的用户才能显示自定义右键菜单
+  if (!canShowContextMenu()) {
+    return
+  }
   serverDropdown.value = { show: true, x: event.clientX, y: event.clientY, serverId }
 }
 
@@ -44,10 +63,18 @@ function hideDropdown() {
 }
 
 async function handleDropdownSelect(key: string) {
-  if (key === 'delete' && serverDropdown.value.serverId) {
+  if (key === 'permissions' && serverDropdown.value.serverId) {
+    selectedServerForPermission.value = serverDropdown.value.serverId
+    showServerPermissionModal.value = true
+  } else if (key === 'delete' && serverDropdown.value.serverId) {
     await chat.deleteServer(serverDropdown.value.serverId)
   }
   serverDropdown.value.show = false
+}
+
+function onServerPermissionSaved() {
+  showServerPermissionModal.value = false
+  selectedServerForPermission.value = null
 }
 </script>
 
@@ -60,7 +87,7 @@ async function handleDropdownSelect(key: string) {
         class="server-icon glow-effect"
         :class="{ active: chat.currentServer?.id === server.id }"
         @click="selectServer(server.id)"
-        @contextmenu="auth.isAdmin ? showContextMenu($event, server.id) : undefined"
+        @contextmenu="canShowContextMenu() ? showContextMenu($event, server.id) : undefined"
         :title="server.name"
       >
         {{ server.name.charAt(0).toUpperCase() }}
@@ -77,7 +104,7 @@ async function handleDropdownSelect(key: string) {
         :x="serverDropdown.x"
         :y="serverDropdown.y"
         :options="serverDropdownOptions"
-        :show="serverDropdown.show && auth.isAdmin"
+        :show="serverDropdown.show && canShowContextMenu()"
         @select="handleDropdownSelect"
         @clickoutside="serverDropdown.show = false"
       />
@@ -115,6 +142,17 @@ async function handleDropdownSelect(key: string) {
     </div>
 
     <Settings v-if="showSettings" @close="showSettings = false" />
+
+    <!-- Server Permission Modal -->
+    <ServerPermissionModal
+      v-if="selectedServerForPermission !== null && chat.currentServer !== null"
+      :isOpen="showServerPermissionModal"
+      :serverId="selectedServerForPermission || 0"
+      :serverName="chat.currentServer?.name || ''"
+      :initialMinInternalLevel="chat.currentServer?.min_internal_level || 1"
+      @close="showServerPermissionModal = false"
+      @save="onServerPermissionSaved"
+    />
   </div>
 </template>
 

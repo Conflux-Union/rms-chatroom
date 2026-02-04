@@ -3,7 +3,7 @@
 This migration establishes the baseline schema. It uses batch mode for SQLite
 compatibility and checks for existing tables/columns before making changes.
 
-Revision ID: 001_initial
+Revision ID: 001
 Revises:
 Create Date: 2025-01-11
 """
@@ -17,7 +17,7 @@ import sqlalchemy as sa
 from sqlalchemy import inspect
 
 
-revision: str = "001_initial"
+revision: str = "001"
 down_revision: str | None = None
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None

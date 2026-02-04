@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..core.database import get_db
 from ..models.server import Channel, ChannelType, Server, ChannelGroup
 from .deps import CurrentUser, AdminUser
+from ..core.permissions import check_channel_visibility, check_channel_speak_permission
 
 
 router = APIRouter(prefix="/api/servers/{server_id}/channels", tags=["channels"])
@@ -17,6 +18,10 @@ class ChannelCreate(BaseModel):
     name: str
     type: str = "text"
     group_id: int | None = None  # Optional: assign to a channel group
+    visibility_min_server_level: int = 1  # 1-4, default accessible to all
+    visibility_min_internal_level: int = 1  # 1-2, default accessible to all
+    speak_min_server_level: int = 1  # 1-4, default everyone can speak
+    speak_min_internal_level: int = 1  # 1-2, default everyone can speak
 
 
 class ChannelUpdate(BaseModel):
@@ -24,6 +29,10 @@ class ChannelUpdate(BaseModel):
     group_id: int | None = (
         None  # Optional: move to a different group (use -1 to ungroup)
     )
+    visibility_min_server_level: int | None = None  # 1-4
+    visibility_min_internal_level: int | None = None  # 1-2
+    speak_min_server_level: int | None = None  # 1-4
+    speak_min_internal_level: int | None = None  # 1-2
 
 
 class ChannelResponse(BaseModel):
@@ -34,6 +43,10 @@ class ChannelResponse(BaseModel):
     type: str
     position: int
     top_position: int
+    visibility_min_server_level: int = 1
+    visibility_min_internal_level: int = 1
+    speak_min_server_level: int = 1
+    speak_min_internal_level: int = 1
 
     class Config:
         from_attributes = True
@@ -43,11 +56,22 @@ class ChannelResponse(BaseModel):
 async def list_channels(
     server_id: int, user: CurrentUser, db: AsyncSession = Depends(get_db)
 ):
-    """List all channels in a server."""
+    """List all channels in a server user has access to."""
     result = await db.execute(
         select(Channel).where(Channel.server_id == server_id).order_by(Channel.position)
     )
     channels = result.scalars().all()
+    
+    # Filter channels based on user's visibility permissions
+    filtered_channels = [
+        c for c in channels
+        if check_channel_visibility(
+            user,
+            c.visibility_min_server_level,
+            c.visibility_min_internal_level
+        )
+    ]
+    
     return [
         ChannelResponse(
             id=c.id,
@@ -57,8 +81,12 @@ async def list_channels(
             type=c.type.value,
             position=c.position,
             top_position=c.top_position,
+            visibility_min_server_level=c.visibility_min_server_level,
+            visibility_min_internal_level=c.visibility_min_internal_level,
+            speak_min_server_level=c.speak_min_server_level,
+            speak_min_internal_level=c.speak_min_internal_level,
         )
-        for c in channels
+        for c in filtered_channels
     ]
 
 
@@ -90,6 +118,16 @@ async def create_channel(
             )
 
     channel_type = ChannelType.VOICE if payload.type == "voice" else ChannelType.TEXT
+    
+    # Validate permission levels
+    if not (1 <= payload.visibility_min_server_level <= 4):
+        raise HTTPException(status_code=400, detail="visibility_min_server_level must be 1-4")
+    if not (1 <= payload.visibility_min_internal_level <= 2):
+        raise HTTPException(status_code=400, detail="visibility_min_internal_level must be 1-2")
+    if not (1 <= payload.speak_min_server_level <= 4):
+        raise HTTPException(status_code=400, detail="speak_min_server_level must be 1-4")
+    if not (1 <= payload.speak_min_internal_level <= 2):
+        raise HTTPException(status_code=400, detail="speak_min_internal_level must be 1-2")
 
     if payload.group_id is not None:
         # Grouped channel: get max position within the group
@@ -106,6 +144,10 @@ async def create_channel(
             type=channel_type,
             position=max_pos + 1,
             top_position=0,  # Not used for grouped channels
+            visibility_min_server_level=payload.visibility_min_server_level,
+            visibility_min_internal_level=payload.visibility_min_internal_level,
+            speak_min_server_level=payload.speak_min_server_level,
+            speak_min_internal_level=payload.speak_min_internal_level,
         )
     else:
         # Ungrouped channel: get max top-level position
@@ -127,6 +169,10 @@ async def create_channel(
             type=channel_type,
             position=0,  # Not used for ungrouped channels
             top_position=max_pos + 1,
+            visibility_min_server_level=payload.visibility_min_server_level,
+            visibility_min_internal_level=payload.visibility_min_internal_level,
+            speak_min_server_level=payload.speak_min_server_level,
+            speak_min_internal_level=payload.speak_min_internal_level,
         )
 
     db.add(channel)
@@ -140,6 +186,10 @@ async def create_channel(
         type=channel.type.value,
         position=channel.position,
         top_position=channel.top_position,
+        visibility_min_server_level=channel.visibility_min_server_level,
+        visibility_min_internal_level=channel.visibility_min_internal_level,
+        speak_min_server_level=channel.speak_min_server_level,
+        speak_min_internal_level=channel.speak_min_internal_level,
     )
 
 
@@ -163,6 +213,24 @@ async def update_channel(
 
     if payload.name is not None:
         channel.name = payload.name
+    
+    # Update permission levels
+    if payload.visibility_min_server_level is not None:
+        if not (1 <= payload.visibility_min_server_level <= 4):
+            raise HTTPException(status_code=400, detail="visibility_min_server_level must be 1-4")
+        channel.visibility_min_server_level = payload.visibility_min_server_level
+    if payload.visibility_min_internal_level is not None:
+        if not (1 <= payload.visibility_min_internal_level <= 2):
+            raise HTTPException(status_code=400, detail="visibility_min_internal_level must be 1-2")
+        channel.visibility_min_internal_level = payload.visibility_min_internal_level
+    if payload.speak_min_server_level is not None:
+        if not (1 <= payload.speak_min_server_level <= 4):
+            raise HTTPException(status_code=400, detail="speak_min_server_level must be 1-4")
+        channel.speak_min_server_level = payload.speak_min_server_level
+    if payload.speak_min_internal_level is not None:
+        if not (1 <= payload.speak_min_internal_level <= 2):
+            raise HTTPException(status_code=400, detail="speak_min_internal_level must be 1-2")
+        channel.speak_min_internal_level = payload.speak_min_internal_level
 
     # Handle group_id update: -1 means ungroup, None means no change, positive int means move to group
     if payload.group_id is not None:
@@ -218,6 +286,10 @@ async def update_channel(
         type=channel.type.value,
         position=channel.position,
         top_position=channel.top_position,
+        visibility_min_server_level=channel.visibility_min_server_level,
+        visibility_min_internal_level=channel.visibility_min_internal_level,
+        speak_min_server_level=channel.speak_min_server_level,
+        speak_min_internal_level=channel.speak_min_internal_level,
     )
 
 
