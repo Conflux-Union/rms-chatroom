@@ -3,8 +3,8 @@
 This migration adds the read_positions table to track user's read position
 per channel, enabling cross-device synchronization of unread messages and mentions.
 
-Revision ID: 003_add_read_positions
-Revises: 002_add_top_position
+Revision ID: 004
+Revises: 003
 Create Date: 2026-01-14
 """
 
@@ -17,8 +17,8 @@ import sqlalchemy as sa
 from sqlalchemy import inspect
 
 
-revision: str = "003_add_read_positions"
-down_revision: str | None = "002_add_top_position"
+revision: str = "004"
+down_revision: str | None = "003"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
