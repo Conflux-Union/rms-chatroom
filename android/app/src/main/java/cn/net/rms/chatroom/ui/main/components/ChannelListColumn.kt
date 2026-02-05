@@ -84,7 +84,7 @@ fun ChannelListColumn(
     unreadCounts: Map<Long, Int> = emptyMap()
 ) {
     var showCreateDialog by remember { mutableStateOf(false) }
-    var createChannelType by remember { mutableStateOf("text") }
+    var createChannelType by remember { mutableStateOf("TEXT") }
     var createChannelGroupId by remember { mutableStateOf<Long?>(null) }
     var showDeleteDialog by remember { mutableStateOf(false) }
     var channelToDelete by remember { mutableStateOf<Channel?>(null) }
@@ -206,7 +206,7 @@ fun ChannelListColumn(
                                 isAdmin = isAdmin,
                                 onAddChannel = {
                                     createChannelGroupId = group.id
-                                    createChannelType = "text"
+                                    createChannelType = "TEXT"
                                     showCreateDialog = true
                                 },
                                 onDeleteGroup = {
@@ -329,7 +329,7 @@ fun ChannelListColumn(
                         label = "添加频道",
                         onClick = {
                             createChannelGroupId = null
-                            createChannelType = "text"
+                            createChannelType = "TEXT"
                             showCreateDialog = true
                         }
                     )
@@ -499,8 +499,8 @@ private fun CreateChannelDialog(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     FilterChip(
-                        selected = selectedType == "text",
-                        onClick = { selectedType = "text" },
+                        selected = selectedType == "TEXT",
+                        onClick = { selectedType = "TEXT" },
                         label = { Text("文字") },
                         leadingIcon = {
                             Icon(
@@ -511,8 +511,8 @@ private fun CreateChannelDialog(
                         }
                     )
                     FilterChip(
-                        selected = selectedType == "voice",
-                        onClick = { selectedType = "voice" },
+                        selected = selectedType == "VOICE",
+                        onClick = { selectedType = "VOICE" },
                         label = { Text("语音") },
                         leadingIcon = {
                             Icon(

@@ -44,9 +44,9 @@ data class ChannelGroup(
 )
 
 enum class ChannelType {
-    @SerializedName("text")
+    @SerializedName("TEXT")
     TEXT,
-    @SerializedName("voice")
+    @SerializedName("VOICE")
     VOICE
 }
 
