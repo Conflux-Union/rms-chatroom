@@ -281,3 +281,4 @@ async def delete_channel_group(
         channel.top_position = max_pos + 1 + i
 
     await db.delete(group)
+    await db.commit()

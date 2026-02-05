@@ -1704,12 +1704,12 @@ async def transcription_websocket(
 ):
     """转录结果WebSocket连接"""
     try:
-        # 验证token（可以根据实际需求调整验证逻辑）
-        # user = await get_current_user_from_token(token)
-        # if not user:
-        #     await websocket.close(code=1008, reason="Invalid token")
-        #     return
-        
+        # Verify token before accepting connection
+        user = await authenticate_websocket_token(token)
+        if not user:
+            await websocket.close(code=4001, reason="Invalid token")
+            return
+
         await websocket.accept()
         await transcription_manager.add_connection(session_id, websocket)
         
