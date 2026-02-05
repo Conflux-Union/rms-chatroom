@@ -15,6 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.database import get_db
+from ..core.permissions import check_channel_visibility
 from ..models.server import Attachment, Channel, ChannelType
 from .deps import CurrentUser
 
@@ -159,6 +160,19 @@ async def download_file(
     if not attachment:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
 
+    # Get channel and check user permission to view it
+    channel_result = await db.execute(select(Channel).where(Channel.id == attachment.channel_id))
+    channel = channel_result.scalar_one_or_none()
+    if not channel:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Channel not found")
+
+    if not check_channel_visibility(
+        user,
+        channel.visibility_min_server_level,
+        channel.visibility_min_internal_level,
+    ):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Permission denied")
+
     # Build file path
     file_path = UPLOAD_DIR / str(attachment.channel_id) / attachment.stored_name
 
@@ -212,5 +226,6 @@ async def delete_file(
 
     # Delete database record
     await db.delete(attachment)
+    await db.commit()
 
     logger.info(f"User {user['username']} deleted file {attachment.filename}")

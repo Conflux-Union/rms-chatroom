@@ -3,6 +3,9 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
+from alembic import command
+from alembic.config import Config
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
 
@@ -47,7 +50,7 @@ def run_alembic_migrations() -> None:
         logger.info("Running database migrations...")
         command.upgrade(alembic_cfg, "head")
         logger.info("Database migrations completed")
-    except Exception as e:
+    except SQLAlchemyError as e:
         logger.error(f"Migration failed: {e}")
         raise
 
@@ -68,6 +71,6 @@ async def get_db():
         try:
             yield session
             await session.commit()
-        except Exception:
+        except SQLAlchemyError:
             await session.rollback()
             raise

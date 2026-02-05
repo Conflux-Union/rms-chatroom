@@ -49,6 +49,8 @@ async def chat_websocket(websocket: WebSocket, token: str | None = None):
     - {"type": "message", "id": ..., "channel_id": ..., "user_id": ..., "username": ..., "content": ..., "created_at": ..., "attachments": [...], "mentions": [...]}
     - {"type": "connected"}
     """
+    user = None
+
     if not token:
         await websocket.close(code=4001, reason="Missing token")
         return
@@ -253,4 +255,5 @@ async def chat_websocket(websocket: WebSocket, token: str | None = None):
     except WebSocketDisconnect:
         pass
     finally:
-        await chat_manager.disconnect_global(websocket, user["id"])
+        if user:
+            await chat_manager.disconnect_global(websocket, user["id"])
