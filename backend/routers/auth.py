@@ -48,8 +48,7 @@ async def dev_login(redirect_url: str | None = None):
         "iat": datetime.now(timezone.utc),
     }
     
-    # Use a simple secret for development
-    token = jwt.encode(payload, "test-secret-key", algorithm="HS256")
+    token = jwt.encode(payload, settings.jwt_secret, algorithm="HS256")
     
     # Redirect to callback with token
     callback = redirect_url or "http://localhost:5173/callback"

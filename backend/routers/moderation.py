@@ -36,16 +36,21 @@ async def create_mute(
     if payload.scope == "global":
         if payload.server_id or payload.channel_id:
             raise HTTPException(
-                400, "Global mute should not have server_id or channel_id"
+                status.HTTP_400_BAD_REQUEST,
+                "Global mute should not have server_id or channel_id",
             )
     elif payload.scope == "server":
         if not payload.server_id or payload.channel_id:
-            raise HTTPException(400, "Server mute requires server_id only")
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST, "Server mute requires server_id only"
+            )
     elif payload.scope == "channel":
         if not payload.channel_id or payload.server_id:
-            raise HTTPException(400, "Channel mute requires channel_id only")
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST, "Channel mute requires channel_id only"
+            )
     else:
-        raise HTTPException(400, "Invalid scope")
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid scope")
 
     # Calculate muted_until
     muted_until = None
@@ -64,7 +69,9 @@ async def create_mute(
         )
     )
     if existing.scalar_one_or_none():
-        raise HTTPException(400, "Mute record already exists")
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, "Mute record already exists"
+        )
 
     # Create mute record
     mute = MuteRecord(
@@ -92,7 +99,7 @@ async def remove_mute(
     result = await db.execute(select(MuteRecord).where(MuteRecord.id == mute_id))
     mute = result.scalar_one_or_none()
     if not mute:
-        raise HTTPException(404, "Mute record not found")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Mute record not found")
 
     await db.delete(mute)
     await db.commit()

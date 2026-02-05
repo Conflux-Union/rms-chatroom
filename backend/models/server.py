@@ -46,7 +46,7 @@ class Server(Base):
     )
     
     # Permission settings for server visibility
-    # min_server_level: 1-4, minimum server permission level to see this server (1=lowest, 4=highest)
+    # min_server_level: 1-4, minimum server permission level to access this server
     # min_internal_level: 1-2, minimum internal/external level (1=external, 2=internal)
     # Default: accessible to all (min_server_level=1, min_internal_level=1)
     min_server_level: Mapped[int] = mapped_column(Integer, default=1)  # 1-4
@@ -67,14 +67,14 @@ class ChannelGroup(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     server_id: Mapped[int] = mapped_column(
-        ForeignKey("servers.id", ondelete="CASCADE"), nullable=False
+        ForeignKey("servers.id", ondelete="CASCADE"), nullable=False, index=True
     )
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     position: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now
     )
-    
+
     # Permission settings for channel group visibility
     # min_server_level: 1-4, minimum server permission level to see this group (1=lowest, 4=highest)
     # min_internal_level: 1-2, minimum internal/external level (1=external, 2=internal)
@@ -91,10 +91,10 @@ class Channel(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     server_id: Mapped[int] = mapped_column(
-        ForeignKey("servers.id", ondelete="CASCADE"), nullable=False
+        ForeignKey("servers.id", ondelete="CASCADE"), nullable=False, index=True
     )
     group_id: Mapped[int | None] = mapped_column(
-        ForeignKey("channel_groups.id", ondelete="SET NULL"), nullable=True
+        ForeignKey("channel_groups.id", ondelete="SET NULL"), nullable=True, index=True
     )
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     type: Mapped[ChannelType] = mapped_column(
@@ -143,7 +143,7 @@ class Message(Base):
     username: Mapped[str] = mapped_column(String(100), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False, default="")
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, index=True
+        DateTime(timezone=True), default=utc_now, index=True
     )
 
     # Message recall/deletion fields
@@ -193,7 +193,7 @@ class Attachment(Base):
     channel_id: Mapped[int] = mapped_column(
         ForeignKey("channels.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    user_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    user_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
     filename: Mapped[str] = mapped_column(String(255), nullable=False)
     stored_name: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
     content_type: Mapped[str] = mapped_column(String(100), nullable=False)
@@ -212,9 +212,9 @@ class VoiceState(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     channel_id: Mapped[int] = mapped_column(
-        ForeignKey("channels.id", ondelete="CASCADE"), nullable=False
+        ForeignKey("channels.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    user_id: Mapped[int] = mapped_column(Integer, nullable=False, unique=True)
+    user_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
     username: Mapped[str] = mapped_column(String(100), nullable=False)
     muted: Mapped[bool] = mapped_column(default=False)
     deafened: Mapped[bool] = mapped_column(default=False)

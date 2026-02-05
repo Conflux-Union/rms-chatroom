@@ -59,14 +59,72 @@ jobs:
           cd backend
           python -m py_compile $(find . -name "*.py" -not -path "./.venv/*" -not -path "./__pycache__/*")
 
-      - name: Run type checking (if mypy is available)
+      - name: Run type checking
         run: |
           cd backend
-          if pip list | grep -q mypy; then
-            mypy . --ignore-missing-imports || true
+          mypy . --ignore-missing-imports
+
+      - name: Start backend and verify health endpoint
+        run: |
+          # Generate version.py for CI
+          cat > backend/version.py << 'EOF'
+          # Auto-generated for CI
+          VERSION_NAME = "0.0.0"
+          VERSION_CODE = "0"
+          COMMIT_HASH = "ci-test"
+          EOF
+
+          # Create minimal test config (SSO token verification mode)
+          cat > backend/config.json << 'EOF'
+          {
+            "database_url": "sqlite+aiosqlite:///./test.db",
+            "frontend_dist_path": "./dist",
+            "sso_base_url": "https://sso.rms.net.cn",
+            "sso_verify_endpoint": "/api/user",
+            "host": "127.0.0.1",
+            "port": 8000,
+            "debug": false,
+            "cors_origins": ["http://localhost:5173"]
+          }
+          EOF
+
+          # Create dummy frontend dist directory
+          mkdir -p backend/dist
+
+          # Start backend in background (run from project root)
+          python -m backend &
+          BACKEND_PID=$!
+
+          # Wait for backend to start (max 30 seconds)
+          echo "Waiting for backend to start..."
+          for i in {1..30}; do
+            if curl -s http://127.0.0.1:8000/api/system/health > /dev/null 2>&1; then
+              echo "Backend started successfully"
+              break
+            fi
+            if [ $i -eq 30 ]; then
+              echo "Backend failed to start within 30 seconds"
+              kill $BACKEND_PID 2>/dev/null || true
+              exit 1
+            fi
+            sleep 1
+          done
+
+          # Verify health endpoint returns ok status
+          HEALTH_RESPONSE=$(curl -s http://127.0.0.1:8000/api/system/health)
+          echo "Health response: $HEALTH_RESPONSE"
+
+          if echo "$HEALTH_RESPONSE" | grep -q '"status":"ok"'; then
+            echo "Health check passed"
           else
-            echo "Skipping mypy (not installed)"
+            echo "Health check failed - unexpected response"
+            kill $BACKEND_PID 2>/dev/null || true
+            exit 1
           fi
+
+          # Cleanup
+          kill $BACKEND_PID 2>/dev/null || true
+          echo "Backend health check completed successfully"
 
   android-build:
     name: Android Build Check

@@ -65,8 +65,8 @@ class VoiceSession:
         self.config = config
         self.created_at = datetime.now()
         self.status = "initializing"
-        self.results = []
-        self.speakers = {}
+        self.results: list[dict[str, Any]] = []
+        self.speakers: dict[str, dict[str, Any]] = {}
         self.last_activity = datetime.now()
         
         # 核心组件
@@ -138,10 +138,10 @@ class WebRTCBot:
 
 class AudioHandler:
     """音频处理器"""
-    
+
     def __init__(self, session_id: str):
         self.session_id = session_id
-        self.last_audio_time = None
+        self.last_audio_time: datetime | None = None
         
     def process_audio(self, audio_data: bytes, speaker_id: str = 'unknown'):
         """处理音频数据"""
@@ -281,12 +281,15 @@ async def initialize_session_async(session_id: str):
 
 class VoiceRecognitionService:
     """语音识别服务管理类"""
-    
+
     def __init__(self):
         self.active_sessions = ACTIVE_SESSIONS
         config = get_voice_service_config()
         # 若为空则兜底，确保形成绝对 URL
         self.callback_base_url = (config.get("callback_base_url") or f"http://{get_settings().host}:{get_settings().port}/api/voice-recognition/callback")
+        # Voice client for external voice service
+        from ..websocket.transcription import AliVoiceClient
+        self.voice_client = AliVoiceClient(base_url=config.get("base_url", "http://localhost:5000"))
 
     async def create_session(self, room_config: Dict[str, Any], voice_config: Dict[str, Any]) -> Dict[str, Any]:
         """创建语音识别会话"""
@@ -322,7 +325,7 @@ class VoiceRecognitionService:
                 import requests
                 try:
                     voice_config = get_voice_service_config()
-                    voice_service_url = voice_config["url"]  # 真正的阿里云语音服务
+                    voice_service_url = voice_config["base_url"]  # 真正的阿里云语音服务
                     response = requests.post(
                         f"{voice_service_url}/transcription",
                         json=transcription_data,
@@ -463,7 +466,7 @@ class VoiceRecognitionService:
             import requests
             try:
                 voice_config = get_voice_service_config()
-                voice_service_url = voice_config["url"]  # 真正的阿里云语音服务
+                voice_service_url = voice_config["base_url"]  # 真正的阿里云语音服务
                 response = requests.get(
                     f"{voice_service_url}/sentences",
                     params={
@@ -582,7 +585,7 @@ class VoiceRecognitionService:
                 import requests
                 try:
                     voice_config = get_voice_service_config()
-                    voice_service_url = voice_config["url"]  # 真正的阿里云语音服务
+                    voice_service_url = voice_config["base_url"]  # 真正的阿里云语音服务
                     stop_response = requests.post(
                         f"{voice_service_url}/stoptran",
                         json={"session_id": session_id},
@@ -633,7 +636,7 @@ class VoiceRecognitionService:
             health_status = "unknown"
             try:
                 voice_config = get_voice_service_config()
-                voice_service_url = voice_config["url"]  # 真正的阿里云语音服务
+                voice_service_url = voice_config["base_url"]  # 真正的阿里云语音服务
                 response = requests.get(f"{voice_service_url}/health", timeout=5)
                 health_status = "healthy" if response.status_code == 200 else "unhealthy"
             except:
@@ -650,7 +653,7 @@ class VoiceRecognitionService:
                     "active_sessions": active_count,
                     "active_bots": bot_count,
                     "voice_service_health": health_status,
-                    "real_voice_service_url": voice_config["url"]
+                    "real_voice_service_url": voice_config["base_url"]
                 },
                 "timestamp": datetime.now().isoformat()
             }

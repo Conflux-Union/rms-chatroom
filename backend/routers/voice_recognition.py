@@ -621,7 +621,7 @@ async def stream_sentences(
     """流式获取转录句子"""
     try:
         voice_config = get_voice_service_config()
-        voice_service_url = voice_config["url"]  # 真正的阿里云语音服务
+        voice_service_url = voice_config["base_url"]  # 真正的阿里云语音服务
         
         # 构建查询参数
         params = {

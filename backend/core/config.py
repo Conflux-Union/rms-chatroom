@@ -24,11 +24,12 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "deploy_token": "",
     "livekit_host": "ws://localhost:7880",
     "livekit_internal_host": "ws://127.0.0.1:7880",
-    "livekit_api_key": "rms_discord",  # intentionally empty in public repo
-    "livekit_api_secret": "rmsdiscordsecretkey123456",  # do NOT store secrets in repo
+    "livekit_api_key": "",
+    "livekit_api_secret": "",
     "voice_server_url": "",  # set via ENV or config.json in deployment
     "voice_service_url": "",  # set via ENV or config.json in deployment
-    "voice_callback_base_url": ""  # set via ENV or config.json in deployment
+    "voice_callback_base_url": "",  # set via ENV or config.json in deployment
+    "jwt_secret": "dev-secret-change-in-production"  # JWT signing secret
 }
 
 
@@ -68,6 +69,7 @@ class Settings(BaseSettings):
     voice_server_url: str = ""  # set via config.json or VOICE_SERVER_URL env
     voice_service_url: str = ""  # set via config.json or VOICE_SERVICE_URL env
     voice_callback_base_url: str = ""  # set via config.json or VOICE_CALLBACK_BASE_URL env
+    jwt_secret: str = "dev-secret-change-in-production"  # JWT signing secret
 
 
 def _env_overrides() -> dict[str, Any]:

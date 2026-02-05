@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -20,18 +20,19 @@ from ..models.server import (
 from .deps import CurrentUser, AdminUser
 from .schemas import UTCDateTimeModel
 from ..core.permissions import check_server_access, check_channel_visibility
+from ..utils import extract_mentioned_usernames
 
 
 router = APIRouter(prefix="/api/servers", tags=["servers"])
 
 
 class ServerCreate(BaseModel):
-    name: str
+    name: str = Field(..., min_length=1, max_length=100)
     icon: str | None = None
 
 
 class ServerUpdate(BaseModel):
-    name: str | None = None
+    name: str | None = Field(None, min_length=1, max_length=100)
     icon: str | None = None
     min_server_level: int | None = None  # 1-4
     min_internal_level: int | None = None  # 1-2
@@ -232,6 +233,7 @@ async def delete_server(
         )
 
     await db.delete(server)
+    await db.commit()
 
 
 # ============================================
@@ -447,17 +449,11 @@ async def get_all_server_messages(
                 for att in msg.attachments
             ]
 
-            # Parse mentions from content (same logic as messages.py)
-            mentions_data = []
-            if msg.content:
-                mention_pattern = re.compile(r"@(\w+)")
-                mentioned_usernames = mention_pattern.findall(msg.content)
-                # Deduplicate while preserving order
-                seen = set()
-                for username in mentioned_usernames:
-                    if username not in seen:
-                        seen.add(username)
-                        mentions_data.append(MentionResponse(id=0, username=username))
+            # Parse mentions from content
+            mentions_data = [
+                MentionResponse(id=0, username=username)
+                for username in extract_mentioned_usernames(msg.content)
+            ]
 
             message_responses.append(
                 MessageInChannelResponse(
