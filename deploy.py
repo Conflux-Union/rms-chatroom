@@ -89,19 +89,6 @@ def should_exclude(path: Path, rel_path: str) -> bool:
     return False
 
 
-def validate_version_format(version: str, mode: str) -> tuple[bool, str]:
-    """Validate version format based on deploy mode."""
-    if mode == "hot-fix":
-        # Must match x.x.x-fix-x (e.g., 1.0.6-fix-1)
-        if not re.match(r"^\d+\.\d+\.\d+-fix-\d+$", version):
-            return False, f"Hot-fix requires version format x.x.x-fix-x, got: {version}"
-    elif mode == "debug":
-        # Must contain x.x.x-dev (e.g., 1.0.6-dev, 1.0.6-dev-1)
-        if not re.match(r"^\d+\.\d+\.\d+-dev", version):
-            return False, f"Debug requires version format x.x.x-dev*, got: {version}"
-    return True, ""
-
-
 def get_last_release_version() -> str | None:
     """Get the last release version from git tags (excluding -fix- and -dev)."""
     try:
@@ -545,15 +532,10 @@ def main():
 
     step = 0
 
-    # Step 1: Validate version format
+    # Step 1: Show version info
     step += 1
-    print(f"[{step}/{total_steps}] Validating version format...")
+    print(f"[{step}/{total_steps}] Version info...")
     print(f"      Version: v{version_name}({version_code}) [{mode} mode]")
-
-    valid, err = validate_version_format(version_name, mode)
-    if not valid:
-        print(f"      ERROR: {err}")
-        sys.exit(1)
 
     # For release mode, check if version already released
     if mode == "release":
