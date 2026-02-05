@@ -70,6 +70,14 @@ jobs:
 
       - name: Start backend and verify health endpoint
         run: |
+          # Generate version.py for CI
+          cat > backend/version.py << 'EOF'
+          # Auto-generated for CI
+          VERSION_NAME = "0.0.0"
+          VERSION_CODE = "0"
+          COMMIT_HASH = "ci-test"
+          EOF
+
           # Create minimal test config (SSO token verification mode)
           cat > backend/config.json << 'EOF'
           {
