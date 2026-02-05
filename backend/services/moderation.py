@@ -1,7 +1,7 @@
 """Moderation service for checking user mute status."""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -27,7 +27,7 @@ async def check_user_muted(
     )
     mutes = result.scalars().all()
 
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
 
     # Check global mute (highest priority)
     for mute in mutes:

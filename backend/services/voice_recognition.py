@@ -322,7 +322,7 @@ class VoiceRecognitionService:
                 import requests
                 try:
                     voice_config = get_voice_service_config()
-                    voice_service_url = voice_config["url"]  # 真正的阿里云语音服务
+                    voice_service_url = voice_config["base_url"]  # 真正的阿里云语音服务
                     response = requests.post(
                         f"{voice_service_url}/transcription",
                         json=transcription_data,
@@ -463,7 +463,7 @@ class VoiceRecognitionService:
             import requests
             try:
                 voice_config = get_voice_service_config()
-                voice_service_url = voice_config["url"]  # 真正的阿里云语音服务
+                voice_service_url = voice_config["base_url"]  # 真正的阿里云语音服务
                 response = requests.get(
                     f"{voice_service_url}/sentences",
                     params={
@@ -582,7 +582,7 @@ class VoiceRecognitionService:
                 import requests
                 try:
                     voice_config = get_voice_service_config()
-                    voice_service_url = voice_config["url"]  # 真正的阿里云语音服务
+                    voice_service_url = voice_config["base_url"]  # 真正的阿里云语音服务
                     stop_response = requests.post(
                         f"{voice_service_url}/stoptran",
                         json={"session_id": session_id},
@@ -633,7 +633,7 @@ class VoiceRecognitionService:
             health_status = "unknown"
             try:
                 voice_config = get_voice_service_config()
-                voice_service_url = voice_config["url"]  # 真正的阿里云语音服务
+                voice_service_url = voice_config["base_url"]  # 真正的阿里云语音服务
                 response = requests.get(f"{voice_service_url}/health", timeout=5)
                 health_status = "healthy" if response.status_code == 200 else "unhealthy"
             except:
@@ -650,7 +650,7 @@ class VoiceRecognitionService:
                     "active_sessions": active_count,
                     "active_bots": bot_count,
                     "voice_service_health": health_status,
-                    "real_voice_service_url": voice_config["url"]
+                    "real_voice_service_url": voice_config["base_url"]
                 },
                 "timestamp": datetime.now().isoformat()
             }

@@ -51,7 +51,7 @@ def upgrade() -> None:
             sa.Column("name", sa.String(100), nullable=False),
             sa.Column("icon", sa.String(255), nullable=True),
             sa.Column("owner_id", sa.Integer(), nullable=False),
-            sa.Column("created_at", sa.DateTime(), server_default=sa.text("CURRENT_TIMESTAMP")),
+            sa.Column("created_at", sa.DateTime(), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
         )
 
     # Create channel_groups table if not exists
@@ -64,10 +64,11 @@ def upgrade() -> None:
                 sa.Integer(),
                 sa.ForeignKey("servers.id", ondelete="CASCADE"),
                 nullable=False,
+                index=True,
             ),
             sa.Column("name", sa.String(100), nullable=False),
-            sa.Column("position", sa.Integer(), server_default="0"),
-            sa.Column("created_at", sa.DateTime(), server_default=sa.text("CURRENT_TIMESTAMP")),
+            sa.Column("position", sa.Integer(), nullable=False, server_default="0"),
+            sa.Column("created_at", sa.DateTime(), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
         )
 
     # Create channels table if not exists
@@ -80,21 +81,24 @@ def upgrade() -> None:
                 sa.Integer(),
                 sa.ForeignKey("servers.id", ondelete="CASCADE"),
                 nullable=False,
+                index=True,
             ),
             sa.Column(
                 "group_id",
                 sa.Integer(),
                 sa.ForeignKey("channel_groups.id", ondelete="SET NULL"),
                 nullable=True,
+                index=True,
             ),
             sa.Column("name", sa.String(100), nullable=False),
             sa.Column(
                 "type",
                 sa.Enum("text", "voice", name="channeltype"),
+                nullable=False,
                 server_default="text",
             ),
-            sa.Column("position", sa.Integer(), server_default="0"),
-            sa.Column("created_at", sa.DateTime(), server_default=sa.text("CURRENT_TIMESTAMP")),
+            sa.Column("position", sa.Integer(), nullable=False, server_default="0"),
+            sa.Column("created_at", sa.DateTime(), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
         )
     else:
         # Add group_id column if channels table exists but column doesn't
@@ -126,9 +130,9 @@ def upgrade() -> None:
             sa.Column("username", sa.String(100), nullable=False),
             sa.Column("content", sa.Text(), nullable=False),
             sa.Column(
-                "created_at", sa.DateTime(), server_default=sa.text("CURRENT_TIMESTAMP"), index=True
+                "created_at", sa.DateTime(), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP"), index=True
             ),
-            sa.Column("is_deleted", sa.Boolean(), server_default="0", index=True),
+            sa.Column("is_deleted", sa.Boolean(), nullable=False, server_default="0", index=True),
             sa.Column("deleted_at", sa.DateTime(), nullable=True),
             sa.Column("deleted_by", sa.Integer(), nullable=True),
             sa.Column("edited_at", sa.DateTime(), nullable=True),
@@ -161,12 +165,12 @@ def upgrade() -> None:
                 nullable=False,
                 index=True,
             ),
-            sa.Column("user_id", sa.Integer(), nullable=False),
+            sa.Column("user_id", sa.Integer(), nullable=False, index=True),
             sa.Column("filename", sa.String(255), nullable=False),
             sa.Column("stored_name", sa.String(255), nullable=False, unique=True),
             sa.Column("content_type", sa.String(100), nullable=False),
             sa.Column("size", sa.Integer(), nullable=False),
-            sa.Column("created_at", sa.DateTime(), server_default=sa.text("CURRENT_TIMESTAMP")),
+            sa.Column("created_at", sa.DateTime(), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
         )
 
     # Create voice_states table if not exists
@@ -179,12 +183,13 @@ def upgrade() -> None:
                 sa.Integer(),
                 sa.ForeignKey("channels.id", ondelete="CASCADE"),
                 nullable=False,
+                index=True,
             ),
-            sa.Column("user_id", sa.Integer(), nullable=False, unique=True),
+            sa.Column("user_id", sa.Integer(), nullable=False, index=True),
             sa.Column("username", sa.String(100), nullable=False),
-            sa.Column("muted", sa.Boolean(), server_default="0"),
-            sa.Column("deafened", sa.Boolean(), server_default="0"),
-            sa.Column("joined_at", sa.DateTime(), server_default=sa.text("CURRENT_TIMESTAMP")),
+            sa.Column("muted", sa.Boolean(), nullable=False, server_default="0"),
+            sa.Column("deafened", sa.Boolean(), nullable=False, server_default="0"),
+            sa.Column("joined_at", sa.DateTime(), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
         )
 
     # Create voice_invites table if not exists
@@ -200,8 +205,8 @@ def upgrade() -> None:
             ),
             sa.Column("token", sa.String(64), nullable=False, unique=True, index=True),
             sa.Column("created_by", sa.Integer(), nullable=False),
-            sa.Column("created_at", sa.DateTime(), server_default=sa.text("CURRENT_TIMESTAMP")),
-            sa.Column("used", sa.Boolean(), server_default="0"),
+            sa.Column("created_at", sa.DateTime(), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
+            sa.Column("used", sa.Boolean(), nullable=False, server_default="0"),
             sa.Column("used_by_name", sa.String(100), nullable=True),
             sa.Column("used_at", sa.DateTime(), nullable=True),
         )
@@ -234,7 +239,7 @@ def upgrade() -> None:
             sa.Column("muted_until", sa.DateTime(), nullable=True),
             sa.Column("muted_by", sa.Integer(), nullable=False),
             sa.Column("reason", sa.String(500), nullable=True),
-            sa.Column("created_at", sa.DateTime(), server_default=sa.text("CURRENT_TIMESTAMP")),
+            sa.Column("created_at", sa.DateTime(), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
         )
 
     # Create reactions table if not exists
@@ -252,7 +257,7 @@ def upgrade() -> None:
             sa.Column("user_id", sa.Integer(), nullable=False, index=True),
             sa.Column("username", sa.String(100), nullable=False),
             sa.Column("emoji", sa.String(32), nullable=False),
-            sa.Column("created_at", sa.DateTime(), server_default=sa.text("CURRENT_TIMESTAMP")),
+            sa.Column("created_at", sa.DateTime(), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
             sa.UniqueConstraint("message_id", "user_id", "emoji", name="uq_reaction"),
         )
 

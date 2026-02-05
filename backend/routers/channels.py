@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -15,7 +15,7 @@ router = APIRouter(prefix="/api/servers/{server_id}/channels", tags=["channels"]
 
 
 class ChannelCreate(BaseModel):
-    name: str
+    name: str = Field(..., min_length=1, max_length=100)
     type: str = "text"
     group_id: int | None = None  # Optional: assign to a channel group
     visibility_min_server_level: int = 1  # 1-4, default accessible to all
@@ -25,7 +25,7 @@ class ChannelCreate(BaseModel):
 
 
 class ChannelUpdate(BaseModel):
-    name: str | None = None
+    name: str | None = Field(None, min_length=1, max_length=100)
     group_id: int | None = (
         None  # Optional: move to a different group (use -1 to ungroup)
     )
@@ -121,13 +121,25 @@ async def create_channel(
     
     # Validate permission levels
     if not (1 <= payload.visibility_min_server_level <= 4):
-        raise HTTPException(status_code=400, detail="visibility_min_server_level must be 1-4")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="visibility_min_server_level must be 1-4",
+        )
     if not (1 <= payload.visibility_min_internal_level <= 2):
-        raise HTTPException(status_code=400, detail="visibility_min_internal_level must be 1-2")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="visibility_min_internal_level must be 1-2",
+        )
     if not (1 <= payload.speak_min_server_level <= 4):
-        raise HTTPException(status_code=400, detail="speak_min_server_level must be 1-4")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="speak_min_server_level must be 1-4",
+        )
     if not (1 <= payload.speak_min_internal_level <= 2):
-        raise HTTPException(status_code=400, detail="speak_min_internal_level must be 1-2")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="speak_min_internal_level must be 1-2",
+        )
 
     if payload.group_id is not None:
         # Grouped channel: get max position within the group
@@ -217,19 +229,31 @@ async def update_channel(
     # Update permission levels
     if payload.visibility_min_server_level is not None:
         if not (1 <= payload.visibility_min_server_level <= 4):
-            raise HTTPException(status_code=400, detail="visibility_min_server_level must be 1-4")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="visibility_min_server_level must be 1-4",
+            )
         channel.visibility_min_server_level = payload.visibility_min_server_level
     if payload.visibility_min_internal_level is not None:
         if not (1 <= payload.visibility_min_internal_level <= 2):
-            raise HTTPException(status_code=400, detail="visibility_min_internal_level must be 1-2")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="visibility_min_internal_level must be 1-2",
+            )
         channel.visibility_min_internal_level = payload.visibility_min_internal_level
     if payload.speak_min_server_level is not None:
         if not (1 <= payload.speak_min_server_level <= 4):
-            raise HTTPException(status_code=400, detail="speak_min_server_level must be 1-4")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="speak_min_server_level must be 1-4",
+            )
         channel.speak_min_server_level = payload.speak_min_server_level
     if payload.speak_min_internal_level is not None:
         if not (1 <= payload.speak_min_internal_level <= 2):
-            raise HTTPException(status_code=400, detail="speak_min_internal_level must be 1-2")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="speak_min_internal_level must be 1-2",
+            )
         channel.speak_min_internal_level = payload.speak_min_internal_level
 
     # Handle group_id update: -1 means ungroup, None means no change, positive int means move to group
@@ -308,3 +332,4 @@ async def delete_channel(
         )
 
     await db.delete(channel)
+    await db.commit()

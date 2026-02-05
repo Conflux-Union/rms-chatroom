@@ -146,6 +146,8 @@ async def music_websocket(
     - {"type": "connected", "room_name": str}
     - {"type": "song_unavailable", "room_name": str, "song_name": str, "reason": str}
     """
+    user = None
+
     if not token:
         await websocket.close(code=4001, reason="Missing token")
         return
@@ -230,4 +232,5 @@ async def music_websocket(
                 _room_clients[current_room].discard(websocket)
                 if not _room_clients[current_room]:
                     del _room_clients[current_room]
-        logger.info(f"Music WebSocket disconnected: user {user.get('username')} left room {room_name}")
+        if user:
+            logger.info(f"Music WebSocket disconnected: user {user.get('username')} left room {room_name}")
