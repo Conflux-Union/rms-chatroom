@@ -19,6 +19,7 @@ from ..models.server import (
 )
 from .deps import CurrentUser, AdminUser
 from .schemas import UTCDateTimeModel
+from ..core.permissions import check_server_access, check_channel_visibility
 
 
 router = APIRouter(prefix="/api/servers", tags=["servers"])
@@ -32,6 +33,8 @@ class ServerCreate(BaseModel):
 class ServerUpdate(BaseModel):
     name: str | None = None
     icon: str | None = None
+    min_server_level: int | None = None  # 1-4
+    min_internal_level: int | None = None  # 1-2
 
 
 class ServerResponse(BaseModel):
@@ -39,6 +42,8 @@ class ServerResponse(BaseModel):
     name: str
     icon: str | None
     owner_id: int
+    min_server_level: int = 1
+    min_internal_level: int = 1
 
     class Config:
         from_attributes = True
@@ -51,6 +56,10 @@ class ChannelResponse(BaseModel):
     position: int
     top_position: int
     group_id: int | None = None
+    visibility_min_server_level: int = 1
+    visibility_min_internal_level: int = 1
+    speak_min_server_level: int = 1
+    speak_min_internal_level: int = 1
 
     class Config:
         from_attributes = True
@@ -58,14 +67,27 @@ class ChannelResponse(BaseModel):
 
 class ServerDetailResponse(ServerResponse):
     channels: list[ChannelResponse]
+    min_server_level: int = 1
+    min_internal_level: int = 1
 
 
 @router.get("", response_model=list[ServerResponse])
 async def list_servers(user: CurrentUser, db: AsyncSession = Depends(get_db)):
-    """List all servers."""
+    """List all servers user has access to based on SSO permission levels."""
     result = await db.execute(select(Server).order_by(Server.id))
     servers = result.scalars().all()
-    return servers
+    
+    # Filter servers based on user's permission levels
+    filtered_servers = [
+        server for server in servers
+        if check_server_access(
+            user,
+            server.min_server_level,
+            server.min_internal_level
+        )
+    ]
+    
+    return filtered_servers
 
 
 @router.post("", response_model=ServerResponse, status_code=status.HTTP_201_CREATED)
@@ -102,7 +124,7 @@ async def create_server(
 async def get_server(
     server_id: int, user: CurrentUser, db: AsyncSession = Depends(get_db)
 ):
-    """Get server details with channels."""
+    """Get server details with channels user has access to."""
     result = await db.execute(
         select(Server)
         .where(Server.id == server_id)
@@ -113,12 +135,31 @@ async def get_server(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Server not found"
         )
+    
+    # Check if user has access to this server
+    if not check_server_access(user, server.min_server_level, server.min_internal_level):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to access this server"
+        )
+
+    # Filter channels based on user's permission levels
+    filtered_channels = [
+        c for c in server.channels
+        if check_channel_visibility(
+            user,
+            c.visibility_min_server_level,
+            c.visibility_min_internal_level
+        )
+    ]
 
     return ServerDetailResponse(
         id=server.id,
         name=server.name,
         icon=server.icon,
         owner_id=server.owner_id,
+        min_server_level=server.min_server_level,
+        min_internal_level=server.min_internal_level,
         channels=[
             ChannelResponse(
                 id=c.id,
@@ -127,8 +168,12 @@ async def get_server(
                 position=c.position,
                 top_position=c.top_position,
                 group_id=c.group_id,
+                visibility_min_server_level=c.visibility_min_server_level,
+                visibility_min_internal_level=c.visibility_min_internal_level,
+                speak_min_server_level=c.speak_min_server_level,
+                speak_min_internal_level=c.speak_min_internal_level,
             )
-            for c in sorted(server.channels, key=lambda x: x.position)
+            for c in sorted(filtered_channels, key=lambda x: x.position)
         ],
     )
 
@@ -155,6 +200,20 @@ async def update_server(
         server.name = payload.name
     if payload.icon is not None:
         server.icon = payload.icon
+    if payload.min_server_level is not None:
+        if not (1 <= payload.min_server_level <= 4):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="min_server_level must be between 1 and 4"
+            )
+        server.min_server_level = payload.min_server_level
+    if payload.min_internal_level is not None:
+        if not (1 <= payload.min_internal_level <= 2):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="min_internal_level must be 1 or 2"
+            )
+        server.min_internal_level = payload.min_internal_level
 
     await db.flush()
     return server

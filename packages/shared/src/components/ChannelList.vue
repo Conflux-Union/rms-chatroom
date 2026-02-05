@@ -10,6 +10,8 @@ import { NDropdown, NModal, NInput, NButton, NSpace, NSelect } from 'naive-ui'
 import type { DropdownOption, SelectOption } from 'naive-ui'
 import type { Channel, ChannelGroup } from '../types'
 import VoiceControls from '../components/VoiceControls.vue'
+import ChannelPermissionModal from '../components/ChannelPermissionModal.vue'
+import ChannelGroupPermissionModal from '../components/ChannelGroupPermissionModal.vue'
 import { VueDraggable } from 'vue-draggable-plus'
 
 const chat = useChatStore()
@@ -57,9 +59,18 @@ const showRenameGroupDialog = ref(false)
 const renameGroupId = ref<number | null>(null)
 const renameGroupName = ref('')
 
+// Channel Group Permission Modal state
+const showGroupPermissionModal = ref(false)
+const selectedGroupForPermission = ref<ChannelGroup | null>(null)
+
+// Channel Permission Modal state
+const showChannelPermissionModal = ref(false)
+const selectedChannelForPermission = ref<Channel | null>(null)
+
 // Dropdown options - computed to include dynamic group options
 const channelDropdownOptions = computed((): DropdownOption[] => {
   const options: DropdownOption[] = [
+    { label: '权限设置', key: 'permissions' },
     { label: '移动到频道组', key: 'move' },
     { label: '删除频道', key: 'delete', props: { style: { color: 'var(--color-danger)' } } }
   ]
@@ -67,6 +78,7 @@ const channelDropdownOptions = computed((): DropdownOption[] => {
 })
 
 const groupDropdownOptions: DropdownOption[] = [
+  { label: '权限设置', key: 'permissions' },
   { label: '删除频道组', key: 'delete', props: { style: { color: 'var(--color-danger)' } } }
 ]
 
@@ -99,6 +111,10 @@ watch(() => chat.currentServer, (server) => {
 onMounted(() => {
   // Load mention notifications on mount
   mentionNotification.loadChannelMentions()
+  console.log('[ChannelList] Component mounted')
+  console.log('[ChannelList] auth.isAdmin:', auth.isAdmin)
+  console.log('[ChannelList] currentServer:', chat.currentServer)
+  console.log('[ChannelList] channelGroups:', channelGroups.value)
 })
 
 // Channel groups
@@ -203,16 +219,41 @@ async function createItem() {
 }
 
 function showGroupContextMenu(event: MouseEvent, groupId: number) {
+  console.log('[ChannelList] showGroupContextMenu called for groupId:', groupId)
+  console.log('[ChannelList] auth.isAdmin:', auth.isAdmin)
   event.preventDefault()
   event.stopPropagation()
   groupDropdown.value = { show: true, x: event.clientX, y: event.clientY, groupId }
+  console.log('[ChannelList] Group dropdown shown at position:', { x: event.clientX, y: event.clientY })
+  console.log('[ChannelList] groupDropdown.value.show:', groupDropdown.value.show)
 }
 
 async function handleGroupDropdownSelect(key: string) {
-  if (key === 'delete') {
+  console.log('[ChannelList] handleGroupDropdownSelect called with key:', key)
+  if (key === 'permissions') {
+    console.log('[ChannelList] User selected permissions option')
+    showGroupPermissionSettings()
+  } else if (key === 'delete') {
     await deleteChannelGroup()
   }
   groupDropdown.value.show = false
+}
+
+function showGroupPermissionSettings() {
+  if (!groupDropdown.value.groupId || !chat.currentServer) {
+    console.log('[ChannelList] showGroupPermissionSettings: missing groupId or currentServer', {
+      groupId: groupDropdown.value.groupId,
+      currentServer: chat.currentServer
+    })
+    return
+  }
+  const group = chat.currentServer.channelGroups?.find(g => g.id === groupDropdown.value.groupId)
+  console.log('[ChannelList] showGroupPermissionSettings: found group', group)
+  if (group) {
+    selectedGroupForPermission.value = group
+    showGroupPermissionModal.value = true
+    console.log('[ChannelList] Modal opened for group:', group.name)
+  }
 }
 
 async function deleteChannelGroup() {
@@ -220,6 +261,26 @@ async function deleteChannelGroup() {
   if (confirm('确定要删除此频道组吗？组内的频道将变为独立频道。')) {
     await chat.deleteChannelGroup(chat.currentServer.id, groupDropdown.value.groupId)
   }
+}
+
+// Channel Permission Modal callback
+function onChannelPermissionSaved(data: {
+  visibilityMinServerLevel: number
+  speakMinServerLevel: number
+}) {
+  if (selectedChannelForPermission.value) {
+    selectedChannelForPermission.value.visibility_min_server_level = data.visibilityMinServerLevel
+    selectedChannelForPermission.value.speak_min_server_level = data.speakMinServerLevel
+  }
+  showChannelPermissionModal.value = false
+}
+
+// Channel Group Permission Modal callback
+function onGroupPermissionSaved(data: { minServerLevel: number }) {
+  if (selectedGroupForPermission.value) {
+    selectedGroupForPermission.value.min_server_level = data.minServerLevel
+  }
+  showGroupPermissionModal.value = false
 }
 
 // Rename group dialog functions
@@ -277,12 +338,29 @@ function showUserContextMenu(event: MouseEvent, channelId: number, userId: strin
 }
 
 async function handleChannelDropdownSelect(key: string) {
-  if (key === 'delete') {
+  console.log('[ChannelList] handleChannelDropdownSelect called with key:', key)
+  if (key === 'permissions') {
+    showChannelPermissionSettings()
+  } else if (key === 'delete') {
     await deleteChannel()
   } else if (key === 'move') {
     openMoveChannelDialog()
   }
   channelDropdown.value.show = false
+}
+
+function showChannelPermissionSettings() {
+  if (!channelDropdown.value.channelId || !chat.currentServer) {
+    console.log('[ChannelList] showChannelPermissionSettings: missing channelId or currentServer')
+    return
+  }
+  const channel = chat.currentServer.channels?.find(c => c.id === channelDropdown.value.channelId)
+  console.log('[ChannelList] showChannelPermissionSettings: found channel', channel)
+  if (channel) {
+    selectedChannelForPermission.value = channel
+    showChannelPermissionModal.value = true
+    console.log('[ChannelList] Channel permission modal opened for:', channel.name)
+  }
 }
 
 async function handleUserDropdownSelect(key: string) {
@@ -521,7 +599,7 @@ async function deleteChannel() {
             <div 
               class="channel-group-header glow-effect"
               @click.stop="toggleGroupCollapse(item.data.id)"
-              @contextmenu.prevent="auth.isAdmin && editMode ? showGroupContextMenu($event, item.data.id) : undefined"
+              @contextmenu.prevent="auth.isAdmin ? showGroupContextMenu($event, item.data.id) : undefined"
             >
               <ChevronDown v-if="!collapsedGroups.has(item.data.id)" :size="14" class="collapse-icon" />
               <ChevronRight v-else :size="14" class="collapse-icon" />
@@ -882,6 +960,31 @@ async function deleteChannel() {
         </NSpace>
       </template>
     </NModal>
+
+    <!-- Channel Permission Modal -->
+    <ChannelPermissionModal
+      :isOpen="showChannelPermissionModal && selectedChannelForPermission !== null && chat.currentServer !== null"
+      :serverId="chat.currentServer?.id || 0"
+      :channelId="selectedChannelForPermission?.id || 0"
+      :channelName="selectedChannelForPermission?.name || ''"
+      :initialPermissions="{
+        visibilityMinServerLevel: selectedChannelForPermission?.visibility_min_server_level || 1,
+        speakMinServerLevel: selectedChannelForPermission?.speak_min_server_level || 1
+      }"
+      @close="showChannelPermissionModal = false"
+      @save="onChannelPermissionSaved"
+    />
+
+    <!-- Channel Group Permission Modal -->
+    <ChannelGroupPermissionModal
+      :isOpen="showGroupPermissionModal && selectedGroupForPermission !== null && chat.currentServer !== null"
+      :serverId="chat.currentServer?.id || 0"
+      :groupId="selectedGroupForPermission?.id || 0"
+      :groupName="selectedGroupForPermission?.name || ''"
+      :initialMinServerLevel="selectedGroupForPermission?.min_server_level || 1"
+      @close="showGroupPermissionModal = false"
+      @save="onGroupPermissionSaved"
+    />
   </div>
 </template>
 
