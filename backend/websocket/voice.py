@@ -28,6 +28,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
+
+def _create_background_task(coro):
+    """Create a background task with error logging."""
+    async def wrapper():
+        try:
+            await coro
+        except Exception as e:
+            logger.error(f"Background task failed: {e}")
+    return asyncio.create_task(wrapper())
+
+
 # QQ group notification config
 QQ_NOTIFY_URL = "http://119.23.57.80:53000/send_group_msg"
 QQ_GROUP_ID = 457054386
@@ -84,6 +95,9 @@ async def send_qq_group_notify(
 
 
 router = APIRouter()
+
+# Lock for voice state access (host mode and screen share lock)
+_voice_state_lock = asyncio.Lock()
 
 # Host mode state: room_name -> host_identity (None if disabled)
 _host_mode_state: dict[str, str] = {}
@@ -214,7 +228,7 @@ async def get_voice_token(
 
     # Send QQ group notification (fire and forget, only if first real user)
     server_name = channel.server.name if channel.server else "未知服务器"
-    asyncio.create_task(
+    _create_background_task(
         send_qq_group_notify(username, server_name, channel.name, room_name)
     )
 
@@ -309,15 +323,16 @@ async def get_voice_users(
         )
 
         # Check host mode
-        host_id = _host_mode_state.get(room_name)
+        async with _voice_state_lock:
+            host_id = _host_mode_state.get(room_name)
 
-        # If host mode active, check if host is still in room
-        if host_id:
-            participant_ids = {p.identity for p in response.participants}
-            if host_id not in participant_ids:
-                # Host left, disable host mode
-                _host_mode_state.pop(room_name, None)
-                host_id = None
+            # If host mode active, check if host is still in room
+            if host_id:
+                participant_ids = {p.identity for p in response.participants}
+                if host_id not in participant_ids:
+                    # Host left, disable host mode
+                    _host_mode_state.pop(room_name, None)
+                    host_id = None
 
         # Batch fetch avatar URLs for all participants
         # Filter out guest identities (start with "guest_") and non-numeric IDs
@@ -413,7 +428,7 @@ async def mute_participant(
             )
 
         # Broadcast voice users update (fire and forget)
-        asyncio.create_task(broadcast_voice_users_update())
+        _create_background_task(broadcast_voice_users_update())
 
         return {"success": True, "muted": payload.muted}
     finally:
@@ -452,7 +467,7 @@ async def kick_participant(
         )
 
         # Broadcast voice users update (fire and forget)
-        asyncio.create_task(broadcast_voice_users_update())
+        _create_background_task(broadcast_voice_users_update())
 
         return {"success": True}
     except Exception as e:
@@ -483,7 +498,8 @@ async def get_host_mode(
         )
 
     room_name = f"voice_{channel_id}"
-    host_id = _host_mode_state.get(room_name)
+    async with _voice_state_lock:
+        host_id = _host_mode_state.get(room_name)
     host_name = None
 
     if host_id:
@@ -497,7 +513,8 @@ async def get_host_mode(
             await api.aclose()
         except Exception:
             # Host may have left, clear host mode
-            _host_mode_state.pop(room_name, None)
+            async with _voice_state_lock:
+                _host_mode_state.pop(room_name, None)
             host_id = None
 
     return HostModeResponse(
@@ -534,26 +551,28 @@ async def set_host_mode(
     user_name = user.get("nickname") or user["username"]
 
     # Check if host mode is already active by another user
-    current_host = _host_mode_state.get(room_name)
-    if payload.enabled and current_host and current_host != user_id:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Host mode is already active by another user",
-        )
+    async with _voice_state_lock:
+        current_host = _host_mode_state.get(room_name)
+        if payload.enabled and current_host and current_host != user_id:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Host mode is already active by another user",
+            )
 
-    # Only the current host can disable host mode
-    if not payload.enabled and current_host and current_host != user_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only the current host can disable host mode",
-        )
+        # Only the current host can disable host mode
+        if not payload.enabled and current_host and current_host != user_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only the current host can disable host mode",
+            )
 
     api = await _get_livekit_api()
 
     try:
         if payload.enabled:
             # Enable host mode: mute all except host
-            _host_mode_state[room_name] = user_id
+            async with _voice_state_lock:
+                _host_mode_state[room_name] = user_id
 
             response = await api.room.list_participants(
                 ListParticipantsRequest(room=room_name)
@@ -563,15 +582,16 @@ async def set_host_mode(
                     await _mute_participant_mic(api, room_name, p.identity, True)
 
             # Broadcast voice users update (fire and forget)
-            asyncio.create_task(broadcast_voice_users_update())
+            _create_background_task(broadcast_voice_users_update())
 
             return HostModeResponse(enabled=True, host_id=user_id, host_name=user_name)
         else:
             # Disable host mode (don't auto-unmute, users unmute themselves)
-            _host_mode_state.pop(room_name, None)
+            async with _voice_state_lock:
+                _host_mode_state.pop(room_name, None)
 
             # Broadcast voice users update (fire and forget)
-            asyncio.create_task(broadcast_voice_users_update())
+            _create_background_task(broadcast_voice_users_update())
 
             return HostModeResponse(enabled=False, host_id=None, host_name=None)
     finally:
@@ -591,11 +611,11 @@ async def _check_screen_share_lock(
     Returns (is_locked, sharer_id, sharer_name).
     Auto-releases lock if sharer has left the room.
     """
-    lock_info = _screen_share_lock.get(room_name)
-    if not lock_info:
-        return False, None, None
-
-    sharer_id, sharer_name = lock_info
+    async with _voice_state_lock:
+        lock_info = _screen_share_lock.get(room_name)
+        if not lock_info:
+            return False, None, None
+        sharer_id, sharer_name = lock_info
 
     # Verify sharer is still in the room
     try:
@@ -608,13 +628,15 @@ async def _check_screen_share_lock(
 
         if sharer_id not in participant_ids:
             # Sharer left, auto-release lock
-            _screen_share_lock.pop(room_name, None)
+            async with _voice_state_lock:
+                _screen_share_lock.pop(room_name, None)
             return False, None, None
 
         return True, sharer_id, sharer_name
     except Exception:
         # Room doesn't exist, release lock
-        _screen_share_lock.pop(room_name, None)
+        async with _voice_state_lock:
+            _screen_share_lock.pop(room_name, None)
         return False, None, None
 
 
@@ -692,7 +714,8 @@ async def lock_screen_share(
         )
 
     # Acquire lock
-    _screen_share_lock[room_name] = (user_id, user_name)
+    async with _voice_state_lock:
+        _screen_share_lock[room_name] = (user_id, user_name)
     return ScreenShareLockResponse(
         success=True, sharer_id=user_id, sharer_name=user_name
     )
@@ -726,9 +749,10 @@ async def unlock_screen_share(
     room_name = f"voice_{channel_id}"
     user_id = str(user["id"])
 
-    lock_info = _screen_share_lock.get(room_name)
-    if lock_info and lock_info[0] == user_id:
-        _screen_share_lock.pop(room_name, None)
+    async with _voice_state_lock:
+        lock_info = _screen_share_lock.get(room_name)
+        if lock_info and lock_info[0] == user_id:
+            _screen_share_lock.pop(room_name, None)
 
     return ScreenShareLockResponse(success=True, sharer_id=None, sharer_name=None)
 
@@ -946,14 +970,15 @@ async def get_all_voice_users(
                 response = await api.room.list_participants(
                     ListParticipantsRequest(room=room_name)
                 )
-                host_id = _host_mode_state.get(room_name)
+                async with _voice_state_lock:
+                    host_id = _host_mode_state.get(room_name)
 
-                # Check if host is still in room
-                if host_id:
-                    participant_ids = {p.identity for p in response.participants}
-                    if host_id not in participant_ids:
-                        _host_mode_state.pop(room_name, None)
-                        host_id = None
+                    # Check if host is still in room
+                    if host_id:
+                        participant_ids = {p.identity for p in response.participants}
+                        if host_id not in participant_ids:
+                            _host_mode_state.pop(room_name, None)
+                            host_id = None
 
                 for p in response.participants:
                     is_muted = True

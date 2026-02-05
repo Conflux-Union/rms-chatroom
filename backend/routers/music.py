@@ -483,7 +483,7 @@ def _check_netease_login_status() -> dict:
     # Status codes: 800=expired, 801=waiting, 802=scanned, 803=success
     status_map = {800: "expired", 801: "waiting", 802: "scanned", 803: "success"}
     status = status_map.get(code, "unknown")
-    response = {"status": status, "platform": "netease"}
+    response: dict[str, Any] = {"status": status, "platform": "netease"}
     
     if code == 803:
         # Save session cookies (use list to handle duplicate cookie names)
@@ -535,7 +535,7 @@ async def check_login_status(platform: str = "qq"):
             QRCodeLoginEvents.OTHER: "unknown",
         }
         
-        result = {"status": status_map.get(status, "unknown"), "platform": "qq"}
+        result: dict[str, Any] = {"status": status_map.get(status, "unknown"), "platform": "qq"}
 
         if status == QRCodeLoginEvents.DONE and cred:
             _credential = cred
@@ -683,7 +683,7 @@ async def search_songs(req: SearchRequest, _user: CurrentUser):
 
 
 @router.get("/song/{mid}/url")
-async def get_song_url(mid: str, platform: str = "qq", _user: CurrentUser = None):
+async def get_song_url(mid: str, platform: str = "qq", _user: CurrentUser | None = None):
     """Get playable URL for a song. Supports platform: 'qq' or 'netease'."""
     try:
         if platform == "netease":

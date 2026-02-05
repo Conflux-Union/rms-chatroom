@@ -10,8 +10,8 @@ import logging
 logger = logging.getLogger(__name__)
 app = FastAPI(title="LocalVoiceService")
 
-SESSIONS = {}
-SENTENCES = {}
+SESSIONS: dict[str, dict] = {}
+SENTENCES: dict[str, list] = {}
 
 # 全局锁 - 确保一次只有一个房间可以使用语音识别服务
 _active_room_id = None
@@ -107,7 +107,7 @@ async def get_status():
         }
 
 @app.get("/sentences")
-async def get_sentences(session_id: str, include_unassigned: str = "true", speaker_id: str = None, last_timestamp: str = None):
+async def get_sentences(session_id: str, include_unassigned: str = "true", speaker_id: str | None = None, last_timestamp: str | None = None):
     logger.info(f"LocalVoiceService: get_sentences for session {session_id}")
     sentences = SENTENCES.get(session_id, [])
     logger.info(f"LocalVoiceService: returning {len(sentences)} sentences for session {session_id}")
