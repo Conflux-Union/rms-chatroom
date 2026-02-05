@@ -77,13 +77,16 @@ const userMaxLevel = computed(() => {
   return auth.user?.permission_level || 1
 })
 
-// Watch for initial permissions change
-watch(() => props.initialPermissions, (newVal) => {
+// Initialize values when modal opens
+watch(() => props.isOpen, (newVal) => {
   if (newVal) {
-    channelVisibilityLevel.value = newVal.visibilityMinServerLevel || 1
-    channelSpeakLevel.value = newVal.speakMinServerLevel || 1
+    console.log('[ChannelPermissionModal] Modal opened, initialPermissions:', props.initialPermissions)
+    if (props.initialPermissions) {
+      channelVisibilityLevel.value = props.initialPermissions.visibilityMinServerLevel || 1
+      channelSpeakLevel.value = props.initialPermissions.speakMinServerLevel || 1
+    }
   }
-}, { immediate: true })
+}, { immediate: false })
 
 const handleClose = () => {
   emit('close')
@@ -279,12 +282,13 @@ const handleSave = async () => {
 }
 
 .btn-primary {
-  background: var(--color-accent);
+  background: var(--color-gradient-primary);
   color: white;
 }
 
 .btn-primary:hover:not(:disabled) {
-  opacity: 0.9;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
 }
 
 .btn-primary:disabled {

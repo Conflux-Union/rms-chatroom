@@ -11,7 +11,8 @@
           <div class="level-selector">
             <button
               v-for="level in serverLevels"
-              :key="level"
+              :key="`level-${level}`"
+              type="button"
               class="level-btn"
               :class="{ active: modelValue === level }"
               @click="updateLevel(level)"
@@ -83,6 +84,9 @@ const getLevelDescription = (level: number): string => {
 }
 
 const updateLevel = (level: number) => {
+  console.log('[InternalLevelPermissionSettings] Button clicked, level:', level)
+  console.log('[InternalLevelPermissionSettings] Current modelValue:', props.modelValue)
+  console.log('[InternalLevelPermissionSettings] Emitting update:modelValue with value:', level)
   emit('update:modelValue', level)
 }
 </script>
@@ -150,63 +154,39 @@ const updateLevel = (level: number) => {
 }
 
 .level-btn {
-  padding: 14px 12px;
-  border: 2px solid var(--color-border);
-  border-radius: 10px;
-  background: var(--color-background);
-  color: var(--color-text-muted);
+  padding: 10px 15px;
+  border: 1px solid #ccc;
+  background: white;
+  color: black;
   font-size: 12px;
-  font-weight: 600;
   cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  display: flex;
+  border-radius: 5px;
+  display: inline-flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
-  position: relative;
-  overflow: hidden;
-}
-
-.level-btn::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: linear-gradient(135deg, transparent, rgba(255, 255, 255, 0.1));
-  pointer-events: none;
+  gap: 4px;
+  font-weight: 600;
 }
 
 .level-number {
   font-size: 20px;
   font-weight: 800;
   color: inherit;
-  position: relative;
-  z-index: 1;
 }
 
 .level-name {
   font-size: 11px;
   opacity: 0.75;
   font-weight: 700;
-  position: relative;
-  z-index: 1;
 }
 
 .level-desc {
   font-size: 10px;
   opacity: 0.6;
-  position: relative;
-  z-index: 1;
 }
 
 .level-btn:hover {
-  background: var(--color-background-soft);
-  color: var(--color-text-main);
-  border-color: var(--color-accent);
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  background: #f0f0f0;
 }
 
 .level-btn.active {
@@ -215,6 +195,8 @@ const updateLevel = (level: number) => {
   border-color: var(--color-accent);
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25);
   transform: translateY(-4px);
+  cursor: pointer;
+  pointer-events: auto;
 }
 
 .level-btn.active .level-name,
