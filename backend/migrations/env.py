@@ -10,22 +10,15 @@ from alembic import context
 from sqlalchemy import create_engine, pool
 from sqlalchemy.engine import Connection
 
-# Add backend directory to path for imports
+# Add backend's parent directory to path for imports
 backend_dir = Path(__file__).resolve().parent.parent
-if str(backend_dir) not in sys.path:
-    sys.path.insert(0, str(backend_dir))
+project_dir = backend_dir.parent
+if str(project_dir) not in sys.path:
+    sys.path.insert(0, str(project_dir))
 
-from core.config import get_settings
-
-# Import Base for metadata (we define a local one to avoid circular imports)
-from sqlalchemy.orm import DeclarativeBase
-
-
-class Base(DeclarativeBase):
-    """Local Base class for Alembic - mirrors core.database.Base"""
-
-    pass
-
+from backend.core.config import get_settings
+from backend.core.database import Base
+from backend.models import server  # noqa: F401 - import to register models with Base.metadata
 
 target_metadata = Base.metadata
 

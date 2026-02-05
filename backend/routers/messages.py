@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import re
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
@@ -14,6 +13,7 @@ from ..core.database import get_db
 from ..models.server import Attachment, Channel, ChannelType, Message
 from .deps import CurrentUser
 from ..core.permissions import check_channel_visibility, check_channel_speak_permission
+from ..utils import extract_mentioned_usernames
 from .schemas import (
     ReactionGroupResponse,
     ReactionUserResponse,
@@ -116,20 +116,11 @@ def _message_to_response(
             else "[Message deleted]",
         )
 
-    # Parse mentions from content (same logic as WebSocket)
-    # We parse from content rather than stored IDs since we don't have username lookup here
-    mentions_data = []
-    if msg.content:
-        mention_pattern = re.compile(r"@(\w+)")
-        mentioned_usernames = mention_pattern.findall(msg.content)
-        # Deduplicate while preserving order
-        seen = set()
-        for username in mentioned_usernames:
-            if username not in seen:
-                seen.add(username)
-                # Use placeholder ID since we don't have user lookup in this context
-                # Frontend primarily uses username for display anyway
-                mentions_data.append(MentionResponse(id=0, username=username))
+    # Parse mentions from content
+    mentions_data = [
+        MentionResponse(id=0, username=username)
+        for username in extract_mentioned_usernames(msg.content)
+    ]
 
     # Group reactions by emoji
     reactions_data = []
@@ -368,7 +359,9 @@ async def edit_message(
 ):
     """Edit a message. Only the author can edit their own messages."""
     if not payload.content.strip():
-        raise HTTPException(status_code=400, detail="Content cannot be empty")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Content cannot be empty"
+        )
 
     result = await db.execute(
         select(Message)
@@ -377,14 +370,21 @@ async def edit_message(
     )
     message = result.scalar_one_or_none()
     if not message:
-        raise HTTPException(status_code=404, detail="Message not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Message not found"
+        )
 
     if message.is_deleted:
-        raise HTTPException(status_code=400, detail="Cannot edit deleted message")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot edit deleted message",
+        )
 
     # Only the author can edit
     if message.user_id != user["id"]:
-        raise HTTPException(status_code=403, detail="Can only edit own messages")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Can only edit own messages"
+        )
 
     # Update content
     message.content = payload.content.strip()
@@ -430,24 +430,32 @@ async def delete_message(
     )
     message = result.scalar_one_or_none()
     if not message:
-        raise HTTPException(status_code=404, detail="Message not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Message not found"
+        )
 
     if message.is_deleted:
-        raise HTTPException(status_code=400, detail="Message already deleted")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Message already deleted"
+        )
 
     is_admin = user.get("permission_level", 0) >= 3
     is_owner = message.user_id == user["id"]
 
     # Permission check
     if not is_admin and not is_owner:
-        raise HTTPException(status_code=403, detail="Cannot delete others' messages")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cannot delete others' messages",
+        )
 
     # Non-admins need to check 2-minute limit
     if not is_admin:
         elapsed = (datetime.now(timezone.utc) - message.created_at).total_seconds()
         if elapsed > 120:
             raise HTTPException(
-                status_code=403, detail="Can only delete messages within 2 minutes"
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Can only delete messages within 2 minutes",
             )
 
     # Soft delete

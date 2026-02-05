@@ -105,9 +105,9 @@ class SSOClient:
         if to_fetch:
             tasks = [SSOClient.get_avatar_url(uid) for uid in to_fetch]
             fetched = await asyncio.gather(*tasks, return_exceptions=True)
-            for uid, avatar_url in zip(to_fetch, fetched):
-                if isinstance(avatar_url, str):
-                    result[uid] = avatar_url
+            for uid, fetched_result in zip(to_fetch, fetched):
+                if isinstance(fetched_result, str) and fetched_result:
+                    result[uid] = fetched_result
 
         return result
 

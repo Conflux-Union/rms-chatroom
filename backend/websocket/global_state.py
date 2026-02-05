@@ -74,6 +74,8 @@ async def global_state_websocket(websocket: WebSocket, token: str | None = None)
     - {"type": "ping", "data": "tribios"} -> Server responds with {"type": "pong", "data": "cute"}
     - {"type": "read_position_update", "channel_id": 123, "last_read_message_id": 456, "has_mention": false}
     """
+    user = None
+
     if not token:
         await websocket.close(code=4001, reason="Missing token")
         return
@@ -136,4 +138,5 @@ async def global_state_websocket(websocket: WebSocket, token: str | None = None)
     except WebSocketDisconnect:
         pass
     finally:
-        await global_state_manager.disconnect_global(websocket, user["id"])
+        if user:
+            await global_state_manager.disconnect_global(websocket, user["id"])
