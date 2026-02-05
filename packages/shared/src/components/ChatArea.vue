@@ -200,7 +200,7 @@ const { clearChannelMention } = useMentionNotification()
 watch(
   () => chat.currentChannel,
   async (channel) => {
-    if (channel && channel.type === 'text') {
+    if (channel && channel.type === 'TEXT') {
       await chat.fetchMessages(channel.id)
       await checkMuteStatus()
 
