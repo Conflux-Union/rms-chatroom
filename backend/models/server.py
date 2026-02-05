@@ -46,8 +46,10 @@ class Server(Base):
     )
     
     # Permission settings for server visibility
+    # min_server_level: 1-4, minimum server permission level to access this server
     # min_internal_level: 1-2, minimum internal/external level (1=external, 2=internal)
-    # Default: accessible to all (min_internal_level=1)
+    # Default: accessible to all (min_server_level=1, min_internal_level=1)
+    min_server_level: Mapped[int] = mapped_column(Integer, default=1)  # 1-4
     min_internal_level: Mapped[int] = mapped_column(Integer, default=1)  # 1-2
 
     channels: Mapped[list["Channel"]] = relationship(
