@@ -24,8 +24,8 @@ def utc_now() -> datetime:
 
 
 class ChannelType(str, Enum):
-    TEXT = "text"
-    VOICE = "voice"
+    TEXT = "TEXT"
+    VOICE = "VOICE"
 
 
 class MuteScope(str, Enum):

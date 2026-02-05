@@ -188,11 +188,11 @@ const createTypeOptions: SelectOption[] = [
 ]
 
 const textChannels = computed(() => 
-  chat.currentServer?.channels?.filter((c) => c.type === 'text') || []
+  chat.currentServer?.channels?.filter((c) => c.type === 'TEXT') || []
 )
 
 const voiceChannels = computed(() => 
-  chat.currentServer?.channels?.filter((c) => c.type === 'voice') || []
+  chat.currentServer?.channels?.filter((c) => c.type === 'VOICE') || []
 )
 
 function selectChannel(channel: Channel) {
@@ -627,7 +627,7 @@ async function deleteChannel() {
                 <template v-for="channel in getDraggableGroupChannels(item.data.id)" :key="channel.id">
                 <!-- Text channel in group -->
                 <div
-                  v-if="channel.type === 'text'"
+                  v-if="channel.type === 'TEXT'"
                   class="channel glow-effect"
                   :class="{ active: chat.currentChannel?.id === channel.id }"
                   @click="selectChannel(channel)"
@@ -724,7 +724,7 @@ async function deleteChannel() {
 
           <!-- Ungrouped Text Channel -->
           <div
-            v-else-if="item.type === 'channel' && item.data.type === 'text'"
+            v-else-if="item.type === 'channel' && item.data.type === 'TEXT'"
             class="channel glow-effect"
             :class="{ active: chat.currentChannel?.id === item.data.id }"
             @click="selectChannel(item.data)"
@@ -757,7 +757,7 @@ async function deleteChannel() {
           </div>
           
           <!-- Ungrouped Voice Channel -->
-          <div v-else-if="item.type === 'channel' && item.data.type === 'voice'" class="voice-channel-wrapper">
+          <div v-else-if="item.type === 'channel' && item.data.type === 'VOICE'" class="voice-channel-wrapper">
             <div
               class="channel glow-effect"
               :class="{ active: chat.currentChannel?.id === item.data.id }"
