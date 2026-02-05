@@ -326,7 +326,7 @@ export const useChatStore = defineStore('chat', () => {
         newMap.set(Number(channelId), users)
       }
       // Set empty array for voice channels not in response
-      const voiceChannels = currentServer.value.channels.filter(c => c.type === 'voice')
+      const voiceChannels = currentServer.value.channels.filter(c => c.type === 'VOICE')
       for (const ch of voiceChannels) {
         if (!newMap.has(ch.id)) {
           newMap.set(ch.id, [])
@@ -336,7 +336,7 @@ export const useChatStore = defineStore('chat', () => {
     } catch {
       // Fallback: clear all voice channel users
       const newMap = new Map<number, VoiceChannelUser[]>()
-      const voiceChannels = currentServer.value.channels.filter(c => c.type === 'voice')
+      const voiceChannels = currentServer.value.channels.filter(c => c.type === 'VOICE')
       for (const ch of voiceChannels) {
         newMap.set(ch.id, [])
       }
@@ -355,7 +355,7 @@ export const useChatStore = defineStore('chat', () => {
     }
     // Set empty array for voice channels not in response
     if (currentServer.value?.channels) {
-      const voiceChannels = currentServer.value.channels.filter(c => c.type === 'voice')
+      const voiceChannels = currentServer.value.channels.filter(c => c.type === 'VOICE')
       for (const ch of voiceChannels) {
         if (!newMap.has(ch.id)) {
           newMap.set(ch.id, [])

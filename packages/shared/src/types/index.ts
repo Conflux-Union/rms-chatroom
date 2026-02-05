@@ -29,7 +29,7 @@ export interface Channel {
   server_id: number
   group_id: number | null
   name: string
-  type: 'text' | 'voice'
+  type: 'TEXT' | 'VOICE'
   position: number
   top_position: number
 }

@@ -404,7 +404,7 @@ data class SendMessageBody(
     val replyToId: Long? = null
 )
 data class GuestJoinBody(val username: String)
-data class CreateChannelRequest(val name: String, val type: String = "text", @SerializedName("group_id") val groupId: Long? = null)
+data class CreateChannelRequest(val name: String, val type: String = "TEXT", @SerializedName("group_id") val groupId: Long? = null)
 data class CreateServerRequest(val name: String, val icon: String? = null)
 
 // Channel Groups

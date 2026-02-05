@@ -185,7 +185,7 @@ watch(
       
       // 遍历排序后的列表，找到第一个文字频道
       for (const item of items) {
-        if (item.type === 'channel' && item.data.type === 'text') {
+        if (item.type === 'channel' && item.data.type === 'TEXT') {
           // 找到独立的文字频道
           chat.setCurrentChannel(item.data)
           return
@@ -195,7 +195,7 @@ watch(
             .filter((c) => c.group_id === item.data.id)
             .sort((a, b) => a.position - b.position)
           
-          const firstTextChannel = groupChannels.find((c) => c.type === 'text')
+          const firstTextChannel = groupChannels.find((c) => c.type === 'TEXT')
           if (firstTextChannel) {
             chat.setCurrentChannel(firstTextChannel)
             return
@@ -204,7 +204,7 @@ watch(
       }
       
       // 如果上面都没找到，回退到任意文字频道
-      const anyTextChannel = server.channels.find((c) => c.type === 'text')
+      const anyTextChannel = server.channels.find((c) => c.type === 'TEXT')
       if (anyTextChannel) {
         chat.setCurrentChannel(anyTextChannel)
       }
@@ -253,8 +253,8 @@ watch(
     </div>
 
     <div class="main-content">
-      <ChatArea v-if="chat.currentChannel?.type === 'text'" />
-      <VoicePanel v-else-if="chat.currentChannel?.type === 'voice'" />
+      <ChatArea v-if="chat.currentChannel?.type === 'TEXT'" />
+      <VoicePanel v-else-if="chat.currentChannel?.type === 'VOICE'" />
       <div v-else class="no-channel">
         <p>选择一个频道开始聊天</p>
       </div>
