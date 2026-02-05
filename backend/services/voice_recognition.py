@@ -65,8 +65,8 @@ class VoiceSession:
         self.config = config
         self.created_at = datetime.now()
         self.status = "initializing"
-        self.results = []
-        self.speakers = {}
+        self.results: list[dict[str, Any]] = []
+        self.speakers: dict[str, dict[str, Any]] = {}
         self.last_activity = datetime.now()
         
         # 核心组件
@@ -138,10 +138,10 @@ class WebRTCBot:
 
 class AudioHandler:
     """音频处理器"""
-    
+
     def __init__(self, session_id: str):
         self.session_id = session_id
-        self.last_audio_time = None
+        self.last_audio_time: datetime | None = None
         
     def process_audio(self, audio_data: bytes, speaker_id: str = 'unknown'):
         """处理音频数据"""
@@ -281,12 +281,15 @@ async def initialize_session_async(session_id: str):
 
 class VoiceRecognitionService:
     """语音识别服务管理类"""
-    
+
     def __init__(self):
         self.active_sessions = ACTIVE_SESSIONS
         config = get_voice_service_config()
         # 若为空则兜底，确保形成绝对 URL
         self.callback_base_url = (config.get("callback_base_url") or f"http://{get_settings().host}:{get_settings().port}/api/voice-recognition/callback")
+        # Voice client for external voice service
+        from ..websocket.transcription import AliVoiceClient
+        self.voice_client = AliVoiceClient(base_url=config.get("base_url", "http://localhost:5000"))
 
     async def create_session(self, room_config: Dict[str, Any], voice_config: Dict[str, Any]) -> Dict[str, Any]:
         """创建语音识别会话"""

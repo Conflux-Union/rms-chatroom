@@ -168,7 +168,7 @@ class LiveKitVoiceBot:
         self.room: Optional[Room] = None
         self.connected = False
         self._stop_event = threading.Event()
-        self._audio_buffer = []
+        self._audio_buffer: list[bytes] = []
         
         if not LIVEKIT_AVAILABLE:
             raise RuntimeError("LiveKit SDK not available")
@@ -450,8 +450,8 @@ class CallbackServer:
         """初始化回调服务器"""
         self.host = host
         self.port = port
-        self.results = []  # 存储接收到的结果
-        self.result_handlers = []  # 结果处理器列表
+        self.results: list[dict[str, Any]] = []  # 存储接收到的结果
+        self.result_handlers: list[Callable[[Dict[str, Any]], None]] = []  # 结果处理器列表
         self._server_thread = None
         self._stop_event = threading.Event()
         self._flask_app = None
@@ -603,7 +603,7 @@ _voice_service_lock = asyncio.Lock()
 _current_active_room = None  # 当前占用服务的房间ID
 
 # 会话管理
-ACTIVE_SESSIONS = {}
+ACTIVE_SESSIONS: Dict[str, "VoiceSession"] = {}
 BOT_INSTANCES = {}
 EXECUTOR = ThreadPoolExecutor(max_workers=10)
 
@@ -636,8 +636,8 @@ class VoiceSession:
         self.config = config
         self.created_at = datetime.now()
         self.status = "initializing"
-        self.results = []
-        self.speakers = {}
+        self.results: list[dict[str, Any]] = []
+        self.speakers: dict[str, dict[str, Any]] = {}
         self.last_activity = datetime.now()
         
         # 核心组件
@@ -819,10 +819,10 @@ class WebRTCBot:
 
 class AudioHandler:
     """音频处理器"""
-    
+
     def __init__(self, session_id: str):
         self.session_id = session_id
-        self.last_audio_time = None
+        self.last_audio_time: datetime | None = None
         
     async def process_audio(self, audio_data: bytes, speaker_id: str = 'unknown'):
         """处理音频数据"""

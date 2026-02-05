@@ -59,14 +59,10 @@ jobs:
           cd backend
           python -m py_compile $(find . -name "*.py" -not -path "./.venv/*" -not -path "./__pycache__/*")
 
-      - name: Run type checking (if mypy is available)
+      - name: Run type checking
         run: |
           cd backend
-          if pip list | grep -q mypy; then
-            mypy . --ignore-missing-imports || true
-          else
-            echo "Skipping mypy (not installed)"
-          fi
+          mypy . --ignore-missing-imports
 
       - name: Start backend and verify health endpoint
         run: |
