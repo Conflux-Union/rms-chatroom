@@ -70,9 +70,8 @@ jobs:
 
       - name: Start backend and verify health endpoint
         run: |
-          cd backend
           # Create minimal test config (SSO token verification mode)
-          cat > config.json << 'EOF'
+          cat > backend/config.json << 'EOF'
           {
             "database_url": "sqlite+aiosqlite:///./test.db",
             "frontend_dist_path": "./dist",
@@ -86,9 +85,9 @@ jobs:
           EOF
 
           # Create dummy frontend dist directory
-          mkdir -p dist
+          mkdir -p backend/dist
 
-          # Start backend in background
+          # Start backend in background (run from project root)
           python -m backend &
           BACKEND_PID=$!
 
