@@ -4,8 +4,8 @@ This migration adds the top_position column for unified top-level sorting.
 Ungrouped channels use top_position to sort alongside channel groups.
 Grouped channels use position for within-group sorting.
 
-Revision ID: 002_add_top_position
-Revises: 001_initial
+Revision ID: 002
+Revises: 001
 Create Date: 2025-01-11
 """
 
@@ -18,8 +18,8 @@ import sqlalchemy as sa
 from sqlalchemy import inspect, text
 
 
-revision: str = "002_add_top_position"
-down_revision: str | None = "001_initial"
+revision: str = "002"
+down_revision: str | None = "001"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
