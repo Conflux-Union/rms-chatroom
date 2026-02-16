@@ -67,6 +67,7 @@ async def chat_websocket(websocket: WebSocket, token: str | None = None):
 
         while True:
             data = await websocket.receive_text()
+            await chat_manager.record_activity(websocket)
             try:
                 msg = json.loads(data)
             except json.JSONDecodeError:
