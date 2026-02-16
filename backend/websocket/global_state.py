@@ -92,6 +92,7 @@ async def global_state_websocket(websocket: WebSocket, token: str | None = None)
 
         while True:
             data = await websocket.receive_text()
+            await global_state_manager.record_activity(websocket)
             try:
                 msg = json.loads(data)
             except json.JSONDecodeError:
