@@ -16,6 +16,9 @@ class ConnectionManager:
         # Global connections: user_id -> list of (websocket, user_info)
         self.global_connections: dict[int, list[tuple[WebSocket, dict[str, Any]]]] = {}
         self._lock = asyncio.Lock()
+        # Connection health tracking
+        self._last_activity: dict[WebSocket, float] = {}  # ws -> timestamp
+        self._heartbeat_task: asyncio.Task | None = None
 
     async def connect(self, websocket: WebSocket, channel_id: int, user: dict[str, Any]):
         await websocket.accept()
@@ -23,6 +26,7 @@ class ConnectionManager:
             if channel_id not in self.active_connections:
                 self.active_connections[channel_id] = []
             self.active_connections[channel_id].append((websocket, user))
+            await self.record_activity(websocket)
 
     async def disconnect(self, websocket: WebSocket, channel_id: int):
         async with self._lock:
@@ -32,6 +36,8 @@ class ConnectionManager:
                 ]
                 if not self.active_connections[channel_id]:
                     del self.active_connections[channel_id]
+            # Clean up activity tracking
+            self._last_activity.pop(websocket, None)
 
     async def broadcast_to_channel(self, channel_id: int, message: dict[str, Any], exclude: WebSocket | None = None):
         """Broadcast message to all connections in a channel."""
@@ -99,6 +105,7 @@ class ConnectionManager:
             if user_id not in self.global_connections:
                 self.global_connections[user_id] = []
             self.global_connections[user_id].append((websocket, user))
+            await self.record_activity(websocket)
 
     async def disconnect_global(self, websocket: WebSocket, user_id: int):
         """Disconnect a user from global chat."""
@@ -109,6 +116,8 @@ class ConnectionManager:
                 ]
                 if not self.global_connections[user_id]:
                     del self.global_connections[user_id]
+            # Clean up activity tracking
+            self._last_activity.pop(websocket, None)
 
     async def broadcast_to_all_users(self, message: dict[str, Any]):
         """Broadcast message to all global connections."""
@@ -144,6 +153,83 @@ class ConnectionManager:
         # Clean up disconnected
         for ws in disconnected:
             await self.disconnect_global(ws, user_id)
+
+    async def record_activity(self, websocket: WebSocket) -> None:
+        """Record last activity time for a connection."""
+        self._last_activity[websocket] = asyncio.get_running_loop().time()
+
+    async def start_heartbeat_monitor(self) -> None:
+        """Start background task that monitors connection health."""
+        self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
+
+    async def stop_heartbeat_monitor(self) -> None:
+        """Stop the heartbeat monitor."""
+        if self._heartbeat_task:
+            self._heartbeat_task.cancel()
+            try:
+                await self._heartbeat_task
+            except asyncio.CancelledError:
+                pass
+
+    async def _heartbeat_loop(self) -> None:
+        """Scan connections every 30s, ping inactive ones, close dead ones."""
+        while True:
+            await asyncio.sleep(30)
+            now = asyncio.get_running_loop().time()
+
+            # Collect all websockets
+            all_websockets: set[WebSocket] = set()
+            async with self._lock:
+                for connections in self.active_connections.values():
+                    for ws, _ in connections:
+                        all_websockets.add(ws)
+                for connections in self.global_connections.values():
+                    for ws, _ in connections:
+                        all_websockets.add(ws)
+
+            # Check each connection
+            dead_connections: list[WebSocket] = []
+            for ws in all_websockets:
+                last_activity = self._last_activity.get(ws, now)
+                inactive_time = now - last_activity
+
+                # If inactive > 90s, force close (ping sent but no response)
+                if inactive_time > 90:
+                    print(f"[Heartbeat] Force closing dead connection (inactive {inactive_time:.1f}s)")
+                    dead_connections.append(ws)
+                    try:
+                        await ws.close(code=1000, reason="Connection timeout")
+                    except Exception:
+                        pass
+                # If inactive > 60s, send ping
+                elif inactive_time > 60:
+                    try:
+                        await ws.send_json({"type": "ping", "data": "tribios"})
+                    except Exception:
+                        dead_connections.append(ws)
+
+            # Clean up dead connections
+            if dead_connections:
+                async with self._lock:
+                    for ws in dead_connections:
+                        # Remove from active_connections
+                        for channel_id, connections in list(self.active_connections.items()):
+                            self.active_connections[channel_id] = [
+                                (w, u) for w, u in connections if w != ws
+                            ]
+                            if not self.active_connections[channel_id]:
+                                del self.active_connections[channel_id]
+
+                        # Remove from global_connections
+                        for user_id, connections in list(self.global_connections.items()):
+                            self.global_connections[user_id] = [
+                                (w, u) for w, u in connections if w != ws
+                            ]
+                            if not self.global_connections[user_id]:
+                                del self.global_connections[user_id]
+
+                        # Remove from activity tracking
+                        self._last_activity.pop(ws, None)
 
 
 # Global manager instance
