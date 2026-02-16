@@ -6,6 +6,11 @@ from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+)
+
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -225,13 +230,6 @@ if frontend_dist.exists() and frontend_dist.is_dir():
 
 if __name__ == "__main__":
     import uvicorn
-    import logging
-
-    # 设置日志
-    logging.basicConfig(
-        level=logging.INFO, format="%(asctime)s %(levelname)s [%(name)s] %(message)s"
-    )
-    logger = logging.getLogger(__name__)
 
     try:
         uvicorn.run(
