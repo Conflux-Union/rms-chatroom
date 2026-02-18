@@ -14,7 +14,7 @@
               :key="level"
               class="level-btn"
               :class="{ active: modelValue === level }"
-              @click="updateLevel(level)"
+              @click.stop="updateLevel(level)"
               :title="level === 1 ? '允许外服用户访问' : '仅允许内服用户访问'"
             >
               <span class="level-icon">{{ level === 1 ? '🌍' : '🏢' }}</span>
@@ -170,6 +170,7 @@ const updateLevel = (level: number) => {
   position: relative;
   z-index: 1;
   margin-bottom: 2px;
+  pointer-events: none;
 }
 
 .level-name {
@@ -178,6 +179,7 @@ const updateLevel = (level: number) => {
   font-weight: 700;
   position: relative;
   z-index: 1;
+  pointer-events: none;
 }
 
 .level-desc {
@@ -185,6 +187,7 @@ const updateLevel = (level: number) => {
   opacity: 0.6;
   position: relative;
   z-index: 1;
+  pointer-events: none;
 }
 
 .level-btn:hover {

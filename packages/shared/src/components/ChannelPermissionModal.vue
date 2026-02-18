@@ -24,10 +24,12 @@
       </div>
 
       <div class="modal-footer">
-        <button class="btn btn-secondary" @click="handleClose">取消</button>
-        <button class="btn btn-primary" @click="handleSave" :disabled="isSaving">
-          {{ isSaving ? '保存中...' : '保存' }}
-        </button>
+        <n-space justify="end" size="medium">
+          <n-button secondary @click="handleClose">取消</n-button>
+          <n-button type="primary" :disabled="isSaving" @click="handleSave">
+            {{ isSaving ? '保存中...' : '保存' }}
+          </n-button>
+        </n-space>
       </div>
     </div>
   </div>
@@ -77,9 +79,9 @@ const userMaxLevel = computed(() => {
   return auth.user?.permission_level || 1
 })
 
-// Watch for initial permissions change
+// Watch for initial permissions change (but not during save)
 watch(() => props.initialPermissions, (newVal) => {
-  if (newVal) {
+  if (newVal && !isSaving.value) {
     channelVisibilityLevel.value = newVal.visibilityMinServerLevel || 1
     channelSpeakLevel.value = newVal.speakMinServerLevel || 1
   }

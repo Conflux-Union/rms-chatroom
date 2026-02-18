@@ -11,7 +11,7 @@
               :key="level"
               class="level-btn"
               :class="{ active: modelValue.minServerLevel === level }"
-              @click="updateServerLevel(level)"
+              @click.stop="updateServerLevel(level)"
               :title="`等级 ${level}`"
             >
               {{ getLevelLabel(level) }}
@@ -28,7 +28,7 @@
               :key="level"
               class="level-btn"
               :class="{ active: modelValue.minInternalLevel === level }"
-              @click="updateInternalLevel(level)"
+              @click.stop="updateInternalLevel(level)"
               :title="`等级 ${level}`"
             >
               {{ getInternalLabel(level) }}
@@ -45,7 +45,7 @@
               :key="'speak-' + level"
               class="level-btn"
               :class="{ active: modelValue.speakMinServerLevel === level }"
-              @click="updateSpeakServerLevel(level)"
+              @click.stop="updateSpeakServerLevel(level)"
               :title="`发言权限等级 ${level}`"
             >
               {{ getLevelLabel(level) }}
@@ -62,7 +62,7 @@
               :key="'speak-internal-' + level"
               class="level-btn"
               :class="{ active: modelValue.speakMinInternalLevel === level }"
-              @click="updateSpeakInternalLevel(level)"
+              @click.stop="updateSpeakInternalLevel(level)"
               :title="`发言权限等级 ${level}`"
             >
               {{ getInternalLabel(level) }}

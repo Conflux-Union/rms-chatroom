@@ -17,10 +17,12 @@
       </div>
 
       <div class="modal-footer">
-        <button class="btn btn-secondary" @click="handleClose">取消</button>
-        <button class="btn btn-primary" @click="handleSave" :disabled="isSaving">
-          {{ isSaving ? '保存中...' : '保存' }}
-        </button>
+        <n-space justify="end" size="medium">
+          <n-button secondary @click="handleClose">取消</n-button>
+          <n-button type="primary" :disabled="isSaving" @click="handleSave">
+            {{ isSaving ? '保存中...' : '保存' }}
+          </n-button>
+        </n-space>
       </div>
     </div>
   </div>
@@ -62,12 +64,12 @@ const userMaxLevel = computed(() => {
   return auth.user?.permission_level || 1
 })
 
-// Update visibility level when props change
+// Update visibility level when props change (but not during save)
 watch(() => props.initialMinServerLevel, (val) => {
-  if (val !== undefined) {
+  if (val !== undefined && !isSaving.value) {
     groupVisibilityLevel.value = val
   }
-})
+}, { immediate: true })
 
 function handleClose() {
   emit('close')
@@ -80,14 +82,14 @@ async function handleSave() {
     isSaving.value = true
 
     // Call API to update channel group permissions
-    await axios.patch(
+    const response = await axios.patch(
       `${API_BASE}/api/servers/${props.serverId}/channel-groups/${props.groupId}`,
       {
         min_server_level: groupVisibilityLevel.value
       }
     )
 
-    // Emit success
+    // Only emit and close if save was successful
     emit('save', {
       minServerLevel: groupVisibilityLevel.value
     })

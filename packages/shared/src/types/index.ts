@@ -5,7 +5,14 @@ export interface User {
   email: string
   avatar_url?: string
   permission_level: number
+  server_permission_level?: number
+  internal_level?: number
   is_active: boolean
+  group?: {
+    id: number
+    name: string
+    level: number
+  }
 }
 
 export interface Server {
@@ -13,6 +20,7 @@ export interface Server {
   name: string
   icon: string | null
   owner_id: number
+  min_server_level?: number
   min_internal_level?: number
   channels?: Channel[]
   channelGroups?: ChannelGroup[]

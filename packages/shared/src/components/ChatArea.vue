@@ -372,11 +372,16 @@ function scrollToMessage(messageId: number) {
 
 // File handling
 function triggerFileSelect() {
+  if (isMuted || isSpeakDisabled?.value) return
   fileInput.value?.click()
 }
 
 function handleFileSelect(event: Event) {
   const target = event.target as HTMLInputElement
+  if (isMuted || isSpeakDisabled?.value) {
+    target.value = ''
+    return
+  }
   if (target.files) {
     pendingFiles.value = [...pendingFiles.value, ...Array.from(target.files)]
     target.value = '' // Reset for same file selection
@@ -384,19 +389,22 @@ function handleFileSelect(event: Event) {
 }
 
 function handleDragOver(event: DragEvent) {
+  if (isMuted || isSpeakDisabled?.value) return
   event.preventDefault()
   isDragging.value = true
 }
 
 function handleDragLeave(event: DragEvent) {
+  if (isMuted || isSpeakDisabled?.value) return
   event.preventDefault()
   isDragging.value = false
 }
 
 function handleDrop(event: DragEvent) {
+  if (isMuted || isSpeakDisabled?.value) return
   event.preventDefault()
   isDragging.value = false
-  
+
   if (event.dataTransfer?.files) {
     pendingFiles.value = [...pendingFiles.value, ...Array.from(event.dataTransfer.files)]
   }
@@ -430,12 +438,30 @@ async function uploadFiles() {
   isUploading.value = false
 }
 
-const canSend = computed(() => {
-  return (messageInput.value.trim() || uploadedAttachments.value.length > 0) && !isUploading.value
-})
+  // Can the user send a message (has content/attachments and not uploading)
+  const canSend = computed(() => {
+    return (messageInput.value.trim() || uploadedAttachments.value.length > 0) && !isUploading.value
+  })
+
+  // Check whether the current user has permission to speak in the current channel
+  const speakAllowed = computed(() => {
+    const ch = chat.currentChannel
+    const user = auth.user
+    if (!ch || ch.type !== 'TEXT' || !user) return false
+
+    const userServerLevel = user.server_permission_level ?? user.permission_level ?? 1
+    const userInternalLevel = user.internal_level ?? 1
+
+    const reqServer = ch.speak_min_server_level ?? 1
+    const reqInternal = ch.speak_min_internal_level ?? 1
+
+    return userServerLevel >= reqServer && userInternalLevel >= reqInternal
+  })
+
+  const isSpeakDisabled = computed(() => !speakAllowed.value)
 
 async function sendMessage() {
-  if (!canSend.value) return
+  if (!canSend.value || isSpeakDisabled.value) return
 
   // Upload pending files first
   if (pendingFiles.value.length > 0) {
@@ -1301,18 +1327,18 @@ onUnmounted(() => {
 
     <div class="chat-input">
       <input type="file" ref="fileInput" @change="handleFileSelect" multiple hidden />
-      <button class="attach-btn" @click="triggerFileSelect" title="添加附件" :disabled="isMuted">
+      <button class="attach-btn" @click="triggerFileSelect" title="添加附件" :disabled="isMuted || isSpeakDisabled">
         <Paperclip :size="20" />
       </button>
       <div class="input-wrapper">
         <input
           ref="messageInputRef"
           v-model="messageInput"
-          :placeholder="isMuted ? muteReason : `发送消息到 #${chat.currentChannel?.name || ''}`"
+          :placeholder="isMuted ? muteReason : (isSpeakDisabled ? '当前频道暂时无法发言。' : `发送消息到 #${chat.currentChannel?.name || ''}`)"
           @keydown="handleInputKeydown"
           @input="handleInputChange"
           class="message-input"
-          :disabled="isMuted"
+          :disabled="isMuted || isSpeakDisabled"
         />
         <!-- Mention autocomplete dropdown -->
         <div
@@ -1335,8 +1361,8 @@ onUnmounted(() => {
       <button
         class="send-btn"
         @click="sendMessage"
-        :disabled="!canSend || isMuted"
-        :class="{ active: canSend && !isMuted }"
+        :disabled="!canSend || isMuted || isSpeakDisabled"
+        :class="{ active: canSend && !isMuted && !isSpeakDisabled }"
       >
         <Send :size="20" />
       </button>

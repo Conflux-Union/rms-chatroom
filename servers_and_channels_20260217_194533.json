@@ -1,0 +1,68 @@
+﻿{
+    "timestamp":  "2026-02-17 19:45:33",
+    "servers":  [
+                    {
+                        "id":  3,
+                        "min_internal_level":  1,
+                        "name":  "å¤æ",
+                        "owner_id":  1,
+                        "channels":  [
+                                         {
+                                             "position":  0,
+                                             "name":  "general",
+                                             "id":  5,
+                                             "type":  "TEXT",
+                                             "group_id":  null
+                                         },
+                                         {
+                                             "position":  0,
+                                             "name":  "General",
+                                             "id":  6,
+                                             "type":  "VOICE",
+                                             "group_id":  null
+                                         }
+                                     ],
+                        "channelCount":  2,
+                        "icon":  null,
+                        "min_server_level":  1
+                    },
+                    {
+                        "id":  5,
+                        "min_internal_level":  1,
+                        "name":  "å\u0085æ",
+                        "owner_id":  4,
+                        "channels":  [
+                                         {
+                                             "position":  0,
+                                             "name":  "general",
+                                             "id":  12,
+                                             "type":  "TEXT",
+                                             "group_id":  null
+                                         },
+                                         {
+                                             "position":  0,
+                                             "name":  "General",
+                                             "id":  13,
+                                             "type":  "VOICE",
+                                             "group_id":  null
+                                         }
+                                     ],
+                        "channelCount":  2,
+                        "icon":  null,
+                        "min_server_level":  1
+                    },
+                    {
+                        "id":  10,
+                        "min_internal_level":  1,
+                        "name":  "test",
+                        "owner_id":  4,
+                        "channels":  {
+
+                                     },
+                        "channelCount":  0,
+                        "icon":  null,
+                        "min_server_level":  1
+                    }
+                ],
+    "totalServers":  3
+}

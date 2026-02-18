@@ -44,6 +44,19 @@ class SSOClient:
                                 user["avatar_url"],
                                 time.time(),
                             )
+                        
+                        # Map SSO fields to permission system fields
+                        # permission_level (0-3) -> server_permission_level (1-4)
+                        permission_level = user.get("permission_level", 0)
+                        user["server_permission_level"] = permission_level if permission_level > 0 else 1
+                        
+                        # group.level -> internal_level (1=external, 2=internal)
+                        group = user.get("group")
+                        if group:
+                            user["internal_level"] = group.get("level", 1)
+                        else:
+                            user["internal_level"] = 1
+                        
                         return user
                 return None
             except (httpx.RequestError, httpx.TimeoutException):

@@ -38,8 +38,42 @@ def _check_permission(
     Returns:
         True if user meets both level requirements
     """
-    user_server_level = user.get("server_permission_level", 1)
-    user_internal_level = user.get("internal_level", 1)
+    # Be permissive about field names returned by different SSO implementations.
+    # Try several commonly used keys and coerce to int when possible.
+    def _to_int(value, default: int = 1) -> int:
+        try:
+            if isinstance(value, bool):
+                # booleans are not valid levels; treat True as 2 (internal) if used for internal flag
+                return int(value)
+            return int(value)
+        except Exception:
+            return default
+
+    # server permission level: prefer server-specific key, then fall back to generic permission_level
+    user_server_level = None
+    for k in ("server_permission_level", "server_level", "permission_level"):
+        if k in user:
+            user_server_level = _to_int(user.get(k))
+            break
+    if user_server_level is None:
+        user_server_level = 1
+
+    # internal level: accept several possible keys. Also accept boolean 'is_internal'.
+    user_internal_level = None
+    if "internal_level" in user:
+        user_internal_level = _to_int(user.get("internal_level"))
+    elif "internal" in user:
+        user_internal_level = _to_int(user.get("internal"))
+    elif "is_internal" in user:
+        # boolean flag -> map True->2 (internal), False->1 (external)
+        val = user.get("is_internal")
+        try:
+            user_internal_level = 2 if bool(val) else 1
+        except Exception:
+            user_internal_level = 1
+    else:
+        user_internal_level = 1
+
     return (
         user_server_level >= min_server_level and
         user_internal_level >= min_internal_level
@@ -53,7 +87,7 @@ def check_server_access(
 ) -> bool:
     """Check if user has permission to access a server (internal level only)."""
     # Servers only check internal level, so pass 1 for server level (always passes)
-    return _check_permission(user, 1, min_internal_level)
+    return _check_permission(user, min_server_level, min_internal_level)
 
 
 def check_channel_group_access(

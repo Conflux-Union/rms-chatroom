@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useChatStore } from '../stores/chat'
 import { useVoiceStore } from '../stores/voice'
 import { useMusicStore } from '../stores/music'
@@ -127,6 +127,7 @@ chatWs.onMessage((data) => {
 const showMusicPanel = ref(false)
 const showMobileSidebar = ref(false)
 const appContainer = ref<HTMLElement | null>(null)
+const debugInterval = ref<number | null>(null)
 
 // Swipe gesture for mobile sidebar
 const { onSwipeLeft, onSwipeRight } = useSwipe(appContainer, { threshold: 50 })
@@ -146,9 +147,44 @@ onMounted(async () => {
   chatWs.connect()
   
   await chat.fetchServers()
-  const firstServer = chat.servers[0]
-  if (firstServer) {
-    await chat.fetchServer(firstServer.id)
+  
+  // Load channels for all servers (fetchServer now auto-updates servers array)
+  for (const server of chat.servers) {
+    await chat.fetchServer(server.id)
+  }
+
+  // Debug: Print available servers and channels every 5 seconds
+  debugInterval.value = window.setInterval(() => {
+    console.log('[DEBUG] Available Servers and Channels:')
+    console.log('=====================================')
+    
+    if (chat.servers.length === 0) {
+      console.log('No servers available')
+    } else {
+      chat.servers.forEach((server) => {
+        console.log(`📌 Server: ${server.name} (ID: ${server.id})`)
+        
+        if (server.channels && server.channels.length > 0) {
+          console.log(`   Channels (${server.channels.length}):`)
+          server.channels.forEach((channel) => {
+            const groupInfo = channel.group_id ? ` [Group ID: ${channel.group_id}]` : ' [Ungrouped]'
+            const channelIcon = channel.type === 'VOICE' ? '🔊' : '💬'
+            console.log(`   ├─ ${channelIcon} ${channel.name} (ID: ${channel.id})${groupInfo}`)
+          })
+        } else {
+          console.log('   └─ No channels')
+        }
+      })
+    }
+    console.log('=====================================')
+  }, 5000)
+})
+
+onBeforeUnmount(() => {
+  // Cleanup debug interval
+  if (debugInterval.value !== null) {
+    clearInterval(debugInterval.value)
+    debugInterval.value = null
   }
 })
 

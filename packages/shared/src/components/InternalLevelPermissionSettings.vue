@@ -14,7 +14,7 @@
               :key="level"
               class="level-btn"
               :class="{ active: modelValue === level }"
-              @click="updateLevel(level)"
+              @click.stop="updateLevel(level)"
               :title="`选择权限等级 ${level}: ${getLevelLabel(level)}`"
             >
               <span class="level-number">{{ level }}</span>

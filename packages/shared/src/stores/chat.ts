@@ -55,6 +55,13 @@ export const useChatStore = defineStore('chat', () => {
         headers: getAuthHeaders(),
       })
       currentServer.value = resp.data
+      
+      // Also update the server in the servers array
+      const serverIndex = servers.value.findIndex(s => s.id === serverId)
+      if (serverIndex !== -1) {
+        servers.value[serverIndex] = resp.data
+      }
+      
       return resp.data
     } catch (e) {
       console.error('Failed to fetch server:', e)
