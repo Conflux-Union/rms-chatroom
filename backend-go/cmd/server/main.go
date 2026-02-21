@@ -64,6 +64,11 @@ func main() {
 		AllowCredentials: true,
 	}))
 
+	// Wire up BroadcastFunc so HTTP handlers can broadcast WS events
+	handler.BroadcastFunc = func(channelID int64, payload map[string]interface{}) {
+		ws.ChatManager.BroadcastToAllUsers(payload)
+	}
+
 	handler.Register(e, cfg, db, ssoClient)
 	ws.Register(e, cfg, ssoClient, db)
 
