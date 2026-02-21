@@ -249,10 +249,10 @@ function installCSP() {
     "img-src 'self' blob: data: http://m701.music.126.net https://isure.stream.qqmusic.qq.com; " +
     "media-src 'self' blob: data: http://m701.music.126.net https://isure.stream.qqmusic.qq.com; " +
     "connect-src 'self' blob: data: " +
-      "https://preview-chatroom.rms.net.cn " +
-      "http://preview-chatroom.rms.net.cn " +
-      "wss://preview-chatroom.rms.net.cn " +
-      "ws://preview-chatroom.rms.net.cn " +
+      "https://chatroom.rms.net.cn " +
+      "http://chatroom.rms.net.cn " +
+      "wss://chatroom.rms.net.cn " +
+      "ws://chatroom.rms.net.cn " +
       "http://m701.music.126.net " +
       "https://isure.stream.qqmusic.qq.com " +
       "http://localhost:8000 " +

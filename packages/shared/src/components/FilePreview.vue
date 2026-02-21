@@ -3,7 +3,7 @@ import { computed, ref, onMounted, onUnmounted, watch } from 'vue'
 import type { Attachment } from '../types'
 import { useAuthStore } from '../stores/auth'
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'https://preview-chatroom.rms.net.cn'
+const API_BASE = import.meta.env.VITE_API_BASE || 'https://chatroom.rms.net.cn'
 
 const props = defineProps<{
   attachment: Attachment
