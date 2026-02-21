@@ -23,30 +23,42 @@ func NewChannelHandler(db *sql.DB, sso *sso.Client) *ChannelHandler {
 }
 
 type channelCreateReq struct {
-	Name          string `json:"name"`
-	Type          string `json:"type"`
-	GroupID       *int64 `json:"group_id"`
-	MinLevel      int    `json:"min_level"`
-	SpeakMinLevel int    `json:"speak_min_level"`
+	Name               string `json:"name"`
+	Type               string `json:"type"`
+	GroupID            *int64 `json:"group_id"`
+	MinLevel           int    `json:"min_level"`
+	SpeakMinLevel      int    `json:"speak_min_level"`
+	PermMinLevel       int    `json:"perm_min_level"`
+	LogicOperator      string `json:"logic_operator"`
+	SpeakPermMinLevel  int    `json:"speak_perm_min_level"`
+	SpeakLogicOperator string `json:"speak_logic_operator"`
 }
 
 type channelUpdateReq struct {
-	Name          *string `json:"name"`
-	GroupID       *int64  `json:"group_id"`
-	MinLevel      *int    `json:"min_level"`
-	SpeakMinLevel *int    `json:"speak_min_level"`
+	Name               *string `json:"name"`
+	GroupID            *int64  `json:"group_id"`
+	MinLevel           *int    `json:"min_level"`
+	SpeakMinLevel      *int    `json:"speak_min_level"`
+	PermMinLevel       *int    `json:"perm_min_level"`
+	LogicOperator      *string `json:"logic_operator"`
+	SpeakPermMinLevel  *int    `json:"speak_perm_min_level"`
+	SpeakLogicOperator *string `json:"speak_logic_operator"`
 }
 
 type channelResponse struct {
-	ID            int64  `json:"id"`
-	ServerID      int64  `json:"server_id"`
-	GroupID       *int64 `json:"group_id"`
-	Name          string `json:"name"`
-	Type          string `json:"type"`
-	Position      int    `json:"position"`
-	TopPosition   int    `json:"top_position"`
-	MinLevel      int    `json:"min_level"`
-	SpeakMinLevel int    `json:"speak_min_level"`
+	ID                 int64  `json:"id"`
+	ServerID           int64  `json:"server_id"`
+	GroupID            *int64 `json:"group_id"`
+	Name               string `json:"name"`
+	Type               string `json:"type"`
+	Position           int    `json:"position"`
+	TopPosition        int    `json:"top_position"`
+	MinLevel           int    `json:"min_level"`
+	SpeakMinLevel      int    `json:"speak_min_level"`
+	PermMinLevel       int    `json:"perm_min_level"`
+	LogicOperator      string `json:"logic_operator"`
+	SpeakPermMinLevel  int    `json:"speak_perm_min_level"`
+	SpeakLogicOperator string `json:"speak_logic_operator"`
 }
 
 // ListChannels returns channels filtered by user visibility.
@@ -60,7 +72,8 @@ func (h *ChannelHandler) ListChannels(c echo.Context) error {
 
 	rows, err := h.db.Query(
 		`SELECT id, server_id, group_id, name, type, position, top_position,
-		        min_level, speak_min_level
+		        min_level, speak_min_level,
+		        perm_min_level, logic_operator, speak_perm_min_level, speak_logic_operator
 		 FROM channels WHERE server_id = ? ORDER BY position`, serverID,
 	)
 	if err != nil {
@@ -73,10 +86,12 @@ func (h *ChannelHandler) ListChannels(c echo.Context) error {
 		var ch channelResponse
 		if err := rows.Scan(&ch.ID, &ch.ServerID, &ch.GroupID, &ch.Name, &ch.Type,
 			&ch.Position, &ch.TopPosition,
-			&ch.MinLevel, &ch.SpeakMinLevel); err != nil {
+			&ch.MinLevel, &ch.SpeakMinLevel,
+			&ch.PermMinLevel, &ch.LogicOperator, &ch.SpeakPermMinLevel, &ch.SpeakLogicOperator); err != nil {
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		}
-		if permission.CanAccess(user, ch.MinLevel) {
+		rule := permission.PermRule{PermMinLevel: ch.PermMinLevel, GroupMinLevel: ch.MinLevel, LogicOperator: ch.LogicOperator}
+		if permission.CanAccess(user, rule) {
 			channels = append(channels, ch)
 		}
 	}
@@ -111,6 +126,26 @@ func (h *ChannelHandler) CreateChannel(c echo.Context) error {
 	}
 	if req.SpeakMinLevel < 0 {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "speak_min_level must be >= 0"})
+	}
+	if req.PermMinLevel < 0 {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "perm_min_level must be >= 0"})
+	}
+	if req.SpeakPermMinLevel < 0 {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "speak_perm_min_level must be >= 0"})
+	}
+
+	// Default logic operators
+	if req.LogicOperator == "" {
+		req.LogicOperator = "AND"
+	}
+	if req.SpeakLogicOperator == "" {
+		req.SpeakLogicOperator = "AND"
+	}
+	if req.LogicOperator != "AND" && req.LogicOperator != "OR" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "logic_operator must be AND or OR"})
+	}
+	if req.SpeakLogicOperator != "AND" && req.SpeakLogicOperator != "OR" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "speak_logic_operator must be AND or OR"})
 	}
 
 	// Verify server exists
@@ -157,10 +192,12 @@ func (h *ChannelHandler) CreateChannel(c echo.Context) error {
 
 	res, err := h.db.Exec(
 		`INSERT INTO channels (server_id, group_id, name, type, position, top_position,
-		    min_level, speak_min_level)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		    min_level, speak_min_level,
+		    perm_min_level, logic_operator, speak_perm_min_level, speak_logic_operator)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		serverID, req.GroupID, req.Name, channelType, position, topPosition,
 		req.MinLevel, req.SpeakMinLevel,
+		req.PermMinLevel, req.LogicOperator, req.SpeakPermMinLevel, req.SpeakLogicOperator,
 	)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
@@ -172,6 +209,8 @@ func (h *ChannelHandler) CreateChannel(c echo.Context) error {
 		Name: req.Name, Type: channelType,
 		Position: position, TopPosition: topPosition,
 		MinLevel: req.MinLevel, SpeakMinLevel: req.SpeakMinLevel,
+		PermMinLevel: req.PermMinLevel, LogicOperator: req.LogicOperator,
+		SpeakPermMinLevel: req.SpeakPermMinLevel, SpeakLogicOperator: req.SpeakLogicOperator,
 	})
 }
 
@@ -187,11 +226,13 @@ func (h *ChannelHandler) UpdateChannel(c echo.Context) error {
 	var ch channelResponse
 	err = h.db.QueryRow(
 		`SELECT id, server_id, group_id, name, type, position, top_position,
-		        min_level, speak_min_level
+		        min_level, speak_min_level,
+		        perm_min_level, logic_operator, speak_perm_min_level, speak_logic_operator
 		 FROM channels WHERE id = ?`, chID,
 	).Scan(&ch.ID, &ch.ServerID, &ch.GroupID, &ch.Name, &ch.Type,
 		&ch.Position, &ch.TopPosition,
-		&ch.MinLevel, &ch.SpeakMinLevel)
+		&ch.MinLevel, &ch.SpeakMinLevel,
+		&ch.PermMinLevel, &ch.LogicOperator, &ch.SpeakPermMinLevel, &ch.SpeakLogicOperator)
 	if err == sql.ErrNoRows {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "channel not found"})
 	}
@@ -218,6 +259,30 @@ func (h *ChannelHandler) UpdateChannel(c echo.Context) error {
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": "speak_min_level must be >= 0"})
 		}
 		ch.SpeakMinLevel = *req.SpeakMinLevel
+	}
+	if req.PermMinLevel != nil {
+		if *req.PermMinLevel < 0 {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "perm_min_level must be >= 0"})
+		}
+		ch.PermMinLevel = *req.PermMinLevel
+	}
+	if req.LogicOperator != nil {
+		if *req.LogicOperator != "AND" && *req.LogicOperator != "OR" {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "logic_operator must be AND or OR"})
+		}
+		ch.LogicOperator = *req.LogicOperator
+	}
+	if req.SpeakPermMinLevel != nil {
+		if *req.SpeakPermMinLevel < 0 {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "speak_perm_min_level must be >= 0"})
+		}
+		ch.SpeakPermMinLevel = *req.SpeakPermMinLevel
+	}
+	if req.SpeakLogicOperator != nil {
+		if *req.SpeakLogicOperator != "AND" && *req.SpeakLogicOperator != "OR" {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "speak_logic_operator must be AND or OR"})
+		}
+		ch.SpeakLogicOperator = *req.SpeakLogicOperator
 	}
 
 	// Handle group_id change: -1 means ungroup
@@ -263,10 +328,12 @@ func (h *ChannelHandler) UpdateChannel(c echo.Context) error {
 
 	_, err = h.db.Exec(
 		`UPDATE channels SET name = ?, group_id = ?, position = ?, top_position = ?,
-		    min_level = ?, speak_min_level = ?
+		    min_level = ?, speak_min_level = ?,
+		    perm_min_level = ?, logic_operator = ?, speak_perm_min_level = ?, speak_logic_operator = ?
 		 WHERE id = ?`,
 		ch.Name, ch.GroupID, ch.Position, ch.TopPosition,
-		ch.MinLevel, ch.SpeakMinLevel, chID,
+		ch.MinLevel, ch.SpeakMinLevel,
+		ch.PermMinLevel, ch.LogicOperator, ch.SpeakPermMinLevel, ch.SpeakLogicOperator, chID,
 	)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})

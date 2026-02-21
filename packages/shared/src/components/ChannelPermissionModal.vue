@@ -2,31 +2,39 @@
   <div v-if="isOpen" class="modal-overlay" @click.self="handleClose">
     <div class="modal-content">
       <div class="modal-header">
-        <h2>{{ channelName }} - Channel Permissions</h2>
+        <h2>{{ channelName }} - 频道权限设置</h2>
         <button class="close-btn" @click="handleClose">&times;</button>
       </div>
 
       <div class="modal-body">
-        <InternalLevelPermissionSettings
-          v-model="channelMinLevel"
-          title="Visibility Permission Level"
-          description="Users must have at least this permission level to see this channel"
+        <DualPermissionSettings
+          v-model:permLevel="channelPermMinLevel"
+          v-model:groupLevel="channelMinLevel"
+          v-model:logicOperator="channelLogicOperator"
+          title="可见性权限"
+          description="用户需满足此权限要求才能看到此频道"
           :maxLevel="userMaxLevel"
-          :serverValue="initialPermissions?.minLevel"
+          :serverPermLevel="initialPermissions?.permMinLevel"
+          :serverGroupLevel="initialPermissions?.minLevel"
+          :serverOperator="initialPermissions?.logicOperator"
         />
-        <InternalLevelPermissionSettings
-          v-model="channelSpeakMinLevel"
-          title="Speak Permission Level"
-          description="Users must have at least this permission level to speak in this channel"
+        <DualPermissionSettings
+          v-model:permLevel="channelSpeakPermMinLevel"
+          v-model:groupLevel="channelSpeakMinLevel"
+          v-model:logicOperator="channelSpeakLogicOperator"
+          title="发言权限"
+          description="用户需满足此权限要求才能在此频道发言"
           :maxLevel="userMaxLevel"
-          :serverValue="initialPermissions?.speakMinLevel"
+          :serverPermLevel="initialPermissions?.speakPermMinLevel"
+          :serverGroupLevel="initialPermissions?.speakMinLevel"
+          :serverOperator="initialPermissions?.speakLogicOperator"
         />
       </div>
 
       <div class="modal-footer">
-        <button class="btn btn-secondary" @click="handleClose">Cancel</button>
+        <button class="btn btn-secondary" @click="handleClose">取消</button>
         <button class="btn btn-primary" @click="handleSave" :disabled="isSaving">
-          {{ isSaving ? 'Saving...' : 'Save' }}
+          {{ isSaving ? '保存中...' : '保存' }}
         </button>
       </div>
     </div>
@@ -36,12 +44,16 @@
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
 import { useAuthStore } from '../stores/auth'
-import InternalLevelPermissionSettings from './InternalLevelPermissionSettings.vue'
+import DualPermissionSettings from './DualPermissionSettings.vue'
 import axios from 'axios'
 
 interface ChannelPermissions {
   minLevel: number
+  permMinLevel: number
+  logicOperator: 'AND' | 'OR'
   speakMinLevel: number
+  speakPermMinLevel: number
+  speakLogicOperator: 'AND' | 'OR'
 }
 
 interface Props {
@@ -54,8 +66,12 @@ interface Props {
 
 const props = withDefaults(defineProps<Props>(), {
   initialPermissions: () => ({
-    minLevel: 1,
-    speakMinLevel: 1
+    minLevel: 0,
+    permMinLevel: 0,
+    logicOperator: 'AND' as const,
+    speakMinLevel: 0,
+    speakPermMinLevel: 0,
+    speakLogicOperator: 'AND' as const
   })
 })
 
@@ -66,8 +82,12 @@ const emit = defineEmits<{
   'save': [value: ChannelPermissions]
 }>()
 
-const channelMinLevel = ref(props.initialPermissions?.minLevel || 1)
-const channelSpeakMinLevel = ref(props.initialPermissions?.speakMinLevel || 1)
+const channelMinLevel = ref(props.initialPermissions?.minLevel || 0)
+const channelPermMinLevel = ref(props.initialPermissions?.permMinLevel || 0)
+const channelLogicOperator = ref<'AND' | 'OR'>(props.initialPermissions?.logicOperator || 'AND')
+const channelSpeakMinLevel = ref(props.initialPermissions?.speakMinLevel || 0)
+const channelSpeakPermMinLevel = ref(props.initialPermissions?.speakPermMinLevel || 0)
+const channelSpeakLogicOperator = ref<'AND' | 'OR'>(props.initialPermissions?.speakLogicOperator || 'AND')
 
 const isSaving = ref(false)
 const API_BASE = import.meta.env.VITE_API_BASE || ''
@@ -76,12 +96,16 @@ const userMaxLevel = computed(() => {
   return auth.user?.permission_level || 1
 })
 
-watch(() => props.initialPermissions, (newVal) => {
-  if (newVal) {
-    channelMinLevel.value = newVal.minLevel || 1
-    channelSpeakMinLevel.value = newVal.speakMinLevel || 1
+watch(() => props.isOpen, (open) => {
+  if (open && props.initialPermissions) {
+    channelMinLevel.value = props.initialPermissions.minLevel || 0
+    channelPermMinLevel.value = props.initialPermissions.permMinLevel || 0
+    channelLogicOperator.value = props.initialPermissions.logicOperator || 'AND'
+    channelSpeakMinLevel.value = props.initialPermissions.speakMinLevel || 0
+    channelSpeakPermMinLevel.value = props.initialPermissions.speakPermMinLevel || 0
+    channelSpeakLogicOperator.value = props.initialPermissions.speakLogicOperator || 'AND'
   }
-}, { immediate: true })
+})
 
 const handleClose = () => {
   emit('close')
@@ -94,18 +118,26 @@ const handleSave = async () => {
       `${API_BASE}/api/channels/${props.channelId}`,
       {
         min_level: channelMinLevel.value,
-        speak_min_level: channelSpeakMinLevel.value
+        perm_min_level: channelPermMinLevel.value,
+        logic_operator: channelLogicOperator.value,
+        speak_min_level: channelSpeakMinLevel.value,
+        speak_perm_min_level: channelSpeakPermMinLevel.value,
+        speak_logic_operator: channelSpeakLogicOperator.value
       },
       { headers: { Authorization: `Bearer ${auth.accessToken}` } }
     )
     emit('save', {
       minLevel: channelMinLevel.value,
-      speakMinLevel: channelSpeakMinLevel.value
+      permMinLevel: channelPermMinLevel.value,
+      logicOperator: channelLogicOperator.value,
+      speakMinLevel: channelSpeakMinLevel.value,
+      speakPermMinLevel: channelSpeakPermMinLevel.value,
+      speakLogicOperator: channelSpeakLogicOperator.value
     })
     emit('close')
   } catch (error) {
     console.error('Failed to save channel permissions:', error)
-    alert('Failed to save permission settings')
+    alert('保存权限设置失败')
   } finally {
     isSaving.value = false
   }

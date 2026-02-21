@@ -29,28 +29,36 @@ type serverCreateReq struct {
 }
 
 type serverUpdateReq struct {
-	Name     *string `json:"name"`
-	Icon     *string `json:"icon"`
-	MinLevel *int    `json:"min_level"`
+	Name          *string `json:"name"`
+	Icon          *string `json:"icon"`
+	MinLevel      *int    `json:"min_level"`
+	PermMinLevel  *int    `json:"perm_min_level"`
+	LogicOperator *string `json:"logic_operator"`
 }
 
 type serverResponse struct {
-	ID       int64   `json:"id"`
-	Name     string  `json:"name"`
-	Icon     *string `json:"icon"`
-	OwnerID  int64   `json:"owner_id"`
-	MinLevel int     `json:"min_level"`
+	ID            int64   `json:"id"`
+	Name          string  `json:"name"`
+	Icon          *string `json:"icon"`
+	OwnerID       int64   `json:"owner_id"`
+	MinLevel      int     `json:"min_level"`
+	PermMinLevel  int     `json:"perm_min_level"`
+	LogicOperator string  `json:"logic_operator"`
 }
 
 type channelInServer struct {
-	ID            int64  `json:"id"`
-	Name          string `json:"name"`
-	Type          string `json:"type"`
-	Position      int    `json:"position"`
-	TopPosition   int    `json:"top_position"`
-	GroupID       *int64 `json:"group_id"`
-	MinLevel      int    `json:"min_level"`
-	SpeakMinLevel int    `json:"speak_min_level"`
+	ID                 int64  `json:"id"`
+	Name               string `json:"name"`
+	Type               string `json:"type"`
+	Position           int    `json:"position"`
+	TopPosition        int    `json:"top_position"`
+	GroupID            *int64 `json:"group_id"`
+	MinLevel           int    `json:"min_level"`
+	SpeakMinLevel      int    `json:"speak_min_level"`
+	PermMinLevel       int    `json:"perm_min_level"`
+	LogicOperator      string `json:"logic_operator"`
+	SpeakPermMinLevel  int    `json:"speak_perm_min_level"`
+	SpeakLogicOperator string `json:"speak_logic_operator"`
 }
 
 type serverDetailResponse struct {
@@ -63,7 +71,7 @@ type serverDetailResponse struct {
 func (h *ServerHandler) ListServers(c echo.Context) error {
 	user := middleware.GetUser(c)
 
-	rows, err := h.db.Query("SELECT id, name, icon, owner_id, min_level FROM servers ORDER BY id")
+	rows, err := h.db.Query("SELECT id, name, icon, owner_id, min_level, perm_min_level, logic_operator FROM servers ORDER BY id")
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
@@ -72,10 +80,11 @@ func (h *ServerHandler) ListServers(c echo.Context) error {
 	var servers []serverResponse
 	for rows.Next() {
 		var s serverResponse
-		if err := rows.Scan(&s.ID, &s.Name, &s.Icon, &s.OwnerID, &s.MinLevel); err != nil {
+		if err := rows.Scan(&s.ID, &s.Name, &s.Icon, &s.OwnerID, &s.MinLevel, &s.PermMinLevel, &s.LogicOperator); err != nil {
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		}
-		if permission.CanAccess(user, s.MinLevel) {
+		rule := permission.PermRule{PermMinLevel: s.PermMinLevel, GroupMinLevel: s.MinLevel, LogicOperator: s.LogicOperator}
+		if permission.CanAccess(user, rule) {
 			servers = append(servers, s)
 		}
 	}
@@ -104,7 +113,7 @@ func (h *ServerHandler) CreateServer(c echo.Context) error {
 	defer tx.Rollback()
 
 	res, err := tx.Exec(
-		"INSERT INTO servers (name, icon, owner_id, min_level) VALUES (?, ?, ?, 0)",
+		"INSERT INTO servers (name, icon, owner_id, min_level, perm_min_level, logic_operator) VALUES (?, ?, ?, 0, 0, 'AND')",
 		req.Name, req.Icon, user.ID,
 	)
 	if err != nil {
@@ -114,14 +123,18 @@ func (h *ServerHandler) CreateServer(c echo.Context) error {
 
 	// Create default text and voice channels
 	_, err = tx.Exec(
-		"INSERT INTO channels (server_id, name, type, position, top_position, min_level, speak_min_level) VALUES (?, 'general', 'TEXT', 0, 0, 0, 0)",
+		`INSERT INTO channels (server_id, name, type, position, top_position, min_level, speak_min_level,
+		    perm_min_level, logic_operator, speak_perm_min_level, speak_logic_operator)
+		 VALUES (?, 'general', 'TEXT', 0, 0, 0, 0, 0, 'AND', 0, 'AND')`,
 		serverID,
 	)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 	_, err = tx.Exec(
-		"INSERT INTO channels (server_id, name, type, position, top_position, min_level, speak_min_level) VALUES (?, 'General', 'VOICE', 0, 1, 0, 0)",
+		`INSERT INTO channels (server_id, name, type, position, top_position, min_level, speak_min_level,
+		    perm_min_level, logic_operator, speak_perm_min_level, speak_logic_operator)
+		 VALUES (?, 'General', 'VOICE', 0, 1, 0, 0, 0, 'AND', 0, 'AND')`,
 		serverID,
 	)
 	if err != nil {
@@ -135,6 +148,7 @@ func (h *ServerHandler) CreateServer(c echo.Context) error {
 	return c.JSON(http.StatusCreated, serverResponse{
 		ID: serverID, Name: req.Name, Icon: req.Icon,
 		OwnerID: int64(user.ID), MinLevel: 0,
+		PermMinLevel: 0, LogicOperator: "AND",
 	})
 }
 
@@ -148,8 +162,8 @@ func (h *ServerHandler) GetServer(c echo.Context) error {
 	}
 
 	var s serverResponse
-	err = h.db.QueryRow("SELECT id, name, icon, owner_id, min_level FROM servers WHERE id = ?", id).
-		Scan(&s.ID, &s.Name, &s.Icon, &s.OwnerID, &s.MinLevel)
+	err = h.db.QueryRow("SELECT id, name, icon, owner_id, min_level, perm_min_level, logic_operator FROM servers WHERE id = ?", id).
+		Scan(&s.ID, &s.Name, &s.Icon, &s.OwnerID, &s.MinLevel, &s.PermMinLevel, &s.LogicOperator)
 	if err == sql.ErrNoRows {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "server not found"})
 	}
@@ -157,12 +171,15 @@ func (h *ServerHandler) GetServer(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
-	if !permission.CanAccess(user, s.MinLevel) {
+	serverRule := permission.PermRule{PermMinLevel: s.PermMinLevel, GroupMinLevel: s.MinLevel, LogicOperator: s.LogicOperator}
+	if !permission.CanAccess(user, serverRule) {
 		return c.JSON(http.StatusForbidden, map[string]string{"error": "you do not have permission to access this server"})
 	}
 
 	rows, err := h.db.Query(
-		"SELECT id, name, type, position, top_position, group_id, min_level, speak_min_level FROM channels WHERE server_id = ? ORDER BY top_position, position",
+		`SELECT id, name, type, position, top_position, group_id, min_level, speak_min_level,
+		        perm_min_level, logic_operator, speak_perm_min_level, speak_logic_operator
+		 FROM channels WHERE server_id = ? ORDER BY top_position, position`,
 		id,
 	)
 	if err != nil {
@@ -174,10 +191,12 @@ func (h *ServerHandler) GetServer(c echo.Context) error {
 	for rows.Next() {
 		var ch channelInServer
 		if err := rows.Scan(&ch.ID, &ch.Name, &ch.Type, &ch.Position, &ch.TopPosition, &ch.GroupID,
-			&ch.MinLevel, &ch.SpeakMinLevel); err != nil {
+			&ch.MinLevel, &ch.SpeakMinLevel,
+			&ch.PermMinLevel, &ch.LogicOperator, &ch.SpeakPermMinLevel, &ch.SpeakLogicOperator); err != nil {
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		}
-		if permission.CanAccess(user, ch.MinLevel) {
+		chRule := permission.PermRule{PermMinLevel: ch.PermMinLevel, GroupMinLevel: ch.MinLevel, LogicOperator: ch.LogicOperator}
+		if permission.CanAccess(user, chRule) {
 			channels = append(channels, ch)
 		}
 	}
@@ -197,8 +216,8 @@ func (h *ServerHandler) UpdateServer(c echo.Context) error {
 	}
 
 	var s serverResponse
-	err = h.db.QueryRow("SELECT id, name, icon, owner_id, min_level FROM servers WHERE id = ?", id).
-		Scan(&s.ID, &s.Name, &s.Icon, &s.OwnerID, &s.MinLevel)
+	err = h.db.QueryRow("SELECT id, name, icon, owner_id, min_level, perm_min_level, logic_operator FROM servers WHERE id = ?", id).
+		Scan(&s.ID, &s.Name, &s.Icon, &s.OwnerID, &s.MinLevel, &s.PermMinLevel, &s.LogicOperator)
 	if err == sql.ErrNoRows {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "server not found"})
 	}
@@ -223,10 +242,22 @@ func (h *ServerHandler) UpdateServer(c echo.Context) error {
 		}
 		s.MinLevel = *req.MinLevel
 	}
+	if req.PermMinLevel != nil {
+		if *req.PermMinLevel < 0 {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "perm_min_level must be >= 0"})
+		}
+		s.PermMinLevel = *req.PermMinLevel
+	}
+	if req.LogicOperator != nil {
+		if *req.LogicOperator != "AND" && *req.LogicOperator != "OR" {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "logic_operator must be AND or OR"})
+		}
+		s.LogicOperator = *req.LogicOperator
+	}
 
 	_, err = h.db.Exec(
-		"UPDATE servers SET name = ?, icon = ?, min_level = ? WHERE id = ?",
-		s.Name, s.Icon, s.MinLevel, id,
+		"UPDATE servers SET name = ?, icon = ?, min_level = ?, perm_min_level = ?, logic_operator = ? WHERE id = ?",
+		s.Name, s.Icon, s.MinLevel, s.PermMinLevel, s.LogicOperator, id,
 	)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
@@ -386,7 +417,7 @@ func (h *ServerHandler) GetAllMessages(c echo.Context) error {
 
 	// Get text channels
 	chRows, err := h.db.Query(
-		"SELECT id, name, min_level FROM channels WHERE server_id = ? AND type = 'TEXT' ORDER BY position",
+		"SELECT id, name, min_level, perm_min_level, logic_operator FROM channels WHERE server_id = ? AND type = 'TEXT' ORDER BY position",
 		serverID,
 	)
 	if err != nil {
@@ -395,15 +426,18 @@ func (h *ServerHandler) GetAllMessages(c echo.Context) error {
 	defer chRows.Close()
 
 	type channelInfo struct {
-		ID       int64
-		Name     string
-		MinLevel int
+		ID            int64
+		Name          string
+		MinLevel      int
+		PermMinLevel  int
+		LogicOperator string
 	}
 	var textChannels []channelInfo
 	for chRows.Next() {
 		var ch channelInfo
-		chRows.Scan(&ch.ID, &ch.Name, &ch.MinLevel)
-		if permission.CanAccess(user, ch.MinLevel) {
+		chRows.Scan(&ch.ID, &ch.Name, &ch.MinLevel, &ch.PermMinLevel, &ch.LogicOperator)
+		rule := permission.PermRule{PermMinLevel: ch.PermMinLevel, GroupMinLevel: ch.MinLevel, LogicOperator: ch.LogicOperator}
+		if permission.CanAccess(user, rule) {
 			textChannels = append(textChannels, ch)
 		}
 	}

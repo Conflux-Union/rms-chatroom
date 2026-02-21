@@ -15,6 +15,8 @@ export interface Server {
   icon: string | null
   owner_id: number
   min_level?: number
+  perm_min_level?: number
+  logic_operator?: 'AND' | 'OR'
   channels?: Channel[]
   channelGroups?: ChannelGroup[]
 }
@@ -25,6 +27,8 @@ export interface ChannelGroup {
   name: string
   position: number
   min_level?: number
+  perm_min_level?: number
+  logic_operator?: 'AND' | 'OR'
 }
 
 export interface Channel {
@@ -36,7 +40,11 @@ export interface Channel {
   position: number
   top_position: number
   min_level?: number
+  perm_min_level?: number
+  logic_operator?: 'AND' | 'OR'
   speak_min_level?: number
+  speak_perm_min_level?: number
+  speak_logic_operator?: 'AND' | 'OR'
 }
 
 export interface Attachment {

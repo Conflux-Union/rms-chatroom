@@ -200,10 +200,11 @@ func (h *MessageHandler) GetMessages(c echo.Context) error {
 
 	// Verify channel
 	var chType string
-	var minLevel int
+	var minLevel, permMinLevel int
+	var logicOperator string
 	err = h.db.QueryRow(
-		"SELECT type, min_level FROM channels WHERE id = ?", channelID,
-	).Scan(&chType, &minLevel)
+		"SELECT type, min_level, perm_min_level, logic_operator FROM channels WHERE id = ?", channelID,
+	).Scan(&chType, &minLevel, &permMinLevel, &logicOperator)
 	if err == sql.ErrNoRows {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "channel not found"})
 	}
@@ -213,7 +214,8 @@ func (h *MessageHandler) GetMessages(c echo.Context) error {
 	if chType != "TEXT" {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "not a text channel"})
 	}
-	if !permission.CanAccess(user, minLevel) {
+	accessRule := permission.PermRule{PermMinLevel: permMinLevel, GroupMinLevel: minLevel, LogicOperator: logicOperator}
+	if !permission.CanAccess(user, accessRule) {
 		return c.JSON(http.StatusForbidden, map[string]string{"error": "you do not have permission to view this channel"})
 	}
 
@@ -319,10 +321,11 @@ func (h *MessageHandler) CreateMessage(c echo.Context) error {
 
 	// Verify channel
 	var chType string
-	var speakMinLevel int
+	var speakMinLevel, speakPermMinLevel int
+	var speakLogicOperator string
 	err = h.db.QueryRow(
-		"SELECT type, speak_min_level FROM channels WHERE id = ?", channelID,
-	).Scan(&chType, &speakMinLevel)
+		"SELECT type, speak_min_level, speak_perm_min_level, speak_logic_operator FROM channels WHERE id = ?", channelID,
+	).Scan(&chType, &speakMinLevel, &speakPermMinLevel, &speakLogicOperator)
 	if err == sql.ErrNoRows {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "channel not found"})
 	}
@@ -332,7 +335,8 @@ func (h *MessageHandler) CreateMessage(c echo.Context) error {
 	if chType != "TEXT" {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "not a text channel"})
 	}
-	if !permission.CanSpeak(user, speakMinLevel) {
+	speakRule := permission.PermRule{PermMinLevel: speakPermMinLevel, GroupMinLevel: speakMinLevel, LogicOperator: speakLogicOperator}
+	if !permission.CanSpeak(user, speakRule) {
 		return c.JSON(http.StatusForbidden, map[string]string{"error": "you do not have permission to speak in this channel"})
 	}
 
