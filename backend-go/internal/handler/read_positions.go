@@ -7,17 +7,15 @@ import (
 	"github.com/labstack/echo/v4"
 
 	"github.com/RMS-Server/rms-discord-go/internal/middleware"
-	"github.com/RMS-Server/rms-discord-go/internal/sso"
 )
 
 // ReadPositionHandler handles read position endpoints.
 type ReadPositionHandler struct {
-	db  *sql.DB
-	sso *sso.Client
+	db *sql.DB
 }
 
-func NewReadPositionHandler(db *sql.DB, sso *sso.Client) *ReadPositionHandler {
-	return &ReadPositionHandler{db: db, sso: sso}
+func NewReadPositionHandler(db *sql.DB) *ReadPositionHandler {
+	return &ReadPositionHandler{db: db}
 }
 
 type readPositionResp struct {

@@ -6,14 +6,14 @@ import (
 
 	"github.com/labstack/echo/v4"
 
+	"github.com/RMS-Server/rms-discord-go/internal/jwtutil"
 	"github.com/RMS-Server/rms-discord-go/internal/permission"
-	"github.com/RMS-Server/rms-discord-go/internal/sso"
 )
 
 const userContextKey = "user"
 
-// Auth returns middleware that validates Bearer tokens via SSO.
-func Auth(client *sso.Client) echo.MiddlewareFunc {
+// Auth returns middleware that validates Bearer tokens via local JWT parsing.
+func Auth(jwtSecret string) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
 			auth := c.Request().Header.Get("Authorization")
@@ -22,7 +22,7 @@ func Auth(client *sso.Client) echo.MiddlewareFunc {
 			}
 			token := strings.TrimPrefix(auth, "Bearer ")
 
-			user, err := client.VerifyToken(token)
+			user, err := jwtutil.ParseToken(token, jwtSecret)
 			if err != nil {
 				return c.JSON(http.StatusUnauthorized, map[string]string{"error": "invalid token"})
 			}

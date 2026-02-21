@@ -2,31 +2,31 @@
   <div v-if="isOpen" class="modal-overlay" @click.self="handleClose">
     <div class="modal-content">
       <div class="modal-header">
-        <h2>{{ channelName }} - 频道权限设置</h2>
-        <button class="close-btn" @click="handleClose">✕</button>
+        <h2>{{ channelName }} - Channel Permissions</h2>
+        <button class="close-btn" @click="handleClose">&times;</button>
       </div>
 
       <div class="modal-body">
         <InternalLevelPermissionSettings
-          v-model="channelVisibilityLevel"
-          title="频道可见性权限"
-          description="只有达到此权限等级的用户才能看到此频道"
+          v-model="channelMinLevel"
+          title="Visibility Permission Level"
+          description="Users must have at least this permission level to see this channel"
           :maxLevel="userMaxLevel"
-          :serverValue="initialPermissions?.visibilityMinServerLevel"
+          :serverValue="initialPermissions?.minLevel"
         />
         <InternalLevelPermissionSettings
-          v-model="channelSpeakLevel"
-          title="频道发言权限"
-          description="只有达到此权限等级的用户才能在此频道发言"
+          v-model="channelSpeakMinLevel"
+          title="Speak Permission Level"
+          description="Users must have at least this permission level to speak in this channel"
           :maxLevel="userMaxLevel"
-          :serverValue="initialPermissions?.speakMinServerLevel"
+          :serverValue="initialPermissions?.speakMinLevel"
         />
       </div>
 
       <div class="modal-footer">
-        <button class="btn btn-secondary" @click="handleClose">取消</button>
+        <button class="btn btn-secondary" @click="handleClose">Cancel</button>
         <button class="btn btn-primary" @click="handleSave" :disabled="isSaving">
-          {{ isSaving ? '保存中...' : '保存' }}
+          {{ isSaving ? 'Saving...' : 'Save' }}
         </button>
       </div>
     </div>
@@ -40,8 +40,8 @@ import InternalLevelPermissionSettings from './InternalLevelPermissionSettings.v
 import axios from 'axios'
 
 interface ChannelPermissions {
-  visibilityMinServerLevel: number
-  speakMinServerLevel: number
+  minLevel: number
+  speakMinLevel: number
 }
 
 interface Props {
@@ -54,8 +54,8 @@ interface Props {
 
 const props = withDefaults(defineProps<Props>(), {
   initialPermissions: () => ({
-    visibilityMinServerLevel: 1,
-    speakMinServerLevel: 1
+    minLevel: 1,
+    speakMinLevel: 1
   })
 })
 
@@ -66,22 +66,20 @@ const emit = defineEmits<{
   'save': [value: ChannelPermissions]
 }>()
 
-const channelVisibilityLevel = ref(props.initialPermissions?.visibilityMinServerLevel || 1)
-const channelSpeakLevel = ref(props.initialPermissions?.speakMinServerLevel || 1)
+const channelMinLevel = ref(props.initialPermissions?.minLevel || 1)
+const channelSpeakMinLevel = ref(props.initialPermissions?.speakMinLevel || 1)
 
 const isSaving = ref(false)
 const API_BASE = import.meta.env.VITE_API_BASE || ''
 
-// 获取用户的最高权限等级
 const userMaxLevel = computed(() => {
   return auth.user?.permission_level || 1
 })
 
-// Watch for initial permissions change
 watch(() => props.initialPermissions, (newVal) => {
   if (newVal) {
-    channelVisibilityLevel.value = newVal.visibilityMinServerLevel || 1
-    channelSpeakLevel.value = newVal.speakMinServerLevel || 1
+    channelMinLevel.value = newVal.minLevel || 1
+    channelSpeakMinLevel.value = newVal.speakMinLevel || 1
   }
 }, { immediate: true })
 
@@ -93,26 +91,21 @@ const handleSave = async () => {
   isSaving.value = true
   try {
     await axios.patch(
-      `${API_BASE}/api/servers/${props.serverId}/channels/${props.channelId}`,
+      `${API_BASE}/api/channels/${props.channelId}`,
       {
-        visibility_min_server_level: channelVisibilityLevel.value,
-        speak_min_server_level: channelSpeakLevel.value
+        min_level: channelMinLevel.value,
+        speak_min_level: channelSpeakMinLevel.value
       },
-      {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem('token')}`
-        }
-      }
+      { headers: { Authorization: `Bearer ${auth.accessToken}` } }
     )
-    
     emit('save', {
-      visibilityMinServerLevel: channelVisibilityLevel.value,
-      speakMinServerLevel: channelSpeakLevel.value
+      minLevel: channelMinLevel.value,
+      speakMinLevel: channelSpeakMinLevel.value
     })
     emit('close')
   } catch (error) {
     console.error('Failed to save channel permissions:', error)
-    alert('保存权限设置失败')
+    alert('Failed to save permission settings')
   } finally {
     isSaving.value = false
   }
@@ -135,12 +128,8 @@ const handleSave = async () => {
 }
 
 @keyframes fadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 .modal-content {
@@ -158,14 +147,8 @@ const handleSave = async () => {
 }
 
 @keyframes slideUp {
-  from {
-    transform: translateY(20px);
-    opacity: 0;
-  }
-  to {
-    transform: translateY(0);
-    opacity: 1;
-  }
+  from { transform: translateY(20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
 }
 
 .modal-header {
@@ -215,18 +198,11 @@ const handleSave = async () => {
   gap: 24px;
 }
 
-.info-text {
-  margin-top: 16px;
-  font-size: 12px;
-  color: var(--color-text-muted);
-  line-height: 1.5;
-}
-
 .modal-footer {
   display: flex;
   gap: 12px;
-  padding: 20px;
-  border-top: 1px solid var(--color-border);
+  padding: 20px 24px;
+  border-top: 2px solid var(--color-border);
   justify-content: flex-end;
   background: var(--color-background-soft);
 }
@@ -241,21 +217,9 @@ const handleSave = async () => {
   transition: all 0.2s;
 }
 
-.btn-secondary {
-  background: var(--color-background);
-  color: var(--color-text-main);
-  border: 2px solid var(--color-border);
-}
-
-.btn-secondary:hover {
-  border-color: var(--color-accent);
-  color: var(--color-accent);
-}
-
 .btn-primary {
   background: var(--color-gradient-primary);
   color: white;
-  border: none;
 }
 
 .btn-primary:hover:not(:disabled) {
@@ -268,37 +232,14 @@ const handleSave = async () => {
   cursor: not-allowed;
 }
 
-.btn {
-  padding: 8px 16px;
-  border: none;
-  border-radius: var(--radius-sm);
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.btn-primary {
-  background: var(--color-accent);
-  color: white;
-}
-
-.btn-primary:hover:not(:disabled) {
-  opacity: 0.9;
-}
-
-.btn-primary:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
 .btn-secondary {
-  background: var(--color-background-soft);
+  background: var(--color-background);
   color: var(--color-text-main);
-  border: 1px solid var(--color-border);
+  border: 2px solid var(--color-border);
 }
 
 .btn-secondary:hover {
-  background: var(--color-background);
+  border-color: var(--color-accent);
+  color: var(--color-accent);
 }
 </style>

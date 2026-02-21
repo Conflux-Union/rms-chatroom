@@ -12,13 +12,13 @@ import (
 
 // Register registers all WebSocket routes and voice HTTP routes.
 func Register(e *echo.Echo, cfg *config.Config, ssoClient *sso.Client, db *sql.DB) {
-	e.GET("/ws/chat", HandleChatWS(ssoClient, db))
-	e.GET("/ws/global", HandleGlobalWS(ssoClient, db))
-	e.GET("/ws/voice", HandleVoiceWS(ssoClient))
-	e.GET("/ws/music", HandleMusicWS(ssoClient))
+	e.GET("/ws/chat", HandleChatWS(cfg.JWTSecret, db))
+	e.GET("/ws/global", HandleGlobalWS(cfg.JWTSecret, db))
+	e.GET("/ws/voice", HandleVoiceWS(cfg.JWTSecret))
+	e.GET("/ws/music", HandleMusicWS(cfg.JWTSecret))
 
 	voiceGroup := e.Group("/api/voice")
-	RegisterVoiceHTTP(voiceGroup, ssoClient, db, cfg)
+	RegisterVoiceHTTP(voiceGroup, cfg.JWTSecret, ssoClient, db, cfg)
 
 	// LiveKit webhook
 	e.POST("/api/livekit/webhook", lk.WebhookHandler(cfg.LivekitAPIKey, cfg.LivekitAPISecret, func(eventType string) {

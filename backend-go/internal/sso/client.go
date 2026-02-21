@@ -15,77 +15,81 @@ type avatarEntry struct {
 	fetchedAt time.Time
 }
 
-// Client verifies tokens against RMSSSO and caches avatar URLs.
+// Client fetches user info and avatars from RMSSSO.
 type Client struct {
-	baseURL        string
-	verifyEndpoint string
-	verifyClient   *http.Client
-	avatarClient   *http.Client
-	avatarCache    sync.Map // map[int]*avatarEntry
-	avatarTTL      time.Duration
+	baseURL     string
+	httpClient  *http.Client
+	avatarCache sync.Map // map[int]*avatarEntry
+	avatarTTL   time.Duration
 }
 
-// NewClient creates an SSO client with the given base URL and verify endpoint.
-func NewClient(baseURL, verifyEndpoint string) *Client {
+// NewClient creates an SSO client with the given base URL.
+func NewClient(baseURL string) *Client {
 	return &Client{
-		baseURL:        baseURL,
-		verifyEndpoint: verifyEndpoint,
-		verifyClient:   &http.Client{Timeout: 10 * time.Second},
-		avatarClient:   &http.Client{Timeout: 5 * time.Second},
-		avatarTTL:      5 * time.Minute,
+		baseURL:    baseURL,
+		httpClient: &http.Client{Timeout: 10 * time.Second},
+		avatarTTL:  5 * time.Minute,
 	}
-}
-
-// ssoVerifyResponse is the JSON envelope from the SSO verify endpoint.
-type ssoVerifyResponse struct {
-	Success bool                 `json:"success"`
-	User    *permission.UserInfo `json:"user"`
-}
-
-// VerifyToken validates a Bearer token against RMSSSO and returns user info.
-func (c *Client) VerifyToken(token string) (*permission.UserInfo, error) {
-	url := c.baseURL + c.verifyEndpoint
-	req, err := http.NewRequest(http.MethodGet, url, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Authorization", "Bearer "+token)
-
-	resp, err := c.verifyClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("sso returned status %d", resp.StatusCode)
-	}
-
-	var result ssoVerifyResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, err
-	}
-	if !result.Success || result.User == nil {
-		return nil, fmt.Errorf("sso verify failed")
-	}
-
-	// Cache avatar URL from verify response
-	if result.User.ID != 0 && result.User.AvatarURL != "" {
-		c.avatarCache.Store(result.User.ID, &avatarEntry{
-			url:       result.User.AvatarURL,
-			fetchedAt: time.Now(),
-		})
-	}
-
-	return result.User, nil
 }
 
 // ssoAccountInfoResponse is the JSON envelope from the account_info endpoint.
 type ssoAccountInfoResponse struct {
 	Success bool `json:"success"`
 	User    struct {
-		AvatarURL string `json:"avatar_url"`
+		ID              int    `json:"id"`
+		Username        string `json:"username"`
+		Nickname        string `json:"nickname"`
+		Email           string `json:"email"`
+		PermissionLevel int    `json:"permission_level"`
+		AvatarURL       string `json:"avatar_url"`
+		Group           struct {
+			ID    int    `json:"id"`
+			Name  string `json:"name"`
+			Level int    `json:"level"`
+		} `json:"group"`
 	} `json:"user"`
+}
+
+// GetUserByID fetches user info from SSO by user ID, including group level.
+func (c *Client) GetUserByID(userID int) (*permission.UserInfo, error) {
+	url := fmt.Sprintf("%s/api/account_info?uid=%d", c.baseURL, userID)
+	resp, err := c.httpClient.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("account_info returned status %d", resp.StatusCode)
+	}
+
+	var result ssoAccountInfoResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, err
+	}
+	if !result.Success || result.User.ID == 0 {
+		return nil, fmt.Errorf("user %d not found", userID)
+	}
+
+	u := &permission.UserInfo{
+		ID:              result.User.ID,
+		Username:        result.User.Username,
+		Nickname:        result.User.Nickname,
+		Email:           result.User.Email,
+		PermissionLevel: result.User.PermissionLevel,
+		GroupLevel:      result.User.Group.Level,
+		AvatarURL:       result.User.AvatarURL,
+	}
+
+	// Cache avatar URL
+	if u.AvatarURL != "" {
+		c.avatarCache.Store(userID, &avatarEntry{
+			url:       u.AvatarURL,
+			fetchedAt: time.Now(),
+		})
+	}
+
+	return u, nil
 }
 
 // GetAvatarURL fetches the avatar URL for a user, with 5-minute caching.
@@ -98,7 +102,7 @@ func (c *Client) GetAvatarURL(userID int) (string, error) {
 	}
 
 	url := fmt.Sprintf("%s/api/account_info?uid=%d", c.baseURL, userID)
-	resp, err := c.avatarClient.Get(url)
+	resp, err := c.httpClient.Get(url)
 	if err != nil {
 		return "", err
 	}
@@ -145,29 +149,6 @@ func (c *Client) GetAvatarURLsBatch(userIDs []int) map[int]string {
 
 	wg.Wait()
 	return result
-}
-
-// GetUserByID fetches basic user info from SSO by user ID (for token refresh).
-func (c *Client) GetUserByID(userID int) (*permission.UserInfo, error) {
-	url := fmt.Sprintf("%s/api/account_info?uid=%d", c.baseURL, userID)
-	resp, err := c.verifyClient.Get(url)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("account_info returned status %d", resp.StatusCode)
-	}
-
-	var result ssoVerifyResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, err
-	}
-	if !result.Success || result.User == nil {
-		return nil, fmt.Errorf("user %d not found", userID)
-	}
-	return result.User, nil
 }
 
 // GetLoginURL generates the SSO login redirect URL.

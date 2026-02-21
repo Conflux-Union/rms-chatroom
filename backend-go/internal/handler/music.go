@@ -10,9 +10,9 @@ import (
 
 	"github.com/labstack/echo/v4"
 
+	"github.com/RMS-Server/rms-discord-go/internal/jwtutil"
 	"github.com/RMS-Server/rms-discord-go/internal/music"
 	"github.com/RMS-Server/rms-discord-go/internal/permission"
-	"github.com/RMS-Server/rms-discord-go/internal/sso"
 	"github.com/RMS-Server/rms-discord-go/internal/ws"
 )
 
@@ -261,28 +261,28 @@ func stopProgressTimer(roomName string) {
 }
 
 // RegisterMusicRoutes registers all /api/music routes.
-func RegisterMusicRoutes(g *echo.Group, ssoClient *sso.Client) {
+func RegisterMusicRoutes(g *echo.Group, jwtSecret string) {
 	g.GET("/login/qrcode", musicLoginQRCode())
 	g.GET("/login/status", musicLoginStatus())
 	g.GET("/login/check", musicLoginCheck())
 	g.GET("/login/check/all", musicLoginCheckAll())
 	g.POST("/login/logout", musicLogout())
-	g.POST("/search", musicSearch(ssoClient))
+	g.POST("/search", musicSearch(jwtSecret))
 	g.GET("/song/:mid/url", musicSongURL())
-	g.POST("/queue/add", musicQueueAdd(ssoClient))
-	g.DELETE("/queue/:room_name/:index", musicQueueRemove(ssoClient))
-	g.GET("/queue/:room_name", musicQueueGet(ssoClient))
-	g.POST("/queue/clear", musicQueueClear(ssoClient))
-	g.POST("/bot/start", musicBotStart(ssoClient))
-	g.POST("/bot/stop", musicBotStop(ssoClient))
-	g.GET("/bot/status/:room_name", musicBotStatus(ssoClient))
-	g.POST("/bot/play", musicBotPlay(ssoClient))
-	g.POST("/bot/pause", musicBotPause(ssoClient))
-	g.POST("/bot/resume", musicBotResume(ssoClient))
-	g.POST("/bot/skip", musicBotSkip(ssoClient))
-	g.POST("/bot/previous", musicBotPrevious(ssoClient))
-	g.POST("/bot/seek", musicBotSeek(ssoClient))
-	g.GET("/bot/progress/:room_name", musicBotProgress(ssoClient))
+	g.POST("/queue/add", musicQueueAdd(jwtSecret))
+	g.DELETE("/queue/:room_name/:index", musicQueueRemove(jwtSecret))
+	g.GET("/queue/:room_name", musicQueueGet(jwtSecret))
+	g.POST("/queue/clear", musicQueueClear(jwtSecret))
+	g.POST("/bot/start", musicBotStart(jwtSecret))
+	g.POST("/bot/stop", musicBotStop(jwtSecret))
+	g.GET("/bot/status/:room_name", musicBotStatus(jwtSecret))
+	g.POST("/bot/play", musicBotPlay(jwtSecret))
+	g.POST("/bot/pause", musicBotPause(jwtSecret))
+	g.POST("/bot/resume", musicBotResume(jwtSecret))
+	g.POST("/bot/skip", musicBotSkip(jwtSecret))
+	g.POST("/bot/previous", musicBotPrevious(jwtSecret))
+	g.POST("/bot/seek", musicBotSeek(jwtSecret))
+	g.GET("/bot/progress/:room_name", musicBotProgress(jwtSecret))
 }
 
 func musicLoginQRCode() echo.HandlerFunc {
@@ -393,9 +393,9 @@ func musicLogout() echo.HandlerFunc {
 	}
 }
 
-func musicSearch(ssoClient *sso.Client) echo.HandlerFunc {
+func musicSearch(jwtSecret string) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		if _, err := authenticateFromEcho(c, ssoClient); err != nil {
+		if _, err := authenticateFromEcho(c, jwtSecret); err != nil {
 			return err
 		}
 		var req searchRequest
@@ -453,9 +453,9 @@ func musicSongURL() echo.HandlerFunc {
 	}
 }
 
-func musicQueueAdd(ssoClient *sso.Client) echo.HandlerFunc {
+func musicQueueAdd(jwtSecret string) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		user, err := authenticateFromEcho(c, ssoClient)
+		user, err := authenticateFromEcho(c, jwtSecret)
 		if err != nil {
 			return err
 		}
@@ -477,9 +477,9 @@ func musicQueueAdd(ssoClient *sso.Client) echo.HandlerFunc {
 	}
 }
 
-func musicQueueRemove(ssoClient *sso.Client) echo.HandlerFunc {
+func musicQueueRemove(jwtSecret string) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		if _, err := authenticateFromEcho(c, ssoClient); err != nil {
+		if _, err := authenticateFromEcho(c, jwtSecret); err != nil {
 			return err
 		}
 		roomName := c.Param("room_name")
@@ -503,9 +503,9 @@ func musicQueueRemove(ssoClient *sso.Client) echo.HandlerFunc {
 	}
 }
 
-func musicQueueGet(ssoClient *sso.Client) echo.HandlerFunc {
+func musicQueueGet(jwtSecret string) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		if _, err := authenticateFromEcho(c, ssoClient); err != nil {
+		if _, err := authenticateFromEcho(c, jwtSecret); err != nil {
 			return err
 		}
 		roomName := c.Param("room_name")
@@ -527,9 +527,9 @@ func musicQueueGet(ssoClient *sso.Client) echo.HandlerFunc {
 	}
 }
 
-func musicQueueClear(ssoClient *sso.Client) echo.HandlerFunc {
+func musicQueueClear(jwtSecret string) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		if _, err := authenticateFromEcho(c, ssoClient); err != nil {
+		if _, err := authenticateFromEcho(c, jwtSecret); err != nil {
 			return err
 		}
 		var req roomRequest
@@ -549,9 +549,9 @@ func musicQueueClear(ssoClient *sso.Client) echo.HandlerFunc {
 	}
 }
 
-func musicBotStart(ssoClient *sso.Client) echo.HandlerFunc {
+func musicBotStart(jwtSecret string) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		if _, err := authenticateFromEcho(c, ssoClient); err != nil {
+		if _, err := authenticateFromEcho(c, jwtSecret); err != nil {
 			return err
 		}
 		var req roomRequest
@@ -563,9 +563,9 @@ func musicBotStart(ssoClient *sso.Client) echo.HandlerFunc {
 	}
 }
 
-func musicBotStop(ssoClient *sso.Client) echo.HandlerFunc {
+func musicBotStop(jwtSecret string) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		if _, err := authenticateFromEcho(c, ssoClient); err != nil {
+		if _, err := authenticateFromEcho(c, jwtSecret); err != nil {
 			return err
 		}
 		var req roomRequest
@@ -580,9 +580,9 @@ func musicBotStop(ssoClient *sso.Client) echo.HandlerFunc {
 	}
 }
 
-func musicBotStatus(ssoClient *sso.Client) echo.HandlerFunc {
+func musicBotStatus(jwtSecret string) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		if _, err := authenticateFromEcho(c, ssoClient); err != nil {
+		if _, err := authenticateFromEcho(c, jwtSecret); err != nil {
 			return err
 		}
 		roomName := c.Param("room_name")
@@ -605,9 +605,9 @@ func musicBotStatus(ssoClient *sso.Client) echo.HandlerFunc {
 	}
 }
 
-func musicBotPlay(ssoClient *sso.Client) echo.HandlerFunc {
+func musicBotPlay(jwtSecret string) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		if _, err := authenticateFromEcho(c, ssoClient); err != nil {
+		if _, err := authenticateFromEcho(c, jwtSecret); err != nil {
 			return err
 		}
 		var req roomRequest
@@ -630,9 +630,9 @@ func musicBotPlay(ssoClient *sso.Client) echo.HandlerFunc {
 	}
 }
 
-func musicBotPause(ssoClient *sso.Client) echo.HandlerFunc {
+func musicBotPause(jwtSecret string) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		if _, err := authenticateFromEcho(c, ssoClient); err != nil {
+		if _, err := authenticateFromEcho(c, jwtSecret); err != nil {
 			return err
 		}
 		var req roomRequest
@@ -654,9 +654,9 @@ func musicBotPause(ssoClient *sso.Client) echo.HandlerFunc {
 	}
 }
 
-func musicBotResume(ssoClient *sso.Client) echo.HandlerFunc {
+func musicBotResume(jwtSecret string) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		if _, err := authenticateFromEcho(c, ssoClient); err != nil {
+		if _, err := authenticateFromEcho(c, jwtSecret); err != nil {
 			return err
 		}
 		var req roomRequest
@@ -687,9 +687,9 @@ func musicBotResume(ssoClient *sso.Client) echo.HandlerFunc {
 	}
 }
 
-func musicBotSkip(ssoClient *sso.Client) echo.HandlerFunc {
+func musicBotSkip(jwtSecret string) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		if _, err := authenticateFromEcho(c, ssoClient); err != nil {
+		if _, err := authenticateFromEcho(c, jwtSecret); err != nil {
 			return err
 		}
 		var req roomRequest
@@ -713,9 +713,9 @@ func musicBotSkip(ssoClient *sso.Client) echo.HandlerFunc {
 	}
 }
 
-func musicBotPrevious(ssoClient *sso.Client) echo.HandlerFunc {
+func musicBotPrevious(jwtSecret string) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		if _, err := authenticateFromEcho(c, ssoClient); err != nil {
+		if _, err := authenticateFromEcho(c, jwtSecret); err != nil {
 			return err
 		}
 		var req roomRequest
@@ -739,9 +739,9 @@ func musicBotPrevious(ssoClient *sso.Client) echo.HandlerFunc {
 	}
 }
 
-func musicBotSeek(ssoClient *sso.Client) echo.HandlerFunc {
+func musicBotSeek(jwtSecret string) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		if _, err := authenticateFromEcho(c, ssoClient); err != nil {
+		if _, err := authenticateFromEcho(c, jwtSecret); err != nil {
 			return err
 		}
 		var req seekRequest
@@ -764,9 +764,9 @@ func musicBotSeek(ssoClient *sso.Client) echo.HandlerFunc {
 	}
 }
 
-func musicBotProgress(ssoClient *sso.Client) echo.HandlerFunc {
+func musicBotProgress(jwtSecret string) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		if _, err := authenticateFromEcho(c, ssoClient); err != nil {
+		if _, err := authenticateFromEcho(c, jwtSecret); err != nil {
 			return err
 		}
 		roomName := c.Param("room_name")
@@ -813,7 +813,7 @@ func broadcastMusicCommand(eventType string, data map[string]interface{}) {
 	ws.GetMusicRoomManager().BroadcastToRoom(roomName, data)
 }
 
-func authenticateFromEcho(c echo.Context, ssoClient *sso.Client) (*permission.UserInfo, error) {
+func authenticateFromEcho(c echo.Context, jwtSecret string) (*permission.UserInfo, error) {
 	token := c.QueryParam("token")
 	if token == "" {
 		auth := c.Request().Header.Get("Authorization")
@@ -824,7 +824,7 @@ func authenticateFromEcho(c echo.Context, ssoClient *sso.Client) (*permission.Us
 	if token == "" {
 		return nil, c.JSON(http.StatusUnauthorized, map[string]string{"error": "missing token"})
 	}
-	user, err := ssoClient.VerifyToken(token)
+	user, err := jwtutil.ParseToken(token, jwtSecret)
 	if err != nil {
 		return nil, c.JSON(http.StatusUnauthorized, map[string]string{"error": "invalid token"})
 	}

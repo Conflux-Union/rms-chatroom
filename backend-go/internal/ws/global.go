@@ -8,7 +8,7 @@ import (
 
 	"github.com/labstack/echo/v4"
 
-	"github.com/RMS-Server/rms-discord-go/internal/sso"
+	"github.com/RMS-Server/rms-discord-go/internal/jwtutil"
 )
 
 // globalMessage represents an incoming message on /ws/global.
@@ -22,14 +22,14 @@ type globalMessage struct {
 }
 
 // HandleGlobalWS handles the /ws/global WebSocket endpoint.
-func HandleGlobalWS(ssoClient *sso.Client, db *sql.DB) echo.HandlerFunc {
+func HandleGlobalWS(jwtSecret string, db *sql.DB) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		token := c.QueryParam("token")
 		if token == "" {
 			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "missing token"})
 		}
 
-		user, err := ssoClient.VerifyToken(token)
+		user, err := jwtutil.ParseToken(token, jwtSecret)
 		if err != nil {
 			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "invalid token"})
 		}
@@ -102,10 +102,10 @@ func handleReadPositionUpdate(db *sql.DB, conn *Conn, msg *globalMessage) {
 
 	// Broadcast to user's other connections
 	update := map[string]interface{}{
-		"type":                   "read_position_sync",
-		"channel_id":            msg.ChannelID,
-		"last_read_message_id":  msg.LastReadMessageID,
-		"has_mention":           msg.HasMention,
+		"type":                    "read_position_sync",
+		"channel_id":             msg.ChannelID,
+		"last_read_message_id":   msg.LastReadMessageID,
+		"has_mention":            msg.HasMention,
 		"last_mention_message_id": msg.LastMentionMessageID,
 	}
 	GlobalStateManager.SendToUserExclude(int64(conn.user.ID), update, conn)
