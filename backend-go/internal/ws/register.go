@@ -6,6 +6,7 @@ import (
 	"github.com/labstack/echo/v4"
 
 	"github.com/RMS-Server/rms-discord-go/internal/config"
+	"github.com/RMS-Server/rms-discord-go/internal/lk"
 	"github.com/RMS-Server/rms-discord-go/internal/sso"
 )
 
@@ -18,6 +19,12 @@ func Register(e *echo.Echo, cfg *config.Config, ssoClient *sso.Client, db *sql.D
 
 	voiceGroup := e.Group("/api/voice")
 	RegisterVoiceHTTP(voiceGroup, ssoClient, db, cfg)
+
+	// LiveKit webhook
+	e.POST("/api/livekit/webhook", lk.WebhookHandler(cfg.LivekitAPIKey, cfg.LivekitAPISecret, func(eventType string) {
+		lkc := lk.New(cfg)
+		go broadcastVoiceUsersUpdate(lkc, ssoClient, db)
+	}))
 
 	// Start heartbeat monitors
 	ChatManager.StartHeartbeat()
