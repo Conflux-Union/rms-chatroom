@@ -1,15 +1,32 @@
 package handler
 
 import (
+	"encoding/base64"
+	"log"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/labstack/echo/v4"
 
+	"github.com/RMS-Server/rms-discord-go/internal/music"
 	"github.com/RMS-Server/rms-discord-go/internal/permission"
 	"github.com/RMS-Server/rms-discord-go/internal/sso"
 	"github.com/RMS-Server/rms-discord-go/internal/ws"
+)
+
+// Music API clients
+var (
+	qqClient      *music.QQMusicClient
+	neteaseClient *music.NeteaseClient
+	neteaseUnikey string // stored unikey for QR login flow
+)
+
+// Progress timer management
+var (
+	progressTimers   = make(map[string]chan struct{})
+	progressTimersMu sync.Mutex
 )
 
 // RoomMusicState holds per-room playback state.
@@ -77,6 +94,10 @@ func getRoomState(roomName string) *RoomMusicState {
 }
 
 func init() {
+	// Initialize music clients
+	qqClient = music.NewQQMusicClient("qq_credential.json")
+	neteaseClient = music.NewNeteaseClient("netease_credential.json")
+
 	// Wire GetRoomPlaybackState for late-joiner support in ws/music.go
 	ws.GetRoomPlaybackState = func(roomName string) map[string]interface{} {
 		roomStatesMu.RLock()
@@ -100,6 +121,142 @@ func init() {
 			"position_ms": pos,
 			"is_playing":  true,
 		}
+	}
+}
+
+// ensureHTTPS converts http:// URLs to https://
+func ensureHTTPS(u string) string {
+	if strings.HasPrefix(u, "http://") {
+		return "https://" + u[7:]
+	}
+	return u
+}
+
+// getSongURL fetches a playable URL from the appropriate platform client.
+func getSongURL(mid, platform string) (string, error) {
+	var u string
+	var err error
+	switch platform {
+	case "netease":
+		u, err = neteaseClient.GetSongURL(mid)
+	default:
+		u, err = qqClient.GetSongURL(mid)
+	}
+	if err != nil {
+		return "", err
+	}
+	return ensureHTTPS(u), nil
+}
+
+// playCurrentSong fetches the URL and starts playback for the current queue item.
+// Caller must hold state.mu.
+func playCurrentSong(state *RoomMusicState) {
+	if len(state.PlayQueue) == 0 || state.CurrentIndex >= len(state.PlayQueue) {
+		return
+	}
+	cur := state.PlayQueue[state.CurrentIndex]
+	songURL, err := getSongURL(cur.Song.Mid, cur.Song.Platform)
+	if err != nil || songURL == "" {
+		log.Printf("music: failed to get URL for %s/%s: %v", cur.Song.Platform, cur.Song.Mid, err)
+		broadcastMusicCommand("song_unavailable", map[string]interface{}{
+			"room_name": state.RoomName,
+			"song":      cur.Song,
+			"error":     "failed to get song URL",
+		})
+		// Try next song
+		if state.CurrentIndex < len(state.PlayQueue)-1 {
+			state.CurrentIndex++
+			playCurrentSong(state)
+		} else {
+			state.IsPlaying = false
+			state.CurrentSongURL = ""
+			stopProgressTimer(state.RoomName)
+		}
+		return
+	}
+
+	state.IsPlaying = true
+	state.CurrentSongURL = songURL
+	state.PlayStartTime = float64(time.Now().UnixMilli()) / 1000.0
+	state.PlayStartPosition = 0
+	state.PositionMS = 0
+
+	broadcastMusicCommand("play", map[string]interface{}{
+		"room_name":   state.RoomName,
+		"song":        cur.Song,
+		"url":         songURL,
+		"position_ms": int64(0),
+		"is_playing":  true,
+	})
+
+	startProgressTimer(state.RoomName)
+}
+
+// playNextSong advances to the next song and plays it.
+// Caller must hold state.mu.
+func playNextSong(state *RoomMusicState) {
+	stopProgressTimer(state.RoomName)
+	if state.CurrentIndex < len(state.PlayQueue)-1 {
+		state.CurrentIndex++
+		playCurrentSong(state)
+	} else {
+		state.IsPlaying = false
+		state.CurrentSongURL = ""
+		broadcastMusicCommand("queue_finished", map[string]interface{}{
+			"room_name": state.RoomName,
+		})
+	}
+}
+
+func startProgressTimer(roomName string) {
+	stopProgressTimer(roomName)
+	progressTimersMu.Lock()
+	stop := make(chan struct{})
+	progressTimers[roomName] = stop
+	progressTimersMu.Unlock()
+
+	go func() {
+		ticker := time.NewTicker(1 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-stop:
+				return
+			case <-ticker.C:
+				roomStatesMu.RLock()
+				state, ok := roomStates[roomName]
+				roomStatesMu.RUnlock()
+				if !ok {
+					return
+				}
+				state.mu.Lock()
+				if !state.IsPlaying || len(state.PlayQueue) == 0 || state.CurrentIndex >= len(state.PlayQueue) {
+					state.mu.Unlock()
+					return
+				}
+				now := float64(time.Now().UnixMilli()) / 1000.0
+				elapsed := int64((now - state.PlayStartTime) * 1000)
+				pos := state.PlayStartPosition + elapsed
+				cur := state.PlayQueue[state.CurrentIndex]
+				durationMS := int64(cur.Song.Duration) * 1000
+
+				if durationMS > 0 && pos >= durationMS {
+					playNextSong(state)
+					state.mu.Unlock()
+					return
+				}
+				state.mu.Unlock()
+			}
+		}
+	}()
+}
+
+func stopProgressTimer(roomName string) {
+	progressTimersMu.Lock()
+	defer progressTimersMu.Unlock()
+	if ch, ok := progressTimers[roomName]; ok {
+		close(ch)
+		delete(progressTimers, roomName)
 	}
 }
 
@@ -128,38 +285,93 @@ func RegisterMusicRoutes(g *echo.Group, ssoClient *sso.Client) {
 	g.GET("/bot/progress/:room_name", musicBotProgress(ssoClient))
 }
 
-// Stub: QQ/NetEase APIs not available in Go
 func musicLoginQRCode() echo.HandlerFunc {
 	return func(c echo.Context) error {
-		return c.JSON(http.StatusNotImplemented, map[string]string{
-			"error": "music login not implemented in Go backend; requires QQ/NetEase API libraries",
+		platform := c.QueryParam("platform")
+		if platform == "netease" {
+			unikey, err := neteaseClient.GetQRKey()
+			if err != nil {
+				return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			}
+			neteaseUnikey = unikey
+			qrURL := "https://music.163.com/login?codekey=" + unikey
+			return c.JSON(http.StatusOK, map[string]interface{}{
+				"qrcode":   qrURL,
+				"platform": "netease",
+			})
+		}
+		// QQ Music QR login
+		data, mimetype, err := qqClient.GetQRCode()
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		}
+		encoded := "data:" + mimetype + ";base64," + base64.StdEncoding.EncodeToString(data)
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"qrcode":   encoded,
+			"platform": "qq",
 		})
 	}
 }
 
 func musicLoginStatus() echo.HandlerFunc {
 	return func(c echo.Context) error {
-		return c.JSON(http.StatusNotImplemented, map[string]string{"error": "not implemented"})
+		platform := c.QueryParam("platform")
+		if platform == "netease" {
+			if neteaseUnikey == "" {
+				return c.JSON(http.StatusBadRequest, map[string]string{"error": "no active QR login session"})
+			}
+			status, err := neteaseClient.CheckQR(neteaseUnikey)
+			if err != nil {
+				return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			}
+			if status == "success" || status == "expired" {
+				neteaseUnikey = ""
+			}
+			return c.JSON(http.StatusOK, map[string]interface{}{
+				"status":   status,
+				"platform": "netease",
+			})
+		}
+		// QQ Music
+		status, err := qqClient.CheckQRStatus()
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		}
+		resp := map[string]interface{}{
+			"status":   status,
+			"platform": "qq",
+		}
+		if status == "success" {
+			resp["logged_in"] = true
+		}
+		return c.JSON(http.StatusOK, resp)
 	}
 }
 
 func musicLoginCheck() echo.HandlerFunc {
 	return func(c echo.Context) error {
-		return c.JSON(http.StatusOK, map[string]interface{}{"logged_in": false, "platform": "qq"})
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"logged_in": qqClient.IsLoggedIn(),
+			"platform":  "qq",
+		})
 	}
 }
 
 func musicLoginCheckAll() echo.HandlerFunc {
 	return func(c echo.Context) error {
+		neteaseLoggedIn, _ := neteaseClient.GetLoginStatus()
 		return c.JSON(http.StatusOK, map[string]interface{}{
-			"qq":      map[string]interface{}{"logged_in": false},
-			"netease": map[string]interface{}{"logged_in": false},
+			"qq":      map[string]interface{}{"logged_in": qqClient.IsLoggedIn()},
+			"netease": map[string]interface{}{"logged_in": neteaseLoggedIn},
 		})
 	}
 }
 
 func musicLogout() echo.HandlerFunc {
 	return func(c echo.Context) error {
+		// Reinitialize clients to clear credentials
+		qqClient = music.NewQQMusicClient("")
+		neteaseClient = music.NewNeteaseClient("netease_credential.json")
 		return c.JSON(http.StatusOK, map[string]interface{}{"success": true})
 	}
 }
@@ -169,17 +381,58 @@ func musicSearch(ssoClient *sso.Client) echo.HandlerFunc {
 		if _, err := authenticateFromEcho(c, ssoClient); err != nil {
 			return err
 		}
-		return c.JSON(http.StatusNotImplemented, map[string]string{
-			"error": "music search not implemented; requires QQ/NetEase API libraries",
+		var req searchRequest
+		if err := c.Bind(&req); err != nil {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid body"})
+		}
+		if req.Keyword == "" {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "keyword required"})
+		}
+		if req.Num <= 0 {
+			req.Num = 10
+		}
+
+		var allResults []music.SongResult
+		platform := req.Platform
+
+		if platform == "" || platform == "all" || platform == "qq" {
+			results, err := qqClient.SearchSongs(req.Keyword, req.Num)
+			if err != nil {
+				log.Printf("music: qq search error: %v", err)
+			} else {
+				allResults = append(allResults, results...)
+			}
+		}
+		if platform == "" || platform == "all" || platform == "netease" {
+			results, err := neteaseClient.SearchSongs(req.Keyword, req.Num)
+			if err != nil {
+				log.Printf("music: netease search error: %v", err)
+			} else {
+				allResults = append(allResults, results...)
+			}
+		}
+
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"songs": allResults,
 		})
 	}
 }
 
 func musicSongURL() echo.HandlerFunc {
 	return func(c echo.Context) error {
-		return c.JSON(http.StatusNotImplemented, map[string]string{
-			"error": "song URL retrieval not implemented; requires QQ/NetEase API libraries",
-		})
+		mid := c.Param("mid")
+		platform := c.QueryParam("platform")
+		if platform == "" {
+			platform = "qq"
+		}
+		songURL, err := getSongURL(mid, platform)
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		}
+		if songURL == "" {
+			return c.JSON(http.StatusNotFound, map[string]string{"error": "no URL found"})
+		}
+		return c.JSON(http.StatusOK, map[string]interface{}{"url": songURL})
 	}
 }
 
@@ -267,11 +520,14 @@ func musicQueueClear(ssoClient *sso.Client) echo.HandlerFunc {
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid body"})
 		}
 		state := getRoomState(req.RoomName)
+		stopProgressTimer(req.RoomName)
 		state.mu.Lock()
 		state.IsPlaying = false
 		state.PlayQueue = nil
 		state.CurrentIndex = 0
+		state.CurrentSongURL = ""
 		state.mu.Unlock()
+		broadcastMusicCommand("stop", map[string]interface{}{"room_name": req.RoomName})
 		return c.JSON(http.StatusOK, map[string]interface{}{"success": true, "room_name": req.RoomName})
 	}
 }
@@ -299,6 +555,7 @@ func musicBotStop(ssoClient *sso.Client) echo.HandlerFunc {
 		if err := c.Bind(&req); err != nil {
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid body"})
 		}
+		stopProgressTimer(req.RoomName)
 		roomStatesMu.Lock()
 		delete(roomStates, req.RoomName)
 		roomStatesMu.Unlock()
@@ -346,9 +603,12 @@ func musicBotPlay(ssoClient *sso.Client) echo.HandlerFunc {
 		if len(state.PlayQueue) == 0 || state.CurrentIndex >= len(state.PlayQueue) {
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": "no song in queue"})
 		}
-		// Stub: actual playback requires song URL fetching from QQ/NetEase
-		return c.JSON(http.StatusNotImplemented, map[string]string{
-			"error": "playback not implemented; requires QQ/NetEase API libraries",
+		playCurrentSong(state)
+		if !state.IsPlaying {
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to start playback"})
+		}
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"success": true, "is_playing": true, "room_name": req.RoomName,
 		})
 	}
 }
@@ -363,6 +623,7 @@ func musicBotPause(ssoClient *sso.Client) echo.HandlerFunc {
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid body"})
 		}
 		state := getRoomState(req.RoomName)
+		stopProgressTimer(req.RoomName)
 		state.mu.Lock()
 		if state.IsPlaying {
 			now := float64(time.Now().UnixMilli()) / 1000.0
@@ -391,10 +652,12 @@ func musicBotResume(ssoClient *sso.Client) echo.HandlerFunc {
 			state.IsPlaying = true
 			state.PlayStartTime = float64(time.Now().UnixMilli()) / 1000.0
 			state.PlayStartPosition = state.PositionMS
+			posMS := state.PositionMS
 			state.mu.Unlock()
+			startProgressTimer(req.RoomName)
 			broadcastMusicCommand("resume", map[string]interface{}{
 				"room_name":   req.RoomName,
-				"position_ms": state.PositionMS,
+				"position_ms": posMS,
 			})
 			return c.JSON(http.StatusOK, map[string]interface{}{
 				"success": true, "is_playing": true, "room_name": req.RoomName,
@@ -420,7 +683,9 @@ func musicBotSkip(ssoClient *sso.Client) echo.HandlerFunc {
 		state.mu.Lock()
 		defer state.mu.Unlock()
 		if state.CurrentIndex < len(state.PlayQueue)-1 {
+			stopProgressTimer(req.RoomName)
 			state.CurrentIndex++
+			playCurrentSong(state)
 			return c.JSON(http.StatusOK, map[string]interface{}{
 				"success": true, "current_index": state.CurrentIndex, "room_name": req.RoomName,
 			})
@@ -444,7 +709,9 @@ func musicBotPrevious(ssoClient *sso.Client) echo.HandlerFunc {
 		state.mu.Lock()
 		defer state.mu.Unlock()
 		if state.CurrentIndex > 0 {
+			stopProgressTimer(req.RoomName)
 			state.CurrentIndex--
+			playCurrentSong(state)
 			return c.JSON(http.StatusOK, map[string]interface{}{
 				"success": true, "current_index": state.CurrentIndex, "room_name": req.RoomName,
 			})
