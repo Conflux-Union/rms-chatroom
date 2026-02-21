@@ -78,7 +78,7 @@ func Register(e *echo.Echo, cfg *config.Config, db *sql.DB, ssoClient *sso.Clien
 
 	// System routes
 	systemGroup := e.Group("/api/system")
-	RegisterSystemRoutes(systemGroup)
+	RegisterSystemRoutes(systemGroup, cfg)
 
 	// Music routes
 	musicGroup := e.Group("/api/music")
@@ -94,8 +94,4 @@ func Register(e *echo.Echo, cfg *config.Config, db *sql.DB, ssoClient *sso.Clien
 	// Bug report routes
 	bugGroup := e.Group("/api/bug")
 	RegisterBugReportRoutes(bugGroup, "bug_reports")
-
-	// App update routes
-	appGroup := e.Group("/api/app/android")
-	RegisterAppUpdateRoutes(appGroup, "android_app")
 }
