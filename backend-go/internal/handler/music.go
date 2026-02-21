@@ -350,6 +350,15 @@ func musicLoginStatus() echo.HandlerFunc {
 
 func musicLoginCheck() echo.HandlerFunc {
 	return func(c echo.Context) error {
+		platform := c.QueryParam("platform")
+		if platform == "netease" {
+			loggedIn, _ := neteaseClient.GetLoginStatus()
+			return c.JSON(http.StatusOK, map[string]interface{}{
+				"logged_in": loggedIn,
+				"platform":  "netease",
+			})
+		}
+		// Default to QQ
 		return c.JSON(http.StatusOK, map[string]interface{}{
 			"logged_in": qqClient.IsLoggedIn(),
 			"platform":  "qq",
@@ -369,9 +378,17 @@ func musicLoginCheckAll() echo.HandlerFunc {
 
 func musicLogout() echo.HandlerFunc {
 	return func(c echo.Context) error {
-		// Reinitialize clients to clear credentials
-		qqClient = music.NewQQMusicClient("")
-		neteaseClient = music.NewNeteaseClient("netease_credential.json")
+		platform := c.QueryParam("platform")
+		switch platform {
+		case "qq":
+			qqClient = music.NewQQMusicClient("")
+		case "netease":
+			neteaseClient = music.NewNeteaseClient("netease_credential.json")
+		default:
+			// Empty or "all": reinitialize both for backward compat
+			qqClient = music.NewQQMusicClient("")
+			neteaseClient = music.NewNeteaseClient("netease_credential.json")
+		}
 		return c.JSON(http.StatusOK, map[string]interface{}{"success": true})
 	}
 }
