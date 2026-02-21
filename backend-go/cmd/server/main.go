@@ -32,13 +32,16 @@ func main() {
 	dsn := cfg.DatabaseURL
 	dsn = strings.TrimPrefix(dsn, "mysql://")
 	dsn = strings.TrimPrefix(dsn, "mysql+aiomysql://")
-	// Ensure parseTime for time.Time scanning
+	// Ensure parseTime and loc=UTC for correct time.Time scanning
 	if !strings.Contains(dsn, "parseTime") {
 		if strings.Contains(dsn, "?") {
 			dsn += "&parseTime=true"
 		} else {
 			dsn += "?parseTime=true"
 		}
+	}
+	if !strings.Contains(dsn, "loc=") {
+		dsn += "&loc=UTC"
 	}
 
 	db, err := sql.Open("mysql", dsn)
