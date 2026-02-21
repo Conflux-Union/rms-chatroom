@@ -90,3 +90,6 @@ uploads/
 electron/dist/
 electron/out/
 electron/release/
+
+# Go build artifacts
+backend-go/rms-discord-server
