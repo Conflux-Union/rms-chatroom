@@ -13,7 +13,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/labstack/echo/v4"
 
-	"github.com/RMS-Server/rms-discord-go/internal/sso"
+	"github.com/RMS-Server/rms-discord-go/internal/jwtutil"
 )
 
 var mentionRe = regexp.MustCompile(`@(\w+)`)
@@ -64,14 +64,14 @@ type replyPayload struct {
 }
 
 // HandleChatWS handles the /ws/chat WebSocket endpoint.
-func HandleChatWS(ssoClient *sso.Client, db *sql.DB) echo.HandlerFunc {
+func HandleChatWS(jwtSecret string, db *sql.DB) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		token := c.QueryParam("token")
 		if token == "" {
 			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "missing token"})
 		}
 
-		user, err := ssoClient.VerifyToken(token)
+		user, err := jwtutil.ParseToken(token, jwtSecret)
 		if err != nil {
 			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "invalid token"})
 		}

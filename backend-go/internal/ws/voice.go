@@ -17,6 +17,7 @@ import (
 	"github.com/livekit/protocol/livekit"
 
 	"github.com/RMS-Server/rms-discord-go/internal/config"
+	"github.com/RMS-Server/rms-discord-go/internal/jwtutil"
 	"github.com/RMS-Server/rms-discord-go/internal/lk"
 	"github.com/RMS-Server/rms-discord-go/internal/permission"
 	"github.com/RMS-Server/rms-discord-go/internal/sso"
@@ -45,13 +46,13 @@ type sharerInfo struct {
 }
 
 // HandleVoiceWS handles the /ws/voice WebSocket endpoint.
-func HandleVoiceWS(ssoClient *sso.Client) echo.HandlerFunc {
+func HandleVoiceWS(jwtSecret string) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		token := c.QueryParam("token")
 		if token == "" {
 			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "missing token"})
 		}
-		user, err := ssoClient.VerifyToken(token)
+		user, err := jwtutil.ParseToken(token, jwtSecret)
 		if err != nil {
 			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "invalid token"})
 		}
@@ -84,28 +85,28 @@ func HandleVoiceWS(ssoClient *sso.Client) echo.HandlerFunc {
 }
 
 // RegisterVoiceHTTP registers voice-related HTTP endpoints.
-func RegisterVoiceHTTP(g *echo.Group, ssoClient *sso.Client, db *sql.DB, cfg *config.Config) {
+func RegisterVoiceHTTP(g *echo.Group, jwtSecret string, ssoClient *sso.Client, db *sql.DB, cfg *config.Config) {
 	lkc := lk.New(cfg)
 
-	g.GET("/:channel_id/token", voiceToken(ssoClient, lkc))
-	g.GET("/:channel_id/users", voiceUsers(ssoClient, lkc, db))
-	g.POST("/:channel_id/mute/:user_id", voiceMute(ssoClient, lkc, db))
-	g.POST("/:channel_id/kick/:user_id", voiceKick(ssoClient, lkc, db))
+	g.GET("/:channel_id/token", voiceToken(jwtSecret, lkc))
+	g.GET("/:channel_id/users", voiceUsers(jwtSecret, lkc, ssoClient, db))
+	g.POST("/:channel_id/mute/:user_id", voiceMute(jwtSecret, lkc, ssoClient, db))
+	g.POST("/:channel_id/kick/:user_id", voiceKick(jwtSecret, lkc, ssoClient, db))
 	g.GET("/:channel_id/host-mode", voiceHostModeGet(db))
-	g.POST("/:channel_id/host-mode", voiceHostModeSet(ssoClient, lkc, db))
-	g.POST("/:channel_id/screen-share/lock", voiceScreenShareLock(ssoClient, db))
-	g.POST("/:channel_id/screen-share/unlock", voiceScreenShareUnlock(ssoClient, db))
+	g.POST("/:channel_id/host-mode", voiceHostModeSet(jwtSecret, lkc, ssoClient, db))
+	g.POST("/:channel_id/screen-share/lock", voiceScreenShareLock(jwtSecret, db))
+	g.POST("/:channel_id/screen-share/unlock", voiceScreenShareUnlock(jwtSecret, db))
 	g.GET("/:channel_id/screen-share-status", voiceScreenShareStatus(db))
-	g.POST("/:channel_id/invite", voiceInviteCreate(ssoClient, db))
+	g.POST("/:channel_id/invite", voiceInviteCreate(jwtSecret, db))
 	g.GET("/invite/:token", voiceInviteValidate(db))
 	g.POST("/invite/:token/join", voiceInviteJoin(db, lkc))
-	g.GET("/user/all", voiceAllUsers(ssoClient, lkc, db))
+	g.GET("/user/all", voiceAllUsers(jwtSecret, lkc, ssoClient, db))
 
 	qqbot := g.Group("")
 	qqbot.GET("/qqbot/get_voice_channel_people", voiceQQBotUsers(lkc, db))
 }
 
-func authenticateRequest(c echo.Context, ssoClient *sso.Client) (*permission.UserInfo, error) {
+func authenticateRequest(c echo.Context, jwtSecret string) (*permission.UserInfo, error) {
 	token := c.QueryParam("token")
 	if token == "" {
 		a := c.Request().Header.Get("Authorization")
@@ -116,7 +117,7 @@ func authenticateRequest(c echo.Context, ssoClient *sso.Client) (*permission.Use
 	if token == "" {
 		return nil, c.JSON(http.StatusUnauthorized, map[string]string{"error": "missing token"})
 	}
-	user, err := ssoClient.VerifyToken(token)
+	user, err := jwtutil.ParseToken(token, jwtSecret)
 	if err != nil {
 		return nil, c.JSON(http.StatusUnauthorized, map[string]string{"error": "invalid token"})
 	}
@@ -158,9 +159,9 @@ func channelError(c echo.Context, err error) error {
 
 // --- Token ---
 
-func voiceToken(ssoClient *sso.Client, lkc *lk.Client) echo.HandlerFunc {
+func voiceToken(jwtSecret string, lkc *lk.Client) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		user, err := authenticateRequest(c, ssoClient)
+		user, err := authenticateRequest(c, jwtSecret)
 		if err != nil {
 			return err
 		}
@@ -180,9 +181,9 @@ func voiceToken(ssoClient *sso.Client, lkc *lk.Client) echo.HandlerFunc {
 
 // --- Users ---
 
-func voiceUsers(ssoClient *sso.Client, lkc *lk.Client, db *sql.DB) echo.HandlerFunc {
+func voiceUsers(jwtSecret string, lkc *lk.Client, ssoClient *sso.Client, db *sql.DB) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		_, err := authenticateRequest(c, ssoClient)
+		_, err := authenticateRequest(c, jwtSecret)
 		if err != nil {
 			return err
 		}
@@ -206,9 +207,9 @@ func voiceUsers(ssoClient *sso.Client, lkc *lk.Client, db *sql.DB) echo.HandlerF
 
 // --- Mute ---
 
-func voiceMute(ssoClient *sso.Client, lkc *lk.Client, db *sql.DB) echo.HandlerFunc {
+func voiceMute(jwtSecret string, lkc *lk.Client, ssoClient *sso.Client, db *sql.DB) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		user, err := authenticateRequest(c, ssoClient)
+		user, err := authenticateRequest(c, jwtSecret)
 		if err != nil {
 			return err
 		}
@@ -236,9 +237,9 @@ func voiceMute(ssoClient *sso.Client, lkc *lk.Client, db *sql.DB) echo.HandlerFu
 
 // --- Kick ---
 
-func voiceKick(ssoClient *sso.Client, lkc *lk.Client, db *sql.DB) echo.HandlerFunc {
+func voiceKick(jwtSecret string, lkc *lk.Client, ssoClient *sso.Client, db *sql.DB) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		user, err := authenticateRequest(c, ssoClient)
+		user, err := authenticateRequest(c, jwtSecret)
 		if err != nil {
 			return err
 		}
@@ -281,9 +282,9 @@ func voiceHostModeGet(db *sql.DB) echo.HandlerFunc {
 	}
 }
 
-func voiceHostModeSet(ssoClient *sso.Client, lkc *lk.Client, db *sql.DB) echo.HandlerFunc {
+func voiceHostModeSet(jwtSecret string, lkc *lk.Client, ssoClient *sso.Client, db *sql.DB) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		user, err := authenticateRequest(c, ssoClient)
+		user, err := authenticateRequest(c, jwtSecret)
 		if err != nil {
 			return err
 		}
@@ -373,9 +374,9 @@ func voiceScreenShareStatus(db *sql.DB) echo.HandlerFunc {
 	}
 }
 
-func voiceScreenShareLock(ssoClient *sso.Client, db *sql.DB) echo.HandlerFunc {
+func voiceScreenShareLock(jwtSecret string, db *sql.DB) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		user, err := authenticateRequest(c, ssoClient)
+		user, err := authenticateRequest(c, jwtSecret)
 		if err != nil {
 			return err
 		}
@@ -409,9 +410,9 @@ func voiceScreenShareLock(ssoClient *sso.Client, db *sql.DB) echo.HandlerFunc {
 	}
 }
 
-func voiceScreenShareUnlock(ssoClient *sso.Client, db *sql.DB) echo.HandlerFunc {
+func voiceScreenShareUnlock(jwtSecret string, db *sql.DB) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		user, err := authenticateRequest(c, ssoClient)
+		user, err := authenticateRequest(c, jwtSecret)
 		if err != nil {
 			return err
 		}
@@ -433,9 +434,9 @@ func voiceScreenShareUnlock(ssoClient *sso.Client, db *sql.DB) echo.HandlerFunc 
 
 // --- Invites ---
 
-func voiceInviteCreate(ssoClient *sso.Client, db *sql.DB) echo.HandlerFunc {
+func voiceInviteCreate(jwtSecret string, db *sql.DB) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		user, err := authenticateRequest(c, ssoClient)
+		user, err := authenticateRequest(c, jwtSecret)
 		if err != nil {
 			return err
 		}
@@ -544,9 +545,9 @@ func voiceInviteJoin(db *sql.DB, lkc *lk.Client) echo.HandlerFunc {
 
 // --- All Users / QQ Bot ---
 
-func voiceAllUsers(ssoClient *sso.Client, lkc *lk.Client, db *sql.DB) echo.HandlerFunc {
+func voiceAllUsers(jwtSecret string, lkc *lk.Client, ssoClient *sso.Client, db *sql.DB) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		_, err := authenticateRequest(c, ssoClient)
+		_, err := authenticateRequest(c, jwtSecret)
 		if err != nil {
 			return err
 		}

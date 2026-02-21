@@ -149,7 +149,7 @@ function onServerPermissionSaved() {
       :isOpen="showServerPermissionModal"
       :serverId="selectedServerForPermission || 0"
       :serverName="chat.currentServer?.name || ''"
-      :initialMinInternalLevel="chat.currentServer?.min_internal_level || 1"
+      :initialMinLevel="chat.currentServer?.min_level || 1"
       @close="showServerPermissionModal = false"
       @save="onServerPermissionSaved"
     />

@@ -9,17 +9,15 @@ import (
 	"github.com/labstack/echo/v4"
 
 	"github.com/RMS-Server/rms-discord-go/internal/middleware"
-	"github.com/RMS-Server/rms-discord-go/internal/sso"
 )
 
 // ReactionHandler handles message reaction endpoints.
 type ReactionHandler struct {
-	db  *sql.DB
-	sso *sso.Client
+	db *sql.DB
 }
 
-func NewReactionHandler(db *sql.DB, sso *sso.Client) *ReactionHandler {
-	return &ReactionHandler{db: db, sso: sso}
+func NewReactionHandler(db *sql.DB) *ReactionHandler {
+	return &ReactionHandler{db: db}
 }
 
 type reactionCreateReq struct {

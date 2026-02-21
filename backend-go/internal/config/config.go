@@ -11,7 +11,6 @@ import (
 type Config struct {
 	DatabaseURL      string   `json:"database_url"`
 	SSOBaseURL       string   `json:"sso_base_url"`
-	SSOVerifyEndpoint string  `json:"sso_verify_endpoint"`
 	Host             string   `json:"host"`
 	Port             int      `json:"port"`
 	Debug            bool     `json:"debug"`
@@ -33,24 +32,29 @@ type Config struct {
 	OAuthClientSecret       string `json:"oauth_client_secret"`
 	OAuthRedirectURI        string `json:"oauth_redirect_uri"`
 	OAuthScope              string `json:"oauth_scope"`
+
+	// Token expiry configuration
+	AccessTokenExpireMinutes int `json:"access_token_expire_minutes"`
+	RefreshTokenExpireDays   int `json:"refresh_token_expire_days"`
 }
 
 func defaults() Config {
 	return Config{
-		DatabaseURL:            "sqlite3://./discord.db",
-		SSOBaseURL:             "https://sso.rms.net.cn",
-		SSOVerifyEndpoint:      "/api/user",
-		Host:                   "0.0.0.0",
-		Port:                   8000,
-		Debug:                  true,
-		FrontendDistPath:       "../packages/web/dist",
-		CORSOrigins:            []string{"http://localhost:5173", "http://127.0.0.1:5173"},
-		JWTSecret:              "dev-secret-change-in-production",
-		OAuthBaseURL:           "https://sso.rms.net.cn",
-		OAuthAuthorizeEndpoint: "/oauth/authorize",
-		OAuthTokenEndpoint:     "/oauth/token",
-		OAuthUserinfoEndpoint:  "/oauth/userinfo",
-		OAuthScope:             "openid profile",
+		DatabaseURL:              "sqlite3://./discord.db",
+		SSOBaseURL:               "https://sso.rms.net.cn",
+		Host:                     "0.0.0.0",
+		Port:                     8000,
+		Debug:                    true,
+		FrontendDistPath:         "../packages/web/dist",
+		CORSOrigins:              []string{"http://localhost:5173", "http://127.0.0.1:5173"},
+		JWTSecret:                "dev-secret-change-in-production",
+		OAuthBaseURL:             "https://sso.rms.net.cn",
+		OAuthAuthorizeEndpoint:   "/oauth/authorize",
+		OAuthTokenEndpoint:       "/oauth/token",
+		OAuthUserinfoEndpoint:    "/oauth/userinfo",
+		OAuthScope:               "openid profile email",
+		AccessTokenExpireMinutes: 15,
+		RefreshTokenExpireDays:   30,
 	}
 }
 

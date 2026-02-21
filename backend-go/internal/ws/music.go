@@ -9,7 +9,7 @@ import (
 
 	"github.com/labstack/echo/v4"
 
-	"github.com/RMS-Server/rms-discord-go/internal/sso"
+	"github.com/RMS-Server/rms-discord-go/internal/jwtutil"
 )
 
 // MusicRoomManager manages per-room WebSocket client sets for music sync.
@@ -109,14 +109,14 @@ type musicWsMessage struct {
 }
 
 // HandleMusicWS handles the /ws/music WebSocket endpoint.
-func HandleMusicWS(ssoClient *sso.Client) echo.HandlerFunc {
+func HandleMusicWS(jwtSecret string) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		token := c.QueryParam("token")
 		if token == "" {
 			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "missing token"})
 		}
 
-		user, err := ssoClient.VerifyToken(token)
+		user, err := jwtutil.ParseToken(token, jwtSecret)
 		if err != nil {
 			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "invalid token"})
 		}

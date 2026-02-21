@@ -200,10 +200,10 @@ func (h *MessageHandler) GetMessages(c echo.Context) error {
 
 	// Verify channel
 	var chType string
-	var visMinServer, visMinInternal int
+	var minLevel int
 	err = h.db.QueryRow(
-		"SELECT type, visibility_min_server_level, visibility_min_internal_level FROM channels WHERE id = ?", channelID,
-	).Scan(&chType, &visMinServer, &visMinInternal)
+		"SELECT type, min_level FROM channels WHERE id = ?", channelID,
+	).Scan(&chType, &minLevel)
 	if err == sql.ErrNoRows {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "channel not found"})
 	}
@@ -213,7 +213,7 @@ func (h *MessageHandler) GetMessages(c echo.Context) error {
 	if chType != "TEXT" {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "not a text channel"})
 	}
-	if !permission.CanSeeChannel(user, visMinServer, visMinInternal) {
+	if !permission.CanAccess(user, minLevel) {
 		return c.JSON(http.StatusForbidden, map[string]string{"error": "you do not have permission to view this channel"})
 	}
 
@@ -319,10 +319,10 @@ func (h *MessageHandler) CreateMessage(c echo.Context) error {
 
 	// Verify channel
 	var chType string
-	var speakMinServer, speakMinInternal int
+	var speakMinLevel int
 	err = h.db.QueryRow(
-		"SELECT type, speak_min_server_level, speak_min_internal_level FROM channels WHERE id = ?", channelID,
-	).Scan(&chType, &speakMinServer, &speakMinInternal)
+		"SELECT type, speak_min_level FROM channels WHERE id = ?", channelID,
+	).Scan(&chType, &speakMinLevel)
 	if err == sql.ErrNoRows {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "channel not found"})
 	}
@@ -332,7 +332,7 @@ func (h *MessageHandler) CreateMessage(c echo.Context) error {
 	if chType != "TEXT" {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "not a text channel"})
 	}
-	if !permission.CanSpeakInChannel(user, speakMinServer, speakMinInternal) {
+	if !permission.CanSpeak(user, speakMinLevel) {
 		return c.JSON(http.StatusForbidden, map[string]string{"error": "you do not have permission to speak in this channel"})
 	}
 

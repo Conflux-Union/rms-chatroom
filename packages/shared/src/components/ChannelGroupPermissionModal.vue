@@ -2,24 +2,24 @@
   <div v-if="isOpen" class="modal-overlay" @click.self="handleClose">
     <div class="modal-content">
       <div class="modal-header">
-        <h2>{{ groupName }} - 频道组权限设置</h2>
-        <button class="close-btn" @click="handleClose">✕</button>
+        <h2>{{ groupName }} - Channel Group Permissions</h2>
+        <button class="close-btn" @click="handleClose">&times;</button>
       </div>
 
       <div class="modal-body">
         <InternalLevelPermissionSettings
-          v-model="groupVisibilityLevel"
-          title="频道组可见性权限"
-          description="只有达到此权限等级的用户才能看到此频道组及其内的频道"
+          v-model="groupMinLevel"
+          title="Visibility Permission Level"
+          description="Users must have at least this permission level to see this channel group"
           :maxLevel="userMaxLevel"
-          :serverValue="initialMinServerLevel"
+          :serverValue="initialMinLevel"
         />
       </div>
 
       <div class="modal-footer">
-        <button class="btn btn-secondary" @click="handleClose">取消</button>
+        <button class="btn btn-secondary" @click="handleClose">Cancel</button>
         <button class="btn btn-primary" @click="handleSave" :disabled="isSaving">
-          {{ isSaving ? '保存中...' : '保存' }}
+          {{ isSaving ? 'Saving...' : 'Save' }}
         </button>
       </div>
     </div>
@@ -37,35 +37,31 @@ interface Props {
   serverId: number
   groupId: number
   groupName: string
-  initialMinServerLevel?: number
+  initialMinLevel?: number
 }
 
 const props = withDefaults(defineProps<Props>(), {
-  initialMinServerLevel: 1
+  initialMinLevel: 1
 })
 
 const auth = useAuthStore()
 
 const emit = defineEmits<{
   'close': []
-  'save': [value: { minServerLevel: number }]
+  'save': [value: { minLevel: number }]
 }>()
 
-const groupVisibilityLevel = ref(props.initialMinServerLevel)
-
+const groupMinLevel = ref(props.initialMinLevel)
 const isSaving = ref(false)
-
 const API_BASE = import.meta.env.VITE_API_BASE || ''
 
-// 获取用户的最高权限等级
 const userMaxLevel = computed(() => {
   return auth.user?.permission_level || 1
 })
 
-// Update visibility level when props change
-watch(() => props.initialMinServerLevel, (val) => {
+watch(() => props.initialMinLevel, (val) => {
   if (val !== undefined) {
-    groupVisibilityLevel.value = val
+    groupMinLevel.value = val
   }
 })
 
@@ -78,28 +74,20 @@ async function handleSave() {
 
   try {
     isSaving.value = true
-
-    // Call API to update channel group permissions
     await axios.patch(
       `${API_BASE}/api/servers/${props.serverId}/channel-groups/${props.groupId}`,
-      {
-        min_server_level: groupVisibilityLevel.value
-      }
+      { min_level: groupMinLevel.value },
+      { headers: { Authorization: `Bearer ${auth.accessToken}` } }
     )
-
-    // Emit success
-    emit('save', {
-      minServerLevel: groupVisibilityLevel.value
-    })
-
+    emit('save', { minLevel: groupMinLevel.value })
     handleClose()
   } catch (error) {
     console.error('Failed to update channel group permissions:', error)
     if (axios.isAxiosError(error)) {
       const message = error.response?.data?.detail || error.message
-      alert(`保存失败: ${message}`)
+      alert(`Save failed: ${message}`)
     } else {
-      alert('保存失败，请重试')
+      alert('Save failed, please try again')
     }
   } finally {
     isSaving.value = false
@@ -123,12 +111,8 @@ async function handleSave() {
 }
 
 @keyframes fadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 .modal-content {
@@ -145,14 +129,8 @@ async function handleSave() {
 }
 
 @keyframes slideUp {
-  from {
-    transform: translateY(20px);
-    opacity: 0;
-  }
-  to {
-    transform: translateY(0);
-    opacity: 1;
-  }
+  from { transform: translateY(20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
 }
 
 .modal-header {
@@ -198,14 +176,6 @@ async function handleSave() {
   flex: 1;
   overflow-y: auto;
   padding: 24px;
-}
-
-.info-text {
-  font-size: 12px;
-  color: var(--color-text-muted);
-  margin-top: 16px;
-  margin-bottom: 0;
-  line-height: 1.5;
 }
 
 .modal-footer {

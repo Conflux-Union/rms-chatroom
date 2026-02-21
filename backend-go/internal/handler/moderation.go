@@ -9,14 +9,13 @@ import (
 	"github.com/labstack/echo/v4"
 
 	"github.com/RMS-Server/rms-discord-go/internal/permission"
-	"github.com/RMS-Server/rms-discord-go/internal/sso"
 )
 
 // RegisterModerationRoutes registers /api/mute routes.
-func RegisterModerationRoutes(g *echo.Group, ssoClient *sso.Client, db *sql.DB) {
-	g.POST("", createMute(ssoClient, db))
-	g.DELETE("/:id", removeMute(ssoClient, db))
-	g.GET("/user/:user_id", getUserMutes(ssoClient, db))
+func RegisterModerationRoutes(g *echo.Group, jwtSecret string, db *sql.DB) {
+	g.POST("", createMute(jwtSecret, db))
+	g.DELETE("/:id", removeMute(jwtSecret, db))
+	g.GET("/user/:user_id", getUserMutes(jwtSecret, db))
 }
 
 type muteCreateRequest struct {
@@ -28,9 +27,9 @@ type muteCreateRequest struct {
 	Reason          *string `json:"reason"`
 }
 
-func createMute(ssoClient *sso.Client, db *sql.DB) echo.HandlerFunc {
+func createMute(jwtSecret string, db *sql.DB) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		user, err := authenticateFromEcho(c, ssoClient)
+		user, err := authenticateFromEcho(c, jwtSecret)
 		if err != nil {
 			return err
 		}
@@ -85,9 +84,9 @@ func createMute(ssoClient *sso.Client, db *sql.DB) echo.HandlerFunc {
 	}
 }
 
-func removeMute(ssoClient *sso.Client, db *sql.DB) echo.HandlerFunc {
+func removeMute(jwtSecret string, db *sql.DB) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		user, err := authenticateFromEcho(c, ssoClient)
+		user, err := authenticateFromEcho(c, jwtSecret)
 		if err != nil {
 			return err
 		}
@@ -108,9 +107,9 @@ func removeMute(ssoClient *sso.Client, db *sql.DB) echo.HandlerFunc {
 	}
 }
 
-func getUserMutes(ssoClient *sso.Client, db *sql.DB) echo.HandlerFunc {
+func getUserMutes(jwtSecret string, db *sql.DB) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		if _, err := authenticateFromEcho(c, ssoClient); err != nil {
+		if _, err := authenticateFromEcho(c, jwtSecret); err != nil {
 			return err
 		}
 

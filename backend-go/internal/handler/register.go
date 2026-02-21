@@ -17,10 +17,10 @@ func Register(e *echo.Echo, cfg *config.Config, db *sql.DB, ssoClient *sso.Clien
 	channelH := NewChannelHandler(db, ssoClient)
 	groupH := NewChannelGroupHandler(db, ssoClient)
 	msgH := NewMessageHandler(db, ssoClient)
-	reactionH := NewReactionHandler(db, ssoClient)
-	readPosH := NewReadPositionHandler(db, ssoClient)
+	reactionH := NewReactionHandler(db)
+	readPosH := NewReadPositionHandler(db)
 
-	authMiddleware := mw.Auth(ssoClient)
+	authMiddleware := mw.Auth(cfg.JWTSecret)
 	adminMiddleware := mw.RequireAdmin()
 
 	// Auth routes (no auth required for login/callback/refresh/dev-login)
@@ -82,14 +82,14 @@ func Register(e *echo.Echo, cfg *config.Config, db *sql.DB, ssoClient *sso.Clien
 
 	// Music routes
 	musicGroup := e.Group("/api/music")
-	RegisterMusicRoutes(musicGroup, ssoClient)
+	RegisterMusicRoutes(musicGroup, cfg.JWTSecret)
 
 	// Moderation routes
 	muteGroup := e.Group("/api/mute")
-	RegisterModerationRoutes(muteGroup, ssoClient, db)
+	RegisterModerationRoutes(muteGroup, cfg.JWTSecret, db)
 
 	// File routes
-	RegisterFileRoutes(e, ssoClient, db, "uploads")
+	RegisterFileRoutes(e, cfg.JWTSecret, db, "uploads")
 
 	// Bug report routes
 	bugGroup := e.Group("/api/bug")

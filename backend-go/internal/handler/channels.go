@@ -23,36 +23,30 @@ func NewChannelHandler(db *sql.DB, sso *sso.Client) *ChannelHandler {
 }
 
 type channelCreateReq struct {
-	Name                       string `json:"name"`
-	Type                       string `json:"type"`
-	GroupID                    *int64 `json:"group_id"`
-	VisibilityMinServerLevel   int    `json:"visibility_min_server_level"`
-	VisibilityMinInternalLevel int    `json:"visibility_min_internal_level"`
-	SpeakMinServerLevel        int    `json:"speak_min_server_level"`
-	SpeakMinInternalLevel      int    `json:"speak_min_internal_level"`
+	Name          string `json:"name"`
+	Type          string `json:"type"`
+	GroupID       *int64 `json:"group_id"`
+	MinLevel      int    `json:"min_level"`
+	SpeakMinLevel int    `json:"speak_min_level"`
 }
 
 type channelUpdateReq struct {
-	Name                       *string `json:"name"`
-	GroupID                    *int64  `json:"group_id"`
-	VisibilityMinServerLevel   *int    `json:"visibility_min_server_level"`
-	VisibilityMinInternalLevel *int    `json:"visibility_min_internal_level"`
-	SpeakMinServerLevel        *int    `json:"speak_min_server_level"`
-	SpeakMinInternalLevel      *int    `json:"speak_min_internal_level"`
+	Name          *string `json:"name"`
+	GroupID       *int64  `json:"group_id"`
+	MinLevel      *int    `json:"min_level"`
+	SpeakMinLevel *int    `json:"speak_min_level"`
 }
 
 type channelResponse struct {
-	ID                         int64  `json:"id"`
-	ServerID                   int64  `json:"server_id"`
-	GroupID                    *int64 `json:"group_id"`
-	Name                       string `json:"name"`
-	Type                       string `json:"type"`
-	Position                   int    `json:"position"`
-	TopPosition                int    `json:"top_position"`
-	VisibilityMinServerLevel   int    `json:"visibility_min_server_level"`
-	VisibilityMinInternalLevel int    `json:"visibility_min_internal_level"`
-	SpeakMinServerLevel        int    `json:"speak_min_server_level"`
-	SpeakMinInternalLevel      int    `json:"speak_min_internal_level"`
+	ID            int64  `json:"id"`
+	ServerID      int64  `json:"server_id"`
+	GroupID       *int64 `json:"group_id"`
+	Name          string `json:"name"`
+	Type          string `json:"type"`
+	Position      int    `json:"position"`
+	TopPosition   int    `json:"top_position"`
+	MinLevel      int    `json:"min_level"`
+	SpeakMinLevel int    `json:"speak_min_level"`
 }
 
 // ListChannels returns channels filtered by user visibility.
@@ -66,8 +60,7 @@ func (h *ChannelHandler) ListChannels(c echo.Context) error {
 
 	rows, err := h.db.Query(
 		`SELECT id, server_id, group_id, name, type, position, top_position,
-		        visibility_min_server_level, visibility_min_internal_level,
-		        speak_min_server_level, speak_min_internal_level
+		        min_level, speak_min_level
 		 FROM channels WHERE server_id = ? ORDER BY position`, serverID,
 	)
 	if err != nil {
@@ -80,11 +73,10 @@ func (h *ChannelHandler) ListChannels(c echo.Context) error {
 		var ch channelResponse
 		if err := rows.Scan(&ch.ID, &ch.ServerID, &ch.GroupID, &ch.Name, &ch.Type,
 			&ch.Position, &ch.TopPosition,
-			&ch.VisibilityMinServerLevel, &ch.VisibilityMinInternalLevel,
-			&ch.SpeakMinServerLevel, &ch.SpeakMinInternalLevel); err != nil {
+			&ch.MinLevel, &ch.SpeakMinLevel); err != nil {
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		}
-		if permission.CanSeeChannel(user, ch.VisibilityMinServerLevel, ch.VisibilityMinInternalLevel) {
+		if permission.CanAccess(user, ch.MinLevel) {
 			channels = append(channels, ch)
 		}
 	}
@@ -103,10 +95,6 @@ func (h *ChannelHandler) CreateChannel(c echo.Context) error {
 	}
 
 	var req channelCreateReq
-	req.VisibilityMinServerLevel = 1
-	req.VisibilityMinInternalLevel = 1
-	req.SpeakMinServerLevel = 1
-	req.SpeakMinInternalLevel = 1
 	if err := c.Bind(&req); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 	}
@@ -118,17 +106,11 @@ func (h *ChannelHandler) CreateChannel(c echo.Context) error {
 	}
 
 	// Validate permission levels
-	if req.VisibilityMinServerLevel < 1 || req.VisibilityMinServerLevel > 4 {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "visibility_min_server_level must be 1-4"})
+	if req.MinLevel < 0 {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "min_level must be >= 0"})
 	}
-	if req.VisibilityMinInternalLevel < 1 || req.VisibilityMinInternalLevel > 2 {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "visibility_min_internal_level must be 1-2"})
-	}
-	if req.SpeakMinServerLevel < 1 || req.SpeakMinServerLevel > 4 {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "speak_min_server_level must be 1-4"})
-	}
-	if req.SpeakMinInternalLevel < 1 || req.SpeakMinInternalLevel > 2 {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "speak_min_internal_level must be 1-2"})
+	if req.SpeakMinLevel < 0 {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "speak_min_level must be >= 0"})
 	}
 
 	// Verify server exists
@@ -175,12 +157,10 @@ func (h *ChannelHandler) CreateChannel(c echo.Context) error {
 
 	res, err := h.db.Exec(
 		`INSERT INTO channels (server_id, group_id, name, type, position, top_position,
-		    visibility_min_server_level, visibility_min_internal_level,
-		    speak_min_server_level, speak_min_internal_level)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		    min_level, speak_min_level)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 		serverID, req.GroupID, req.Name, channelType, position, topPosition,
-		req.VisibilityMinServerLevel, req.VisibilityMinInternalLevel,
-		req.SpeakMinServerLevel, req.SpeakMinInternalLevel,
+		req.MinLevel, req.SpeakMinLevel,
 	)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
@@ -191,10 +171,7 @@ func (h *ChannelHandler) CreateChannel(c echo.Context) error {
 		ID: chID, ServerID: serverID, GroupID: req.GroupID,
 		Name: req.Name, Type: channelType,
 		Position: position, TopPosition: topPosition,
-		VisibilityMinServerLevel:   req.VisibilityMinServerLevel,
-		VisibilityMinInternalLevel: req.VisibilityMinInternalLevel,
-		SpeakMinServerLevel:        req.SpeakMinServerLevel,
-		SpeakMinInternalLevel:      req.SpeakMinInternalLevel,
+		MinLevel: req.MinLevel, SpeakMinLevel: req.SpeakMinLevel,
 	})
 }
 
@@ -210,13 +187,11 @@ func (h *ChannelHandler) UpdateChannel(c echo.Context) error {
 	var ch channelResponse
 	err = h.db.QueryRow(
 		`SELECT id, server_id, group_id, name, type, position, top_position,
-		        visibility_min_server_level, visibility_min_internal_level,
-		        speak_min_server_level, speak_min_internal_level
+		        min_level, speak_min_level
 		 FROM channels WHERE id = ?`, chID,
 	).Scan(&ch.ID, &ch.ServerID, &ch.GroupID, &ch.Name, &ch.Type,
 		&ch.Position, &ch.TopPosition,
-		&ch.VisibilityMinServerLevel, &ch.VisibilityMinInternalLevel,
-		&ch.SpeakMinServerLevel, &ch.SpeakMinInternalLevel)
+		&ch.MinLevel, &ch.SpeakMinLevel)
 	if err == sql.ErrNoRows {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "channel not found"})
 	}
@@ -232,29 +207,17 @@ func (h *ChannelHandler) UpdateChannel(c echo.Context) error {
 	if req.Name != nil {
 		ch.Name = *req.Name
 	}
-	if req.VisibilityMinServerLevel != nil {
-		if *req.VisibilityMinServerLevel < 1 || *req.VisibilityMinServerLevel > 4 {
-			return c.JSON(http.StatusBadRequest, map[string]string{"error": "visibility_min_server_level must be 1-4"})
+	if req.MinLevel != nil {
+		if *req.MinLevel < 0 {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "min_level must be >= 0"})
 		}
-		ch.VisibilityMinServerLevel = *req.VisibilityMinServerLevel
+		ch.MinLevel = *req.MinLevel
 	}
-	if req.VisibilityMinInternalLevel != nil {
-		if *req.VisibilityMinInternalLevel < 1 || *req.VisibilityMinInternalLevel > 2 {
-			return c.JSON(http.StatusBadRequest, map[string]string{"error": "visibility_min_internal_level must be 1-2"})
+	if req.SpeakMinLevel != nil {
+		if *req.SpeakMinLevel < 0 {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "speak_min_level must be >= 0"})
 		}
-		ch.VisibilityMinInternalLevel = *req.VisibilityMinInternalLevel
-	}
-	if req.SpeakMinServerLevel != nil {
-		if *req.SpeakMinServerLevel < 1 || *req.SpeakMinServerLevel > 4 {
-			return c.JSON(http.StatusBadRequest, map[string]string{"error": "speak_min_server_level must be 1-4"})
-		}
-		ch.SpeakMinServerLevel = *req.SpeakMinServerLevel
-	}
-	if req.SpeakMinInternalLevel != nil {
-		if *req.SpeakMinInternalLevel < 1 || *req.SpeakMinInternalLevel > 2 {
-			return c.JSON(http.StatusBadRequest, map[string]string{"error": "speak_min_internal_level must be 1-2"})
-		}
-		ch.SpeakMinInternalLevel = *req.SpeakMinInternalLevel
+		ch.SpeakMinLevel = *req.SpeakMinLevel
 	}
 
 	// Handle group_id change: -1 means ungroup
@@ -300,12 +263,10 @@ func (h *ChannelHandler) UpdateChannel(c echo.Context) error {
 
 	_, err = h.db.Exec(
 		`UPDATE channels SET name = ?, group_id = ?, position = ?, top_position = ?,
-		    visibility_min_server_level = ?, visibility_min_internal_level = ?,
-		    speak_min_server_level = ?, speak_min_internal_level = ?
+		    min_level = ?, speak_min_level = ?
 		 WHERE id = ?`,
 		ch.Name, ch.GroupID, ch.Position, ch.TopPosition,
-		ch.VisibilityMinServerLevel, ch.VisibilityMinInternalLevel,
-		ch.SpeakMinServerLevel, ch.SpeakMinInternalLevel, chID,
+		ch.MinLevel, ch.SpeakMinLevel, chID,
 	)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})

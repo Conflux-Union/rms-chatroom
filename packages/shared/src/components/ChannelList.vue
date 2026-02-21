@@ -265,20 +265,20 @@ async function deleteChannelGroup() {
 
 // Channel Permission Modal callback
 function onChannelPermissionSaved(data: {
-  visibilityMinServerLevel: number
-  speakMinServerLevel: number
+  minLevel: number
+  speakMinLevel: number
 }) {
   if (selectedChannelForPermission.value) {
-    selectedChannelForPermission.value.visibility_min_server_level = data.visibilityMinServerLevel
-    selectedChannelForPermission.value.speak_min_server_level = data.speakMinServerLevel
+    selectedChannelForPermission.value.min_level = data.minLevel
+    selectedChannelForPermission.value.speak_min_level = data.speakMinLevel
   }
   showChannelPermissionModal.value = false
 }
 
 // Channel Group Permission Modal callback
-function onGroupPermissionSaved(data: { minServerLevel: number }) {
+function onGroupPermissionSaved(data: { minLevel: number }) {
   if (selectedGroupForPermission.value) {
-    selectedGroupForPermission.value.min_server_level = data.minServerLevel
+    selectedGroupForPermission.value.min_level = data.minLevel
   }
   showGroupPermissionModal.value = false
 }
@@ -968,8 +968,8 @@ async function deleteChannel() {
       :channelId="selectedChannelForPermission?.id || 0"
       :channelName="selectedChannelForPermission?.name || ''"
       :initialPermissions="{
-        visibilityMinServerLevel: selectedChannelForPermission?.visibility_min_server_level || 1,
-        speakMinServerLevel: selectedChannelForPermission?.speak_min_server_level || 1
+        minLevel: selectedChannelForPermission?.min_level || 1,
+        speakMinLevel: selectedChannelForPermission?.speak_min_level || 1
       }"
       @close="showChannelPermissionModal = false"
       @save="onChannelPermissionSaved"
@@ -981,7 +981,7 @@ async function deleteChannel() {
       :serverId="chat.currentServer?.id || 0"
       :groupId="selectedGroupForPermission?.id || 0"
       :groupName="selectedGroupForPermission?.name || ''"
-      :initialMinServerLevel="selectedGroupForPermission?.min_server_level || 1"
+      :initialMinLevel="selectedGroupForPermission?.min_level || 1"
       @close="showGroupPermissionModal = false"
       @save="onGroupPermissionSaved"
     />

@@ -50,7 +50,7 @@ func main() {
 	db.SetMaxIdleConns(5)
 	db.SetConnMaxLifetime(5 * time.Minute)
 
-	ssoClient := sso.NewClient(cfg.SSOBaseURL, cfg.SSOVerifyEndpoint)
+	ssoClient := sso.NewClient(cfg.SSOBaseURL)
 
 	e := echo.New()
 	e.HideBanner = true

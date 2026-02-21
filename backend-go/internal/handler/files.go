@@ -17,7 +17,6 @@ import (
 	"github.com/labstack/echo/v4"
 
 	"github.com/RMS-Server/rms-discord-go/internal/permission"
-	"github.com/RMS-Server/rms-discord-go/internal/sso"
 )
 
 const maxFileSize = 10 * 1024 * 1024 // 10MB
@@ -31,10 +30,10 @@ var (
 )
 
 // RegisterFileRoutes registers file upload/download/delete routes.
-func RegisterFileRoutes(e *echo.Echo, ssoClient *sso.Client, db *sql.DB, uploadDir string) {
-	e.POST("/api/channels/:channel_id/upload", uploadFile(ssoClient, db, uploadDir))
-	e.GET("/api/files/:id", downloadFile(ssoClient, db, uploadDir))
-	e.DELETE("/api/files/:id", deleteFile(ssoClient, db, uploadDir))
+func RegisterFileRoutes(e *echo.Echo, jwtSecret string, db *sql.DB, uploadDir string) {
+	e.POST("/api/channels/:channel_id/upload", uploadFile(jwtSecret, db, uploadDir))
+	e.GET("/api/files/:id", downloadFile(jwtSecret, db, uploadDir))
+	e.DELETE("/api/files/:id", deleteFile(jwtSecret, db, uploadDir))
 }
 
 func sanitizeFilename(name string) string {
@@ -50,9 +49,9 @@ func sanitizeFilename(name string) string {
 	return name
 }
 
-func uploadFile(ssoClient *sso.Client, db *sql.DB, uploadDir string) echo.HandlerFunc {
+func uploadFile(jwtSecret string, db *sql.DB, uploadDir string) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		user, err := authenticateFromEcho(c, ssoClient)
+		user, err := authenticateFromEcho(c, jwtSecret)
 		if err != nil {
 			return err
 		}
@@ -143,9 +142,9 @@ func uploadFile(ssoClient *sso.Client, db *sql.DB, uploadDir string) echo.Handle
 	}
 }
 
-func downloadFile(ssoClient *sso.Client, db *sql.DB, uploadDir string) echo.HandlerFunc {
+func downloadFile(jwtSecret string, db *sql.DB, uploadDir string) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		if _, err := authenticateFromEcho(c, ssoClient); err != nil {
+		if _, err := authenticateFromEcho(c, jwtSecret); err != nil {
 			return err
 		}
 
@@ -176,9 +175,9 @@ func downloadFile(ssoClient *sso.Client, db *sql.DB, uploadDir string) echo.Hand
 	}
 }
 
-func deleteFile(ssoClient *sso.Client, db *sql.DB, uploadDir string) echo.HandlerFunc {
+func deleteFile(jwtSecret string, db *sql.DB, uploadDir string) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		user, err := authenticateFromEcho(c, ssoClient)
+		user, err := authenticateFromEcho(c, jwtSecret)
 		if err != nil {
 			return err
 		}
