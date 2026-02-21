@@ -11,14 +11,31 @@ type UserInfo struct {
 	AvatarURL       string `json:"avatar_url"`
 }
 
-// CanAccess checks if user meets the minimum group level requirement.
-func CanAccess(u *UserInfo, minLevel int) bool {
-	return u.GroupLevel >= minLevel
+// PermRule defines a dual-dimension permission rule.
+type PermRule struct {
+	PermMinLevel  int
+	GroupMinLevel int
+	LogicOperator string // "AND" or "OR"
 }
 
-// CanSpeak checks if user meets the minimum speak level requirement.
-func CanSpeak(u *UserInfo, speakMinLevel int) bool {
-	return u.GroupLevel >= speakMinLevel
+// Check evaluates whether the user satisfies this permission rule.
+func (r PermRule) Check(u *UserInfo) bool {
+	permOK := u.PermissionLevel >= r.PermMinLevel
+	groupOK := u.GroupLevel >= r.GroupMinLevel
+	if r.LogicOperator == "OR" {
+		return permOK || groupOK
+	}
+	return permOK && groupOK
+}
+
+// CanAccess checks if user meets the permission rule for access.
+func CanAccess(u *UserInfo, rule PermRule) bool {
+	return rule.Check(u)
+}
+
+// CanSpeak checks if user meets the permission rule for speaking.
+func CanSpeak(u *UserInfo, rule PermRule) bool {
+	return rule.Check(u)
 }
 
 // IsAdmin returns true if user has admin privileges (permission_level >= 3).

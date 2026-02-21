@@ -2,24 +2,28 @@
   <div v-if="isOpen" class="modal-overlay" @click.self="handleClose">
     <div class="modal-content">
       <div class="modal-header">
-        <h2>{{ groupName }} - Channel Group Permissions</h2>
+        <h2>{{ groupName }} - 频道组权限设置</h2>
         <button class="close-btn" @click="handleClose">&times;</button>
       </div>
 
       <div class="modal-body">
-        <InternalLevelPermissionSettings
-          v-model="groupMinLevel"
-          title="Visibility Permission Level"
-          description="Users must have at least this permission level to see this channel group"
+        <DualPermissionSettings
+          v-model:permLevel="groupPermMinLevel"
+          v-model:groupLevel="groupMinLevel"
+          v-model:logicOperator="groupLogicOperator"
+          title="可见性权限"
+          description="用户需满足此权限要求才能看到此频道组"
           :maxLevel="userMaxLevel"
-          :serverValue="initialMinLevel"
+          :serverPermLevel="initialPermMinLevel"
+          :serverGroupLevel="initialMinLevel"
+          :serverOperator="initialLogicOperator"
         />
       </div>
 
       <div class="modal-footer">
-        <button class="btn btn-secondary" @click="handleClose">Cancel</button>
+        <button class="btn btn-secondary" @click="handleClose">取消</button>
         <button class="btn btn-primary" @click="handleSave" :disabled="isSaving">
-          {{ isSaving ? 'Saving...' : 'Save' }}
+          {{ isSaving ? '保存中...' : '保存' }}
         </button>
       </div>
     </div>
@@ -29,7 +33,7 @@
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
 import { useAuthStore } from '../stores/auth'
-import InternalLevelPermissionSettings from './InternalLevelPermissionSettings.vue'
+import DualPermissionSettings from './DualPermissionSettings.vue'
 import axios from 'axios'
 
 interface Props {
@@ -38,20 +42,26 @@ interface Props {
   groupId: number
   groupName: string
   initialMinLevel?: number
+  initialPermMinLevel?: number
+  initialLogicOperator?: 'AND' | 'OR'
 }
 
 const props = withDefaults(defineProps<Props>(), {
-  initialMinLevel: 1
+  initialMinLevel: 0,
+  initialPermMinLevel: 0,
+  initialLogicOperator: 'AND'
 })
 
 const auth = useAuthStore()
 
 const emit = defineEmits<{
   'close': []
-  'save': [value: { minLevel: number }]
+  'save': [value: { minLevel: number; permMinLevel: number; logicOperator: 'AND' | 'OR' }]
 }>()
 
 const groupMinLevel = ref(props.initialMinLevel)
+const groupPermMinLevel = ref(props.initialPermMinLevel)
+const groupLogicOperator = ref<'AND' | 'OR'>(props.initialLogicOperator)
 const isSaving = ref(false)
 const API_BASE = import.meta.env.VITE_API_BASE || ''
 
@@ -59,10 +69,10 @@ const userMaxLevel = computed(() => {
   return auth.user?.permission_level || 1
 })
 
-watch(() => props.initialMinLevel, (val) => {
-  if (val !== undefined) {
-    groupMinLevel.value = val
-  }
+watch(() => [props.initialMinLevel, props.initialPermMinLevel, props.initialLogicOperator] as const, ([gl, pl, op]) => {
+  groupMinLevel.value = gl
+  groupPermMinLevel.value = pl
+  groupLogicOperator.value = op
 })
 
 function handleClose() {
@@ -76,18 +86,26 @@ async function handleSave() {
     isSaving.value = true
     await axios.patch(
       `${API_BASE}/api/servers/${props.serverId}/channel-groups/${props.groupId}`,
-      { min_level: groupMinLevel.value },
+      {
+        min_level: groupMinLevel.value,
+        perm_min_level: groupPermMinLevel.value,
+        logic_operator: groupLogicOperator.value
+      },
       { headers: { Authorization: `Bearer ${auth.accessToken}` } }
     )
-    emit('save', { minLevel: groupMinLevel.value })
+    emit('save', {
+      minLevel: groupMinLevel.value,
+      permMinLevel: groupPermMinLevel.value,
+      logicOperator: groupLogicOperator.value
+    })
     handleClose()
   } catch (error) {
     console.error('Failed to update channel group permissions:', error)
     if (axios.isAxiosError(error)) {
       const message = error.response?.data?.detail || error.message
-      alert(`Save failed: ${message}`)
+      alert(`保存失败：${message}`)
     } else {
-      alert('Save failed, please try again')
+      alert('保存失败，请重试')
     }
   } finally {
     isSaving.value = false

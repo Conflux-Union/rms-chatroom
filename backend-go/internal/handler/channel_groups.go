@@ -23,21 +23,27 @@ func NewChannelGroupHandler(db *sql.DB, sso *sso.Client) *ChannelGroupHandler {
 }
 
 type channelGroupCreateReq struct {
-	Name     string `json:"name"`
-	MinLevel int    `json:"min_level"`
+	Name          string `json:"name"`
+	MinLevel      int    `json:"min_level"`
+	PermMinLevel  int    `json:"perm_min_level"`
+	LogicOperator string `json:"logic_operator"`
 }
 
 type channelGroupUpdateReq struct {
-	Name     *string `json:"name"`
-	MinLevel *int    `json:"min_level"`
+	Name          *string `json:"name"`
+	MinLevel      *int    `json:"min_level"`
+	PermMinLevel  *int    `json:"perm_min_level"`
+	LogicOperator *string `json:"logic_operator"`
 }
 
 type channelGroupResponse struct {
-	ID       int64  `json:"id"`
-	ServerID int64  `json:"server_id"`
-	Name     string `json:"name"`
-	Position int    `json:"position"`
-	MinLevel int    `json:"min_level"`
+	ID            int64  `json:"id"`
+	ServerID      int64  `json:"server_id"`
+	Name          string `json:"name"`
+	Position      int    `json:"position"`
+	MinLevel      int    `json:"min_level"`
+	PermMinLevel  int    `json:"perm_min_level"`
+	LogicOperator string `json:"logic_operator"`
 }
 
 // ListChannelGroups returns groups filtered by user permission.
@@ -50,7 +56,7 @@ func (h *ChannelGroupHandler) ListChannelGroups(c echo.Context) error {
 	}
 
 	rows, err := h.db.Query(
-		"SELECT id, server_id, name, position, min_level FROM channel_groups WHERE server_id = ? ORDER BY position",
+		"SELECT id, server_id, name, position, min_level, perm_min_level, logic_operator FROM channel_groups WHERE server_id = ? ORDER BY position",
 		serverID,
 	)
 	if err != nil {
@@ -61,10 +67,11 @@ func (h *ChannelGroupHandler) ListChannelGroups(c echo.Context) error {
 	var groups []channelGroupResponse
 	for rows.Next() {
 		var g channelGroupResponse
-		if err := rows.Scan(&g.ID, &g.ServerID, &g.Name, &g.Position, &g.MinLevel); err != nil {
+		if err := rows.Scan(&g.ID, &g.ServerID, &g.Name, &g.Position, &g.MinLevel, &g.PermMinLevel, &g.LogicOperator); err != nil {
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		}
-		if permission.CanAccess(user, g.MinLevel) {
+		rule := permission.PermRule{PermMinLevel: g.PermMinLevel, GroupMinLevel: g.MinLevel, LogicOperator: g.LogicOperator}
+		if permission.CanAccess(user, rule) {
 			groups = append(groups, g)
 		}
 	}
@@ -88,6 +95,21 @@ func (h *ChannelGroupHandler) CreateChannelGroup(c echo.Context) error {
 	}
 	if req.Name == "" {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "name is required"})
+	}
+
+	if req.MinLevel < 0 {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "min_level must be >= 0"})
+	}
+	if req.PermMinLevel < 0 {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "perm_min_level must be >= 0"})
+	}
+
+	// Default logic operator
+	if req.LogicOperator == "" {
+		req.LogicOperator = "AND"
+	}
+	if req.LogicOperator != "AND" && req.LogicOperator != "OR" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "logic_operator must be AND or OR"})
 	}
 
 	// Verify server exists
@@ -114,8 +136,8 @@ func (h *ChannelGroupHandler) CreateChannelGroup(c echo.Context) error {
 	position := int(maxPos) + 1
 
 	res, err := h.db.Exec(
-		"INSERT INTO channel_groups (server_id, name, position, min_level) VALUES (?, ?, ?, ?)",
-		serverID, req.Name, position, req.MinLevel,
+		"INSERT INTO channel_groups (server_id, name, position, min_level, perm_min_level, logic_operator) VALUES (?, ?, ?, ?, ?, ?)",
+		serverID, req.Name, position, req.MinLevel, req.PermMinLevel, req.LogicOperator,
 	)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
@@ -125,6 +147,7 @@ func (h *ChannelGroupHandler) CreateChannelGroup(c echo.Context) error {
 	return c.JSON(http.StatusCreated, channelGroupResponse{
 		ID: gID, ServerID: serverID, Name: req.Name,
 		Position: position, MinLevel: req.MinLevel,
+		PermMinLevel: req.PermMinLevel, LogicOperator: req.LogicOperator,
 	})
 }
 
@@ -142,9 +165,9 @@ func (h *ChannelGroupHandler) UpdateChannelGroup(c echo.Context) error {
 
 	var g channelGroupResponse
 	err = h.db.QueryRow(
-		"SELECT id, server_id, name, position, min_level FROM channel_groups WHERE id = ? AND server_id = ?",
+		"SELECT id, server_id, name, position, min_level, perm_min_level, logic_operator FROM channel_groups WHERE id = ? AND server_id = ?",
 		groupID, serverID,
-	).Scan(&g.ID, &g.ServerID, &g.Name, &g.Position, &g.MinLevel)
+	).Scan(&g.ID, &g.ServerID, &g.Name, &g.Position, &g.MinLevel, &g.PermMinLevel, &g.LogicOperator)
 	if err == sql.ErrNoRows {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "channel group not found"})
 	}
@@ -166,10 +189,22 @@ func (h *ChannelGroupHandler) UpdateChannelGroup(c echo.Context) error {
 		}
 		g.MinLevel = *req.MinLevel
 	}
+	if req.PermMinLevel != nil {
+		if *req.PermMinLevel < 0 {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "perm_min_level must be >= 0"})
+		}
+		g.PermMinLevel = *req.PermMinLevel
+	}
+	if req.LogicOperator != nil {
+		if *req.LogicOperator != "AND" && *req.LogicOperator != "OR" {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "logic_operator must be AND or OR"})
+		}
+		g.LogicOperator = *req.LogicOperator
+	}
 
 	_, err = h.db.Exec(
-		"UPDATE channel_groups SET name = ?, min_level = ? WHERE id = ?",
-		g.Name, g.MinLevel, groupID,
+		"UPDATE channel_groups SET name = ?, min_level = ?, perm_min_level = ?, logic_operator = ? WHERE id = ?",
+		g.Name, g.MinLevel, g.PermMinLevel, g.LogicOperator, groupID,
 	)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
