@@ -10,34 +10,54 @@ from backend.core.config import get_settings
 
 settings = get_settings()
 
-# 设置日志
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s %(levelname)s [%(name)s] %(message)s'
-)
+LOG_FORMAT = "%(asctime)s %(levelname)s [%(name)s] %(message)s"
+
+# Pass this to uvicorn so it doesn't wipe our handlers with dictConfig
+UVICORN_LOG_CONFIG = {
+    "version": 1,
+    "disable_existing_loggers": False,  # critical: keep app loggers alive
+    "formatters": {
+        "default": {"format": LOG_FORMAT},
+    },
+    "handlers": {
+        "default": {
+            "class": "logging.StreamHandler",
+            "stream": "ext://sys.stdout",
+            "formatter": "default",
+        },
+    },
+    "root": {"level": "INFO", "handlers": ["default"]},
+    "loggers": {
+        "uvicorn": {"handlers": ["default"], "level": "INFO", "propagate": False},
+        "uvicorn.error": {"handlers": ["default"], "level": "INFO", "propagate": False},
+        "uvicorn.access": {"handlers": ["default"], "level": "INFO", "propagate": False},
+    },
+}
+
 logger = logging.getLogger(__name__)
 
 
 if __name__ == "__main__":
-    # 检查启动参数
-    verbose = '--verbose' in sys.argv
-    if '--verbose' in sys.argv:
-        sys.argv.remove('--verbose')
-        logging.getLogger().setLevel(logging.DEBUG)
-    
+    verbose = "--verbose" in sys.argv
     if verbose:
-        logger.info("启用详细日志模式")
+        sys.argv.remove("--verbose")
+
+    log_level = "debug" if verbose else "info"
+    if verbose:
+        UVICORN_LOG_CONFIG["root"]["level"] = "DEBUG"
+
     try:
         uvicorn.run(
             "backend.app:app",
             host=settings.host,
             port=settings.port,
             reload=settings.debug,
-            log_level="info"
+            log_level=log_level,
+            log_config=UVICORN_LOG_CONFIG,
         )
     except KeyboardInterrupt:
-        logger.info("收到中断信号，正在关闭服务...")
+        logger.info("Shutting down on interrupt")
     except Exception as e:
-        logger.exception(f"服务启动失败: {e}")
+        logger.exception(f"Server failed to start: {e}")
     finally:
-        logger.info("服务已关闭")
+        logger.info("Server stopped")
