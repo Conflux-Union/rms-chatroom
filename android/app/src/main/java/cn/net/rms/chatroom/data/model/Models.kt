@@ -9,8 +9,10 @@ data class User(
     val email: String,
     @SerializedName("permission_level")
     val permissionLevel: Int,
-    @SerializedName("is_active")
-    val isActive: Boolean
+    @SerializedName("group_level")
+    val groupLevel: Int = 0,
+    @SerializedName("avatar_url")
+    val avatarUrl: String? = null
 )
 
 data class Server(
@@ -19,7 +21,13 @@ data class Server(
     val icon: String?,
     @SerializedName("owner_id")
     val ownerId: Long,
-    val channels: List<Channel>? = null
+    val channels: List<Channel>? = null,
+    @SerializedName("min_level")
+    val minLevel: Int = 0,
+    @SerializedName("perm_min_level")
+    val permMinLevel: Int = 0,
+    @SerializedName("logic_operator")
+    val logicOperator: String = "AND"
 )
 
 data class Channel(
@@ -32,7 +40,19 @@ data class Channel(
     @SerializedName("top_position")
     val topPosition: Int = 0,
     @SerializedName("group_id")
-    val groupId: Long? = null
+    val groupId: Long? = null,
+    @SerializedName("min_level")
+    val minLevel: Int = 0,
+    @SerializedName("perm_min_level")
+    val permMinLevel: Int = 0,
+    @SerializedName("logic_operator")
+    val logicOperator: String = "AND",
+    @SerializedName("speak_min_level")
+    val speakMinLevel: Int = 0,
+    @SerializedName("speak_perm_min_level")
+    val speakPermMinLevel: Int = 0,
+    @SerializedName("speak_logic_operator")
+    val speakLogicOperator: String = "AND"
 )
 
 data class ChannelGroup(
@@ -40,7 +60,13 @@ data class ChannelGroup(
     @SerializedName("server_id")
     val serverId: Long,
     val name: String,
-    val position: Int
+    val position: Int,
+    @SerializedName("min_level")
+    val minLevel: Int = 0,
+    @SerializedName("perm_min_level")
+    val permMinLevel: Int = 0,
+    @SerializedName("logic_operator")
+    val logicOperator: String = "AND"
 )
 
 enum class ChannelType {
@@ -402,8 +428,8 @@ data class MuteCreateRequest(
     val serverId: Long? = null,
     @SerializedName("channel_id")
     val channelId: Long? = null,
-    @SerializedName("muted_until")
-    val mutedUntil: String? = null,
+    @SerializedName("duration_minutes")
+    val durationMinutes: Int? = null,
     val reason: String? = null
 )
 

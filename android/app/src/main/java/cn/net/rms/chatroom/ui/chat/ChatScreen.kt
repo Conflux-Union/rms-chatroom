@@ -173,7 +173,7 @@ fun ChatScreen(
     onReconnect: () -> Unit = {},
     onEditMessage: (Long, String) -> Unit = { _, _ -> },
     onDeleteMessage: (Long) -> Unit = {},
-    onMuteUser: (Long, String, String?, Long?, Long?, String?) -> Unit = { _, _, _, _, _, _ -> },
+    onMuteUser: (Long, String, Int?, Long?, Long?, String?) -> Unit = { _, _, _, _, _, _ -> },
     onSaveReadPosition: (Long) -> Unit = {},
     onDismissContinueReading: () -> Unit = {},
     onGetMessageIndex: (Long) -> Int = { -1 },
@@ -611,8 +611,8 @@ fun ChatScreen(
                     showMuteDialog = false
                     selectedMessage = null
                 },
-                onConfirm = { scope, mutedUntil, serverId, channelId, reason ->
-                    onMuteUser(selectedMessage!!.userId, scope, mutedUntil, serverId, channelId, reason)
+                onConfirm = { scope, durationMinutes, serverId, channelId, reason ->
+                    onMuteUser(selectedMessage!!.userId, scope, durationMinutes, serverId, channelId, reason)
                     showMuteDialog = false
                     selectedMessage = null
                 }
@@ -1930,7 +1930,7 @@ private fun MuteUserDialog(
     userId: Long,
     username: String,
     onDismiss: () -> Unit,
-    onConfirm: (scope: String, mutedUntil: String?, serverId: Long?, channelId: Long?, reason: String?) -> Unit
+    onConfirm: (scope: String, durationMinutes: Int?, serverId: Long?, channelId: Long?, reason: String?) -> Unit
 ) {
     var selectedScope by remember { mutableStateOf("channel") }
     var selectedDuration by remember { mutableStateOf("10m") }
@@ -1985,13 +1985,13 @@ private fun MuteUserDialog(
         confirmButton = {
             TextButton(
                 onClick = {
-                    val mutedUntil = when (selectedDuration) {
-                        "10m" -> java.time.Instant.now().plusSeconds(600).toString()
-                        "1h" -> java.time.Instant.now().plusSeconds(3600).toString()
-                        "1d" -> java.time.Instant.now().plusSeconds(86400).toString()
+                    val durationMinutes = when (selectedDuration) {
+                        "10m" -> 10
+                        "1h" -> 60
+                        "1d" -> 1440
                         else -> null
                     }
-                    onConfirm(selectedScope, mutedUntil, null, null, reason.ifBlank { null })
+                    onConfirm(selectedScope, durationMinutes, null, null, reason.ifBlank { null })
                 }
             ) {
                 Text("确认", color = DiscordRed)
