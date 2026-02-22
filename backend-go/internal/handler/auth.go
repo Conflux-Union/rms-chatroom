@@ -312,7 +312,7 @@ func (h *AuthHandler) isValidRedirect(redirectURL string) bool {
 	if err != nil {
 		return false
 	}
-	if parsed.Scheme == "rmschatroom" && parsed.Path == "/callback" {
+	if parsed.Scheme == "rmschatroom" && parsed.Hostname() == "callback" {
 		return true
 	}
 	if parsed.Hostname() == "localhost" || parsed.Hostname() == "127.0.0.1" {
