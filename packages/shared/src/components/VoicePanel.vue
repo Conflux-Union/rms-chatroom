@@ -1,12 +1,11 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch, nextTick, Transition } from 'vue'
+import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useChatStore } from '../stores/chat'
 import { useVoiceStore } from '../stores/voice'
 import { useAuthStore } from '../stores/auth'
-import { Volume2, VolumeX, Mic, MicOff, Phone, AlertTriangle, Crown, Link, Copy, Check, UserX, Monitor, MonitorOff, MessageSquare } from 'lucide-vue-next'
+import { Volume2, VolumeX, Mic, MicOff, Phone, AlertTriangle, Crown, Link, Copy, Check, UserX, Monitor, MonitorOff } from 'lucide-vue-next'
 import { NModal, NButton, NSpace, NInput, NDropdown, NSpin } from 'naive-ui'
 import type { DropdownOption } from 'naive-ui'
-import TranscriptionPanel from './TranscriptionPanel.vue'
 
 // Detect iOS devices
 const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
@@ -30,42 +29,10 @@ onMounted(() => {
   console.log('[VoicePanel] - API_BASE:', API_BASE)
   console.log('[VoicePanel] - User:', auth.user)
   console.log('[VoicePanel] - User permission level:', auth.user?.permission_level)
-  console.log('[VoicePanel] - Can view transcription sidebar:', canViewTranscriptionSidebar?.value)
-  console.log('[VoicePanel] - Can use transcription button:', canUseTranscription?.value)
   console.log('[VoicePanel] - Current channel:', chat.currentChannel)
   console.log('[VoicePanel] - Token exists:', !!auth.token)
-  console.log('[VoicePanel] - Token preview:', auth.token?.substring(0, 20) + '...')
-  
-  voice.enumerateDevices()
-  
-  // Check transcription lock status when channel changes
-  if (chat.currentChannel) {
-    console.log('[VoicePanel] Checking transcription lock on mount')
-    checkTranscriptionLock()
-  } else {
-    console.warn('[VoicePanel] No current channel on mount')
-  }
-  
-  // Periodic status check every 30 seconds
-  setInterval(() => {
-    console.log('[VoicePanel] Periodic status check')
-    console.log('[VoicePanel] - Connected to voice:', voice.isConnected)
-    console.log('[VoicePanel] - Current channel:', chat.currentChannel?.id)
-    console.log('[VoicePanel] - Transcription active:', transcriptionActive.value)
-    console.log('[VoicePanel] - Transcription locked:', transcriptionLocked.value)
-    console.log('[VoicePanel] - Transcription expanded:', transcriptionExpanded.value)
-  }, 30000)
-})
 
-// Watch for channel changes to update transcription lock status
-watch(() => chat.currentChannel, (newChannel, oldChannel) => {
-  console.log('[VoicePanel] Channel changed')
-  console.log('[VoicePanel] - Old channel:', oldChannel?.id, oldChannel?.name)
-  console.log('[VoicePanel] - New channel:', newChannel?.id, newChannel?.name)
-  
-  if (newChannel) {
-    checkTranscriptionLock()
-  }
+  voice.enumerateDevices()
 })
 
 // Host mode computed
@@ -75,37 +42,6 @@ const isCurrentUserHost = computed(() =>
 const hostButtonDisabled = computed(() => 
   voice.hostModeEnabled && !isCurrentUserHost.value
 )
-
-// Transcription computed
-// 权限调整：转录侧边栏可见性下调到权限等级 >= 0（所有用户可见）
-// 而实际启用/使用转录功能的按钮权限下调到权限等级 >= 3
-const canViewTranscriptionSidebar = computed(() => {
-  const result = (auth.user?.permission_level ?? 0) >= 0
-  console.log('[VoicePanel] canViewTranscriptionSidebar computed:', {
-    permission_level: auth.user?.permission_level,
-    result: result
-  })
-  return result
-})
-
-const canUseTranscription = computed(() => {
-  const result = (auth.user?.permission_level ?? 0) >= 3
-  console.log('[VoicePanel] canUseTranscription computed (button permission):', {
-    permission_level: auth.user?.permission_level,
-    result: result
-  })
-  return result
-})
-
-const transcriptionButtonDisabled = computed(() => {
-  const result = transcriptionLocked.value && !transcriptionActive.value
-  console.log('[VoicePanel] transcriptionButtonDisabled computed:', {
-    locked: transcriptionLocked.value,
-    active: transcriptionActive.value,
-    disabled: result
-  })
-  return result
-})
 
 // Volume warning dialog state
 const showVolumeWarning = ref(false)
@@ -134,14 +70,6 @@ import { h } from 'vue'
 const screenShareExpanded = ref(true)
 const screenShareContainer = ref<HTMLElement | null>(null)
 const localScreenShareContainer = ref<HTMLElement | null>(null)
-
-// Transcription state
-const transcriptionExpanded = ref(false)
-const transcriptionPanel = ref<InstanceType<typeof TranscriptionPanel> | null>(null)
-const transcriptionLocked = ref(false)
-const transcriptionActive = ref(false)
-const longPressTimer = ref<number | null>(null)
-const LONG_PRESS_DURATION = 1000 // 1 second for long press
 
 // Computed: first remote screen share (show one at a time)
 const activeRemoteScreenShare = computed(() => {
@@ -319,161 +247,6 @@ function closeInviteDialog() {
   inviteError.value = ''
   inviteCopied.value = false
 }
-
-// Transcription methods
-async function checkTranscriptionLock() {
-  console.log('[Transcription] Checking transcription lock status')
-  console.log('[Transcription] - Current channel:', chat.currentChannel?.id)
-  
-  if (!chat.currentChannel) {
-    console.log('[Transcription] No current channel, skipping lock check')
-    return
-  }
-  
-  const checkUrl = `${API_BASE}/api/voice-recognition/status`
-  console.log('[Transcription] - Checking URL:', checkUrl)
-  
-  try {
-    const response = await fetch(checkUrl, {
-      headers: {
-        Authorization: `Bearer ${auth.token}`,
-      },
-    })
-    
-    console.log('[Transcription] - Response status:', response.status)
-    
-    if (response.ok) {
-      const data = await response.json()
-      console.log('[Transcription] - Lock status data:', data)
-      
-      // Check if global_lock exists and is locked
-      const isGlobalLocked = data.global_lock?.is_locked || false
-      const lockedRoomId = data.global_lock?.active_room_id || null
-      
-      transcriptionLocked.value = isGlobalLocked && lockedRoomId !== chat.currentChannel.id
-      console.log('[Transcription] - Locked for this channel:', transcriptionLocked.value)
-      console.log('[Transcription] - Global locked:', isGlobalLocked)
-      console.log('[Transcription] - Locked room ID:', lockedRoomId)
-      console.log('[Transcription] - Current channel ID:', chat.currentChannel.id)
-    } else {
-      console.warn('[Transcription] Failed to get lock status, response not OK')
-      const errorText = await response.text()
-      console.warn('[Transcription] Error response:', errorText)
-    }
-  } catch (e) {
-    console.error('[Transcription] ❌ Failed to check transcription lock:', e)
-    console.error('[Transcription] Error details:', {
-      message: e instanceof Error ? e.message : String(e),
-      stack: e instanceof Error ? e.stack : undefined
-    })
-  }
-}
-
-function toggleTranscriptionPanel() {
-  transcriptionExpanded.value = !transcriptionExpanded.value
-}
-
-function handleTranscriptionMouseDown() {
-  console.log('[Transcription] Mouse down event triggered')
-  console.log('[Transcription] - canUseTranscription:', canUseTranscription.value)
-  console.log('[Transcription] - transcriptionButtonDisabled:', transcriptionButtonDisabled.value)
-  console.log('[Transcription] - transcriptionActive:', transcriptionActive.value)
-  console.log('[Transcription] - transcriptionLocked:', transcriptionLocked.value)
-  console.log('[Transcription] - hasTranscriptionTask:', transcriptionPanel.value?.hasTranscriptionTask)
-  
-  if (!canUseTranscription.value || transcriptionButtonDisabled.value) {
-    console.log('[Transcription] Button disabled, ignoring click')
-    return
-  }
-  
-  if (!transcriptionActive.value && !transcriptionPanel.value?.hasTranscriptionTask) {
-    // First click or no existing task - start immediately
-    console.log('[Transcription] Starting new transcription session')
-    startTranscription()
-  } else {
-    // Set up long press for stop
-    console.log('[Transcription] Setting up long press to stop (1s)')
-    longPressTimer.value = window.setTimeout(() => {
-      console.log('[Transcription] Long press detected, stopping transcription')
-      stopTranscription()
-      longPressTimer.value = null
-    }, LONG_PRESS_DURATION)
-  }
-}
-
-function handleTranscriptionMouseUp() {
-  if (longPressTimer.value) {
-    clearTimeout(longPressTimer.value)
-    longPressTimer.value = null
-  }
-}
-
-function handleTranscriptionMouseLeave() {
-  if (longPressTimer.value) {
-    clearTimeout(longPressTimer.value)
-    longPressTimer.value = null
-  }
-}
-
-async function startTranscription() {
-  console.log('[Transcription] startTranscription called')
-  console.log('[Transcription] - Panel ref exists:', !!transcriptionPanel.value)
-  console.log('[Transcription] - Current channel:', chat.currentChannel?.id)
-  console.log('[Transcription] - User ID:', auth.user?.id)
-  console.log('[Transcription] - API_BASE:', API_BASE)
-  
-  // Auto-expand panel BEFORE starting transcription
-  transcriptionExpanded.value = true
-  console.log('[Transcription] - Panel expanded:', transcriptionExpanded.value)
-  
-  // Wait for next tick to ensure panel is rendered
-  await nextTick()
-  
-  if (!transcriptionPanel.value) {
-    console.error('[Transcription] Panel ref not available')
-    return
-  }
-  
-  try {
-    console.log('[Transcription] Calling panel.startTranscription()...')
-    await transcriptionPanel.value.startTranscription()
-    transcriptionActive.value = true
-    console.log('[Transcription] ✅ Transcription started successfully')
-    console.log('[Transcription] - Active:', transcriptionActive.value)
-    console.log('[Transcription] - Expanded:', transcriptionExpanded.value)
-  } catch (e) {
-    console.error('[Transcription] ❌ Failed to start transcription:', e)
-    console.error('[Transcription] Error details:', {
-      message: e instanceof Error ? e.message : String(e),
-      stack: e instanceof Error ? e.stack : undefined
-    })
-  }
-}
-
-async function stopTranscription() {
-  console.log('[Transcription] stopTranscription called')
-  console.log('[Transcription] - Panel ref exists:', !!transcriptionPanel.value)
-  console.log('[Transcription] - Active before stop:', transcriptionActive.value)
-  
-  if (!transcriptionPanel.value) {
-    console.error('[Transcription] Panel ref not available')
-    return
-  }
-  
-  try {
-    console.log('[Transcription] Calling panel.stopTranscription()...')
-    await transcriptionPanel.value.stopTranscription()
-    transcriptionActive.value = false
-    console.log('[Transcription] ✅ Transcription stopped successfully')
-    console.log('[Transcription] - Active:', transcriptionActive.value)
-  } catch (e) {
-    console.error('[Transcription] ❌ Failed to stop transcription:', e)
-    console.error('[Transcription] Error details:', {
-      message: e instanceof Error ? e.message : String(e),
-      stack: e instanceof Error ? e.stack : undefined
-    })
-  }
-}
 </script>
 
 <template>
@@ -539,21 +312,11 @@ async function stopTranscription() {
       </div>
 
       <div v-else class="voice-connected">
-        <!-- 主要内容区域：用户和转录面板并排 -->
-        <div class="voice-main-content" :class="{ 'has-transcription': canViewTranscriptionSidebar && transcriptionExpanded }">
-          <!-- 左侧：语音用户列表 -->
+        <!-- Voice users and controls -->
+        <div class="voice-main-content">
           <div class="voice-users-container">
             <div class="voice-users-header">
               <h4>语音用户 ({{ voice.participants.length }})</h4>
-              <button
-                v-if="canViewTranscriptionSidebar"
-                class="transcription-toggle-btn"
-                @click="toggleTranscriptionPanel"
-                :class="{ 'expanded': transcriptionExpanded }"
-                title="展开/收起语音转文字面板"
-              >
-                {{ transcriptionExpanded ? '‹' : '›' }}
-              </button>
             </div>
             <div class="voice-users">
               <div
@@ -678,23 +441,6 @@ async function stopTranscription() {
               >
                 <Link :size="20" />
               </button>
-              <!-- 语音转文字按钮已注释
-              <button
-                v-if="canUseTranscription"
-                class="control-btn glow-effect"
-                :class="{ 
-                  'transcription-active': transcriptionActive,
-                  'transcription-disabled': transcriptionButtonDisabled 
-                }"
-                :disabled="transcriptionButtonDisabled"
-                @mousedown="handleTranscriptionMouseDown"
-                @mouseup="handleTranscriptionMouseUp"
-                @mouseleave="handleTranscriptionMouseLeave"
-                :title="transcriptionActive ? '长按停止转录' : (transcriptionButtonDisabled ? '其他频道正在使用' : '开始语音转文字')"
-              >
-                <MessageSquare :size="20" />
-              </button>
-              -->
               <button
                 class="control-btn glow-effect"
                 :class="{ 'screen-share-active': voice.isScreenSharing }"
@@ -713,16 +459,6 @@ async function stopTranscription() {
               </button>
             </div>
           </div>
-          
-          <!-- 右侧：转录面板已注释
-          <div v-if="canViewTranscriptionSidebar && transcriptionExpanded" class="transcription-panel-container">
-            <TranscriptionPanel
-              ref="transcriptionPanel"
-              :is-expanded="true"
-              @toggle-expand="toggleTranscriptionPanel"
-            />
-          </div>
-          -->
         </div>
 
         <!-- Host mode banner -->
@@ -1011,22 +747,15 @@ async function stopTranscription() {
   height: 100%; /* 占满父容器高度 */
 }
 
-/* 当转录面板展开时，保持居中但左右分布 */
-.voice-main-content.has-transcription {
-  justify-content: center;
-  align-items: center; /* 保持垂直居中 */
-}
-
-/* 用户容器 */
+/* User container */
 .voice-users-container {
   flex: 0 0 400px;
   display: flex;
   flex-direction: column;
-  transition: none; /* 移除可能导致抽搐的过渡效果 */
+  transition: none;
 }
 
-/* 当没有转录面板时，用户容器独占空间 */
-.voice-main-content:not(.has-transcription) .voice-users-container {
+.voice-users-container {
   flex: 1 1 auto;
   max-width: 400px;
 }
@@ -1050,41 +779,6 @@ async function stopTranscription() {
   font-size: 14px;
   font-weight: 600;
   color: var(--color-text-main);
-}
-
-/* 展开/收起按钮 */
-.transcription-toggle-btn {
-  background: var(--surface-glass);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 6px;
-  color: var(--color-text-main);
-  font-size: 14px;
-  font-weight: bold;
-  padding: 4px 8px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  min-width: 24px;
-  text-align: center;
-}
-
-.transcription-toggle-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
-  border-color: rgba(255, 255, 255, 0.3);
-}
-
-.transcription-toggle-btn.expanded {
-  background: var(--color-primary, #6366f1);
-  color: white;
-  border-color: var(--color-primary, #6366f1);
-}
-
-/* 转录面板容器 */
-.transcription-panel-container {
-  width: 400px;
-  min-height: 300px;
-  max-height: 75vh;
-  opacity: 1;
-  visibility: visible;
 }
 
 .voice-users {
@@ -1412,38 +1106,6 @@ async function stopTranscription() {
   filter: brightness(1.1);
 }
 
-/* Transcription Button */
-.control-btn.transcription-active {
-  background: linear-gradient(135deg, #f59e0b, #d97706);
-  border-color: #f59e0b;
-  color: white;
-  animation: pulse-transcription 2s infinite;
-}
-
-.control-btn.transcription-active:hover {
-  filter: brightness(1.1);
-}
-
-.control-btn.transcription-disabled {
-  background: var(--surface-glass);
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.control-btn.transcription-disabled:hover {
-  transform: none;
-  background: var(--surface-glass);
-}
-
-@keyframes pulse-transcription {
-  0%, 100% { 
-    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.5);
-  }
-  50% { 
-    box-shadow: 0 0 0 8px rgba(245, 158, 11, 0);
-  }
-}
-
 /* Screen Share Section */
 .screen-share-section {
   margin-top: 16px;
@@ -1569,12 +1231,6 @@ async function stopTranscription() {
 
   .voice-users-container {
     flex: 1 1 auto;
-  }
-
-  .transcription-panel-container {
-    flex: 1 1 auto;
-    min-width: 0;
-    max-width: 100%;
   }
 
   .join-btn {

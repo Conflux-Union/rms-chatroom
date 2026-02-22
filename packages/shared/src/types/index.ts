@@ -5,6 +5,7 @@ export interface User {
   email: string
   avatar_url?: string
   permission_level: number
+  group_level: number
   is_active: boolean
 }
 
@@ -13,7 +14,9 @@ export interface Server {
   name: string
   icon: string | null
   owner_id: number
-  min_internal_level?: number
+  min_level?: number
+  perm_min_level?: number
+  logic_operator?: 'AND' | 'OR'
   channels?: Channel[]
   channelGroups?: ChannelGroup[]
 }
@@ -23,8 +26,9 @@ export interface ChannelGroup {
   server_id: number
   name: string
   position: number
-  min_server_level?: number
-  min_internal_level?: number
+  min_level?: number
+  perm_min_level?: number
+  logic_operator?: 'AND' | 'OR'
 }
 
 export interface Channel {
@@ -35,10 +39,12 @@ export interface Channel {
   type: 'TEXT' | 'VOICE'
   position: number
   top_position: number
-  visibility_min_server_level?: number
-  visibility_min_internal_level?: number
-  speak_min_server_level?: number
-  speak_min_internal_level?: number
+  min_level?: number
+  perm_min_level?: number
+  logic_operator?: 'AND' | 'OR'
+  speak_min_level?: number
+  speak_perm_min_level?: number
+  speak_logic_operator?: 'AND' | 'OR'
 }
 
 export interface Attachment {

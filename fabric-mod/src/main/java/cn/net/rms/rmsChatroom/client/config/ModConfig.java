@@ -20,7 +20,7 @@ public class ModConfig {
     private static ModConfig INSTANCE;
 
     // Server settings
-    public String serverUrl = "https://preview-chatroom.rms.net.cn";
+    public String serverUrl = "https://chatroom.rms.net.cn";
 
     // Auth
     public String token = "";

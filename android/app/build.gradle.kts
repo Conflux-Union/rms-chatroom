@@ -50,8 +50,8 @@ android {
 
     buildTypes {
         debug {
-            buildConfigField("String", "API_BASE_URL", "\"https://preview-chatroom.rms.net.cn\"")
-            buildConfigField("String", "WS_BASE_URL", "\"wss://preview-chatroom.rms.net.cn\"")
+            buildConfigField("String", "API_BASE_URL", "\"https://chatroom.rms.net.cn\"")
+            buildConfigField("String", "WS_BASE_URL", "\"wss://chatroom.rms.net.cn\"")
         }
         release {
             isMinifyEnabled = true
@@ -61,8 +61,8 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            buildConfigField("String", "API_BASE_URL", "\"https://preview-chatroom.rms.net.cn\"")
-            buildConfigField("String", "WS_BASE_URL", "\"wss://preview-chatroom.rms.net.cn\"")
+            buildConfigField("String", "API_BASE_URL", "\"https://chatroom.rms.net.cn\"")
+            buildConfigField("String", "WS_BASE_URL", "\"wss://chatroom.rms.net.cn\"")
         }
     }
 

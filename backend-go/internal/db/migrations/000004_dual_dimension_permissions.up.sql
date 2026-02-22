@@ -1,0 +1,10 @@
+ALTER TABLE servers ADD COLUMN perm_min_level INT NOT NULL DEFAULT 0;
+ALTER TABLE servers ADD COLUMN logic_operator VARCHAR(3) NOT NULL DEFAULT 'AND';
+
+ALTER TABLE channel_groups ADD COLUMN perm_min_level INT NOT NULL DEFAULT 0;
+ALTER TABLE channel_groups ADD COLUMN logic_operator VARCHAR(3) NOT NULL DEFAULT 'AND';
+
+ALTER TABLE channels ADD COLUMN perm_min_level INT NOT NULL DEFAULT 0;
+ALTER TABLE channels ADD COLUMN logic_operator VARCHAR(3) NOT NULL DEFAULT 'AND';
+ALTER TABLE channels ADD COLUMN speak_perm_min_level INT NOT NULL DEFAULT 0;
+ALTER TABLE channels ADD COLUMN speak_logic_operator VARCHAR(3) NOT NULL DEFAULT 'AND';

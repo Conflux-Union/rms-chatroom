@@ -3,8 +3,8 @@ import { ref, watch } from 'vue'
 import { useAuthStore } from './auth'
 import { useVoiceStore } from './voice'
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'https://preview-chatroom.rms.net.cn'
-const WS_BASE = import.meta.env.VITE_WS_BASE || 'wss://preview-chatroom.rms.net.cn'
+const API_BASE = import.meta.env.VITE_API_BASE || 'https://chatroom.rms.net.cn'
+const WS_BASE = import.meta.env.VITE_WS_BASE || 'wss://chatroom.rms.net.cn'
 
 
 export type MusicPlatform = 'qq' | 'netease' | 'all'
@@ -467,6 +467,18 @@ export const useMusicStore = defineStore('music', () => {
       audioElement.style.display = 'none'
       audioElement.volume = volume.value
       document.body.appendChild(audioElement)
+
+      // Drive progress bar from local audio playback
+      audioElement.addEventListener('timeupdate', () => {
+        if (audioElement) {
+          positionMs.value = Math.floor(audioElement.currentTime * 1000)
+        }
+      })
+      audioElement.addEventListener('ended', () => {
+        // Audio finished, let backend handle next song via WS
+        playbackState.value = 'idle'
+        isPlaying.value = false
+      })
     }
     return audioElement
   }
@@ -535,16 +547,39 @@ export const useMusicStore = defineStore('music', () => {
         if (msg.type === 'play') {
           // Play new song
           console.log('[MusicStore] Received play command:', msg.song?.name, 'URL:', msg.url)
+
+          // Update store state from the play message
+          if (msg.song) {
+            currentSong.value = msg.song
+            durationMs.value = (msg.song.duration || 0) * 1000
+          }
+          isPlaying.value = true
+          playbackState.value = 'playing'
+          positionMs.value = msg.position_ms || 0
+          if (msg.current_index !== undefined) {
+            currentIndex.value = msg.current_index
+          }
+
+          // Refresh queue to sync full state
+          const roomName = msg.room_name || currentWsRoom
+          if (roomName) {
+            refreshQueue(roomName)
+          }
+
           audio.src = msg.url
           audio.currentTime = (msg.position_ms || 0) / 1000
           audio.play().catch(e => console.error('[MusicStore] Play failed:', e))
         } else if (msg.type === 'pause') {
           // Pause playback
           console.log('[MusicStore] Received pause command')
+          isPlaying.value = false
+          playbackState.value = 'paused'
           audio.pause()
         } else if (msg.type === 'resume') {
           // Resume playback
           console.log('[MusicStore] Received resume command, position:', msg.position_ms)
+          isPlaying.value = true
+          playbackState.value = 'playing'
           audio.currentTime = (msg.position_ms || 0) / 1000
           audio.play().catch(e => console.error('[MusicStore] Resume failed:', e))
         } else if (msg.type === 'seek') {

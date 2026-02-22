@@ -4,8 +4,11 @@ import android.util.Log
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
-import androidx.datastore.preferences.core.stringPreferencesKey
+import cn.net.rms.chatroom.data.auth.TokenKeys
 import cn.net.rms.chatroom.data.api.ApiService
+import cn.net.rms.chatroom.data.api.RefreshTokenRequest
+import cn.net.rms.chatroom.data.api.RefreshTokenResponse
+import cn.net.rms.chatroom.data.api.LogoutRequest
 import cn.net.rms.chatroom.data.model.User
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -25,30 +28,109 @@ class AuthRepository @Inject constructor(
 ) {
     companion object {
         private const val TAG = "AuthRepository"
-        private val TOKEN_KEY = stringPreferencesKey("auth_token")
     }
 
+    // Points to access token for backward compat
     val tokenFlow: Flow<String?> = dataStore.data.map { prefs ->
-        prefs[TOKEN_KEY]
+        prefs[TokenKeys.ACCESS_TOKEN_KEY]
     }
 
-    suspend fun getToken(): String? {
-        return dataStore.data.first()[TOKEN_KEY]
+    // Primary accessor — returns access token
+    suspend fun getAccessToken(): String? {
+        return dataStore.data.first()[TokenKeys.ACCESS_TOKEN_KEY]
     }
+
+    suspend fun getRefreshToken(): String? {
+        return dataStore.data.first()[TokenKeys.REFRESH_TOKEN_KEY]
+    }
+
+    // Backward compat alias
+    suspend fun getToken(): String? = getAccessToken()
 
     fun getTokenBlocking(): String? = runBlocking {
-        getToken()
+        getAccessToken()
     }
 
+    suspend fun saveTokens(accessToken: String, refreshToken: String) {
+        dataStore.edit { prefs ->
+            prefs[TokenKeys.ACCESS_TOKEN_KEY] = accessToken
+            prefs[TokenKeys.REFRESH_TOKEN_KEY] = refreshToken
+            prefs.remove(TokenKeys.LEGACY_TOKEN_KEY)
+        }
+        Log.d(TAG, "Saved access_token (len=${accessToken.length}) and refresh_token (len=${refreshToken.length})")
+    }
+
+    // Backward compat — saves as access token only
     suspend fun saveToken(token: String) {
         dataStore.edit { prefs ->
-            prefs[TOKEN_KEY] = token
+            prefs[TokenKeys.ACCESS_TOKEN_KEY] = token
         }
     }
 
-    suspend fun clearToken() {
+    suspend fun clearTokens() {
         dataStore.edit { prefs ->
-            prefs.remove(TOKEN_KEY)
+            prefs.remove(TokenKeys.ACCESS_TOKEN_KEY)
+            prefs.remove(TokenKeys.REFRESH_TOKEN_KEY)
+            prefs.remove(TokenKeys.LEGACY_TOKEN_KEY)
+        }
+        Log.d(TAG, "Cleared all tokens")
+    }
+
+    // Backward compat alias
+    suspend fun clearToken() = clearTokens()
+
+    /**
+     * One-time migration: move legacy "auth_token" to "access_token".
+     * Called on app startup before any auth checks.
+     */
+    suspend fun migrateLegacyToken() {
+        val prefs = dataStore.data.first()
+        val legacyToken = prefs[TokenKeys.LEGACY_TOKEN_KEY] ?: return
+
+        val currentAccessToken = prefs[TokenKeys.ACCESS_TOKEN_KEY]
+        if (currentAccessToken == null) {
+            dataStore.edit { p ->
+                p[TokenKeys.ACCESS_TOKEN_KEY] = legacyToken
+                p.remove(TokenKeys.LEGACY_TOKEN_KEY)
+            }
+            Log.d(TAG, "Migrated legacy auth_token to access_token")
+        } else {
+            // Both exist — just clean up legacy
+            dataStore.edit { p ->
+                p.remove(TokenKeys.LEGACY_TOKEN_KEY)
+            }
+            Log.d(TAG, "Removed stale legacy auth_token (access_token already exists)")
+        }
+    }
+
+    /**
+     * Call POST /api/auth/refresh to get new token pair.
+     * No auth header needed — the refresh token is the credential.
+     */
+    suspend fun refreshTokens(refreshToken: String): Result<RefreshTokenResponse> {
+        return try {
+            val response = api.refreshToken(RefreshTokenRequest(refreshToken))
+            saveTokens(response.accessToken, response.refreshToken)
+            Log.d(TAG, "Token refresh succeeded")
+            Result.success(response)
+        } catch (e: Exception) {
+            Log.e(TAG, "Token refresh failed", e)
+            Result.failure(e.toAuthException())
+        }
+    }
+
+    /**
+     * Call POST /api/auth/logout to revoke refresh token on server.
+     * Best-effort: if it fails, we still clear local tokens.
+     */
+    suspend fun revokeRefreshToken(accessToken: String, refreshToken: String): Result<Unit> {
+        return try {
+            api.logout("Bearer $accessToken", LogoutRequest(refreshToken))
+            Log.d(TAG, "Server-side token revocation succeeded")
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e(TAG, "Server-side token revocation failed (best-effort)", e)
+            Result.failure(e.toAuthException())
         }
     }
 

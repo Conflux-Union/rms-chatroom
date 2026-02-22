@@ -543,13 +543,13 @@ class MainViewModel @Inject constructor(
     fun muteUser(
         userId: Long,
         scope: String,
-        mutedUntil: String?,
+        durationMinutes: Int?,
         serverId: Long?,
         channelId: Long?,
         reason: String?
     ) {
         viewModelScope.launch {
-            chatRepository.createMute(userId, scope, mutedUntil, serverId, channelId, reason)
+            chatRepository.createMute(userId, scope, durationMinutes, serverId, channelId, reason)
                 .onSuccess {
                     _state.value = _state.value.copy(error = "禁言成功")
                 }

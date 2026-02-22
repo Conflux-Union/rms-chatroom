@@ -4,71 +4,37 @@
       <h3>{{ title }}</h3>
       <div class="permission-controls">
         <div class="permission-group">
-          <label>服务器权限等级</label>
+          <label>Permission Level</label>
           <div class="level-selector">
             <button
-              v-for="level in serverLevels"
+              v-for="level in levels"
               :key="level"
               class="level-btn"
-              :class="{ active: modelValue.minServerLevel === level }"
-              @click="updateServerLevel(level)"
-              :title="`等级 ${level}`"
+              :class="{ active: modelValue.minLevel === level }"
+              @click="updateLevel(level)"
+              :title="`Level ${level}`"
             >
               {{ getLevelLabel(level) }}
             </button>
           </div>
-          <p class="description">用户服务器权限必须达到此等级才能访问</p>
-        </div>
-
-        <div class="permission-group">
-          <label>内部/外部权限</label>
-          <div class="level-selector">
-            <button
-              v-for="level in internalLevels"
-              :key="level"
-              class="level-btn"
-              :class="{ active: modelValue.minInternalLevel === level }"
-              @click="updateInternalLevel(level)"
-              :title="`等级 ${level}`"
-            >
-              {{ getInternalLabel(level) }}
-            </button>
-          </div>
-          <p class="description">用户内部/外部权限必须达到此等级才能访问 (1=外服, 2=内服)</p>
+          <p class="description">Minimum permission level required for access</p>
         </div>
 
         <div v-if="showSpeakPermissions" class="permission-group">
-          <label>发言权限 (仅限频道)</label>
+          <label>Speak Permission Level</label>
           <div class="level-selector">
             <button
-              v-for="level in serverLevels"
+              v-for="level in levels"
               :key="'speak-' + level"
               class="level-btn"
-              :class="{ active: modelValue.speakMinServerLevel === level }"
-              @click="updateSpeakServerLevel(level)"
-              :title="`发言权限等级 ${level}`"
+              :class="{ active: modelValue.speakMinLevel === level }"
+              @click="updateSpeakLevel(level)"
+              :title="`Speak level ${level}`"
             >
               {{ getLevelLabel(level) }}
             </button>
           </div>
-          <p class="description">用户发言所需的最低权限等级</p>
-        </div>
-
-        <div v-if="showSpeakPermissions" class="permission-group">
-          <label>发言内部/外部权限 (仅限频道)</label>
-          <div class="level-selector">
-            <button
-              v-for="level in internalLevels"
-              :key="'speak-internal-' + level"
-              class="level-btn"
-              :class="{ active: modelValue.speakMinInternalLevel === level }"
-              @click="updateSpeakInternalLevel(level)"
-              :title="`发言权限等级 ${level}`"
-            >
-              {{ getInternalLabel(level) }}
-            </button>
-          </div>
-          <p class="description">用户发言所需的最低内部/外部权限</p>
+          <p class="description">Minimum permission level required to speak</p>
         </div>
       </div>
     </div>
@@ -76,13 +42,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
-
 interface PermissionModel {
-  minServerLevel: number
-  minInternalLevel: number
-  speakMinServerLevel?: number
-  speakMinInternalLevel?: number
+  minLevel: number
+  speakMinLevel?: number
 }
 
 interface Props {
@@ -92,7 +54,7 @@ interface Props {
 }
 
 const props = withDefaults(defineProps<Props>(), {
-  title: '权限设置',
+  title: 'Permission Settings',
   showSpeakPermissions: false
 })
 
@@ -100,53 +62,24 @@ const emit = defineEmits<{
   'update:modelValue': [value: PermissionModel]
 }>()
 
-const serverLevels = [1, 2, 3, 4]
-const internalLevels = [1, 2]
+const levels = [1, 2, 3, 4]
 
 const getLevelLabel = (level: number): string => {
   const labels: { [key: number]: string } = {
-    1: '等级1',
-    2: '等级2',
-    3: '等级3',
-    4: '等级4'
+    1: 'Level 1',
+    2: 'Level 2',
+    3: 'Level 3',
+    4: 'Level 4'
   }
-  return labels[level] || '未知'
+  return labels[level] || 'Unknown'
 }
 
-const getInternalLabel = (level: number): string => {
-  const labels: { [key: number]: string } = {
-    1: '外服',
-    2: '内服'
-  }
-  return labels[level] || '未知'
+const updateLevel = (level: number) => {
+  emit('update:modelValue', { ...props.modelValue, minLevel: level })
 }
 
-const updateServerLevel = (level: number) => {
-  emit('update:modelValue', {
-    ...props.modelValue,
-    minServerLevel: level
-  })
-}
-
-const updateInternalLevel = (level: number) => {
-  emit('update:modelValue', {
-    ...props.modelValue,
-    minInternalLevel: level
-  })
-}
-
-const updateSpeakServerLevel = (level: number) => {
-  emit('update:modelValue', {
-    ...props.modelValue,
-    speakMinServerLevel: level
-  })
-}
-
-const updateSpeakInternalLevel = (level: number) => {
-  emit('update:modelValue', {
-    ...props.modelValue,
-    speakMinInternalLevel: level
-  })
+const updateSpeakLevel = (level: number) => {
+  emit('update:modelValue', { ...props.modelValue, speakMinLevel: level })
 }
 </script>
 

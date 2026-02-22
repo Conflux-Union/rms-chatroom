@@ -5,8 +5,8 @@ export default defineConfig({
     plugins: [vue()],
     define: {
         // Electron production needs absolute API URL
-        'import.meta.env.VITE_API_BASE': JSON.stringify('https://preview-chatroom.rms.net.cn'),
-        'import.meta.env.VITE_WS_BASE': JSON.stringify('wss://preview-chatroom.rms.net.cn'),
+        'import.meta.env.VITE_API_BASE': JSON.stringify('https://chatroom.rms.net.cn'),
+        'import.meta.env.VITE_WS_BASE': JSON.stringify('wss://chatroom.rms.net.cn'),
     },
     resolve: {
         alias: {
@@ -19,11 +19,11 @@ export default defineConfig({
         port: 5173,
         proxy: {
             '/api': {
-                target: 'https://preview-chatroom.rms.net.cn',
+                target: 'https://chatroom.rms.net.cn',
                 changeOrigin: true,
             },
             '/ws': {
-                target: 'ws://preview-chatroom.rms.net.cn',
+                target: 'ws://chatroom.rms.net.cn',
                 ws: true,
             },
         },
