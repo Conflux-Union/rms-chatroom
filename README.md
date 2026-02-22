@@ -2,68 +2,69 @@
 
 [中文](./README_CN.md) | **English**
 
-A modern communication platform with real-time chat, voice calls, and music sharing capabilities. Built with Vue3, FastAPI, and Kotlin.
+A modern communication platform with real-time chat, voice calls, and music sharing. Built with Vue 3, Go (Echo), and Kotlin.
 
-## ✨ Features
+## Features
 
-- 🔐 **SSO Authentication** - Integrated with RMSSSO for secure authentication
-- 💬 **Real-time Chat** - WebSocket-powered instant messaging
-- 🎙️ **Voice Calls** - WebRTC-based voice communication using LiveKit
-- 🎵 **Music Sharing** - QQ Music integration with queue management
-- 📱 **Multi-platform** - Web, Desktop (Electron), and Android apps
-- 🎨 **Modern UI** - Beautiful dark theme with Material 3 design
-- 👥 **Server & Channels** - Organize conversations with servers and channels
-- 🔊 **Voice Admin Controls** - Mute participants, host mode, guest invites
+- **OAuth 2.0 Authentication** - RMSSSO integration with local JWT + refresh token rotation
+- **Real-time Chat** - WebSocket-powered instant messaging with reconnection and heartbeat
+- **Voice Calls** - WebRTC-based voice communication via LiveKit
+- **Music Sharing** - QQ Music + NetEase Cloud Music with synchronized playback
+- **Multi-platform** - Web, Desktop (Electron), and Android
+- **Dual-dimension Permissions** - `permission_level` AND/OR `group_level` per resource
+- **Noise Cancellation** - RNNoise and DTLN via AudioWorklet
+- **Voice Admin Controls** - Mute participants, host mode, guest invites
 
-## 🏗️ Architecture
+## Architecture
 
 ```
 rms-discord/
-├── backend/              # Python FastAPI backend
-├── frontend/             # Vue3 + TypeScript web app
-├── electron/             # Electron desktop wrapper
-└── android/              # Kotlin + Jetpack Compose mobile app
+├── packages/                # pnpm monorepo
+│   ├── shared/             # Shared components, stores, composables
+│   ├── web/                # Web entry point
+│   └── electron-renderer/  # Electron renderer entry point
+├── electron/               # Electron main process
+├── backend-go/             # Go backend (Echo framework)
+├── android/                # Kotlin + Jetpack Compose
+└── pnpm-workspace.yaml
 ```
 
 ### Technology Stack
 
-**Backend:**
-- FastAPI (Python 3.11+)
-- SQLAlchemy (async ORM)
-- WebSocket for real-time messaging
+**Backend (Go):**
+- Echo framework
+- MySQL + golang-migrate + sqlc
+- gorilla/websocket for real-time messaging
 - LiveKit for voice infrastructure
+- JSON config with environment variable overrides
 
-**Frontend:**
-- Vue 3 (Composition API)
-- TypeScript
+**Frontend (pnpm monorepo):**
+- Vue 3 (Composition API) + TypeScript
 - Pinia (state management)
 - Vite (build tool)
 - LiveKit Client SDK
 
 **Android:**
-- Kotlin
-- Jetpack Compose + Material 3
+- Kotlin + Jetpack Compose + Material 3
 - MVVM + Clean Architecture
 - Hilt (dependency injection)
 - LiveKit Android SDK
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Prerequisites
 
-- Python 3.11+
-- Node.js 18+
-- Android Studio (for Android development)
-- JDK 17+ (for Android builds)
+- Go 1.24+
+- Node.js 18+ and pnpm
+- MySQL
+- Android Studio + JDK 17+ (for Android)
 
 ### Backend Setup
 
 ```bash
-cd backend
-python -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-pip install -r requirements.txt
-python -m backend
+cd backend-go
+cp config.example.json config.json  # Edit with your settings
+go run ./cmd/server/main.go
 ```
 
 Backend runs on `http://localhost:8000`
@@ -71,9 +72,8 @@ Backend runs on `http://localhost:8000`
 ### Frontend Setup
 
 ```bash
-cd frontend
-npm install
-npm run dev
+pnpm install
+pnpm dev:web
 ```
 
 Frontend runs on `http://localhost:5173`
@@ -83,22 +83,28 @@ Frontend runs on `http://localhost:5173`
 ```bash
 cd android
 ./gradlew assembleDebug
-./gradlew installDebug  # Install on connected device
+./gradlew installDebug
 ```
 
-## ⚙️ Configuration
+## Configuration
 
-### Backend (`backend/config.json`)
+### Backend (`backend-go/config.json`)
 
 ```json
 {
-  "sso_base_url": "https://your-sso-server.com",
-  "database_url": "sqlite+aiosqlite:///./chatroom.db",
-  "cors_origins": ["http://localhost:5173"]
+  "database_url": "mysql://user:password@localhost/rmschat?charset=utf8mb4",
+  "oauth_base_url": "https://sso.rms.net.cn",
+  "oauth_client_id": "your-client-id",
+  "oauth_client_secret": "your-client-secret",
+  "oauth_redirect_uri": "http://localhost:8000/api/auth/callback",
+  "jwt_secret": "your-jwt-secret",
+  "cors_origins": ["http://localhost:5173"],
+  "host": "0.0.0.0",
+  "port": 8000
 }
 ```
 
-### Frontend (`frontend/.env`)
+### Frontend (`.env`)
 
 ```env
 VITE_API_BASE=http://localhost:8000
@@ -111,129 +117,61 @@ Build variants automatically configure API endpoints:
 - **Debug**: Points to localhost/development server
 - **Release**: Points to production server
 
-## 📦 Building for Production
+## Authentication
 
-### Web Application
+OAuth 2.0 flow with local JWT tokens:
 
-```bash
-cd frontend
-npm run build
-# Output: frontend/dist/
-```
+1. **Login** - Redirects to RMSSSO with JWT-encoded CSRF state
+2. **Callback** - Validates state, exchanges code for SSO token, fetches user info, issues local JWT (15min) + refresh token (30 days)
+3. **Token delivery** - Web: URL fragment (`#access_token=...`); Native: query string (`?access_token=...`)
+4. **Refresh** - `POST /api/auth/refresh` with token rotation (new stored before old deleted for crash safety)
+5. **Auto-refresh** - Frontend/Android intercept 401 responses and refresh transparently
 
-### Desktop Application (Electron)
+Redirect URL validation prevents open redirects: only `/callback` under `cors_origins`, localhost callback servers, or `rmschatroom://callback` are accepted.
 
-```bash
-cd electron
-npm install
-npm run build
-# Output: electron/dist/
-```
+## Permissions
 
-### Android APK
+Dual-dimension model applied to servers, channel groups, and channels:
 
-```bash
-cd android
-./gradlew assembleRelease
-# Output: android/app/build/outputs/apk/release/
-```
+| Mode | Logic |
+|------|-------|
+| AND  | `permission_level >= min` **AND** `group_level >= min` |
+| OR   | `permission_level >= min` **OR** `group_level >= min` |
 
-## 🔄 CI/CD
+Backward compatible: defaults (`perm_min_level=0`, `logic_operator=AND`) reduce to single-dimension group_level checks.
 
-Automatic builds are triggered on git tag push:
+## Building for Production
 
 ```bash
-python deploy.py --release  # Creates tag and triggers GitHub Actions
+pnpm build:web                # Web frontend
+pnpm build:electron           # Electron renderer
+cd backend-go && go build ./cmd/server/main.go  # Go binary
+cd android && ./gradlew assembleRelease          # Android APK
 ```
 
-GitHub Actions will build:
-- Android APK (signed)
-- Electron apps (Windows, macOS, Linux)
-- GitHub Release with all artifacts
+## Deployment
 
-### Setup Requirements
+```bash
+python deploy.py --release   # Tag + CI/CD (Android, Electron, Server)
+python deploy.py --hot-fix   # Hot-fix version
+python deploy.py --debug     # Debug deploy (no tag)
+```
 
-Configure GitHub Secrets:
-- `ANDROID_KEYSTORE_BASE64`: Base64-encoded keystore
-- `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`: Signing credentials
+GitHub Actions builds Android APK, Electron apps (Windows/macOS/Linux), deploys server binary, and creates GitHub Release.
 
-See `.github/SETUP.md` for detailed instructions.
-
-## 🎯 Key Features Explained
-
-### Voice Calls
-
-- WebRTC-based using LiveKit infrastructure
-- Admin controls: mute participants, host mode
-- Guest invite links for non-authenticated users
-- Foreground service on Android for background calls
-
-### Music Sharing
-
-- QQ Music integration
-- Shared playback queue
-- Search and add songs
-- Synchronized playback across users
-
-### Authentication
-
-- RMSSSO integration (no local user storage)
-- Permission levels (>=3 for admin features)
-- Deep link handling for mobile SSO flow
-
-## 📱 Platform Support
+## Platform Support
 
 | Platform | Status | Notes |
 |----------|--------|-------|
-| Web | ✅ Production | Chrome, Firefox, Safari |
-| Desktop | ✅ Production | Windows, macOS, Linux |
-| Android | ✅ Production | Android 8.0+ |
-| iOS | ❌ Planned | Future development |
+| Web | Production | Chrome, Firefox, Safari |
+| Desktop | Production | Windows, macOS, Linux (Electron) |
+| Android | Production | Android 8.0+ |
+| iOS | Planned | - |
 
-## 🛠️ Development
+## License
 
-### Project Structure
-
-```
-backend/
-├── core/            # Configuration, database
-├── models/          # SQLAlchemy models
-├── routers/         # API endpoints
-├── services/        # Business logic
-└── websocket/       # WebSocket handlers
-
-frontend/src/
-├── components/      # Vue components
-├── composables/     # Composition API hooks
-├── stores/          # Pinia stores
-├── types/           # TypeScript definitions
-└── views/           # Page components
-
-android/app/src/main/java/cn/net/rms/chatroom/
-├── data/            # Repository, API, WebSocket
-├── ui/              # Compose screens
-└── service/         # Background services
-```
-
-### Coding Standards
-
-- **Python**: PEP8, type hints, async/await
-- **TypeScript**: Strict mode, Composition API
-- **Kotlin**: Official conventions, Jetpack Compose
-- **Commits**: Conventional Commits (feat/fix/chore)
-
-## 📄 License
-
-This project is proprietary software. All rights reserved.
-
-## 🤝 Contributing
-
-This is a private project. Contact the maintainers for contribution guidelines.
-
-## 📞 Support
-
-For issues and questions, please contact the development team.
+Proprietary software. All rights reserved.
 
 ---
 
-Built with ❤️ by RMS Team
+Built by RMS Team
