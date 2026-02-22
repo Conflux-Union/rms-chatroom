@@ -265,20 +265,30 @@ async function deleteChannelGroup() {
 
 // Channel Permission Modal callback
 function onChannelPermissionSaved(data: {
-  visibilityMinServerLevel: number
-  speakMinServerLevel: number
+  minLevel: number
+  permMinLevel: number
+  logicOperator: 'AND' | 'OR'
+  speakMinLevel: number
+  speakPermMinLevel: number
+  speakLogicOperator: 'AND' | 'OR'
 }) {
   if (selectedChannelForPermission.value) {
-    selectedChannelForPermission.value.visibility_min_server_level = data.visibilityMinServerLevel
-    selectedChannelForPermission.value.speak_min_server_level = data.speakMinServerLevel
+    selectedChannelForPermission.value.min_level = data.minLevel
+    selectedChannelForPermission.value.perm_min_level = data.permMinLevel
+    selectedChannelForPermission.value.logic_operator = data.logicOperator
+    selectedChannelForPermission.value.speak_min_level = data.speakMinLevel
+    selectedChannelForPermission.value.speak_perm_min_level = data.speakPermMinLevel
+    selectedChannelForPermission.value.speak_logic_operator = data.speakLogicOperator
   }
   showChannelPermissionModal.value = false
 }
 
 // Channel Group Permission Modal callback
-function onGroupPermissionSaved(data: { minServerLevel: number }) {
+function onGroupPermissionSaved(data: { minLevel: number; permMinLevel: number; logicOperator: 'AND' | 'OR' }) {
   if (selectedGroupForPermission.value) {
-    selectedGroupForPermission.value.min_server_level = data.minServerLevel
+    selectedGroupForPermission.value.min_level = data.minLevel
+    selectedGroupForPermission.value.perm_min_level = data.permMinLevel
+    selectedGroupForPermission.value.logic_operator = data.logicOperator
   }
   showGroupPermissionModal.value = false
 }
@@ -968,8 +978,12 @@ async function deleteChannel() {
       :channelId="selectedChannelForPermission?.id || 0"
       :channelName="selectedChannelForPermission?.name || ''"
       :initialPermissions="{
-        visibilityMinServerLevel: selectedChannelForPermission?.visibility_min_server_level || 1,
-        speakMinServerLevel: selectedChannelForPermission?.speak_min_server_level || 1
+        minLevel: selectedChannelForPermission?.min_level || 0,
+        permMinLevel: selectedChannelForPermission?.perm_min_level || 0,
+        logicOperator: selectedChannelForPermission?.logic_operator || 'AND',
+        speakMinLevel: selectedChannelForPermission?.speak_min_level || 0,
+        speakPermMinLevel: selectedChannelForPermission?.speak_perm_min_level || 0,
+        speakLogicOperator: selectedChannelForPermission?.speak_logic_operator || 'AND'
       }"
       @close="showChannelPermissionModal = false"
       @save="onChannelPermissionSaved"
@@ -981,7 +995,9 @@ async function deleteChannel() {
       :serverId="chat.currentServer?.id || 0"
       :groupId="selectedGroupForPermission?.id || 0"
       :groupName="selectedGroupForPermission?.name || ''"
-      :initialMinServerLevel="selectedGroupForPermission?.min_server_level || 1"
+      :initialMinLevel="selectedGroupForPermission?.min_level || 0"
+      :initialPermMinLevel="selectedGroupForPermission?.perm_min_level || 0"
+      :initialLogicOperator="selectedGroupForPermission?.logic_operator || 'AND'"
       @close="showGroupPermissionModal = false"
       @save="onGroupPermissionSaved"
     />

@@ -1,0 +1,28 @@
+{
+  "database_url": "mysql://rmschat:password@localhost/rmschat?charset=utf8mb4",
+  "sso_base_url": "https://sso.rms.net.cn",
+  "host": "127.0.0.1",
+  "port": 8000,
+  "debug": false,
+  "frontend_dist_path": "/www/wwwroot/test-discord.rms.net.cn/packages/web/dist",
+  "cors_origins": ["https://chatroom.rms.net.cn"],
+  "jwt_secret": "dslfksdlfjdsklfjksldfjsklfjksldfjl",
+
+  "oauth_base_url": "https://sso.rms.net.cn",
+  "oauth_authorize_endpoint": "/oauth/authorize",
+  "oauth_token_endpoint": "/oauth/token",
+  "oauth_userinfo_endpoint": "/oauth/userinfo",
+  "oauth_client_id": "UfAMAnvvUy8vk-qExlQJlsUtna1xINqTQo0Wx5nKlXA",
+  "oauth_client_secret": "3LQ-M990ICpwG5klSxL4m3QArLtgNxzH_XsDJl4i_xjpUO5XaZkpqES4LOzR44YS",
+  "oauth_redirect_uri": "https://chatroom.rms.net.cn/api/auth/callback",
+  "oauth_scope": "openid profile email",
+
+  "access_token_expire_minutes": 15,
+  "refresh_token_expire_days": 30,
+
+  "deploy_token": "rmstoken",
+  "livekit_host": "wss://chatroom.rms.net.cn/livekit",
+  "livekit_api_key": "rms_discord",
+  "livekit_api_secret": "rmsdiscordsecretkey123456",
+  "livekit_internal_host": "ws://127.0.0.1:7880"
+}

@@ -3,14 +3,20 @@
     <div class="modal-content">
       <div class="modal-header">
         <h2>{{ serverName }} - 服务器权限设置</h2>
-        <button class="close-btn" @click="handleClose">✕</button>
+        <button class="close-btn" @click="handleClose">&times;</button>
       </div>
 
       <div class="modal-body">
-        <InternalExternalPermissionSettings
-          v-model="serverInternalLevel"
-          title="服务器内部/外部权限"
-          :serverValue="initialMinInternalLevel"
+        <DualPermissionSettings
+          v-model:permLevel="serverPermMinLevel"
+          v-model:groupLevel="serverMinLevel"
+          v-model:logicOperator="serverLogicOperator"
+          title="最低权限要求"
+          description="用户需满足此权限要求才能访问此服务器"
+          :maxLevel="userMaxLevel"
+          :serverPermLevel="initialPermMinLevel"
+          :serverGroupLevel="initialMinLevel"
+          :serverOperator="initialLogicOperator"
         />
       </div>
 
@@ -27,43 +33,45 @@
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
 import { useAuthStore } from '../stores/auth'
-import InternalExternalPermissionSettings from './InternalExternalPermissionSettings.vue'
+import DualPermissionSettings from './DualPermissionSettings.vue'
 import axios from 'axios'
 
 interface Props {
   isOpen: boolean
   serverId: number
   serverName: string
-  initialMinInternalLevel?: number
+  initialMinLevel?: number
+  initialPermMinLevel?: number
+  initialLogicOperator?: 'AND' | 'OR'
 }
 
 const props = withDefaults(defineProps<Props>(), {
-  initialMinInternalLevel: 1
+  initialMinLevel: 0,
+  initialPermMinLevel: 0,
+  initialLogicOperator: 'AND'
 })
 
 const auth = useAuthStore()
 
 const emit = defineEmits<{
   'close': []
-  'save': [value: { minInternalLevel: number }]
+  'save': [value: { minLevel: number; permMinLevel: number; logicOperator: 'AND' | 'OR' }]
 }>()
 
-const serverInternalLevel = ref(props.initialMinInternalLevel)
-
+const serverMinLevel = ref(props.initialMinLevel)
+const serverPermMinLevel = ref(props.initialPermMinLevel)
+const serverLogicOperator = ref<'AND' | 'OR'>(props.initialLogicOperator)
 const isSaving = ref(false)
-
 const API_BASE = import.meta.env.VITE_API_BASE || ''
 
-// 获取用户的最高权限等级
 const userMaxLevel = computed(() => {
   return auth.user?.permission_level || 1
 })
 
-// Watch for initial permissions change
-watch(() => props.initialMinInternalLevel, (newVal) => {
-  if (newVal !== undefined) {
-    serverInternalLevel.value = newVal
-  }
+watch(() => [props.initialMinLevel, props.initialPermMinLevel, props.initialLogicOperator] as const, ([gl, pl, op]) => {
+  serverMinLevel.value = gl
+  serverPermMinLevel.value = pl
+  serverLogicOperator.value = op
 })
 
 const handleClose = () => {
@@ -76,17 +84,16 @@ const handleSave = async () => {
     await axios.patch(
       `${API_BASE}/api/servers/${props.serverId}`,
       {
-        min_internal_level: serverInternalLevel.value
+        min_level: serverMinLevel.value,
+        perm_min_level: serverPermMinLevel.value,
+        logic_operator: serverLogicOperator.value
       },
-      {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem('token')}`
-        }
-      }
+      { headers: { Authorization: `Bearer ${auth.accessToken}` } }
     )
-    
     emit('save', {
-      minInternalLevel: serverInternalLevel.value
+      minLevel: serverMinLevel.value,
+      permMinLevel: serverPermMinLevel.value,
+      logicOperator: serverLogicOperator.value
     })
     emit('close')
   } catch (error) {
@@ -114,12 +121,8 @@ const handleSave = async () => {
 }
 
 @keyframes fadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 .modal-content {
@@ -137,14 +140,8 @@ const handleSave = async () => {
 }
 
 @keyframes slideUp {
-  from {
-    transform: translateY(20px);
-    opacity: 0;
-  }
-  to {
-    transform: translateY(0);
-    opacity: 1;
-  }
+  from { transform: translateY(20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
 }
 
 .modal-header {
@@ -189,13 +186,6 @@ const handleSave = async () => {
 .modal-body {
   padding: 24px;
   flex: 1;
-}
-
-.info-text {
-  margin-top: 16px;
-  font-size: 12px;
-  color: var(--color-text-muted);
-  line-height: 1.5;
 }
 
 .modal-footer {

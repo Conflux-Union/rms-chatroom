@@ -1,0 +1,12 @@
+-- Reverse initial schema creation
+DROP TABLE IF EXISTS read_positions;
+DROP TABLE IF EXISTS reactions;
+DROP TABLE IF EXISTS mute_records;
+DROP TABLE IF EXISTS voice_invites;
+DROP TABLE IF EXISTS voice_states;
+DROP TABLE IF EXISTS attachments;
+DROP TABLE IF EXISTS message_mentions;
+DROP TABLE IF EXISTS messages;
+DROP TABLE IF EXISTS channels;
+DROP TABLE IF EXISTS channel_groups;
+DROP TABLE IF EXISTS servers;

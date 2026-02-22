@@ -3,16 +3,20 @@
     <div class="modal-content">
       <div class="modal-header">
         <h2>{{ groupName }} - 频道组权限设置</h2>
-        <button class="close-btn" @click="handleClose">✕</button>
+        <button class="close-btn" @click="handleClose">&times;</button>
       </div>
 
       <div class="modal-body">
-        <InternalLevelPermissionSettings
-          v-model="groupVisibilityLevel"
-          title="频道组可见性权限"
-          description="只有达到此权限等级的用户才能看到此频道组及其内的频道"
+        <DualPermissionSettings
+          v-model:permLevel="groupPermMinLevel"
+          v-model:groupLevel="groupMinLevel"
+          v-model:logicOperator="groupLogicOperator"
+          title="可见性权限"
+          description="用户需满足此权限要求才能看到此频道组"
           :maxLevel="userMaxLevel"
-          :serverValue="initialMinServerLevel"
+          :serverPermLevel="initialPermMinLevel"
+          :serverGroupLevel="initialMinLevel"
+          :serverOperator="initialLogicOperator"
         />
       </div>
 
@@ -29,7 +33,7 @@
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
 import { useAuthStore } from '../stores/auth'
-import InternalLevelPermissionSettings from './InternalLevelPermissionSettings.vue'
+import DualPermissionSettings from './DualPermissionSettings.vue'
 import axios from 'axios'
 
 interface Props {
@@ -37,36 +41,38 @@ interface Props {
   serverId: number
   groupId: number
   groupName: string
-  initialMinServerLevel?: number
+  initialMinLevel?: number
+  initialPermMinLevel?: number
+  initialLogicOperator?: 'AND' | 'OR'
 }
 
 const props = withDefaults(defineProps<Props>(), {
-  initialMinServerLevel: 1
+  initialMinLevel: 0,
+  initialPermMinLevel: 0,
+  initialLogicOperator: 'AND'
 })
 
 const auth = useAuthStore()
 
 const emit = defineEmits<{
   'close': []
-  'save': [value: { minServerLevel: number }]
+  'save': [value: { minLevel: number; permMinLevel: number; logicOperator: 'AND' | 'OR' }]
 }>()
 
-const groupVisibilityLevel = ref(props.initialMinServerLevel)
-
+const groupMinLevel = ref(props.initialMinLevel)
+const groupPermMinLevel = ref(props.initialPermMinLevel)
+const groupLogicOperator = ref<'AND' | 'OR'>(props.initialLogicOperator)
 const isSaving = ref(false)
-
 const API_BASE = import.meta.env.VITE_API_BASE || ''
 
-// 获取用户的最高权限等级
 const userMaxLevel = computed(() => {
   return auth.user?.permission_level || 1
 })
 
-// Update visibility level when props change
-watch(() => props.initialMinServerLevel, (val) => {
-  if (val !== undefined) {
-    groupVisibilityLevel.value = val
-  }
+watch(() => [props.initialMinLevel, props.initialPermMinLevel, props.initialLogicOperator] as const, ([gl, pl, op]) => {
+  groupMinLevel.value = gl
+  groupPermMinLevel.value = pl
+  groupLogicOperator.value = op
 })
 
 function handleClose() {
@@ -78,26 +84,26 @@ async function handleSave() {
 
   try {
     isSaving.value = true
-
-    // Call API to update channel group permissions
     await axios.patch(
       `${API_BASE}/api/servers/${props.serverId}/channel-groups/${props.groupId}`,
       {
-        min_server_level: groupVisibilityLevel.value
-      }
+        min_level: groupMinLevel.value,
+        perm_min_level: groupPermMinLevel.value,
+        logic_operator: groupLogicOperator.value
+      },
+      { headers: { Authorization: `Bearer ${auth.accessToken}` } }
     )
-
-    // Emit success
     emit('save', {
-      minServerLevel: groupVisibilityLevel.value
+      minLevel: groupMinLevel.value,
+      permMinLevel: groupPermMinLevel.value,
+      logicOperator: groupLogicOperator.value
     })
-
     handleClose()
   } catch (error) {
     console.error('Failed to update channel group permissions:', error)
     if (axios.isAxiosError(error)) {
       const message = error.response?.data?.detail || error.message
-      alert(`保存失败: ${message}`)
+      alert(`保存失败：${message}`)
     } else {
       alert('保存失败，请重试')
     }
@@ -123,12 +129,8 @@ async function handleSave() {
 }
 
 @keyframes fadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 .modal-content {
@@ -145,14 +147,8 @@ async function handleSave() {
 }
 
 @keyframes slideUp {
-  from {
-    transform: translateY(20px);
-    opacity: 0;
-  }
-  to {
-    transform: translateY(0);
-    opacity: 1;
-  }
+  from { transform: translateY(20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
 }
 
 .modal-header {
@@ -198,14 +194,6 @@ async function handleSave() {
   flex: 1;
   overflow-y: auto;
   padding: 24px;
-}
-
-.info-text {
-  font-size: 12px;
-  color: var(--color-text-muted);
-  margin-top: 16px;
-  margin-bottom: 0;
-  line-height: 1.5;
 }
 
 .modal-footer {

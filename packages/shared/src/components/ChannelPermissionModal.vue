@@ -3,23 +3,31 @@
     <div class="modal-content">
       <div class="modal-header">
         <h2>{{ channelName }} - 频道权限设置</h2>
-        <button class="close-btn" @click="handleClose">✕</button>
+        <button class="close-btn" @click="handleClose">&times;</button>
       </div>
 
       <div class="modal-body">
-        <InternalLevelPermissionSettings
-          v-model="channelVisibilityLevel"
-          title="频道可见性权限"
-          description="只有达到此权限等级的用户才能看到此频道"
+        <DualPermissionSettings
+          v-model:permLevel="channelPermMinLevel"
+          v-model:groupLevel="channelMinLevel"
+          v-model:logicOperator="channelLogicOperator"
+          title="可见性权限"
+          description="用户需满足此权限要求才能看到此频道"
           :maxLevel="userMaxLevel"
-          :serverValue="initialPermissions?.visibilityMinServerLevel"
+          :serverPermLevel="initialPermissions?.permMinLevel"
+          :serverGroupLevel="initialPermissions?.minLevel"
+          :serverOperator="initialPermissions?.logicOperator"
         />
-        <InternalLevelPermissionSettings
-          v-model="channelSpeakLevel"
-          title="频道发言权限"
-          description="只有达到此权限等级的用户才能在此频道发言"
+        <DualPermissionSettings
+          v-model:permLevel="channelSpeakPermMinLevel"
+          v-model:groupLevel="channelSpeakMinLevel"
+          v-model:logicOperator="channelSpeakLogicOperator"
+          title="发言权限"
+          description="用户需满足此权限要求才能在此频道发言"
           :maxLevel="userMaxLevel"
-          :serverValue="initialPermissions?.speakMinServerLevel"
+          :serverPermLevel="initialPermissions?.speakPermMinLevel"
+          :serverGroupLevel="initialPermissions?.speakMinLevel"
+          :serverOperator="initialPermissions?.speakLogicOperator"
         />
       </div>
 
@@ -36,12 +44,16 @@
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
 import { useAuthStore } from '../stores/auth'
-import InternalLevelPermissionSettings from './InternalLevelPermissionSettings.vue'
+import DualPermissionSettings from './DualPermissionSettings.vue'
 import axios from 'axios'
 
 interface ChannelPermissions {
-  visibilityMinServerLevel: number
-  speakMinServerLevel: number
+  minLevel: number
+  permMinLevel: number
+  logicOperator: 'AND' | 'OR'
+  speakMinLevel: number
+  speakPermMinLevel: number
+  speakLogicOperator: 'AND' | 'OR'
 }
 
 interface Props {
@@ -54,8 +66,12 @@ interface Props {
 
 const props = withDefaults(defineProps<Props>(), {
   initialPermissions: () => ({
-    visibilityMinServerLevel: 1,
-    speakMinServerLevel: 1
+    minLevel: 0,
+    permMinLevel: 0,
+    logicOperator: 'AND' as const,
+    speakMinLevel: 0,
+    speakPermMinLevel: 0,
+    speakLogicOperator: 'AND' as const
   })
 })
 
@@ -66,24 +82,30 @@ const emit = defineEmits<{
   'save': [value: ChannelPermissions]
 }>()
 
-const channelVisibilityLevel = ref(props.initialPermissions?.visibilityMinServerLevel || 1)
-const channelSpeakLevel = ref(props.initialPermissions?.speakMinServerLevel || 1)
+const channelMinLevel = ref(props.initialPermissions?.minLevel || 0)
+const channelPermMinLevel = ref(props.initialPermissions?.permMinLevel || 0)
+const channelLogicOperator = ref<'AND' | 'OR'>(props.initialPermissions?.logicOperator || 'AND')
+const channelSpeakMinLevel = ref(props.initialPermissions?.speakMinLevel || 0)
+const channelSpeakPermMinLevel = ref(props.initialPermissions?.speakPermMinLevel || 0)
+const channelSpeakLogicOperator = ref<'AND' | 'OR'>(props.initialPermissions?.speakLogicOperator || 'AND')
 
 const isSaving = ref(false)
 const API_BASE = import.meta.env.VITE_API_BASE || ''
 
-// 获取用户的最高权限等级
 const userMaxLevel = computed(() => {
   return auth.user?.permission_level || 1
 })
 
-// Watch for initial permissions change
-watch(() => props.initialPermissions, (newVal) => {
-  if (newVal) {
-    channelVisibilityLevel.value = newVal.visibilityMinServerLevel || 1
-    channelSpeakLevel.value = newVal.speakMinServerLevel || 1
+watch(() => props.isOpen, (open) => {
+  if (open && props.initialPermissions) {
+    channelMinLevel.value = props.initialPermissions.minLevel || 0
+    channelPermMinLevel.value = props.initialPermissions.permMinLevel || 0
+    channelLogicOperator.value = props.initialPermissions.logicOperator || 'AND'
+    channelSpeakMinLevel.value = props.initialPermissions.speakMinLevel || 0
+    channelSpeakPermMinLevel.value = props.initialPermissions.speakPermMinLevel || 0
+    channelSpeakLogicOperator.value = props.initialPermissions.speakLogicOperator || 'AND'
   }
-}, { immediate: true })
+})
 
 const handleClose = () => {
   emit('close')
@@ -93,21 +115,24 @@ const handleSave = async () => {
   isSaving.value = true
   try {
     await axios.patch(
-      `${API_BASE}/api/servers/${props.serverId}/channels/${props.channelId}`,
+      `${API_BASE}/api/channels/${props.channelId}`,
       {
-        visibility_min_server_level: channelVisibilityLevel.value,
-        speak_min_server_level: channelSpeakLevel.value
+        min_level: channelMinLevel.value,
+        perm_min_level: channelPermMinLevel.value,
+        logic_operator: channelLogicOperator.value,
+        speak_min_level: channelSpeakMinLevel.value,
+        speak_perm_min_level: channelSpeakPermMinLevel.value,
+        speak_logic_operator: channelSpeakLogicOperator.value
       },
-      {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem('token')}`
-        }
-      }
+      { headers: { Authorization: `Bearer ${auth.accessToken}` } }
     )
-    
     emit('save', {
-      visibilityMinServerLevel: channelVisibilityLevel.value,
-      speakMinServerLevel: channelSpeakLevel.value
+      minLevel: channelMinLevel.value,
+      permMinLevel: channelPermMinLevel.value,
+      logicOperator: channelLogicOperator.value,
+      speakMinLevel: channelSpeakMinLevel.value,
+      speakPermMinLevel: channelSpeakPermMinLevel.value,
+      speakLogicOperator: channelSpeakLogicOperator.value
     })
     emit('close')
   } catch (error) {
@@ -135,12 +160,8 @@ const handleSave = async () => {
 }
 
 @keyframes fadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 .modal-content {
@@ -158,14 +179,8 @@ const handleSave = async () => {
 }
 
 @keyframes slideUp {
-  from {
-    transform: translateY(20px);
-    opacity: 0;
-  }
-  to {
-    transform: translateY(0);
-    opacity: 1;
-  }
+  from { transform: translateY(20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
 }
 
 .modal-header {
@@ -215,18 +230,11 @@ const handleSave = async () => {
   gap: 24px;
 }
 
-.info-text {
-  margin-top: 16px;
-  font-size: 12px;
-  color: var(--color-text-muted);
-  line-height: 1.5;
-}
-
 .modal-footer {
   display: flex;
   gap: 12px;
-  padding: 20px;
-  border-top: 1px solid var(--color-border);
+  padding: 20px 24px;
+  border-top: 2px solid var(--color-border);
   justify-content: flex-end;
   background: var(--color-background-soft);
 }
@@ -241,21 +249,9 @@ const handleSave = async () => {
   transition: all 0.2s;
 }
 
-.btn-secondary {
-  background: var(--color-background);
-  color: var(--color-text-main);
-  border: 2px solid var(--color-border);
-}
-
-.btn-secondary:hover {
-  border-color: var(--color-accent);
-  color: var(--color-accent);
-}
-
 .btn-primary {
   background: var(--color-gradient-primary);
   color: white;
-  border: none;
 }
 
 .btn-primary:hover:not(:disabled) {
@@ -268,37 +264,14 @@ const handleSave = async () => {
   cursor: not-allowed;
 }
 
-.btn {
-  padding: 8px 16px;
-  border: none;
-  border-radius: var(--radius-sm);
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.btn-primary {
-  background: var(--color-accent);
-  color: white;
-}
-
-.btn-primary:hover:not(:disabled) {
-  opacity: 0.9;
-}
-
-.btn-primary:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
 .btn-secondary {
-  background: var(--color-background-soft);
+  background: var(--color-background);
   color: var(--color-text-main);
-  border: 1px solid var(--color-border);
+  border: 2px solid var(--color-border);
 }
 
 .btn-secondary:hover {
-  background: var(--color-background);
+  border-color: var(--color-accent);
+  color: var(--color-accent);
 }
 </style>

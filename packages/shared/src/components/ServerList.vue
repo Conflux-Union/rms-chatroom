@@ -72,7 +72,19 @@ async function handleDropdownSelect(key: string) {
   serverDropdown.value.show = false
 }
 
-function onServerPermissionSaved() {
+function onServerPermissionSaved(val: { minLevel: number; permMinLevel: number; logicOperator: 'AND' | 'OR' }) {
+  // Update local server object so the modal shows fresh values next time
+  const server = chat.servers.find(s => s.id === selectedServerForPermission.value)
+  if (server) {
+    server.min_level = val.minLevel
+    server.perm_min_level = val.permMinLevel
+    server.logic_operator = val.logicOperator
+  }
+  if (chat.currentServer && chat.currentServer.id === selectedServerForPermission.value) {
+    chat.currentServer.min_level = val.minLevel
+    chat.currentServer.perm_min_level = val.permMinLevel
+    chat.currentServer.logic_operator = val.logicOperator
+  }
   showServerPermissionModal.value = false
   selectedServerForPermission.value = null
 }
@@ -149,7 +161,9 @@ function onServerPermissionSaved() {
       :isOpen="showServerPermissionModal"
       :serverId="selectedServerForPermission || 0"
       :serverName="chat.currentServer?.name || ''"
-      :initialMinInternalLevel="chat.currentServer?.min_internal_level || 1"
+      :initialMinLevel="chat.currentServer?.min_level || 0"
+      :initialPermMinLevel="chat.currentServer?.perm_min_level || 0"
+      :initialLogicOperator="chat.currentServer?.logic_operator || 'AND'"
       @close="showServerPermissionModal = false"
       @save="onServerPermissionSaved"
     />

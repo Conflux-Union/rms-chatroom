@@ -1,0 +1,29 @@
+{
+  "database_url": "mysql://rmschat:your-password@tcp(localhost:3306)/rmschat?charset=utf8mb4",
+  "sso_base_url": "https://sso.rms.net.cn",
+  "host": "0.0.0.0",
+  "port": 8000,
+  "debug": true,
+  "frontend_dist_path": "../packages/web/dist",
+  "cors_origins": ["http://localhost:5173", "http://127.0.0.1:5173"],
+  "jwt_secret": "change-me-to-a-random-string",
+
+  "oauth_base_url": "https://sso.rms.net.cn",
+  "oauth_authorize_endpoint": "/oauth/authorize",
+  "oauth_token_endpoint": "/oauth/token",
+  "oauth_userinfo_endpoint": "/oauth/userinfo",
+  "oauth_client_id": "your-client-id",
+  "oauth_client_secret": "your-client-secret",
+  "oauth_redirect_uri": "http://localhost:8000/api/auth/callback",
+  "oauth_scope": "openid profile email",
+
+  "access_token_expire_minutes": 15,
+  "refresh_token_expire_days": 30,
+
+  "livekit_host": "",
+  "livekit_internal_host": "",
+  "livekit_api_key": "",
+  "livekit_api_secret": "",
+
+  "deploy_token": ""
+}
