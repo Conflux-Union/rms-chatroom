@@ -41,7 +41,11 @@ class AuthViewModel @Inject constructor(
         viewModelScope.launch {
             Log.d(TAG, "checkAuth start")
             _state.value = _state.value.copy(isLoading = true, error = null)
-            val token = authRepository.getToken()
+
+            // One-time migration from legacy "auth_token" key
+            authRepository.migrateLegacyToken()
+
+            val token = authRepository.getAccessToken()
             if (token != null) {
                 Log.d(TAG, "checkAuth token found length=${token.length}")
                 authRepository.verifyToken(token)
@@ -58,16 +62,10 @@ class AuthViewModel @Inject constructor(
                         Log.e(TAG, "checkAuth verify failed", e)
                         val isUnauthorized = (e as? AuthException)?.isUnauthorized == true
                         if (isUnauthorized) {
-                            // 401: Token invalid, clear and redirect to login
-                            authRepository.clearToken()
-                            _state.value = AuthState(
-                                isLoading = false,
-                                isAuthenticated = false,
-                                token = null,
-                                error = "登录已过期，请重新登录"
-                            )
+                            // Access token expired — try refresh
+                            tryRefreshOrLogout()
                         } else {
-                            // Other errors (network, server): proceed to main with error message
+                            // Network/server error: proceed to main with error
                             _state.value = AuthState(
                                 isLoading = false,
                                 isAuthenticated = true,
@@ -84,19 +82,79 @@ class AuthViewModel @Inject constructor(
         }
     }
 
-    fun handleSsoCallback(token: String) {
+    /**
+     * Attempt to refresh tokens. If refresh fails, clear everything and force re-login.
+     */
+    private suspend fun tryRefreshOrLogout() {
+        val refreshToken = authRepository.getRefreshToken()
+        if (refreshToken == null) {
+            Log.d(TAG, "No refresh token available, forcing re-login")
+            authRepository.clearTokens()
+            _state.value = AuthState(
+                isLoading = false,
+                isAuthenticated = false,
+                token = null,
+                error = "登录已过期，请重新登录"
+            )
+            return
+        }
+
+        Log.d(TAG, "Attempting token refresh")
+        authRepository.refreshTokens(refreshToken)
+            .onSuccess { response ->
+                Log.d(TAG, "Token refresh succeeded, verifying new token")
+                // Verify the new access token
+                authRepository.verifyToken(response.accessToken)
+                    .onSuccess { user ->
+                        Log.d(TAG, "Post-refresh verify success user=${user.username}")
+                        _state.value = AuthState(
+                            isLoading = false,
+                            isAuthenticated = true,
+                            user = user,
+                            token = response.accessToken
+                        )
+                    }
+                    .onFailure { e ->
+                        Log.e(TAG, "Post-refresh verify failed", e)
+                        authRepository.clearTokens()
+                        _state.value = AuthState(
+                            isLoading = false,
+                            isAuthenticated = false,
+                            token = null,
+                            error = "登录已过期，请重新登录"
+                        )
+                    }
+            }
+            .onFailure { e ->
+                Log.e(TAG, "Token refresh failed", e)
+                authRepository.clearTokens()
+                _state.value = AuthState(
+                    isLoading = false,
+                    isAuthenticated = false,
+                    token = null,
+                    error = "登录已过期，请重新登录"
+                )
+            }
+    }
+
+    fun handleSsoCallback(accessToken: String, refreshToken: String?) {
         viewModelScope.launch {
-            Log.d(TAG, "handleSsoCallback start length=${token.length}")
+            Log.d(TAG, "handleSsoCallback start accessToken.len=${accessToken.length} hasRefresh=${refreshToken != null}")
             _state.value = _state.value.copy(isLoading = true, error = null)
-            authRepository.verifyToken(token)
+            authRepository.verifyToken(accessToken)
                 .onSuccess { user ->
                     Log.d(TAG, "handleSsoCallback verify success user=${user.username}")
-                    authRepository.saveToken(token)
+                    if (refreshToken != null) {
+                        authRepository.saveTokens(accessToken, refreshToken)
+                    } else {
+                        // Fallback: no refresh token from server (shouldn't happen, but be safe)
+                        authRepository.saveToken(accessToken)
+                    }
                     _state.value = AuthState(
                         isLoading = false,
                         isAuthenticated = true,
                         user = user,
-                        token = token
+                        token = accessToken
                     )
                 }
                 .onFailure { e ->
@@ -113,7 +171,13 @@ class AuthViewModel @Inject constructor(
 
     fun logout() {
         viewModelScope.launch {
-            authRepository.clearToken()
+            // Best-effort server-side revocation
+            val accessToken = authRepository.getAccessToken()
+            val refreshToken = authRepository.getRefreshToken()
+            if (accessToken != null && refreshToken != null) {
+                authRepository.revokeRefreshToken(accessToken, refreshToken)
+            }
+            authRepository.clearTokens()
             _state.value = AuthState(isLoading = false, isAuthenticated = false, token = null)
         }
     }

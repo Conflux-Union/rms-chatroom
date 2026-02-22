@@ -261,8 +261,8 @@ fun MainScreen(
                             onReconnect = { mainViewModel.reconnectWebSocket() },
                             onEditMessage = { messageId, content -> mainViewModel.editMessage(messageId, content) },
                             onDeleteMessage = { messageId -> mainViewModel.deleteMessage(messageId) },
-                            onMuteUser = { userId, scope, mutedUntil, serverId, channelId, reason ->
-                                mainViewModel.muteUser(userId, scope, mutedUntil, serverId, channelId, reason)
+                            onMuteUser = { userId, scope, durationMinutes, serverId, channelId, reason ->
+                                mainViewModel.muteUser(userId, scope, durationMinutes, serverId, channelId, reason)
                             },
                             onSaveReadPosition = { messageId -> mainViewModel.saveReadPosition(messageId) },
                             onDismissContinueReading = { mainViewModel.dismissContinueReading() },

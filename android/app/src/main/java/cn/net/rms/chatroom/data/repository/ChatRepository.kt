@@ -432,7 +432,7 @@ class ChatRepository @Inject constructor(
         return try {
             val token = authRepository.getToken()
                 ?: return Result.failure(AuthException("未登录，请先登录"))
-            api.deleteChannel(authRepository.getAuthHeader(token), serverId, channelId)
+            api.deleteChannel(authRepository.getAuthHeader(token), channelId)
             Result.success(Unit)
         } catch (e: Exception) {
             Log.e(TAG, "deleteChannel failed", e)
@@ -446,12 +446,15 @@ class ChatRepository @Inject constructor(
             val token = authRepository.getToken()
                 ?: return Result.failure(AuthException("未登录，请先登录"))
             val groups = api.getChannelGroups(authRepository.getAuthHeader(token), serverId)
-            val channelGroups = groups.map { 
+            val channelGroups = groups.map {
                 ChannelGroup(
                     id = it.id,
                     serverId = it.serverId,
                     name = it.name,
-                    position = it.position
+                    position = it.position,
+                    minLevel = it.minLevel,
+                    permMinLevel = it.permMinLevel,
+                    logicOperator = it.logicOperator
                 )
             }
             _channelGroups.value = channelGroups
@@ -475,7 +478,10 @@ class ChatRepository @Inject constructor(
                 id = response.id,
                 serverId = response.serverId,
                 name = response.name,
-                position = response.position
+                position = response.position,
+                minLevel = response.minLevel,
+                permMinLevel = response.permMinLevel,
+                logicOperator = response.logicOperator
             )
             Result.success(group)
         } catch (e: Exception) {
@@ -618,7 +624,7 @@ class ChatRepository @Inject constructor(
     suspend fun createMute(
         userId: Long,
         scope: String,
-        mutedUntil: String?,
+        durationMinutes: Int?,
         serverId: Long?,
         channelId: Long?,
         reason: String?
@@ -633,7 +639,7 @@ class ChatRepository @Inject constructor(
                     scope = scope,
                     serverId = serverId,
                     channelId = channelId,
-                    mutedUntil = mutedUntil,
+                    durationMinutes = durationMinutes,
                     reason = reason
                 )
             )

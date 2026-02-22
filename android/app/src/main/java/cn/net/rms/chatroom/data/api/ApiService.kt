@@ -11,6 +11,17 @@ interface ApiService {
     @GET("api/auth/me")
     suspend fun verifyToken(@Header("Authorization") token: String): AuthMeResponse
 
+    // Token refresh — no auth header needed
+    @POST("api/auth/refresh")
+    suspend fun refreshToken(@Body body: RefreshTokenRequest): RefreshTokenResponse
+
+    // Logout — revoke refresh token (requires auth)
+    @POST("api/auth/logout")
+    suspend fun logout(
+        @Header("Authorization") token: String,
+        @Body body: LogoutRequest
+    ): LogoutResponse
+
     // Servers
     @GET("api/servers")
     suspend fun getServers(@Header("Authorization") token: String): List<Server>
@@ -42,10 +53,9 @@ interface ApiService {
         @Body body: CreateChannelRequest
     ): Channel
 
-    @DELETE("api/servers/{serverId}/channels/{channelId}")
+    @DELETE("api/channels/{channelId}")
     suspend fun deleteChannel(
         @Header("Authorization") token: String,
-        @Path("serverId") serverId: Long,
         @Path("channelId") channelId: Long
     )
 
@@ -392,7 +402,7 @@ interface ApiService {
     suspend fun checkGitHubRelease(@Url url: String): GitHubReleaseResponse
 
     // Read Positions (cross-device sync)
-    @GET("read-positions")
+    @GET("api/read-positions")
     suspend fun getReadPositions(@Header("Authorization") token: String): ReadPositionsResponse
 }
 
@@ -413,7 +423,13 @@ data class ChannelGroupResponse(
     @SerializedName("server_id")
     val serverId: Long,
     val name: String,
-    val position: Int
+    val position: Int,
+    @SerializedName("min_level")
+    val minLevel: Int = 0,
+    @SerializedName("perm_min_level")
+    val permMinLevel: Int = 0,
+    @SerializedName("logic_operator")
+    val logicOperator: String = "AND"
 )
 
 data class CreateChannelGroupRequest(val name: String)
@@ -500,4 +516,23 @@ data class ReadPositionItem(
 
 data class ReadPositionsResponse(
     val positions: List<ReadPositionItem>
+)
+
+// OAuth token refresh/logout
+data class RefreshTokenRequest(
+    @SerializedName("refresh_token") val refreshToken: String
+)
+
+data class RefreshTokenResponse(
+    @SerializedName("access_token") val accessToken: String,
+    @SerializedName("refresh_token") val refreshToken: String,
+    @SerializedName("token") val token: String? = null
+)
+
+data class LogoutRequest(
+    @SerializedName("refresh_token") val refreshToken: String
+)
+
+data class LogoutResponse(
+    val success: Boolean
 )

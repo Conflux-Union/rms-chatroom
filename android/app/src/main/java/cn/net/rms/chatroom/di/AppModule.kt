@@ -9,6 +9,7 @@ import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 import cn.net.rms.chatroom.BuildConfig
 import cn.net.rms.chatroom.data.api.ApiService
+import cn.net.rms.chatroom.data.auth.TokenAuthenticator
 import cn.net.rms.chatroom.data.local.AppDatabase
 import cn.net.rms.chatroom.data.local.MessageDao
 import cn.net.rms.chatroom.data.manager.MentionNotificationManager
@@ -36,11 +37,12 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun provideOkHttpClient(): OkHttpClient {
+    fun provideOkHttpClient(authenticator: TokenAuthenticator): OkHttpClient {
         val builder = OkHttpClient.Builder()
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
             .writeTimeout(30, TimeUnit.SECONDS)
+            .authenticator(authenticator)
 
         if (BuildConfig.DEBUG) {
             val logging = HttpLoggingInterceptor().apply {
