@@ -44,6 +44,12 @@ func main() {
 		dsn += "&loc=UTC"
 	}
 
+	// Set session timezone to UTC so CURRENT_TIMESTAMP returns UTC
+	// (MySQL 5.7 doesn't support UTC_TIMESTAMP() as column DEFAULT)
+	if !strings.Contains(dsn, "time_zone=") {
+		dsn += "&time_zone=%27%2B00%3A00%27"
+	}
+
 	db, err := sql.Open("mysql", dsn)
 	if err != nil {
 		log.Fatalf("failed to open database: %v", err)
