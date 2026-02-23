@@ -7,7 +7,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"io"
 	"math/big"
 	"math/rand"
 	"net/http"
@@ -17,6 +16,9 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
+
+	reqv3 "github.com/imroc/req/v3"
 )
 
 // Netease crypto constants
@@ -30,25 +32,45 @@ const (
 
 	randomChars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 
-	neteaseUAWeapi = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+	// Match pyncm's User-Agent exactly
+	neteaseUAWeapi = "Mozilla/5.0 (linux@github.com/mos9527/pyncm) Chrome/PyNCM.1.8.1"
 	neteaseUAEapi  = "Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Safari/537.36 Chrome/91.0.4472.164 NeteaseMusicDesktop/2.10.2.200154"
 )
 
 // NeteaseClient implements the NetEase Cloud Music API.
 type NeteaseClient struct {
-	httpClient *http.Client
+	reqClient  *reqv3.Client   // TLS-fingerprinted client for API calls
+	jar        http.CookieJar  // shared cookie jar
 	csrf       string
 	credFile   string
+	sDeviceId  string
+	wnmcid     string
 	mu         sync.Mutex
+}
+
+func generateWNMCID() string {
+	b := make([]byte, 6)
+	for i := range b {
+		b[i] = "abcdefghijklmnopqrstuvwxyz"[rand.Intn(26)]
+	}
+	return fmt.Sprintf("%s.%d.01.0", string(b), time.Now().UnixMilli())
 }
 
 func NewNeteaseClient(credentialPath string) *NeteaseClient {
 	jar, _ := cookiejar.New(nil)
 	c := &NeteaseClient{
-		httpClient: &http.Client{Jar: jar},
-		credFile:   credentialPath,
+		reqClient: reqv3.C().
+			SetTimeout(15 * time.Second),
+		jar:       jar,
+		credFile:  credentialPath,
+		sDeviceId: fmt.Sprintf("unknown-%d", rand.Intn(1000000)),
+		wnmcid:    generateWNMCID(),
 	}
-	_ = c.LoadCredential()
+	if credentialPath != "" {
+		if err := c.LoadCredential(); err != nil {
+			// No saved credential; start with clean jar (matches pyncm behavior)
+		}
+	}
 	return c
 }
 
@@ -205,6 +227,37 @@ func base64Encode(data []byte) string {
 
 // --- HTTP helpers ---
 
+// injectCookies copies all cookies from the shared jar into a reqv3 request.
+func (c *NeteaseClient) injectCookies(r *reqv3.Request) {
+	u, _ := url.Parse("https://music.163.com")
+	for _, ck := range c.jar.Cookies(u) {
+		r.SetCookies(&http.Cookie{Name: ck.Name, Value: ck.Value})
+	}
+}
+
+// collectCookies saves response Set-Cookie headers back into the shared jar.
+func (c *NeteaseClient) collectCookies(resp *reqv3.Response) {
+	cookies := resp.Cookies()
+	if len(cookies) == 0 {
+		return
+	}
+	u, _ := url.Parse("https://music.163.com")
+	var toSet []*http.Cookie
+	for _, ck := range cookies {
+		if ck.Domain == "" {
+			ck.Domain = ".music.163.com"
+		}
+		if ck.Path == "" {
+			ck.Path = "/"
+		}
+		toSet = append(toSet, ck)
+		if ck.Name == "__csrf" {
+			c.csrf = ck.Value
+		}
+	}
+	c.jar.SetCookies(u, toSet)
+}
+
 func (c *NeteaseClient) weapiRequest(endpoint string, params map[string]interface{}) (map[string]interface{}, error) {
 	params["csrf_token"] = c.csrf
 	jsonBytes, err := json.Marshal(params)
@@ -213,31 +266,29 @@ func (c *NeteaseClient) weapiRequest(endpoint string, params map[string]interfac
 	}
 	form := weapiEncrypt(string(jsonBytes))
 
-	req, err := http.NewRequest("POST", "https://music.163.com"+endpoint, strings.NewReader(form.Encode()))
+	// Build URL with csrf_token query param (matches pyncm behavior)
+	reqURL := "https://music.163.com" + endpoint + "?csrf_token=" + c.csrf
+
+	r := c.reqClient.R().
+		SetHeaders(map[string]string{
+			"Content-Type": "application/x-www-form-urlencoded",
+			"User-Agent":   neteaseUAWeapi,
+			"Referer":      "https://music.163.com",
+		}).
+		SetBodyString(form.Encode())
+	c.injectCookies(r)
+	// Inject eapi_config as cookies (matches pyncm WeapiCryptoRequest)
+	for _, ck := range c.eapiConfigCookies() {
+		r.SetCookies(ck)
+	}
+
+	resp, err := r.Post(reqURL)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", neteaseUAWeapi)
-	req.Header.Set("Referer", "https://music.163.com")
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	c.collectCookies(resp)
 
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	// Update CSRF token from cookies
-	for _, ck := range resp.Cookies() {
-		if ck.Name == "__csrf" {
-			c.csrf = ck.Value
-		}
-	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
+	body := resp.Bytes()
 	var result map[string]interface{}
 	if err := json.Unmarshal(body, &result); err != nil {
 		return nil, fmt.Errorf("weapi json decode: %w, body: %s", err, string(body[:min(len(body), 200)]))
@@ -245,14 +296,26 @@ func (c *NeteaseClient) weapiRequest(endpoint string, params map[string]interfac
 	return result, nil
 }
 
+// eapiConfigCookies returns the eapi_config values as cookies, matching pyncm behavior.
+func (c *NeteaseClient) eapiConfigCookies() []*http.Cookie {
+	return []*http.Cookie{
+		{Name: "os", Value: "iPhone OS"},
+		{Name: "appver", Value: "10.0.0"},
+		{Name: "osver", Value: "16.2"},
+		{Name: "channel", Value: "distribution"},
+		{Name: "deviceId", Value: "pyncm!"},
+	}
+}
+
 func (c *NeteaseClient) eapiRequest(endpoint, apiPath string, params map[string]interface{}) (map[string]interface{}, error) {
-	// Add eapi header config
+	// Build header JSON with requestId (matches pyncm EapiCryptoRequest)
 	header := map[string]interface{}{
-		"os":       "iPhone OS",
-		"appver":   "10.0.0",
-		"osver":    "16.2",
-		"channel":  "distribution",
-		"deviceId": "pyncm!",
+		"os":        "iPhone OS",
+		"appver":    "10.0.0",
+		"osver":     "16.2",
+		"channel":   "distribution",
+		"deviceId":  "pyncm!",
+		"requestId": strconv.Itoa(20000000 + rand.Intn(10000000)),
 	}
 	headerJSON, _ := json.Marshal(header)
 	params["header"] = string(headerJSON)
@@ -260,45 +323,38 @@ func (c *NeteaseClient) eapiRequest(endpoint, apiPath string, params map[string]
 	jsonBytes, _ := json.Marshal(params)
 	form := eapiEncrypt(apiPath, string(jsonBytes))
 
-	req, err := http.NewRequest("POST", "https://music.163.com"+endpoint, strings.NewReader(form.Encode()))
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("User-Agent", neteaseUAEapi)
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	r := c.reqClient.R().
+		SetHeaders(map[string]string{
+			"User-Agent":   neteaseUAEapi,
+			"Content-Type": "application/x-www-form-urlencoded",
+			"Referer":      "",
+		}).
+		SetBodyString(form.Encode())
 
-	// Set eapi cookies
+	// Inject cookies from shared jar, but override eapi-specific ones
 	u, _ := url.Parse("https://music.163.com")
-	existing := c.httpClient.Jar.Cookies(u)
-	eapiCookies := map[string]string{
+	eapiOverrides := map[string]string{
 		"os": "iPhone OS", "appver": "10.0.0",
 		"osver": "16.2", "channel": "distribution", "deviceId": "pyncm!",
 	}
-	for name, val := range eapiCookies {
-		found := false
-		for _, ck := range existing {
-			if ck.Name == name {
-				found = true
-				break
-			}
+	for _, ck := range c.jar.Cookies(u) {
+		if _, override := eapiOverrides[ck.Name]; override {
+			continue
 		}
-		if !found {
-			req.AddCookie(&http.Cookie{Name: name, Value: val})
-		}
+		r.SetCookies(&http.Cookie{Name: ck.Name, Value: ck.Value})
+	}
+	for name, val := range eapiOverrides {
+		r.SetCookies(&http.Cookie{Name: name, Value: val})
 	}
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := r.Post("https://music.163.com" + endpoint)
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	c.collectCookies(resp)
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
+	body := resp.Bytes()
 
-	// Try direct JSON first, then try EAPI decryption
 	var result map[string]interface{}
 	if err := json.Unmarshal(body, &result); err == nil {
 		return result, nil
@@ -308,7 +364,6 @@ func (c *NeteaseClient) eapiRequest(endpoint, apiPath string, params map[string]
 	if err != nil {
 		return nil, fmt.Errorf("eapi decrypt failed: %w", err)
 	}
-	// Strip trailing padding bytes that aren't valid JSON
 	decrypted = []byte(strings.TrimRight(string(decrypted), "\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f\x10"))
 	if err := json.Unmarshal(decrypted, &result); err != nil {
 		return nil, fmt.Errorf("eapi json decode: %w", err)
@@ -324,7 +379,8 @@ func (c *NeteaseClient) GetQRKey() (string, error) {
 	defer c.mu.Unlock()
 
 	result, err := c.weapiRequest("/weapi/login/qrcode/unikey", map[string]interface{}{
-		"type": 1,
+		"type":         "1",
+		"noCheckToken": true,
 	})
 	if err != nil {
 		return "", err
@@ -336,14 +392,21 @@ func (c *NeteaseClient) GetQRKey() (string, error) {
 	return unikey, nil
 }
 
+// GetQRCodeURL builds the full QR code URL with chainId for anti-fraud.
+func (c *NeteaseClient) GetQRCodeURL(unikey string) string {
+	chainId := fmt.Sprintf("v1_%s_web_login_%d", c.sDeviceId, time.Now().UnixMilli())
+	return fmt.Sprintf("http://music.163.com/login?codekey=%s&chainId=%s", unikey, chainId)
+}
+
 // CheckQR checks QR login status. Returns "waiting", "scanned", "success", or "expired".
 func (c *NeteaseClient) CheckQR(unikey string) (string, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	result, err := c.weapiRequest("/weapi/login/qrcode/client/login", map[string]interface{}{
-		"type": 1,
-		"key":  unikey,
+		"type":         1,
+		"noCheckToken": true,
+		"key":          unikey,
 	})
 	if err != nil {
 		return "", err
@@ -458,8 +521,9 @@ func (c *NeteaseClient) GetSongURL(songID string) (string, error) {
 
 func (c *NeteaseClient) getSongURLWithBitrate(id int64, br int) (string, error) {
 	result, err := c.eapiRequest("/eapi/song/enhance/player/url", "/api/song/enhance/player/url", map[string]interface{}{
-		"ids": []int64{id},
-		"br":  strconv.Itoa(br),
+		"ids":        []int64{id},
+		"br":         strconv.Itoa(br),
+		"encodeType": "aac",
 	})
 	if err != nil {
 		return "", err
@@ -490,17 +554,28 @@ func (c *NeteaseClient) GetLoginStatus() (bool, error) {
 	return profile != nil, nil
 }
 
-// SaveCredential persists cookies to disk.
-func (c *NeteaseClient) SaveCredential() error {
-	u, _ := url.Parse("https://music.163.com")
-	cookies := c.httpClient.Jar.Cookies(u)
+// neteaseCredential is the on-disk format for persisted login state.
+type neteaseCredential struct {
+	SDeviceId string         `json:"s_device_id,omitempty"`
+	WNMCID    string         `json:"wnmcid,omitempty"`
+	Cookies   []cookieEntry  `json:"cookies"`
+}
 
-	type cookieEntry struct {
-		Name   string `json:"name"`
-		Value  string `json:"value"`
-		Domain string `json:"domain"`
-		Path   string `json:"path"`
+type cookieEntry struct {
+	Name   string `json:"name"`
+	Value  string `json:"value"`
+	Domain string `json:"domain"`
+	Path   string `json:"path"`
+}
+
+// SaveCredential persists cookies and device identifiers to disk.
+func (c *NeteaseClient) SaveCredential() error {
+	if c.credFile == "" {
+		return nil
 	}
+	u, _ := url.Parse("https://music.163.com")
+	cookies := c.jar.Cookies(u)
+
 	var entries []cookieEntry
 	for _, ck := range cookies {
 		entries = append(entries, cookieEntry{
@@ -511,34 +586,46 @@ func (c *NeteaseClient) SaveCredential() error {
 		})
 	}
 
-	data, err := json.MarshalIndent(entries, "", "  ")
+	cred := neteaseCredential{
+		SDeviceId: c.sDeviceId,
+		WNMCID:    c.wnmcid,
+		Cookies:   entries,
+	}
+
+	data, err := json.MarshalIndent(cred, "", "  ")
 	if err != nil {
 		return err
 	}
 	return os.WriteFile(c.credFile, data, 0600)
 }
 
-// LoadCredential loads cookies from disk.
+// LoadCredential loads cookies and device identifiers from disk.
 func (c *NeteaseClient) LoadCredential() error {
 	data, err := os.ReadFile(c.credFile)
 	if err != nil {
 		return err
 	}
 
-	type cookieEntry struct {
-		Name   string `json:"name"`
-		Value  string `json:"value"`
-		Domain string `json:"domain"`
-		Path   string `json:"path"`
+	var cred neteaseCredential
+	if err := json.Unmarshal(data, &cred); err != nil {
+		// Try legacy format (bare cookie array)
+		var legacy []cookieEntry
+		if err2 := json.Unmarshal(data, &legacy); err2 != nil {
+			return err
+		}
+		cred.Cookies = legacy
 	}
-	var entries []cookieEntry
-	if err := json.Unmarshal(data, &entries); err != nil {
-		return err
+
+	if cred.SDeviceId != "" {
+		c.sDeviceId = cred.SDeviceId
+	}
+	if cred.WNMCID != "" {
+		c.wnmcid = cred.WNMCID
 	}
 
 	u, _ := url.Parse("https://music.163.com")
 	var cookies []*http.Cookie
-	for _, e := range entries {
+	for _, e := range cred.Cookies {
 		domain := e.Domain
 		if domain == "" {
 			domain = ".music.163.com"
@@ -553,11 +640,10 @@ func (c *NeteaseClient) LoadCredential() error {
 			Domain: domain,
 			Path:   path,
 		})
-		// Extract CSRF
 		if e.Name == "__csrf" {
 			c.csrf = e.Value
 		}
 	}
-	c.httpClient.Jar.SetCookies(u, cookies)
+	c.jar.SetCookies(u, cookies)
 	return nil
 }
