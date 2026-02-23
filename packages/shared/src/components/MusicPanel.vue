@@ -50,9 +50,9 @@ onUnmounted(() => {
   // WebSocket disconnection is now handled by the store automatically
 })
 
-async function startLogin(platform: 'qq' | 'netease' = 'qq') {
+async function startLogin(platform: 'qq' | 'netease' = 'qq', loginType: 'qq' | 'wx' = 'qq') {
   showLoginSelect.value = false
-  await music.getQRCode(platform)
+  await music.getQRCode(platform, loginType)
   // No longer need to poll - WebSocket will push login status updates
 }
 
@@ -184,9 +184,18 @@ async function handleStopBot() {
             block
             size="large"
             type="success"
-            @click="startLogin('qq')"
+            @click="startLogin('qq', 'qq')"
           >
-            QQ 音乐
+            QQ 音乐 (QQ 登录)
+          </NButton>
+          <NButton
+            v-if="!music.platformLoginStatus.qq.logged_in"
+            block
+            size="large"
+            type="success"
+            @click="startLogin('qq', 'wx')"
+          >
+            QQ 音乐 (微信登录)
           </NButton>
           <NButton
             v-if="!music.platformLoginStatus.netease.logged_in"
@@ -216,12 +225,13 @@ async function handleStopBot() {
                music.loginStatus === 'scanned' ? '扫码成功！请在手机上确认...' :
                music.loginStatus === 'expired' ? '二维码已过期' :
                music.loginStatus === 'refused' ? '登录被拒绝' :
+               music.loginStatus === 'error' ? '登录出错' :
                '加载中...' }}
           </p>
         </div>
         <template #footer>
           <NSpace justify="center">
-            <NButton v-if="music.loginStatus === 'expired'" type="primary" @click="startLogin(music.loginPlatform)">
+            <NButton v-if="music.loginStatus === 'expired'" type="primary" @click="startLogin(music.loginPlatform, music.loginType)">
               刷新二维码
             </NButton>
             <NButton @click="music.qrCodeUrl = null">关闭</NButton>

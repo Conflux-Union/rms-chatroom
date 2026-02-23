@@ -41,6 +41,7 @@ export const useMusicStore = defineStore('music', () => {
   const qrCodeUrl = ref<string | null>(null)
   const loginStatus = ref<string>('idle')
   const loginPlatform = ref<'qq' | 'netease'>('qq')  // Current login platform
+  const loginType = ref<'qq' | 'wx'>('qq')  // QQ Music login method (QQ or WeChat)
   
   // Search state
   const searchPlatform = ref<MusicPlatform>('all')
@@ -112,11 +113,16 @@ export const useMusicStore = defineStore('music', () => {
     }
   }
   
-  async function getQRCode(platform: 'qq' | 'netease' = 'qq') {
+  async function getQRCode(platform: 'qq' | 'netease' = 'qq', qqLoginType: 'qq' | 'wx' = 'qq') {
     try {
       loginStatus.value = 'loading'
       loginPlatform.value = platform
-      const res = await fetch(`${API_BASE}/api/music/login/qrcode?platform=${platform}`)
+      loginType.value = qqLoginType
+      let url = `${API_BASE}/api/music/login/qrcode?platform=${platform}`
+      if (platform === 'qq') {
+        url += `&login_type=${qqLoginType}`
+      }
+      const res = await fetch(url)
       const data = await res.json()
       qrCodeUrl.value = data.qrcode
       loginStatus.value = 'waiting'
@@ -146,7 +152,9 @@ export const useMusicStore = defineStore('music', () => {
       }
       
       if (data.status === 'expired' || data.status === 'refused') {
-        qrCodeUrl.value = null
+        if (data.status === 'refused') {
+          qrCodeUrl.value = null
+        }
         return false
       }
       
@@ -526,14 +534,22 @@ export const useMusicStore = defineStore('music', () => {
         // Handle global music events (no room_name check)
         if (msg.type === 'music_login_status') {
           // Update login status from WebSocket push
-          if (msg.status === 'success') {
-            loginStatus.value = 'success'
-            isLoggedIn.value = true
-          } else if (msg.status === 'expired') {
-            loginStatus.value = 'expired'
-          } else if (msg.status === 'refused') {
-            loginStatus.value = 'refused'
+          loginStatus.value = msg.status
+          if (msg.status === 'error' && msg.message) {
+            console.warn(`[MusicStore] Login error (${msg.platform}):`, msg.message)
           }
+          if (msg.status === 'success') {
+            if (msg.platform === 'qq') {
+              platformLoginStatus.value.qq.logged_in = true
+            } else if (msg.platform === 'netease') {
+              platformLoginStatus.value.netease.logged_in = true
+            }
+            isLoggedIn.value = true
+            qrCodeUrl.value = null
+          } else if (msg.status === 'refused') {
+            qrCodeUrl.value = null
+          }
+          // Note: 'expired' keeps modal open so user can click "refresh QR code"
           return
         }
 
@@ -664,6 +680,7 @@ export const useMusicStore = defineStore('music', () => {
     isLoggedIn,
     platformLoginStatus,
     loginPlatform,
+    loginType,
     qrCodeUrl,
     loginStatus,
     checkAllLoginStatus,

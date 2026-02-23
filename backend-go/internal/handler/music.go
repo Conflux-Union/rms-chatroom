@@ -8,6 +8,8 @@ import (
 	"sync"
 	"time"
 
+	qrcode "github.com/skip2/go-qrcode"
+
 	"github.com/labstack/echo/v4"
 
 	"github.com/RMS-Server/rms-discord-go/internal/jwtutil"
@@ -20,7 +22,14 @@ import (
 var (
 	qqClient      *music.QQMusicClient
 	neteaseClient *music.NeteaseClient
-	neteaseUnikey string // stored unikey for QR login flow
+	neteaseUnikey   string // stored unikey for QR login flow
+	neteaseUnikeyMu sync.Mutex
+)
+
+// Login poller cancellation (one per platform)
+var (
+	loginPollers   = make(map[string]chan struct{})
+	loginPollersMu sync.Mutex
 )
 
 // Progress timer management
@@ -293,19 +302,32 @@ func musicLoginQRCode() echo.HandlerFunc {
 			if err != nil {
 				return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 			}
+			neteaseUnikeyMu.Lock()
 			neteaseUnikey = unikey
-			qrURL := "https://music.163.com/login?codekey=" + unikey
+			neteaseUnikeyMu.Unlock()
+			qrURL := neteaseClient.GetQRCodeURL(unikey)
+			png, err := qrcode.Encode(qrURL, qrcode.Medium, 256)
+			if err != nil {
+				return c.JSON(http.StatusInternalServerError, map[string]string{"error": "qr encode: " + err.Error()})
+			}
+			encoded := "data:image/png;base64," + base64.StdEncoding.EncodeToString(png)
+			startLoginPoller("netease")
 			return c.JSON(http.StatusOK, map[string]interface{}{
-				"qrcode":   qrURL,
+				"qrcode":   encoded,
 				"platform": "netease",
 			})
 		}
 		// QQ Music QR login
-		data, mimetype, err := qqClient.GetQRCode()
+		loginType := music.QQLoginType(c.QueryParam("login_type"))
+		if loginType != music.QQLoginTypeWX {
+			loginType = music.QQLoginTypeQQ
+		}
+		data, mimetype, err := qqClient.GetQRCode(loginType)
 		if err != nil {
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		}
 		encoded := "data:" + mimetype + ";base64," + base64.StdEncoding.EncodeToString(data)
+		startLoginPoller("qq")
 		return c.JSON(http.StatusOK, map[string]interface{}{
 			"qrcode":   encoded,
 			"platform": "qq",
@@ -313,19 +335,93 @@ func musicLoginQRCode() echo.HandlerFunc {
 	}
 }
 
+// startLoginPoller cancels any existing poller for the platform and starts a new one.
+func startLoginPoller(platform string) {
+	loginPollersMu.Lock()
+	if ch, ok := loginPollers[platform]; ok {
+		close(ch)
+	}
+	stop := make(chan struct{})
+	loginPollers[platform] = stop
+	loginPollersMu.Unlock()
+	go pollLoginAndBroadcast(platform, stop)
+}
+
+// pollLoginAndBroadcast polls QR login status and broadcasts via music WebSocket.
+func pollLoginAndBroadcast(platform string, stop <-chan struct{}) {
+	for i := 0; i < 90; i++ { // max ~3 minutes
+		select {
+		case <-stop:
+			return
+		case <-time.After(2 * time.Second):
+		}
+		var status string
+		var err error
+		if platform == "netease" {
+			neteaseUnikeyMu.Lock()
+			key := neteaseUnikey
+			neteaseUnikeyMu.Unlock()
+			if key == "" {
+				return
+			}
+			status, err = neteaseClient.CheckQR(key)
+		} else {
+			status, err = qqClient.CheckQRStatus()
+		}
+		if err != nil {
+			log.Printf("music login poll error (%s): %v", platform, err)
+			broadcastLoginStatusWithError(platform, err)
+			return
+		}
+		broadcastLoginStatus(platform, status)
+		if status == "success" || status == "expired" || status == "refused" {
+			if platform == "netease" {
+				neteaseUnikeyMu.Lock()
+				neteaseUnikey = ""
+				neteaseUnikeyMu.Unlock()
+			}
+			return
+		}
+	}
+	// Timed out
+	broadcastLoginStatus(platform, "expired")
+}
+
+func broadcastLoginStatus(platform, status string) {
+	ws.GetMusicRoomManager().BroadcastToAll(map[string]interface{}{
+		"type":     "music_login_status",
+		"platform": platform,
+		"status":   status,
+	})
+}
+
+func broadcastLoginStatusWithError(platform string, err error) {
+	ws.GetMusicRoomManager().BroadcastToAll(map[string]interface{}{
+		"type":     "music_login_status",
+		"platform": platform,
+		"status":   "error",
+		"message":  err.Error(),
+	})
+}
+
 func musicLoginStatus() echo.HandlerFunc {
 	return func(c echo.Context) error {
 		platform := c.QueryParam("platform")
 		if platform == "netease" {
-			if neteaseUnikey == "" {
+			neteaseUnikeyMu.Lock()
+			key := neteaseUnikey
+			neteaseUnikeyMu.Unlock()
+			if key == "" {
 				return c.JSON(http.StatusBadRequest, map[string]string{"error": "no active QR login session"})
 			}
-			status, err := neteaseClient.CheckQR(neteaseUnikey)
+			status, err := neteaseClient.CheckQR(key)
 			if err != nil {
 				return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 			}
-			if status == "success" || status == "expired" {
+			if status == "success" || status == "expired" || status == "refused" {
+				neteaseUnikeyMu.Lock()
 				neteaseUnikey = ""
+				neteaseUnikeyMu.Unlock()
 			}
 			return c.JSON(http.StatusOK, map[string]interface{}{
 				"status":   status,
