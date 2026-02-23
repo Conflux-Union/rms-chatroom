@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
+	"log"
 	"math/big"
 	"os"
 	"strconv"
@@ -34,9 +35,20 @@ const (
 	defaultQIMEI = "6c9d3cd110abca9b16311cee10001e717614"
 )
 
-// getQIMEI36 fetches or loads a cached QIMEI36 device identifier.
+// getQIMEI36 fetches a fresh QIMEI36, falling back to cache then default.
 func getQIMEI36(cacheFile string) string {
-	// Try loading from cache
+	// Always try fetching fresh QIMEI first (matches Python behavior)
+	q36, err := fetchQIMEI()
+	if err == nil {
+		if cacheFile != "" {
+			data, _ := json.Marshal(map[string]string{"q36": q36})
+			os.WriteFile(cacheFile, data, 0600)
+		}
+		return q36
+	}
+	log.Printf("qqmusic: failed to fetch QIMEI: %v, trying cache", err)
+
+	// Fallback to cached value
 	if cacheFile != "" {
 		if data, err := os.ReadFile(cacheFile); err == nil {
 			var cached struct {
@@ -48,17 +60,7 @@ func getQIMEI36(cacheFile string) string {
 		}
 	}
 
-	q36, err := fetchQIMEI()
-	if err != nil {
-		return defaultQIMEI
-	}
-
-	// Cache it
-	if cacheFile != "" {
-		data, _ := json.Marshal(map[string]string{"q36": q36})
-		os.WriteFile(cacheFile, data, 0600)
-	}
-	return q36
+	return defaultQIMEI
 }
 
 func fetchQIMEI() (string, error) {
