@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -477,13 +478,16 @@ func musicLogout() echo.HandlerFunc {
 		platform := c.QueryParam("platform")
 		switch platform {
 		case "qq":
+			os.Remove("qq_credential.json")
 			qqClient = music.NewQQMusicClient("")
 		case "netease":
-			neteaseClient = music.NewNeteaseClient("netease_credential.json")
+			os.Remove("netease_credential.json")
+			neteaseClient = music.NewNeteaseClient("")
 		default:
-			// Empty or "all": reinitialize both for backward compat
+			os.Remove("qq_credential.json")
+			os.Remove("netease_credential.json")
 			qqClient = music.NewQQMusicClient("")
-			neteaseClient = music.NewNeteaseClient("netease_credential.json")
+			neteaseClient = music.NewNeteaseClient("")
 		}
 		return c.JSON(http.StatusOK, map[string]interface{}{"success": true})
 	}

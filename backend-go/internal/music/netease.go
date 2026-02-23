@@ -66,8 +66,10 @@ func NewNeteaseClient(credentialPath string) *NeteaseClient {
 		sDeviceId: fmt.Sprintf("unknown-%d", rand.Intn(1000000)),
 		wnmcid:    generateWNMCID(),
 	}
-	if err := c.LoadCredential(); err != nil {
-		// No saved credential; start with clean jar (matches pyncm behavior)
+	if credentialPath != "" {
+		if err := c.LoadCredential(); err != nil {
+			// No saved credential; start with clean jar (matches pyncm behavior)
+		}
 	}
 	return c
 }
@@ -568,6 +570,9 @@ type cookieEntry struct {
 
 // SaveCredential persists cookies and device identifiers to disk.
 func (c *NeteaseClient) SaveCredential() error {
+	if c.credFile == "" {
+		return nil
+	}
 	u, _ := url.Parse("https://music.163.com")
 	cookies := c.jar.Cookies(u)
 
