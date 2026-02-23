@@ -32,7 +32,8 @@ const (
 
 	randomChars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 
-	neteaseUAWeapi = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+	// Match pyncm's User-Agent exactly
+	neteaseUAWeapi = "Mozilla/5.0 (linux@github.com/mos9527/pyncm) Chrome/PyNCM.1.8.1"
 	neteaseUAEapi  = "Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Safari/537.36 Chrome/91.0.4472.164 NeteaseMusicDesktop/2.10.2.200154"
 )
 
@@ -59,7 +60,6 @@ func NewNeteaseClient(credentialPath string) *NeteaseClient {
 	jar, _ := cookiejar.New(nil)
 	c := &NeteaseClient{
 		reqClient: reqv3.C().
-			SetTLSFingerprintChrome().
 			SetTimeout(15 * time.Second),
 		jar:       jar,
 		credFile:  credentialPath,
@@ -67,25 +67,9 @@ func NewNeteaseClient(credentialPath string) *NeteaseClient {
 		wnmcid:    generateWNMCID(),
 	}
 	if err := c.LoadCredential(); err != nil {
-		// No saved credential; seed the jar with browser-like cookies
-		c.seedBrowserCookies()
+		// No saved credential; start with clean jar (matches pyncm behavior)
 	}
 	return c
-}
-
-// seedBrowserCookies sets the initial cookies that a real browser would have
-// after visiting music.163.com, reducing the chance of triggering captcha.
-func (c *NeteaseClient) seedBrowserCookies() {
-	u, _ := url.Parse("https://music.163.com")
-	c.jar.SetCookies(u, []*http.Cookie{
-		{Name: "WEVNSM", Value: "1.0.0", Domain: ".music.163.com", Path: "/"},
-		{Name: "WNMCID", Value: c.wnmcid, Domain: ".music.163.com", Path: "/"},
-		{Name: "osver", Value: "%22%22", Domain: ".music.163.com", Path: "/"},
-		{Name: "deviceId", Value: "%22%22", Domain: ".music.163.com", Path: "/"},
-		{Name: "os", Value: "web", Domain: ".music.163.com", Path: "/"},
-		{Name: "channel", Value: "netease", Domain: ".music.163.com", Path: "/"},
-		{Name: "appver", Value: "8.10.30", Domain: ".music.163.com", Path: "/"},
-	})
 }
 
 // --- WEAPI encryption ---
@@ -280,19 +264,23 @@ func (c *NeteaseClient) weapiRequest(endpoint string, params map[string]interfac
 	}
 	form := weapiEncrypt(string(jsonBytes))
 
+	// Build URL with csrf_token query param (matches pyncm behavior)
+	reqURL := "https://music.163.com" + endpoint + "?csrf_token=" + c.csrf
+
 	r := c.reqClient.R().
 		SetHeaders(map[string]string{
-			"User-Agent":      neteaseUAWeapi,
-			"Referer":         "https://music.163.com",
-			"Content-Type":    "application/x-www-form-urlencoded",
-			"Accept":          "*/*",
-			"Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
-			"Origin":          "https://music.163.com",
+			"Content-Type": "application/x-www-form-urlencoded",
+			"User-Agent":   neteaseUAWeapi,
+			"Referer":      "https://music.163.com",
 		}).
 		SetBodyString(form.Encode())
 	c.injectCookies(r)
+	// Inject eapi_config as cookies (matches pyncm WeapiCryptoRequest)
+	for _, ck := range c.eapiConfigCookies() {
+		r.SetCookies(ck)
+	}
 
-	resp, err := r.Post("https://music.163.com" + endpoint)
+	resp, err := r.Post(reqURL)
 	if err != nil {
 		return nil, err
 	}
@@ -306,13 +294,26 @@ func (c *NeteaseClient) weapiRequest(endpoint string, params map[string]interfac
 	return result, nil
 }
 
+// eapiConfigCookies returns the eapi_config values as cookies, matching pyncm behavior.
+func (c *NeteaseClient) eapiConfigCookies() []*http.Cookie {
+	return []*http.Cookie{
+		{Name: "os", Value: "iPhone OS"},
+		{Name: "appver", Value: "10.0.0"},
+		{Name: "osver", Value: "16.2"},
+		{Name: "channel", Value: "distribution"},
+		{Name: "deviceId", Value: "pyncm!"},
+	}
+}
+
 func (c *NeteaseClient) eapiRequest(endpoint, apiPath string, params map[string]interface{}) (map[string]interface{}, error) {
+	// Build header JSON with requestId (matches pyncm EapiCryptoRequest)
 	header := map[string]interface{}{
-		"os":       "iPhone OS",
-		"appver":   "10.0.0",
-		"osver":    "16.2",
-		"channel":  "distribution",
-		"deviceId": "pyncm!",
+		"os":        "iPhone OS",
+		"appver":    "10.0.0",
+		"osver":     "16.2",
+		"channel":   "distribution",
+		"deviceId":  "pyncm!",
+		"requestId": strconv.Itoa(20000000 + rand.Intn(10000000)),
 	}
 	headerJSON, _ := json.Marshal(header)
 	params["header"] = string(headerJSON)
@@ -324,6 +325,7 @@ func (c *NeteaseClient) eapiRequest(endpoint, apiPath string, params map[string]
 		SetHeaders(map[string]string{
 			"User-Agent":   neteaseUAEapi,
 			"Content-Type": "application/x-www-form-urlencoded",
+			"Referer":      "",
 		}).
 		SetBodyString(form.Encode())
 
@@ -335,7 +337,7 @@ func (c *NeteaseClient) eapiRequest(endpoint, apiPath string, params map[string]
 	}
 	for _, ck := range c.jar.Cookies(u) {
 		if _, override := eapiOverrides[ck.Name]; override {
-			continue // skip jar value, will use eapi default below
+			continue
 		}
 		r.SetCookies(&http.Cookie{Name: ck.Name, Value: ck.Value})
 	}
@@ -375,7 +377,7 @@ func (c *NeteaseClient) GetQRKey() (string, error) {
 	defer c.mu.Unlock()
 
 	result, err := c.weapiRequest("/weapi/login/qrcode/unikey", map[string]interface{}{
-		"type":         1,
+		"type":         "1",
 		"noCheckToken": true,
 	})
 	if err != nil {
@@ -401,8 +403,8 @@ func (c *NeteaseClient) CheckQR(unikey string) (string, error) {
 
 	result, err := c.weapiRequest("/weapi/login/qrcode/client/login", map[string]interface{}{
 		"type":         1,
-		"key":          unikey,
 		"noCheckToken": true,
+		"key":          unikey,
 	})
 	if err != nil {
 		return "", err
@@ -517,8 +519,9 @@ func (c *NeteaseClient) GetSongURL(songID string) (string, error) {
 
 func (c *NeteaseClient) getSongURLWithBitrate(id int64, br int) (string, error) {
 	result, err := c.eapiRequest("/eapi/song/enhance/player/url", "/api/song/enhance/player/url", map[string]interface{}{
-		"ids": []int64{id},
-		"br":  strconv.Itoa(br),
+		"ids":        []int64{id},
+		"br":         strconv.Itoa(br),
+		"encodeType": "aac",
 	})
 	if err != nil {
 		return "", err
