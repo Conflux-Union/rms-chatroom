@@ -115,11 +115,11 @@ func authenticateRequest(c echo.Context, jwtSecret string) (*permission.UserInfo
 		}
 	}
 	if token == "" {
-		return nil, c.JSON(http.StatusUnauthorized, map[string]string{"error": "missing token"})
+		return nil, echo.NewHTTPError(http.StatusUnauthorized, "missing token")
 	}
 	user, err := jwtutil.ParseToken(token, jwtSecret)
 	if err != nil {
-		return nil, c.JSON(http.StatusUnauthorized, map[string]string{"error": "invalid token"})
+		return nil, echo.NewHTTPError(http.StatusUnauthorized, "invalid token")
 	}
 	return user, nil
 }
