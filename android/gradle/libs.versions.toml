@@ -20,7 +20,7 @@ splashscreen = "1.0.1"
 colorfulSliders = "1.2.2"
 # Media Preview
 telephoto = "0.14.0"
-media3 = "1.5.0"
+media3 = "1.9.2"
 
 # Testing
 junit = "4.13.2"
