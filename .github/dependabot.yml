@@ -18,17 +18,11 @@ updates:
         patterns:
           - "*"
         dependency-type: "development"
-        update-types:
-          - "minor"
-          - "patch"
       # Group all production dependencies together
       prod-dependencies:
         patterns:
           - "*"
         dependency-type: "production"
-        update-types:
-          - "minor"
-          - "patch"
 
   # Go backend
   - package-ecosystem: "gomod"
@@ -45,9 +39,6 @@ updates:
       go-dependencies:
         patterns:
           - "*"
-        update-types:
-          - "minor"
-          - "patch"
 
   # Android
   - package-ecosystem: "gradle"
@@ -64,9 +55,6 @@ updates:
       gradle-dependencies:
         patterns:
           - "*"
-        update-types:
-          - "minor"
-          - "patch"
 
   # GitHub Actions
   - package-ecosystem: "github-actions"
