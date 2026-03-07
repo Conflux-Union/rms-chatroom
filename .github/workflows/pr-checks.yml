@@ -80,6 +80,8 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: '1.24'
+        env:
+          GOTOOLCHAIN: auto
 
       - name: Build
         run: |
