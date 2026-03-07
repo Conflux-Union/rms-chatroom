@@ -71,8 +71,8 @@ importers:
         specifier: ^2.16.0
         version: 2.16.1(@types/dom-mediacapture-record@1.0.22)
       lucide-vue-next:
-        specifier: ^0.555.0
-        version: 0.555.0(vue@3.5.26(typescript@5.9.3))
+        specifier: ^0.577.0
+        version: 0.577.0(vue@3.5.26(typescript@5.9.3))
       naive-ui:
         specifier: ^2.43.2
         version: 2.43.2(vue@3.5.26(typescript@5.9.3))
@@ -839,8 +839,8 @@ packages:
     resolution: {integrity: sha512-HgMmCqIJSAKqo68l0rS2AanEWfkxaZ5wNiEFb5ggm08lDs9Xl2KxBlX3PTcaD2chBM1gXAYf491/M2Rv8Jwayg==}
     engines: {node: '>= 0.6.0'}
 
-  lucide-vue-next@0.555.0:
-    resolution: {integrity: sha512-7hczPsiMD/y+VNLpal5Q5Wv09kQxlHS0l/cM1xagrd+MA3i5umMm+PUXqllvsbgwAl3PHv27fo59h4PN02GM5A==}
+  lucide-vue-next@0.577.0:
+    resolution: {integrity: sha512-py05bAfv9SHVJqscbiOnjcnLlEmOffA58a+7XhZuFxrs6txe1E8VoR1ngWGTYO+9aVKABAz8l3ee3PqiQN9QPA==}
     peerDependencies:
       vue: '>=3.0.1'
 
@@ -1618,7 +1618,7 @@ snapshots:
 
   loglevel@1.9.2: {}
 
-  lucide-vue-next@0.555.0(vue@3.5.26(typescript@5.9.3)):
+  lucide-vue-next@0.577.0(vue@3.5.26(typescript@5.9.3)):
     dependencies:
       vue: 3.5.26(typescript@5.9.3)
 
