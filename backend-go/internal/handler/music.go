@@ -158,62 +158,98 @@ func getSongURL(mid, platform string) (string, error) {
 	return ensureHTTPS(u), nil
 }
 
-// playCurrentSong fetches the URL and starts playback for the current queue item.
-// Caller must hold state.mu.
-func playCurrentSong(state *RoomMusicState) {
+// songFetchResult holds the result of async song URL fetch.
+type songFetchResult struct {
+	songURL string
+	err     error
+	cur     queueItem
+	index   int
+}
+
+// playCurrentSongAsync fetches song URL and starts playback asynchronously.
+// This avoids blocking the state mutex during HTTP requests.
+func playCurrentSongAsync(state *RoomMusicState, roomName string) {
+	state.mu.Lock()
 	if len(state.PlayQueue) == 0 || state.CurrentIndex >= len(state.PlayQueue) {
+		state.mu.Unlock()
 		return
 	}
 	cur := state.PlayQueue[state.CurrentIndex]
-	songURL, err := getSongURL(cur.Song.Mid, cur.Song.Platform)
-	if err != nil || songURL == "" {
-		log.Printf("music: failed to get URL for %s/%s: %v", cur.Song.Platform, cur.Song.Mid, err)
-		broadcastMusicCommand("song_unavailable", map[string]interface{}{
-			"room_name": state.RoomName,
-			"song":      cur.Song,
-			"error":     "failed to get song URL",
-		})
-		// Try next song
-		if state.CurrentIndex < len(state.PlayQueue)-1 {
-			state.CurrentIndex++
-			playCurrentSong(state)
-		} else {
+	index := state.CurrentIndex
+	state.mu.Unlock()
+
+	// Fetch URL outside the lock to avoid blocking
+	go func() {
+		songURL, err := getSongURL(cur.Song.Mid, cur.Song.Platform)
+
+		state.mu.Lock()
+
+		// Check if queue changed during fetch
+		if len(state.PlayQueue) == 0 || state.CurrentIndex >= len(state.PlayQueue) {
+			state.mu.Unlock()
+			return
+		}
+		// Check if we're still on the same song
+		if state.CurrentIndex != index {
+			state.mu.Unlock()
+			return
+		}
+
+		if err != nil || songURL == "" {
+			log.Printf("music: failed to get URL for %s/%s: %v", cur.Song.Platform, cur.Song.Mid, err)
+			broadcastMusicCommand("song_unavailable", map[string]interface{}{
+				"room_name": state.RoomName,
+				"song":      cur.Song,
+				"error":     "failed to get song URL",
+			})
+			// Try next song
+			if state.CurrentIndex < len(state.PlayQueue)-1 {
+				state.CurrentIndex++
+				state.mu.Unlock()
+				playCurrentSongAsync(state, roomName)
+				return
+			}
 			state.IsPlaying = false
 			state.CurrentSongURL = ""
 			stopProgressTimer(state.RoomName)
+			state.mu.Unlock()
+			return
 		}
-		return
-	}
 
-	state.IsPlaying = true
-	state.CurrentSongURL = songURL
-	state.PlayStartTime = float64(time.Now().UnixMilli()) / 1000.0
-	state.PlayStartPosition = 0
-	state.PositionMS = 0
+		state.IsPlaying = true
+		state.CurrentSongURL = songURL
+		state.PlayStartTime = float64(time.Now().UnixMilli()) / 1000.0
+		state.PlayStartPosition = 0
+		state.PositionMS = 0
 
-	broadcastMusicCommand("play", map[string]interface{}{
-		"room_name":   state.RoomName,
-		"song":        cur.Song,
-		"url":         songURL,
-		"position_ms": int64(0),
-		"is_playing":  true,
-	})
+		broadcastMusicCommand("play", map[string]interface{}{
+			"room_name":   state.RoomName,
+			"song":        cur.Song,
+			"url":         songURL,
+			"position_ms": int64(0),
+			"is_playing":  true,
+		})
 
-	startProgressTimer(state.RoomName)
+		state.mu.Unlock()
+		startProgressTimer(state.RoomName)
+	}()
 }
 
 // playNextSong advances to the next song and plays it.
-// Caller must hold state.mu.
-func playNextSong(state *RoomMusicState) {
-	stopProgressTimer(state.RoomName)
+// Must NOT hold state.mu when calling this (HTTP request involved).
+func playNextSong(state *RoomMusicState, roomName string) {
+	stopProgressTimer(roomName)
+	state.mu.Lock()
 	if state.CurrentIndex < len(state.PlayQueue)-1 {
 		state.CurrentIndex++
-		playCurrentSong(state)
+		state.mu.Unlock()
+		playCurrentSongAsync(state, roomName)
 	} else {
 		state.IsPlaying = false
 		state.CurrentSongURL = ""
+		state.mu.Unlock()
 		broadcastMusicCommand("queue_finished", map[string]interface{}{
-			"room_name": state.RoomName,
+			"room_name": roomName,
 		})
 	}
 }
@@ -251,8 +287,9 @@ func startProgressTimer(roomName string) {
 				durationMS := int64(cur.Song.Duration) * 1000
 
 				if durationMS > 0 && pos >= durationMS {
-					playNextSong(state)
 					state.mu.Unlock()
+					// Call playNextSong without lock (it does HTTP request)
+					playNextSong(state, roomName)
 					return
 				}
 				state.mu.Unlock()
@@ -716,16 +753,16 @@ func musicBotPlay(jwtSecret string) echo.HandlerFunc {
 		}
 		state := getRoomState(req.RoomName)
 		state.mu.Lock()
-		defer state.mu.Unlock()
 		if len(state.PlayQueue) == 0 || state.CurrentIndex >= len(state.PlayQueue) {
+			state.mu.Unlock()
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": "no song in queue"})
 		}
-		playCurrentSong(state)
-		if !state.IsPlaying {
-			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to start playback"})
-		}
+		roomName := state.RoomName
+		state.mu.Unlock()
+		// Use async version to avoid blocking on HTTP request
+		playCurrentSongAsync(state, roomName)
 		return c.JSON(http.StatusOK, map[string]interface{}{
-			"success": true, "is_playing": true, "room_name": req.RoomName,
+			"success": true, "message": "playback started", "room_name": req.RoomName,
 		})
 	}
 }
@@ -798,15 +835,19 @@ func musicBotSkip(jwtSecret string) echo.HandlerFunc {
 		}
 		state := getRoomState(req.RoomName)
 		state.mu.Lock()
-		defer state.mu.Unlock()
 		if state.CurrentIndex < len(state.PlayQueue)-1 {
 			stopProgressTimer(req.RoomName)
 			state.CurrentIndex++
-			playCurrentSong(state)
+			newIndex := state.CurrentIndex
+			roomName := state.RoomName
+			state.mu.Unlock()
+			// Use async version to avoid blocking on HTTP request
+			playCurrentSongAsync(state, roomName)
 			return c.JSON(http.StatusOK, map[string]interface{}{
-				"success": true, "current_index": state.CurrentIndex, "room_name": req.RoomName,
+				"success": true, "current_index": newIndex, "room_name": req.RoomName,
 			})
 		}
+		state.mu.Unlock()
 		return c.JSON(http.StatusOK, map[string]interface{}{
 			"success": false, "message": "no more songs in queue", "room_name": req.RoomName,
 		})
@@ -824,15 +865,19 @@ func musicBotPrevious(jwtSecret string) echo.HandlerFunc {
 		}
 		state := getRoomState(req.RoomName)
 		state.mu.Lock()
-		defer state.mu.Unlock()
 		if state.CurrentIndex > 0 {
 			stopProgressTimer(req.RoomName)
 			state.CurrentIndex--
-			playCurrentSong(state)
+			newIndex := state.CurrentIndex
+			roomName := state.RoomName
+			state.mu.Unlock()
+			// Use async version to avoid blocking on HTTP request
+			playCurrentSongAsync(state, roomName)
 			return c.JSON(http.StatusOK, map[string]interface{}{
-				"success": true, "current_index": state.CurrentIndex, "room_name": req.RoomName,
+				"success": true, "current_index": newIndex, "room_name": req.RoomName,
 			})
 		}
+		state.mu.Unlock()
 		return c.JSON(http.StatusOK, map[string]interface{}{
 			"success": false, "message": "already at first song", "room_name": req.RoomName,
 		})
