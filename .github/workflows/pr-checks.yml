@@ -7,8 +7,39 @@ on:
     types: [opened, synchronize, reopened]
 
 jobs:
+  detect-changes:
+    name: Detect Changes
+    runs-on: ubuntu-latest
+    outputs:
+      frontend: ${{ steps.filter.outputs.frontend }}
+      backend: ${{ steps.filter.outputs.backend }}
+      android: ${{ steps.filter.outputs.android }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check for file changes
+        uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            frontend:
+              - 'packages/**'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
+              - '.github/workflows/pr-checks.yml'
+            backend:
+              - 'backend-go/**'
+              - '.github/workflows/pr-checks.yml'
+            android:
+              - 'android/**'
+              - '.github/workflows/pr-checks.yml'
+
   frontend-build:
     name: Frontend Build Check
+    needs: detect-changes
+    if: needs.detect-changes.outputs.frontend == 'true'
     runs-on: ubuntu-latest
 
     steps:
@@ -37,6 +68,8 @@ jobs:
 
   go-backend-check:
     name: Go Backend Check
+    needs: detect-changes
+    if: needs.detect-changes.outputs.backend == 'true'
     runs-on: ubuntu-latest
 
     steps:
@@ -60,6 +93,8 @@ jobs:
 
   android-build:
     name: Android Build Check
+    needs: detect-changes
+    if: needs.detect-changes.outputs.android == 'true'
     runs-on: ubuntu-latest
 
     steps:
@@ -95,17 +130,38 @@ jobs:
 
   all-checks-passed:
     name: All Checks Passed
-    needs: [frontend-build, go-backend-check, android-build]
+    needs: [detect-changes, frontend-build, go-backend-check, android-build]
     runs-on: ubuntu-latest
     if: always()
 
     steps:
       - name: Check if all jobs succeeded
         run: |
-          if [ "${{ needs.frontend-build.result }}" != "success" ] || \
-             [ "${{ needs.go-backend-check.result }}" != "success" ] || \
-             [ "${{ needs.android-build.result }}" != "success" ]; then
+          # Helper function to check job result
+          check_result() {
+            local result="$1"
+            local name="$2"
+            if [ "$result" == "skipped" ]; then
+              echo "✅ $name: skipped (no changes)"
+              return 0
+            elif [ "$result" == "success" ]; then
+              echo "✅ $name: passed"
+              return 0
+            else
+              echo "❌ $name: failed ($result)"
+              return 1
+            fi
+          }
+
+          failed=0
+          check_result "${{ needs.frontend-build.result }}" "Frontend Build" || failed=1
+          check_result "${{ needs.go-backend-check.result }}" "Go Backend" || failed=1
+          check_result "${{ needs.android-build.result }}" "Android Build" || failed=1
+
+          if [ $failed -eq 1 ]; then
+            echo ""
             echo "One or more checks failed"
             exit 1
           fi
+          echo ""
           echo "All checks passed successfully"
