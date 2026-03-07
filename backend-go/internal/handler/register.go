@@ -47,11 +47,8 @@ func Register(e *echo.Echo, cfg *config.Config, db *sql.DB, ssoClient *sso.Clien
 	// Channel routes (under servers)
 	servers.GET("/:server_id/channels", channelH.ListChannels)
 	servers.POST("/:server_id/channels", channelH.CreateChannel, adminMiddleware)
-
-	// Channel routes (standalone for update/delete)
-	channels := e.Group("/api/channels", authMiddleware)
-	channels.PATCH("/:id", channelH.UpdateChannel, adminMiddleware)
-	channels.DELETE("/:id", channelH.DeleteChannel, adminMiddleware)
+	servers.PATCH("/:server_id/channels/:id", channelH.UpdateChannel, adminMiddleware)
+	servers.DELETE("/:server_id/channels/:id", channelH.DeleteChannel, adminMiddleware)
 
 	// Channel group routes
 	servers.GET("/:server_id/channel-groups", groupH.ListChannelGroups)
@@ -60,7 +57,8 @@ func Register(e *echo.Echo, cfg *config.Config, db *sql.DB, ssoClient *sso.Clien
 	servers.POST("/:server_id/channel-groups/:id/reorder-channels", groupH.ReorderGroupChannels, adminMiddleware)
 	servers.DELETE("/:server_id/channel-groups/:id", groupH.DeleteChannelGroup, adminMiddleware)
 
-	// Message routes
+	// Message routes (standalone, accessed by channel_id)
+	channels := e.Group("/api/channels", authMiddleware)
 	channels.GET("/:channel_id/messages", msgH.GetMessages)
 	channels.POST("/:channel_id/messages", msgH.CreateMessage)
 	channels.GET("/:channel_id/messages/members", msgH.GetChannelMembers)
