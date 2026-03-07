@@ -14,7 +14,7 @@
   "devDependencies": {
     "@rollup/rollup-linux-x64-gnu": "4.54.0",
     "@rollup/rollup-win32-x64-msvc": "4.55.1",
-    "rollup": "^4.55.1",
+    "rollup": "^4.59.0",
     "typescript": "~5.9.3"
   },
   "dependencies": {
