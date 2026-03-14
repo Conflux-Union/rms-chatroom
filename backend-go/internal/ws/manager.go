@@ -148,6 +148,28 @@ func (m *ConnectionManager) BroadcastToAllUsers(msg interface{}) {
 	m.mu.RUnlock()
 }
 
+// BroadcastFiltered sends a JSON message only to global connections whose
+// user passes the filter predicate.
+func (m *ConnectionManager) BroadcastFiltered(msg interface{}, filter func(user *permission.UserInfo) bool) {
+	data, err := json.Marshal(msg)
+	if err != nil {
+		return
+	}
+	m.mu.RLock()
+	for _, conns := range m.globals {
+		for _, c := range conns {
+			if !filter(c.user) {
+				continue
+			}
+			select {
+			case c.send <- data:
+			default:
+			}
+		}
+	}
+	m.mu.RUnlock()
+}
+
 // SendToUser sends a JSON message to a specific user's global connections.
 func (m *ConnectionManager) SendToUser(userID int64, msg interface{}) {
 	data, err := json.Marshal(msg)

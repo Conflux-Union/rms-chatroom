@@ -14,6 +14,7 @@ import (
 	"github.com/labstack/echo/v4"
 
 	"github.com/RMS-Server/rms-discord-go/internal/jwtutil"
+	"github.com/RMS-Server/rms-discord-go/internal/permission"
 )
 
 var mentionRe = regexp.MustCompile(`@(\w+)`)
@@ -116,14 +117,39 @@ func HandleChatWS(jwtSecret string, db *sql.DB) echo.HandlerFunc {
 }
 
 func handleChatMessage(db *sql.DB, conn *Conn, msg *chatMessage) {
-	if msg.ChannelID == 0 || strings.TrimSpace(msg.Content) == "" {
+	hasContent := strings.TrimSpace(msg.Content) != ""
+	hasAttachments := len(msg.AttachmentIDs) > 0
+	if msg.ChannelID == 0 || (!hasContent && !hasAttachments) {
 		return
 	}
 
-	// Verify channel exists and is TEXT type
+	// Verify channel exists, is TEXT type, and check permissions
 	var channelType string
-	err := db.QueryRow("SELECT type FROM channels WHERE id = ?", msg.ChannelID).Scan(&channelType)
+	var minLevel, permMinLevel int
+	var logicOperator string
+	var speakMinLevel, speakPermMinLevel int
+	var speakLogicOperator string
+	err := db.QueryRow(
+		`SELECT type, min_level, perm_min_level, logic_operator,
+		        speak_min_level, speak_perm_min_level, speak_logic_operator
+		 FROM channels WHERE id = ?`, msg.ChannelID,
+	).Scan(&channelType, &minLevel, &permMinLevel, &logicOperator,
+		&speakMinLevel, &speakPermMinLevel, &speakLogicOperator)
 	if err != nil || channelType != "TEXT" {
+		return
+	}
+
+	accessRule := permission.PermRule{PermMinLevel: permMinLevel, GroupMinLevel: minLevel, LogicOperator: logicOperator}
+	if !permission.CanAccess(conn.user, accessRule) {
+		errMsg, _ := json.Marshal(map[string]string{"type": "error", "message": "no access to this channel"})
+		conn.send <- errMsg
+		return
+	}
+
+	speakRule := permission.PermRule{PermMinLevel: speakPermMinLevel, GroupMinLevel: speakMinLevel, LogicOperator: speakLogicOperator}
+	if !permission.CanSpeak(conn.user, speakRule) {
+		errMsg, _ := json.Marshal(map[string]string{"type": "error", "message": "no permission to speak in this channel"})
+		conn.send <- errMsg
 		return
 	}
 
@@ -227,5 +253,7 @@ func handleChatMessage(db *sql.DB, conn *Conn, msg *chatMessage) {
 		ReplyTo:     reply,
 	}
 
-	ChatManager.BroadcastToAllUsers(broadcast)
+	ChatManager.BroadcastFiltered(broadcast, func(user *permission.UserInfo) bool {
+		return permission.CanAccess(user, accessRule)
+	})
 }

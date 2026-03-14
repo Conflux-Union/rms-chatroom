@@ -40,6 +40,7 @@ export function createReconnectingWebSocket(
   let heartbeatTimeout: number | null = null
   let waitingForPong = false
   let manualDisconnect = false
+  let generation = 0
 
   function clearAllTimers() {
     if (reconnectTimer) {
@@ -118,12 +119,15 @@ export function createReconnectingWebSocket(
     }
 
     manualDisconnect = false
+    generation++
+    const gen = generation
     state.value = 'connecting'
-    console.log(`[${name}] Connecting to ${url}`)
+    console.log(`[${name}] Connecting to ${url} (gen=${gen})`)
 
     ws = new WebSocket(url)
 
     ws.onopen = () => {
+      if (gen !== generation) return
       console.log(`[${name}] Connected`)
       state.value = 'connected'
       isConnected.value = true
@@ -133,6 +137,7 @@ export function createReconnectingWebSocket(
     }
 
     ws.onclose = () => {
+      if (gen !== generation) return
       console.log(`[${name}] Disconnected`)
       state.value = 'disconnected'
       isConnected.value = false
@@ -145,10 +150,13 @@ export function createReconnectingWebSocket(
     }
 
     ws.onerror = (e) => {
+      if (gen !== generation) return
       console.error(`[${name}] Error:`, e)
     }
 
     ws.onmessage = (event) => {
+      if (gen !== generation) return
+
       if (event.data instanceof Blob) {
         onBinaryMessage?.(event.data)
         return
@@ -171,6 +179,7 @@ export function createReconnectingWebSocket(
 
   function disconnect() {
     manualDisconnect = true
+    generation++
     clearAllTimers()
 
     if (ws) {

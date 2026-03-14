@@ -2,6 +2,7 @@
 import { computed, ref, onMounted, onUnmounted, watch } from 'vue'
 import type { Attachment } from '../types'
 import { useAuthStore } from '../stores/auth'
+import { authFetch } from '../utils/authFetch'
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'https://chatroom.rms.net.cn'
 
@@ -22,15 +23,12 @@ const isPdf = computed(() => props.attachment.content_type === 'application/pdf'
 const fileUrl = computed(() => `${API_BASE}${props.attachment.url}`)
 const inlineUrl = computed(() => `${fileUrl.value}?inline=1`)
 
-// Fetch file as blob with auth header
 async function loadBlobUrl() {
-  if (!isImage.value && !isVideo.value && !isAudio.value) return
+  if (!isImage.value && !isVideo.value && !isAudio.value && !isPdf.value) return
   
   isLoading.value = true
   try {
-    const res = await fetch(inlineUrl.value, {
-      headers: { Authorization: `Bearer ${auth.token}` }
-    })
+    const res = await authFetch(inlineUrl.value)
     if (res.ok) {
       const blob = await res.blob()
       blobUrl.value = URL.createObjectURL(blob)
@@ -78,24 +76,22 @@ const formatSize = (bytes: number) => {
 }
 
 const downloadFile = () => {
-  const link = document.createElement('a')
-  link.href = fileUrl.value
-  link.download = props.attachment.filename
-  // Add auth header via fetch and blob for download
-  fetch(fileUrl.value, {
-    headers: { Authorization: `Bearer ${auth.token}` }
-  })
+  authFetch(fileUrl.value)
     .then(res => res.blob())
     .then(blob => {
       const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
       link.href = url
+      link.download = props.attachment.filename
       link.click()
       URL.revokeObjectURL(url)
     })
 }
 
 const openPdf = () => {
-  window.open(inlineUrl.value, '_blank')
+  if (blobUrl.value) {
+    window.open(blobUrl.value, '_blank')
+  }
 }
 </script>
 
