@@ -5,6 +5,9 @@ type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'reconnecti
 interface ReconnectingWebSocketOptions {
   name: string
   getUrl: () => string | null
+  // Called before each connection attempt (including reconnects).
+  // Use this to refresh auth tokens before the URL is fetched.
+  onBeforeConnect?: () => Promise<void>
   onConnected?: () => void
   onDisconnected?: () => void
   onMessage?: (data: any) => void
@@ -28,7 +31,7 @@ const HEARTBEAT_TIMEOUT = 3000
 export function createReconnectingWebSocket(
   options: ReconnectingWebSocketOptions
 ): ReconnectingWebSocket {
-  const { name, getUrl, onConnected, onDisconnected, onMessage, onBinaryMessage } = options
+  const { name, getUrl, onBeforeConnect, onConnected, onDisconnected, onMessage, onBinaryMessage } = options
 
   let ws: WebSocket | null = null
   const state = ref<ConnectionState>('disconnected')
@@ -103,12 +106,6 @@ export function createReconnectingWebSocket(
   }
 
   function connect() {
-    const url = getUrl()
-    if (!url) {
-      console.warn(`[${name}] Cannot connect: no URL available`)
-      return
-    }
-
     if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
       return
     }
@@ -122,58 +119,75 @@ export function createReconnectingWebSocket(
     generation++
     const gen = generation
     state.value = 'connecting'
-    console.log(`[${name}] Connecting to ${url} (gen=${gen})`)
 
-    ws = new WebSocket(url)
-
-    ws.onopen = () => {
-      if (gen !== generation) return
-      console.log(`[${name}] Connected`)
-      state.value = 'connected'
-      isConnected.value = true
-      reconnectAttempts = 0
-      startHeartbeat()
-      onConnected?.()
-    }
-
-    ws.onclose = () => {
-      if (gen !== generation) return
-      console.log(`[${name}] Disconnected`)
-      state.value = 'disconnected'
-      isConnected.value = false
-      clearAllTimers()
-      onDisconnected?.()
-
-      if (!manualDisconnect) {
-        scheduleReconnect()
-      }
-    }
-
-    ws.onerror = (e) => {
-      if (gen !== generation) return
-      console.error(`[${name}] Error:`, e)
-    }
-
-    ws.onmessage = (event) => {
+    const openSocket = () => {
       if (gen !== generation) return
 
-      if (event.data instanceof Blob) {
-        onBinaryMessage?.(event.data)
+      const url = getUrl()
+      if (!url) {
+        console.warn(`[${name}] Cannot connect: no URL available`)
+        state.value = 'disconnected'
         return
       }
 
-      try {
-        const data = JSON.parse(event.data)
+      console.log(`[${name}] Connecting to ${url} (gen=${gen})`)
+      ws = new WebSocket(url)
 
-        if (data.type === 'pong' && data.data === 'cute') {
-          handlePong()
+      ws.onopen = () => {
+        if (gen !== generation) return
+        console.log(`[${name}] Connected`)
+        state.value = 'connected'
+        isConnected.value = true
+        reconnectAttempts = 0
+        startHeartbeat()
+        onConnected?.()
+      }
+
+      ws.onclose = () => {
+        if (gen !== generation) return
+        console.log(`[${name}] Disconnected`)
+        state.value = 'disconnected'
+        isConnected.value = false
+        clearAllTimers()
+        onDisconnected?.()
+
+        if (!manualDisconnect) {
+          scheduleReconnect()
+        }
+      }
+
+      ws.onerror = (e) => {
+        if (gen !== generation) return
+        console.error(`[${name}] Error:`, e)
+      }
+
+      ws.onmessage = (event) => {
+        if (gen !== generation) return
+
+        if (event.data instanceof Blob) {
+          onBinaryMessage?.(event.data)
           return
         }
 
-        onMessage?.(data)
-      } catch {
-        // Ignore non-JSON messages
+        try {
+          const data = JSON.parse(event.data)
+
+          if (data.type === 'pong' && data.data === 'cute') {
+            handlePong()
+            return
+          }
+
+          onMessage?.(data)
+        } catch {
+          // Ignore non-JSON messages
+        }
       }
+    }
+
+    if (onBeforeConnect) {
+      onBeforeConnect().catch(() => {}).then(openSocket)
+    } else {
+      openSocket()
     }
   }
 

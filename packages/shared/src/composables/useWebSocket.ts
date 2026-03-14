@@ -1,6 +1,7 @@
 import { ref, computed } from 'vue'
 import { useAuthStore } from '../stores/auth'
 import { createReconnectingWebSocket } from './useReconnectingWebSocket'
+import { refreshTokenIfExpired } from '../utils/tokenRefresh'
 
 const WS_BASE = import.meta.env.VITE_WS_BASE || ''
 
@@ -11,6 +12,7 @@ export function useWebSocket(path: string) {
 
   const wsInstance = createReconnectingWebSocket({
     name: `WS:${path}`,
+    onBeforeConnect: () => refreshTokenIfExpired(useAuthStore()),
     getUrl: () => {
       const auth = useAuthStore()
       return auth.token ? `${WS_BASE}${path}?token=${auth.token}` : null

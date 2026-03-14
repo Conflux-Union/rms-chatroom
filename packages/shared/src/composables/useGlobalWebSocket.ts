@@ -1,6 +1,7 @@
 import { onUnmounted } from 'vue'
 import { useAuthStore } from '../stores/auth'
 import { createReconnectingWebSocket } from './useReconnectingWebSocket'
+import { refreshTokenIfExpired } from '../utils/tokenRefresh'
 
 const WS_BASE = import.meta.env.VITE_WS_BASE || ''
 
@@ -8,6 +9,7 @@ const messageHandlers: Set<(data: any) => void> = new Set()
 
 const globalWsInstance = createReconnectingWebSocket({
   name: 'GlobalWS',
+  onBeforeConnect: () => refreshTokenIfExpired(useAuthStore()),
   getUrl: () => {
     const auth = useAuthStore()
     return auth.token ? `${WS_BASE}/ws/global?token=${auth.token}` : null

@@ -499,13 +499,22 @@ export const useMusicStore = defineStore('music', () => {
       console.log('[MusicStore] WebSocket disconnected')
       wsConnected.value = false
       musicWs = null
-      // Reconnect after 3 seconds if still in same room
       const voice = useVoiceStore()
-      setTimeout(() => {
+      setTimeout(async () => {
         const currentRoom = voice.currentVoiceChannel ? `voice_${voice.currentVoiceChannel.id}` : null
-        if (auth.token && currentRoom && currentRoom === currentWsRoom) {
-          connectMusicWs(currentRoom)
+        if (!auth.token || !currentRoom || currentRoom !== currentWsRoom) return
+        if (auth.refreshToken) {
+          try {
+            const payload = JSON.parse(atob(auth.token.split('.')[1]))
+            if (payload.exp * 1000 - Date.now() < 30_000) {
+              await auth.doRefreshToken()
+            }
+          } catch { /* proceed anyway */ }
         }
+        // Re-validate after async refresh: room may have changed while awaiting
+        const roomAfterRefresh = voice.currentVoiceChannel ? `voice_${voice.currentVoiceChannel.id}` : null
+        if (roomAfterRefresh !== currentRoom) return
+        connectMusicWs(currentRoom)
       }, 3000)
     }
 
