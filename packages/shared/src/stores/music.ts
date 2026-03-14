@@ -242,7 +242,7 @@ export const useMusicStore = defineStore('music', () => {
   async function refreshQueue(roomName: string) {
     if (!roomName) return
     try {
-      const res = await authFetch(`${API_BASE}/api/music/queue/${roomName}`)
+      const res = await authFetch(`${API_BASE}/api/music/queue/${encodeURIComponent(roomName)}`)
       const data = await res.json()
       queue.value = data.queue || []
       currentIndex.value = data.current_index || 0
