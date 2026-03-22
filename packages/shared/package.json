@@ -27,8 +27,8 @@
     "vue-router": "^5.0.3"
   },
   "devDependencies": {
-    "@types/node": "^25.3.5",
+    "@types/node": "^25.5.0",
     "typescript": "~5.9.3",
-    "vite": "^7.3.1"
+    "vite": "^8.0.1"
   }
 }
