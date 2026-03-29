@@ -10,7 +10,7 @@ require (
 	github.com/imroc/req/v3 v3.57.0
 	github.com/labstack/echo/v4 v4.15.1
 	github.com/livekit/protocol v1.45.1
-	github.com/livekit/server-sdk-go/v2 v2.16.0
+	github.com/livekit/server-sdk-go/v2 v2.16.1
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 )
 
