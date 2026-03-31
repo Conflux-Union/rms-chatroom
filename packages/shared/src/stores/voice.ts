@@ -9,12 +9,10 @@ import {
   RemoteTrackPublication,
   LocalTrackPublication,
   ScreenSharePresets,
-  LocalAudioTrack,
 } from 'livekit-client'
 import type { Channel } from '../types'
 import { useAuthStore } from './auth'
 import { useChatStore } from './chat'
-import { startNoiseCancel, type NoiseCancelMode, type NoiseCancelSession } from '../composables/noiseCancle'
 import { authFetch } from '../utils/authFetch'
 
 const API_BASE = import.meta.env.VITE_API_BASE || ''
@@ -59,7 +57,6 @@ interface ParticipantAudio {
   volume: number
 }
 
-let customMicPub: LocalTrackPublication | null = null
 
 export const useVoiceStore = defineStore('voice', () => {
   const room = shallowRef<Room | null>(null)
@@ -71,97 +68,6 @@ export const useVoiceStore = defineStore('voice', () => {
   const error = ref<string | null>(null)
   const currentVoiceChannel = ref<Channel | null>(null)
 
-  // ===== Noise cancellation mode (webrtc / rnnoise / dtln) =====
-  const STORAGE_KEY_NOISE_MODE = 'rms-voice-noise-cancel-mode'
-  const noiseCancelMode = ref<NoiseCancelMode>(
-    (localStorage.getItem(STORAGE_KEY_NOISE_MODE) as NoiseCancelMode) || 'webrtc',
-  )
-
-  // Custom noise cancellation pipeline (for publishing rnnoise / dtln)
-  let noiseSession: NoiseCancelSession | null = null
-  let customMicTrack: LocalAudioTrack | null = null
-
-  async function stopNoisePipeline() {
-    try {
-      if (room.value) {
-        // ✅ In JS, unpublish using the track object
-        if (customMicPub?.track) {
-          await room.value.localParticipant.unpublishTrack(customMicPub.track as any)
-        } else if (customMicTrack) {
-          await room.value.localParticipant.unpublishTrack(customMicTrack as any)
-        }
-      }
-    } catch {}
-
-    customMicPub = null
-
-    try { customMicTrack?.stop?.() } catch {}
-    customMicTrack = null
-
-    try { await noiseSession?.stop?.() } catch {}
-    noiseSession = null
-  }
-
-  async function applyNoiseCancelMode(mode: NoiseCancelMode) {
-    if (!room.value) return
-
-    await stopNoisePipeline()
-
-    if (mode === 'webrtc') {
-      // Revert to webrtc: use SDK's built-in microphone track
-      await room.value.localParticipant.setMicrophoneEnabled(!isMuted.value)
-      return
-    }
-
-    // Mute SDK's built-in mic
-    await room.value.localParticipant.setMicrophoneEnabled(false)
-
-    // Truly unpublish it (otherwise there will be two tracks)
-    try {
-      const pub = room.value.localParticipant.getTrackPublication(Track.Source.Microphone)
-      if (pub?.track) {
-        await room.value.localParticipant.unpublishTrack(pub.track as any)
-        try { pub.track.stop?.() } catch {}
-      }
-    } catch {}
-      await room.value.localParticipant.setMicrophoneEnabled(false)
-
-    noiseSession = await startNoiseCancel(mode, {
-      deviceId: selectedAudioInput.value || undefined,
-    })
-
-    const processedTrack = noiseSession.processedTrack
-    if (!processedTrack) throw new Error('noisecancle: processedTrack is empty')
-
-    customMicTrack = new LocalAudioTrack(processedTrack as any, undefined, true)
-
-    // Publish
-    customMicPub = await room.value.localParticipant.publishTrack(customMicTrack as any, {
-      source: Track.Source.Microphone,
-    } as any)
-    const pubs = Array.from(room.value.localParticipant.audioTrackPublications.values())
-    console.log('local audio pubs:', pubs.map(p => ({
-      sid: p.trackSid,
-      source: p.source,
-      muted: p.isMuted,
-      hasTrack: !!p.track,
-      trackId: p.track?.mediaStreamTrack?.id,
-    })))
-
-    // Keep muted state
-    if (isMuted.value) {
-      try { await Promise.resolve((customMicTrack as any).mute?.()) } catch {}
-    }
-  }
-
-  async function setNoiseCancelMode(mode: NoiseCancelMode) {
-    noiseCancelMode.value = mode
-    localStorage.setItem(STORAGE_KEY_NOISE_MODE, mode)
-
-    if (room.value && isConnected.value) {
-      await applyNoiseCancelMode(mode)
-    }
-  }
 
 
   // Volume control state
@@ -369,12 +275,7 @@ export const useVoiceStore = defineStore('voice', () => {
     const auth = useAuthStore()
 
     const local = room.value.localParticipant
-    let localMuted: boolean
-    if (noiseCancelMode.value === 'webrtc') {
-      localMuted = !local.isMicrophoneEnabled
-    } else {
-      localMuted = isMuted.value
-    }
+    const localMuted = !local.isMicrophoneEnabled
     
     list.push({
       id: local.identity,
@@ -492,12 +393,7 @@ export const useVoiceStore = defineStore('voice', () => {
     // If connected, switch device immediately
     if (room.value && isConnected.value) {
       try {
-        if (noiseCancelMode.value === 'webrtc') {
-          await room.value.switchActiveDevice('audioinput', deviceId || 'default')
-        } else {
-          // rnnoise/dtln：重建管线（用新的 deviceId）
-          await applyNoiseCancelMode(noiseCancelMode.value)
-        }
+        await room.value.switchActiveDevice('audioinput', deviceId || 'default')
         return true
       } catch (e) {
         console.log('Failed to switch audio input device:' + e)
@@ -646,10 +542,7 @@ export const useVoiceStore = defineStore('voice', () => {
       })
       room.value.on(RoomEvent.ActiveSpeakersChanged, () => updateParticipants())
       room.value.on(RoomEvent.Disconnected, () => {
-        
-        // Clean up custom noise pipeline on disconnect
-        void stopNoisePipeline()
-isConnected.value = false
+        isConnected.value = false
         participants.value = []
         currentVoiceChannel.value = null
       })
@@ -771,8 +664,7 @@ isConnected.value = false
 
       await room.value.connect(url, token)
 
-      // Publish microphone according to current noise cancellation mode (webrtc / rnnoise / dtln)
-      await applyNoiseCancelMode(noiseCancelMode.value)
+      await room.value.localParticipant.setMicrophoneEnabled(true)
 
       // Resume AudioContext after connection on iOS if needed
       if (isIOS()) {
@@ -834,9 +726,6 @@ isConnected.value = false
     }
 
 
-    // 断开前清理降噪管线
-    void stopNoisePipeline()
-
     if (room.value) {
       room.value.disconnect()
       room.value = null
@@ -863,17 +752,7 @@ isConnected.value = false
     const newMuted = !isMuted.value
     isMuted.value = newMuted
 
-    if (noiseCancelMode.value === 'webrtc') {
-      await room.value.localParticipant.setMicrophoneEnabled(!newMuted)
-    } else {
-      // 自定义降噪轨：只操作 track 本身
-      if (customMicTrack) {
-        try {
-          if (newMuted) await Promise.resolve((customMicTrack as any).mute?.())
-          else await Promise.resolve((customMicTrack as any).unmute?.())
-        } catch {}
-      }
-    }
+    await room.value.localParticipant.setMicrophoneEnabled(!newMuted)
 
     updateParticipants()
     return isMuted.value
@@ -1409,8 +1288,6 @@ isConnected.value = false
     hostModeEnabled,
     hostModeHostId,
     hostModeHostName,
-    noiseCancelMode,
-    setNoiseCancelMode,
     joinVoice,
     disconnect,
     toggleMute,
