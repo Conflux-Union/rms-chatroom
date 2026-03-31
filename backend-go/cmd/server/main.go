@@ -18,6 +18,7 @@ import (
 
 	"github.com/RMS-Server/rms-discord-go/internal/config"
 	"github.com/RMS-Server/rms-discord-go/internal/handler"
+	"github.com/RMS-Server/rms-discord-go/internal/permission"
 	"github.com/RMS-Server/rms-discord-go/internal/sso"
 	"github.com/RMS-Server/rms-discord-go/internal/ws"
 )
@@ -73,9 +74,25 @@ func main() {
 		AllowCredentials: true,
 	}))
 
-	// Wire up BroadcastFunc so HTTP handlers can broadcast WS events
+	// Wire up BroadcastFunc so HTTP handlers can broadcast WS events.
+	// Filter recipients by channel access permission; fall back to
+	// unfiltered broadcast on transient DB errors to avoid silently
+	// dropping events for messages already persisted.
 	handler.BroadcastFunc = func(channelID int64, payload map[string]interface{}) {
-		ws.ChatManager.BroadcastToAllUsers(payload)
+		var minLevel, permMinLevel int
+		var logicOp string
+		err := db.QueryRow(
+			"SELECT min_level, perm_min_level, logic_operator FROM channels WHERE id = ?", channelID,
+		).Scan(&minLevel, &permMinLevel, &logicOp)
+		if err != nil {
+			log.Printf("broadcast: channel %d permission query failed, falling back to unfiltered: %v", channelID, err)
+			ws.ChatManager.BroadcastToAllUsers(payload)
+			return
+		}
+		rule := permission.PermRule{PermMinLevel: permMinLevel, GroupMinLevel: minLevel, LogicOperator: logicOp}
+		ws.ChatManager.BroadcastFiltered(payload, func(user *permission.UserInfo) bool {
+			return permission.CanAccess(user, rule)
+		})
 	}
 
 	handler.Register(e, cfg, db, ssoClient)
@@ -88,6 +105,7 @@ func main() {
 	}
 	if info, err := os.Stat(distPath); err == nil && info.IsDir() {
 		e.Static("/assets", filepath.Join(distPath, "assets"))
+		e.Static("/worklets", filepath.Join(distPath, "worklets"))
 		e.File("/*", filepath.Join(distPath, "index.html"))
 	}
 

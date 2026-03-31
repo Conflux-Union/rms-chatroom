@@ -3,6 +3,7 @@ import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useChatStore } from '../stores/chat'
 import { useVoiceStore } from '../stores/voice'
 import { useAuthStore } from '../stores/auth'
+import { authFetch } from '../utils/authFetch'
 import { Volume2, VolumeX, Mic, MicOff, Phone, AlertTriangle, Crown, Link, Copy, Check, UserX, Monitor, MonitorOff } from 'lucide-vue-next'
 import { NModal, NButton, NSpace, NInput, NDropdown, NSpin } from 'naive-ui'
 import type { DropdownOption } from 'naive-ui'
@@ -197,15 +198,9 @@ async function createInviteLink() {
   showInviteDialog.value = true
 
   try {
-    const response = await fetch(
+    const response = await authFetch(
       `${API_BASE}/api/voice/${chat.currentChannel.id}/invite`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${auth.token}`,
-        },
-      }
+      { method: 'POST' }
     )
 
     if (!response.ok) {
@@ -214,7 +209,7 @@ async function createInviteLink() {
     }
 
     const data = await response.json()
-    inviteUrl.value = data.invite_url
+    inviteUrl.value = `${window.location.origin}/voice/invite/${data.token}`
   } catch (e) {
     inviteError.value = e instanceof Error ? e.message : '创建邀请失败'
   } finally {

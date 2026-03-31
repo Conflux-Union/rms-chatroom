@@ -54,7 +54,7 @@ async function fetchAndMergeServerPositions(): Promise<void> {
 
   try {
     const resp = await axios.get<{ positions: ServerReadPosition[] }>(
-      `${API_BASE}/read-positions`,
+      `${API_BASE}/api/read-positions`,
       { headers: { Authorization: `Bearer ${auth.token}` } }
     )
 

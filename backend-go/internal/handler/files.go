@@ -167,7 +167,8 @@ func downloadFile(jwtSecret string, db *sql.DB, uploadDir string) echo.HandlerFu
 			return c.JSON(http.StatusNotFound, map[string]string{"error": "file not found on disk"})
 		}
 
-		inline := c.QueryParam("inline") == "true"
+		inlineParam := c.QueryParam("inline")
+		inline := inlineParam == "true" || inlineParam == "1"
 		if inline {
 			return c.Inline(filePath, filename)
 		}

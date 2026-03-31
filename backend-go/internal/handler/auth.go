@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -298,18 +299,20 @@ func (h *AuthHandler) isWebRedirect(redirectURL string) bool {
 	if parsed.Scheme == "rmschatroom" {
 		return false
 	}
+	redirectOrigin := parsed.Scheme + "://" + parsed.Host
 	for _, origin := range h.config.CORSOrigins {
-		if strings.HasPrefix(redirectURL, origin) && strings.HasSuffix(parsed.Path, "/callback") {
+		if redirectOrigin == origin && strings.HasSuffix(parsed.Path, "/callback") {
 			return true
 		}
 	}
-	return true
+	return false
 }
 
 // isValidRedirect validates the redirect URL against allowed patterns.
+// Uses parsed URL comparison to prevent prefix-spoofing (e.g. origin.evil.com).
 func (h *AuthHandler) isValidRedirect(redirectURL string) bool {
 	parsed, err := url.Parse(redirectURL)
-	if err != nil {
+	if err != nil || parsed.Host == "" {
 		return false
 	}
 	if parsed.Scheme == "rmschatroom" && parsed.Hostname() == "callback" {
@@ -318,8 +321,12 @@ func (h *AuthHandler) isValidRedirect(redirectURL string) bool {
 	if parsed.Hostname() == "localhost" || parsed.Hostname() == "127.0.0.1" {
 		return true
 	}
+	if !strings.HasSuffix(parsed.Path, "/callback") {
+		return false
+	}
+	redirectOrigin := parsed.Scheme + "://" + parsed.Host
 	for _, origin := range h.config.CORSOrigins {
-		if strings.HasPrefix(redirectURL, origin) && strings.HasSuffix(parsed.Path, "/callback") {
+		if redirectOrigin == origin {
 			return true
 		}
 	}
@@ -360,7 +367,8 @@ func (h *AuthHandler) Refresh(c echo.Context) error {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "invalid refresh token"})
 	}
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		log.Printf("auth/refresh: db error: %v", err)
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "internal server error"})
 	}
 	if time.Now().UTC().After(expiresAt) {
 		h.db.Exec("DELETE FROM auth_refresh_tokens WHERE token_hash = ?", tokenHash)
@@ -408,7 +416,9 @@ func (h *AuthHandler) Refresh(c echo.Context) error {
 
 	// Generate new refresh token
 	refreshBytes := make([]byte, 32)
-	rand.Read(refreshBytes)
+	if _, err := rand.Read(refreshBytes); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to generate refresh token"})
+	}
 	newRefreshToken := hex.EncodeToString(refreshBytes)
 
 	newHash := sha256.Sum256([]byte(newRefreshToken))
