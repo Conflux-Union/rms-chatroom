@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref, computed, nextTick } from 'vue'
-import { storeToRefs } from 'pinia'
 import { useVoiceStore } from '../stores/voice'
 import { NModal, NSelect, NButton, NSpace, NProgress } from 'naive-ui'
 import { Mic, Volume2 } from 'lucide-vue-next'
@@ -24,35 +23,11 @@ declare global {
 }
 
 const voice = useVoiceStore()
-const { noiseCancelMode } = storeToRefs(voice)
-
-type NoiseCancelMode = 'webrtc' | 'rnnoise' | 'dtln'
 
 const toggleWindow = ref('')
 const toggleMic = ref('')
 const tip = ref('')
 const capturing = ref<'toggleWindow' | 'toggleMic' | null>(null)
-
-async function setNoiseMode(m: NoiseCancelMode) {
-  tip.value = ''
-  try {
-    await voice.setNoiseCancelMode(m)
-    tip.value = `降噪模式已切换: ${m}`
-  } catch (e) {
-    tip.value = `切换失败: ${String(e)}`
-  }
-}
-
-// Noise cancel options
-const noiseOptions = [
-  { value: 'webrtc', label: 'WebRTC（默认）' },
-  { value: 'rnnoise', label: 'RNNoise（中等，低 CPU）' },
-]
-
-const selectedNoiseMode = computed({
-  get: () => noiseCancelMode.value as NoiseCancelMode,
-  set: (v) => setNoiseMode(v),
-})
 
 // Device options
 const inputOptions = computed(() => {
@@ -392,15 +367,6 @@ function stopOutputTest() {
           />
           <NButton size="small" @click="save('toggleMic')">保存</NButton>
         </div>
-      </div>
-
-      <!-- Noise Cancellation -->
-      <div class="setting-row">
-        <div class="setting-label">降噪</div>
-        <NSelect
-          v-model:value="selectedNoiseMode"
-          :options="noiseOptions"
-        />
       </div>
 
       <!-- Status tip -->
