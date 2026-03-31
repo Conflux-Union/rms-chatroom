@@ -15,6 +15,7 @@ import type { Channel } from '../types'
 import { useAuthStore } from './auth'
 import { useChatStore } from './chat'
 import { startNoiseCancel, type NoiseCancelMode, type NoiseCancelSession } from '../composables/noiseCancle'
+import { authFetch } from '../utils/authFetch'
 
 const API_BASE = import.meta.env.VITE_API_BASE || ''
 
@@ -589,10 +590,7 @@ export const useVoiceStore = defineStore('voice', () => {
     error.value = null
 
     try {
-      const auth = useAuthStore()
-      const response = await fetch(`${API_BASE}/api/voice/${channel.id}/token`, {
-        headers: { Authorization: `Bearer ${auth.token}` },
-      })
+      const response = await authFetch(`${API_BASE}/api/voice/${channel.id}/token`)
 
       if (!response.ok) {
         const err = await response.json()
@@ -1040,16 +1038,12 @@ isConnected.value = false
   async function muteParticipant(userId: string, muted = true): Promise<boolean> {
     if (!currentVoiceChannel.value) return false
 
-    const auth = useAuthStore()
     try {
-      const response = await fetch(
+      const response = await authFetch(
         `${API_BASE}/api/voice/${currentVoiceChannel.value.id}/mute/${userId}`,
         {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${auth.token}`,
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ muted }),
         }
       )
@@ -1066,16 +1060,10 @@ isConnected.value = false
   async function kickParticipant(userId: string): Promise<boolean> {
     if (!currentVoiceChannel.value) return false
 
-    const auth = useAuthStore()
     try {
-      const response = await fetch(
+      const response = await authFetch(
         `${API_BASE}/api/voice/${currentVoiceChannel.value.id}/kick/${userId}`,
-        {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${auth.token}`,
-          },
-        }
+        { method: 'POST' }
       )
       return response.ok
     } catch (e) {
@@ -1090,11 +1078,9 @@ isConnected.value = false
   async function fetchHostModeStatus(): Promise<void> {
     if (!currentVoiceChannel.value) return
 
-    const auth = useAuthStore()
     try {
-      const response = await fetch(
-        `${API_BASE}/api/voice/${currentVoiceChannel.value.id}/host-mode`,
-        { headers: { Authorization: `Bearer ${auth.token}` } }
+      const response = await authFetch(
+        `${API_BASE}/api/voice/${currentVoiceChannel.value.id}/host-mode`
       )
       if (response.ok) {
         const data = await response.json()
@@ -1113,16 +1099,12 @@ isConnected.value = false
   async function toggleHostMode(): Promise<boolean> {
     if (!currentVoiceChannel.value) return false
 
-    const auth = useAuthStore()
     try {
-      const response = await fetch(
+      const response = await authFetch(
         `${API_BASE}/api/voice/${currentVoiceChannel.value.id}/host-mode`,
         {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${auth.token}`,
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ enabled: !hostModeEnabled.value }),
         }
       )
@@ -1146,11 +1128,9 @@ isConnected.value = false
   async function fetchScreenShareStatus(): Promise<void> {
     if (!currentVoiceChannel.value) return
 
-    const auth = useAuthStore()
     try {
-      const response = await fetch(
-        `${API_BASE}/api/voice/${currentVoiceChannel.value.id}/screen-share-status`,
-        { headers: { Authorization: `Bearer ${auth.token}` } }
+      const response = await authFetch(
+        `${API_BASE}/api/voice/${currentVoiceChannel.value.id}/screen-share-status`
       )
       if (response.ok) {
         const data = await response.json()
@@ -1169,14 +1149,10 @@ isConnected.value = false
   async function lockScreenShare(): Promise<{ success: boolean; sharerName: string | null }> {
     if (!currentVoiceChannel.value) return { success: false, sharerName: null }
 
-    const auth = useAuthStore()
     try {
-      const response = await fetch(
+      const response = await authFetch(
         `${API_BASE}/api/voice/${currentVoiceChannel.value.id}/screen-share/lock`,
-        {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${auth.token}` },
-        }
+        { method: 'POST' }
       )
       if (response.ok) {
         const data = await response.json()
@@ -1198,14 +1174,10 @@ isConnected.value = false
   async function unlockScreenShare(): Promise<void> {
     if (!currentVoiceChannel.value) return
 
-    const auth = useAuthStore()
     try {
-      await fetch(
+      await authFetch(
         `${API_BASE}/api/voice/${currentVoiceChannel.value.id}/screen-share/unlock`,
-        {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${auth.token}` },
-        }
+        { method: 'POST' }
       )
       screenShareLocked.value = false
       screenSharerId.value = null

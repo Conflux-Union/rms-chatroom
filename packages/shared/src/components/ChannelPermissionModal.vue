@@ -115,7 +115,7 @@ const handleSave = async () => {
   isSaving.value = true
   try {
     await axios.patch(
-      `${API_BASE}/api/channels/${props.channelId}`,
+      `${API_BASE}/api/servers/${props.serverId}/channels/${props.channelId}`,
       {
         min_level: channelMinLevel.value,
         perm_min_level: channelPermMinLevel.value,

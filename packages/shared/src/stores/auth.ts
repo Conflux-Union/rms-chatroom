@@ -22,22 +22,16 @@ export const useAuthStore = defineStore('auth', () => {
   const isLoggedIn = computed(() => !!user.value && !!accessToken.value)
   const isAdmin = computed(() => (user.value?.permission_level ?? 0) >= 3)
 
-  // Refresh lock to prevent concurrent refresh attempts
-  let isRefreshing = false
-  let refreshQueue: Array<{ resolve: (token: string) => void; reject: (err: unknown) => void }> = []
-
-  function processQueue(error: unknown, newToken: string | null) {
-    for (const p of refreshQueue) {
-      if (error) {
-        p.reject(error)
-      } else {
-        p.resolve(newToken!)
-      }
-    }
-    refreshQueue = []
-  }
+  // Single in-flight refresh promise shared by both axios interceptor and authFetch
+  let _refreshPromise: Promise<string> | null = null
 
   async function doRefreshToken(): Promise<string> {
+    if (_refreshPromise) return _refreshPromise
+    _refreshPromise = _executeRefresh().finally(() => { _refreshPromise = null })
+    return _refreshPromise
+  }
+
+  async function _executeRefresh(): Promise<string> {
     if (!refreshToken.value) {
       throw new Error('No refresh token')
     }
@@ -52,39 +46,21 @@ export const useAuthStore = defineStore('auth', () => {
     throw new Error('Refresh failed')
   }
 
-  // Axios 401 interceptor with request queue
+  // Axios 401 interceptor — doRefreshToken is internally deduped so
+  // concurrent 401s all share one in-flight refresh request.
   axios.interceptors.response.use(
     (response) => response,
     async (error) => {
       const originalRequest = error.config
       if (error.response?.status === 401 && !originalRequest._retry && refreshToken.value) {
-        if (isRefreshing) {
-          // Queue this request until refresh completes
-          return new Promise((resolve, reject) => {
-            refreshQueue.push({
-              resolve: (newToken: string) => {
-                originalRequest.headers['Authorization'] = `Bearer ${newToken}`
-                resolve(axios(originalRequest))
-              },
-              reject
-            })
-          })
-        }
-
         originalRequest._retry = true
-        isRefreshing = true
-
         try {
           const newToken = await doRefreshToken()
-          processQueue(null, newToken)
           originalRequest.headers['Authorization'] = `Bearer ${newToken}`
           return axios(originalRequest)
         } catch (refreshError) {
-          processQueue(refreshError, null)
           logout()
           return Promise.reject(refreshError)
-        } finally {
-          isRefreshing = false
         }
       }
       return Promise.reject(error)
@@ -102,8 +78,15 @@ export const useAuthStore = defineStore('auth', () => {
         user.value = resp.data.user
         return true
       }
-    } catch {
-      // Token invalid
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err) && err.response) {
+        // Server explicitly rejected the token (401/403) — session is dead
+        logout()
+        return false
+      }
+      // Network error / timeout — don't nuke the session
+      console.warn('[auth] verifyToken network error, keeping session:', err)
+      return false
     }
     logout()
     return false
@@ -119,10 +102,13 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   function logout() {
-    // Revoke refresh token on server (fire-and-forget)
-    if (refreshToken.value) {
+    // Revoke refresh token on server (fire-and-forget).
+    // Must send Bearer header since /api/auth/logout requires auth middleware.
+    if (refreshToken.value && accessToken.value) {
       axios.post(`${API_BASE}/api/auth/logout`, {
         refresh_token: refreshToken.value
+      }, {
+        headers: { Authorization: `Bearer ${accessToken.value}` }
       }).catch(() => {})
     }
     user.value = null
@@ -130,7 +116,7 @@ export const useAuthStore = defineStore('auth', () => {
     refreshToken.value = null
     localStorage.removeItem('access_token')
     localStorage.removeItem('refresh_token')
-    localStorage.removeItem('token') // Clean up legacy key
+    localStorage.removeItem('token')
   }
 
   function getLoginUrl(redirectUrl?: string): string {
@@ -146,6 +132,7 @@ export const useAuthStore = defineStore('auth', () => {
     isLoggedIn,
     isAdmin,
     verifyToken,
+    doRefreshToken,
     setToken,
     logout,
     getLoginUrl,

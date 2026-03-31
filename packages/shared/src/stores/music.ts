@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'
 import { useAuthStore } from './auth'
 import { useVoiceStore } from './voice'
+import { authFetch } from '../utils/authFetch'
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'https://chatroom.rms.net.cn'
 const WS_BASE = import.meta.env.VITE_WS_BASE || 'wss://chatroom.rms.net.cn'
@@ -72,18 +73,13 @@ export const useMusicStore = defineStore('music', () => {
   const volume = ref(parseFloat(localStorage.getItem('musicVolume') || '1.0'))
   const wsConnected = ref(false)
 
-  const headers = () => ({
-    'Content-Type': 'application/json',
-    'Authorization': `Bearer ${auth.token}`
-  })
+  const jsonHeaders = { 'Content-Type': 'application/json' }
 
   // --- Login functions ---
   
   async function checkAllLoginStatus() {
     try {
-      const res = await fetch(`${API_BASE}/api/music/login/check/all`, {
-        headers: headers()
-      })
+      const res = await authFetch(`${API_BASE}/api/music/login/check/all`)
       const data = await res.json() as PlatformLoginStatus
       platformLoginStatus.value = data
       isLoggedIn.value = data.qq.logged_in || data.netease.logged_in
@@ -97,9 +93,7 @@ export const useMusicStore = defineStore('music', () => {
   
   async function checkLoginStatus(platform: 'qq' | 'netease' = 'qq') {
     try {
-      const res = await fetch(`${API_BASE}/api/music/login/check?platform=${platform}`, {
-        headers: headers()
-      })
+      const res = await authFetch(`${API_BASE}/api/music/login/check?platform=${platform}`)
       const data = await res.json()
       if (platform === 'qq') {
         platformLoginStatus.value.qq.logged_in = data.logged_in
@@ -166,9 +160,8 @@ export const useMusicStore = defineStore('music', () => {
   
   async function logout(platform: 'qq' | 'netease' = 'qq') {
     try {
-      await fetch(`${API_BASE}/api/music/login/logout?platform=${platform}`, {
+      await authFetch(`${API_BASE}/api/music/login/logout?platform=${platform}`, {
         method: 'POST',
-        headers: headers()
       })
       if (platform === 'qq') {
         platformLoginStatus.value.qq.logged_in = false
@@ -191,9 +184,9 @@ export const useMusicStore = defineStore('music', () => {
     
     try {
       isSearching.value = true
-      const res = await fetch(`${API_BASE}/api/music/search`, {
+      const res = await authFetch(`${API_BASE}/api/music/search`, {
         method: 'POST',
-        headers: headers(),
+        headers: jsonHeaders,
         body: JSON.stringify({ keyword, num: 20, platform })
       })
       const data = await res.json()
@@ -210,9 +203,9 @@ export const useMusicStore = defineStore('music', () => {
   
   async function addToQueue(roomName: string, song: Song) {
     try {
-      const res = await fetch(`${API_BASE}/api/music/queue/add`, {
+      const res = await authFetch(`${API_BASE}/api/music/queue/add`, {
         method: 'POST',
-        headers: headers(),
+        headers: jsonHeaders,
         body: JSON.stringify({ room_name: roomName, song })
       })
       await res.json()
@@ -224,9 +217,8 @@ export const useMusicStore = defineStore('music', () => {
   
   async function removeFromQueue(roomName: string, index: number) {
     try {
-      await fetch(`${API_BASE}/api/music/queue/${roomName}/${index}`, {
+      await authFetch(`${API_BASE}/api/music/queue/${roomName}/${index}`, {
         method: 'DELETE',
-        headers: headers()
       })
       await refreshQueue(roomName)
     } catch (e) {
@@ -236,9 +228,9 @@ export const useMusicStore = defineStore('music', () => {
   
   async function clearQueue(roomName: string) {
     try {
-      await fetch(`${API_BASE}/api/music/queue/clear`, {
+      await authFetch(`${API_BASE}/api/music/queue/clear`, {
         method: 'POST',
-        headers: headers(),
+        headers: jsonHeaders,
         body: JSON.stringify({ room_name: roomName })
       })
       await refreshQueue(roomName)
@@ -250,9 +242,7 @@ export const useMusicStore = defineStore('music', () => {
   async function refreshQueue(roomName: string) {
     if (!roomName) return
     try {
-      const res = await fetch(`${API_BASE}/api/music/queue/${roomName}`, {
-        headers: headers()
-      })
+      const res = await authFetch(`${API_BASE}/api/music/queue/${encodeURIComponent(roomName)}`)
       const data = await res.json()
       queue.value = data.queue || []
       currentIndex.value = data.current_index || 0
@@ -267,9 +257,7 @@ export const useMusicStore = defineStore('music', () => {
   
   async function getSongUrl(mid: string, platform: 'qq' | 'netease' = 'qq'): Promise<string | null> {
     try {
-      const res = await fetch(`${API_BASE}/api/music/song/${mid}/url?platform=${platform}`, {
-        headers: headers()
-      })
+      const res = await authFetch(`${API_BASE}/api/music/song/${mid}/url?platform=${platform}`)
       const data = await res.json()
       return data.url || null
     } catch (e) {
@@ -288,9 +276,9 @@ export const useMusicStore = defineStore('music', () => {
   
   async function startBot(roomName: string) {
     try {
-      const res = await fetch(`${API_BASE}/api/music/bot/start`, {
+      const res = await authFetch(`${API_BASE}/api/music/bot/start`, {
         method: 'POST',
-        headers: headers(),
+        headers: jsonHeaders,
         body: JSON.stringify({ room_name: roomName })
       })
       const data = await res.json()
@@ -307,9 +295,9 @@ export const useMusicStore = defineStore('music', () => {
   
   async function stopBot(roomName: string) {
     try {
-      await fetch(`${API_BASE}/api/music/bot/stop`, {
+      await authFetch(`${API_BASE}/api/music/bot/stop`, {
         method: 'POST',
-        headers: headers(),
+        headers: jsonHeaders,
         body: JSON.stringify({ room_name: roomName })
       })
       botConnected.value = false
@@ -322,9 +310,7 @@ export const useMusicStore = defineStore('music', () => {
   async function getBotStatus(roomName: string) {
     if (!roomName) return null
     try {
-      const res = await fetch(`${API_BASE}/api/music/bot/status/${roomName}`, {
-        headers: headers()
-      })
+      const res = await authFetch(`${API_BASE}/api/music/bot/status/${roomName}`)
       const data = await res.json()
       botConnected.value = data.connected
       botRoom.value = data.room
@@ -338,9 +324,9 @@ export const useMusicStore = defineStore('music', () => {
   
   async function botPlay(roomName: string) {
     try {
-      const res = await fetch(`${API_BASE}/api/music/bot/play`, {
+      const res = await authFetch(`${API_BASE}/api/music/bot/play`, {
         method: 'POST',
-        headers: { ...headers(), 'Content-Type': 'application/json' },
+        headers: jsonHeaders,
         body: JSON.stringify({ room_name: roomName })
       })
       const data = await res.json()
@@ -358,9 +344,9 @@ export const useMusicStore = defineStore('music', () => {
   
   async function botPause(roomName: string) {
     try {
-      await fetch(`${API_BASE}/api/music/bot/pause`, {
+      await authFetch(`${API_BASE}/api/music/bot/pause`, {
         method: 'POST',
-        headers: headers(),
+        headers: jsonHeaders,
         body: JSON.stringify({ room_name: roomName })
       })
       isPlaying.value = false
@@ -372,9 +358,9 @@ export const useMusicStore = defineStore('music', () => {
   
   async function botResume(roomName: string) {
     try {
-      const res = await fetch(`${API_BASE}/api/music/bot/resume`, {
+      const res = await authFetch(`${API_BASE}/api/music/bot/resume`, {
         method: 'POST',
-        headers: headers(),
+        headers: jsonHeaders,
         body: JSON.stringify({ room_name: roomName })
       })
       const data = await res.json()
@@ -389,9 +375,9 @@ export const useMusicStore = defineStore('music', () => {
   
   async function botSkip(roomName: string) {
     try {
-      const res = await fetch(`${API_BASE}/api/music/bot/skip`, {
+      const res = await authFetch(`${API_BASE}/api/music/bot/skip`, {
         method: 'POST',
-        headers: headers(),
+        headers: jsonHeaders,
         body: JSON.stringify({ room_name: roomName })
       })
       await res.json()
@@ -403,9 +389,9 @@ export const useMusicStore = defineStore('music', () => {
   
   async function botPrevious(roomName: string) {
     try {
-      const res = await fetch(`${API_BASE}/api/music/bot/previous`, {
+      const res = await authFetch(`${API_BASE}/api/music/bot/previous`, {
         method: 'POST',
-        headers: headers(),
+        headers: jsonHeaders,
         body: JSON.stringify({ room_name: roomName })
       })
       await res.json()
@@ -417,9 +403,9 @@ export const useMusicStore = defineStore('music', () => {
   
   async function botSeek(roomName: string, seekPositionMs: number) {
     try {
-      await fetch(`${API_BASE}/api/music/bot/seek`, {
+      await authFetch(`${API_BASE}/api/music/bot/seek`, {
         method: 'POST',
-        headers: headers(),
+        headers: jsonHeaders,
         body: JSON.stringify({ room_name: roomName, position_ms: seekPositionMs })
       })
     } catch (e) {
@@ -430,9 +416,7 @@ export const useMusicStore = defineStore('music', () => {
   async function getProgress(roomName: string) {
     if (!roomName) return null
     try {
-      const res = await fetch(`${API_BASE}/api/music/bot/progress/${roomName}`, {
-        headers: headers()
-      })
+      const res = await authFetch(`${API_BASE}/api/music/bot/progress/${roomName}`)
       const data = await res.json()
       positionMs.value = data.position_ms || 0
       durationMs.value = data.duration_ms || 0
@@ -515,13 +499,22 @@ export const useMusicStore = defineStore('music', () => {
       console.log('[MusicStore] WebSocket disconnected')
       wsConnected.value = false
       musicWs = null
-      // Reconnect after 3 seconds if still in same room
       const voice = useVoiceStore()
-      setTimeout(() => {
+      setTimeout(async () => {
         const currentRoom = voice.currentVoiceChannel ? `voice_${voice.currentVoiceChannel.id}` : null
-        if (auth.token && currentRoom && currentRoom === currentWsRoom) {
-          connectMusicWs(currentRoom)
+        if (!auth.token || !currentRoom || currentRoom !== currentWsRoom) return
+        if (auth.refreshToken) {
+          try {
+            const payload = JSON.parse(atob(auth.token.split('.')[1]))
+            if (payload.exp * 1000 - Date.now() < 30_000) {
+              await auth.doRefreshToken()
+            }
+          } catch { /* proceed anyway */ }
         }
+        // Re-validate after async refresh: room may have changed while awaiting
+        const roomAfterRefresh = voice.currentVoiceChannel ? `voice_${voice.currentVoiceChannel.id}` : null
+        if (roomAfterRefresh !== currentRoom) return
+        connectMusicWs(currentRoom)
       }, 3000)
     }
 
