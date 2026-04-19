@@ -12,10 +12,10 @@
     "electron:build": "pnpm build:electron && cd electron && npm run build"
   },
   "devDependencies": {
-    "@rollup/rollup-linux-x64-gnu": "4.60.1",
-    "@rollup/rollup-win32-x64-msvc": "4.60.1",
-    "rollup": "^4.60.1",
-    "typescript": "~6.0.2"
+    "@rollup/rollup-linux-x64-gnu": "4.60.2",
+    "@rollup/rollup-win32-x64-msvc": "4.60.2",
+    "rollup": "^4.60.2",
+    "typescript": "~6.0.3"
   },
   "dependencies": {
     "vue-draggable-plus": "^0.6.1"
