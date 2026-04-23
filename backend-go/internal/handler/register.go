@@ -27,6 +27,7 @@ func Register(e *echo.Echo, cfg *config.Config, db *sql.DB, ssoClient *sso.Clien
 	auth := e.Group("/api/auth")
 	auth.GET("/login", authH.Login)
 	auth.GET("/callback", authH.Callback)
+	auth.POST("/silent-login", authH.SilentLogin)
 	auth.POST("/refresh", authH.Refresh)
 	auth.GET("/dev-login", authH.DevLogin)
 	auth.GET("/me", authH.Me, authMiddleware)

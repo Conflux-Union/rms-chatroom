@@ -2,8 +2,9 @@ import { useAuthStore } from '../stores/auth'
 
 /**
  * Fetch wrapper that adds Bearer token and retries once on 401 via
- * the auth store's refresh flow. doRefreshToken() is internally deduped,
- * so concurrent 401s from both authFetch and axios share one refresh.
+ * the auth store's session recovery flow. doRefreshToken() is internally
+ * deduped, so concurrent 401s from both authFetch and axios share one
+ * recovery attempt.
  */
 export async function authFetch(url: string, options: RequestInit = {}): Promise<Response> {
   const auth = useAuthStore()
@@ -14,7 +15,7 @@ export async function authFetch(url: string, options: RequestInit = {}): Promise
 
   let response = await fetch(url, { ...options, headers })
 
-  if (response.status === 401 && auth.refreshToken) {
+  if (response.status === 401 && auth.canRecoverSession()) {
     try {
       const newToken = await auth.doRefreshToken()
       headers.set('Authorization', `Bearer ${newToken}`)
