@@ -832,7 +832,7 @@ async function deleteChannel() {
         <VoiceControls />
         <div class="user-info">
           <span class="username">{{ auth.user?.nickname || auth.user?.username }}</span>
-          <button class="logout-btn" @click="auth.logout()">退出</button>
+          <button class="logout-btn" @click="auth.logout({ manual: true })">退出</button>
         </div>
       </div>
     </div>

@@ -20,8 +20,39 @@ import (
 
 	"github.com/RMS-Server/rms-discord-go/internal/config"
 	"github.com/RMS-Server/rms-discord-go/internal/middleware"
+	"github.com/RMS-Server/rms-discord-go/internal/permission"
 	"github.com/RMS-Server/rms-discord-go/internal/sso"
 )
+
+const ssoSessionCookieName = "rms_sso_sid"
+
+type localTokenPair struct {
+	AccessToken  string
+	RefreshToken string
+}
+
+type silentSessionResponse struct {
+	Code int `json:"code"`
+	Data struct {
+		Authenticated bool `json:"authenticated"`
+		User          struct {
+			ID              string `json:"id"`
+			Username        string `json:"username"`
+			Name            string `json:"name"`
+			Email           string `json:"email"`
+			PermissionLevel *int   `json:"permissionLevel"`
+			Group           *struct {
+				ID    int    `json:"id"`
+				Name  string `json:"name"`
+				Level int    `json:"level"`
+			} `json:"group"`
+		} `json:"user"`
+		SystemAccess struct {
+			SystemCode string `json:"systemCode"`
+			Allowed    bool   `json:"allowed"`
+		} `json:"systemAccess"`
+	} `json:"data"`
+}
 
 // AuthHandler handles authentication endpoints.
 type AuthHandler struct {
@@ -38,6 +69,182 @@ func NewAuthHandler(db *sql.DB, sso *sso.Client, cfg *config.Config) *AuthHandle
 		config: cfg,
 		http:   &http.Client{Timeout: 10 * time.Second},
 	}
+}
+
+func (h *AuthHandler) ssoBaseURL() string {
+	baseURL := h.config.OAuthBaseURL
+	if baseURL == "" {
+		baseURL = h.config.SSOBaseURL
+	}
+	return strings.TrimRight(baseURL, "/")
+}
+
+func (h *AuthHandler) issueLocalSession(user *permission.UserInfo, issueRefreshToken bool) (*localTokenPair, error) {
+	now := time.Now().UTC()
+	expireMinutes := h.config.AccessTokenExpireMinutes
+	if expireMinutes <= 0 {
+		expireMinutes = 15
+	}
+
+	claims := jwt.MapClaims{
+		"id":               user.ID,
+		"username":         user.Username,
+		"nickname":         user.Nickname,
+		"email":            user.Email,
+		"permission_level": user.PermissionLevel,
+		"group_level":      user.GroupLevel,
+		"avatar_url":       user.AvatarURL,
+		"iat":              now.Unix(),
+		"exp":              now.Add(time.Duration(expireMinutes) * time.Minute).Unix(),
+	}
+	localToken, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(h.config.JWTSecret))
+	if err != nil {
+		return nil, err
+	}
+
+	tokens := &localTokenPair{
+		AccessToken: localToken,
+	}
+	if !issueRefreshToken {
+		return tokens, nil
+	}
+
+	refreshBytes := make([]byte, 32)
+	if _, err := rand.Read(refreshBytes); err != nil {
+		return nil, err
+	}
+	refreshToken := hex.EncodeToString(refreshBytes)
+
+	hash := sha256.Sum256([]byte(refreshToken))
+	tokenHash := hex.EncodeToString(hash[:])
+	expireDays := h.config.RefreshTokenExpireDays
+	if expireDays <= 0 {
+		expireDays = 30
+	}
+	expiresAt := now.Add(time.Duration(expireDays) * 24 * time.Hour)
+
+	_, err = h.db.Exec(
+		`INSERT INTO auth_refresh_tokens (user_id, username, nickname, email, permission_level, group_level, token_hash, created_at, expires_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		user.ID, user.Username, user.Nickname, user.Email,
+		user.PermissionLevel, user.GroupLevel,
+		tokenHash, now, expiresAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	tokens.RefreshToken = refreshToken
+	return tokens, nil
+}
+
+func (h *AuthHandler) fetchSilentSession(c echo.Context) (*silentSessionResponse, error) {
+	cookie, err := c.Cookie(ssoSessionCookieName)
+	if err != nil || cookie.Value == "" {
+		return &silentSessionResponse{}, nil
+	}
+
+	req, err := http.NewRequest(http.MethodGet, h.ssoBaseURL()+"/sso/session", nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("X-System-Code", h.config.OAuthClientID)
+	req.Header.Set("X-System-Secret", h.config.OAuthClientSecret)
+	req.AddCookie(&http.Cookie{Name: cookie.Name, Value: cookie.Value})
+
+	resp, err := h.http.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("sso session returned status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+
+	var session silentSessionResponse
+	if err := json.Unmarshal(body, &session); err != nil {
+		return nil, err
+	}
+	return &session, nil
+}
+
+func parseSilentUserID(raw string) (int, error) {
+	if raw == "" {
+		return 0, fmt.Errorf("empty silent user id")
+	}
+	trimmed := strings.TrimPrefix(raw, "u_")
+	return strconv.Atoi(trimmed)
+}
+
+func (h *AuthHandler) buildSilentSessionUser(session *silentSessionResponse) (*permission.UserInfo, error) {
+	if session == nil || !session.Data.Authenticated {
+		return nil, fmt.Errorf("silent session not authenticated")
+	}
+	if !session.Data.SystemAccess.Allowed {
+		return nil, fmt.Errorf("silent session access denied")
+	}
+	if session.Data.User.PermissionLevel == nil || session.Data.User.Group == nil {
+		return nil, fmt.Errorf("silent SSO client is missing required profile scope")
+	}
+
+	userID, err := parseSilentUserID(session.Data.User.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	nickname := session.Data.User.Name
+	if nickname == "" {
+		nickname = session.Data.User.Username
+	}
+
+	return &permission.UserInfo{
+		ID:              userID,
+		Username:        session.Data.User.Username,
+		Nickname:        nickname,
+		Email:           session.Data.User.Email,
+		PermissionLevel: *session.Data.User.PermissionLevel,
+		GroupLevel:      session.Data.User.Group.Level,
+	}, nil
+}
+
+// SilentLogin issues a local session from a valid parent-domain SSO session.
+// POST /api/auth/silent-login
+func (h *AuthHandler) SilentLogin(c echo.Context) error {
+	session, err := h.fetchSilentSession(c)
+	if err != nil {
+		log.Printf("auth/silent-login: fetch session failed: %v", err)
+		return c.JSON(http.StatusBadGateway, map[string]string{"error": "failed to validate SSO session"})
+	}
+	if session == nil || !session.Data.Authenticated {
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"success":       true,
+			"authenticated": false,
+		})
+	}
+	if !session.Data.SystemAccess.Allowed {
+		return c.JSON(http.StatusForbidden, map[string]string{"error": "user is not allowed to access this system"})
+	}
+
+	user, err := h.buildSilentSessionUser(session)
+	if err != nil {
+		log.Printf("auth/silent-login: invalid session payload: %v", err)
+		return c.JSON(http.StatusBadGateway, map[string]string{"error": "invalid silent SSO response"})
+	}
+
+	tokens, err := h.issueLocalSession(user, false)
+	if err != nil {
+		log.Printf("auth/silent-login: issue local session failed: %v", err)
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to create local session"})
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"success":       true,
+		"authenticated": true,
+		"access_token":  tokens.AccessToken,
+		"token":         tokens.AccessToken,
+	})
 }
 
 // Login redirects to the OAuth authorize URL with JWT-encoded state.
@@ -212,63 +419,27 @@ func (h *AuthHandler) Callback(c echo.Context) error {
 		return c.JSON(http.StatusBadGateway, map[string]string{"error": "invalid sub in userinfo"})
 	}
 
-	// Generate local JWT access token with configurable expiry
-	now := time.Now().UTC()
-	expireMinutes := h.config.AccessTokenExpireMinutes
-	if expireMinutes <= 0 {
-		expireMinutes = 15
-	}
-	claims := jwt.MapClaims{
-		"id":               userID,
-		"username":         userInfo.Username,
-		"nickname":         userInfo.Nickname,
-		"email":            userInfo.Email,
-		"permission_level": userInfo.PermissionLevel,
-		"group_level":      userInfo.Group.Level,
-		"avatar_url":       userInfo.AvatarURL,
-		"iat":              now.Unix(),
-		"exp":              now.Add(time.Duration(expireMinutes) * time.Minute).Unix(),
-	}
-	localToken, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(h.config.JWTSecret))
+	issueRefreshToken := !h.isWebRedirect(redirectURL)
+	tokens, err := h.issueLocalSession(&permission.UserInfo{
+		ID:              userID,
+		Username:        userInfo.Username,
+		Nickname:        userInfo.Nickname,
+		Email:           userInfo.Email,
+		PermissionLevel: userInfo.PermissionLevel,
+		GroupLevel:      userInfo.Group.Level,
+		AvatarURL:       userInfo.AvatarURL,
+	}, issueRefreshToken)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to generate access token"})
-	}
-
-	// Generate refresh token (random 64-char hex)
-	refreshBytes := make([]byte, 32)
-	if _, err := rand.Read(refreshBytes); err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to generate refresh token"})
-	}
-	refreshToken := hex.EncodeToString(refreshBytes)
-
-	// Store SHA-256 hash of refresh token with user metadata
-	hash := sha256.Sum256([]byte(refreshToken))
-	tokenHash := hex.EncodeToString(hash[:])
-	expireDays := h.config.RefreshTokenExpireDays
-	if expireDays <= 0 {
-		expireDays = 30
-	}
-	expiresAt := now.Add(time.Duration(expireDays) * 24 * time.Hour)
-
-	_, err = h.db.Exec(
-		`INSERT INTO auth_refresh_tokens (user_id, username, nickname, email, permission_level, group_level, token_hash, created_at, expires_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		userID, userInfo.Username, userInfo.Nickname, userInfo.Email,
-		userInfo.PermissionLevel, userInfo.Group.Level,
-		tokenHash, now, expiresAt,
-	)
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to store refresh token"})
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to create local session"})
 	}
 
 	// Validate and redirect
 	if h.isWebRedirect(redirectURL) {
 		sep := "#"
-		dest := fmt.Sprintf("%s%saccess_token=%s&refresh_token=%s&token=%s",
+		dest := fmt.Sprintf("%s%saccess_token=%s&token=%s",
 			redirectURL, sep,
-			url.QueryEscape(localToken),
-			url.QueryEscape(refreshToken),
-			url.QueryEscape(localToken),
+			url.QueryEscape(tokens.AccessToken),
+			url.QueryEscape(tokens.AccessToken),
 		)
 		return c.Redirect(http.StatusFound, dest)
 	}
@@ -280,9 +451,9 @@ func (h *AuthHandler) Callback(c echo.Context) error {
 	}
 	dest := fmt.Sprintf("%s%saccess_token=%s&refresh_token=%s&token=%s",
 		redirectURL, sep,
-		url.QueryEscape(localToken),
-		url.QueryEscape(refreshToken),
-		url.QueryEscape(localToken),
+		url.QueryEscape(tokens.AccessToken),
+		url.QueryEscape(tokens.RefreshToken),
+		url.QueryEscape(tokens.AccessToken),
 	)
 	return c.Redirect(http.StatusFound, dest)
 }
