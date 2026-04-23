@@ -503,7 +503,7 @@ export const useMusicStore = defineStore('music', () => {
       setTimeout(async () => {
         const currentRoom = voice.currentVoiceChannel ? `voice_${voice.currentVoiceChannel.id}` : null
         if (!auth.token || !currentRoom || currentRoom !== currentWsRoom) return
-        if (auth.refreshToken) {
+        if (auth.canRecoverSession()) {
           try {
             const payload = JSON.parse(atob(auth.token.split('.')[1]))
             if (payload.exp * 1000 - Date.now() < 30_000) {

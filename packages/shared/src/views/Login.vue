@@ -1,9 +1,11 @@
 <script setup lang="ts">
+import { onMounted, ref } from 'vue'
 import { useAuthStore } from '../stores/auth'
 import { useRouter } from 'vue-router'
 
 const auth = useAuthStore()
 const router = useRouter()
+const isTryingSilentLogin = ref(false)
 
 // Electron 环境：监听主进程回调（token/code），然后交给你们已有的 Callback 页面处理
 const electronAPI = (window as any).electronAPI
@@ -43,6 +45,24 @@ async function handleLogin() {
   // ✅ 网页端：保持原逻辑
   window.location.href = loginUrl
 }
+
+onMounted(async () => {
+  if (electronAPI?.getCallbackUrl || !auth.canAttemptSilentLogin()) {
+    return
+  }
+
+  isTryingSilentLogin.value = true
+  try {
+    const ok = await auth.doSilentLogin()
+    if (ok) {
+      router.replace('/')
+    }
+  } catch (err) {
+    console.warn('[auth] silent login failed:', err)
+  } finally {
+    isTryingSilentLogin.value = false
+  }
+})
 </script>
 
 <template>
@@ -51,8 +71,10 @@ async function handleLogin() {
       <div class="page-surface__inner">
         <div class="page-content">
           <h1 class="title">RMS ChatRoom</h1>
-          <p class="subtitle">欢迎！请使用 RMS 账号登录</p>
-          <button class="btn glow-effect" @click="handleLogin">RMS 账号登录</button>
+          <p class="subtitle">{{ isTryingSilentLogin ? '正在尝试无感登录...' : '欢迎！请使用 RMS 账号登录' }}</p>
+          <button class="btn glow-effect" :disabled="isTryingSilentLogin" @click="handleLogin">
+            {{ isTryingSilentLogin ? '请稍候...' : 'RMS 账号登录' }}
+          </button>
         </div>
       </div>
     </div>
@@ -141,6 +163,12 @@ async function handleLogin() {
 
 .btn:active {
   transform: translateY(0) scale(0.98);
+}
+
+.btn:disabled {
+  cursor: wait;
+  opacity: 0.8;
+  transform: none;
 }
 
 @media (max-width: 960px) {
