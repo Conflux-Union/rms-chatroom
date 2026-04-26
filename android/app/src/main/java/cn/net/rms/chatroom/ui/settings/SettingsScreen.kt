@@ -15,12 +15,12 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import cn.net.rms.chatroom.ui.theme.SurfaceDark
 import cn.net.rms.chatroom.ui.theme.TextMuted
 import cn.net.rms.chatroom.ui.theme.TextPrimary
@@ -36,7 +36,9 @@ fun SettingsScreen(
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val floatingWindowEnabled by viewModel.floatingWindowEnabled.collectAsState()
+    val backgroundMessageServiceEnabled by viewModel.backgroundMessageServiceEnabled.collectAsState()
     val hasOverlayPermission by viewModel.hasOverlayPermission.collectAsState()
+    val isIgnoringBatteryOptimization by viewModel.isIgnoringBatteryOptimization.collectAsState()
 
     // Refresh overlay permission when screen resumes
     DisposableEffect(lifecycleOwner) {
@@ -105,6 +107,38 @@ fun SettingsScreen(
                     )
                 }
             )
+
+            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+
+            SettingsSectionHeader(title = "消息通知")
+
+            SettingsItem(
+                icon = Icons.Default.NotificationsActive,
+                title = "后台消息驻留",
+                subtitle = if (backgroundMessageServiceEnabled) {
+                    "显示常驻通知并尽量保持消息连接"
+                } else {
+                    "关闭后仅在应用存活时接收后台提醒"
+                },
+                trailing = {
+                    Switch(
+                        checked = backgroundMessageServiceEnabled,
+                        onCheckedChange = { enabled ->
+                            viewModel.setBackgroundMessageServiceEnabled(enabled)
+                        },
+                        colors = SwitchDefaults.colors(checkedTrackColor = TiColor)
+                    )
+                }
+            )
+
+            if (backgroundMessageServiceEnabled && !isIgnoringBatteryOptimization) {
+                SettingsItem(
+                    icon = Icons.Default.BatterySaver,
+                    title = "电池优化",
+                    subtitle = "建议设为不优化，否则系统仍可能杀掉后台连接",
+                    onClick = { viewModel.openBatteryOptimizationSettings() }
+                )
+            }
 
             HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
 

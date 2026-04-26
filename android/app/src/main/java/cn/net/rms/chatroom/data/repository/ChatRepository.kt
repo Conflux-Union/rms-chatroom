@@ -28,6 +28,7 @@ import cn.net.rms.chatroom.data.model.Message
 import cn.net.rms.chatroom.data.model.ReactionGroup
 import cn.net.rms.chatroom.data.model.ReactionUser
 import cn.net.rms.chatroom.data.model.Server
+import cn.net.rms.chatroom.data.model.User
 import cn.net.rms.chatroom.data.model.VoiceUser
 import cn.net.rms.chatroom.data.model.AttachmentResponse
 import cn.net.rms.chatroom.data.websocket.ChatWebSocket
@@ -61,6 +62,7 @@ class ChatRepository @Inject constructor(
 
     // Track if app is in foreground (set by Activity)
     var isAppInForeground: Boolean = true
+    private var currentUserId: Long? = null
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
@@ -173,11 +175,15 @@ class ChatRepository @Inject constructor(
             return
         }
 
-        val channel = _currentChannel.value
-        val server = _currentServer.value
-        
-        val channelName = channel?.name ?: "未知频道"
-        val serverName = server?.name ?: "RMS ChatRoom"
+        val userId = currentUserId
+        if (userId != null && message.userId == userId) {
+            Log.d(TAG, "Own message, skipping notification")
+            return
+        }
+
+        val target = findMessageTarget(message.channelId)
+        val channelName = target?.channelName ?: "未知频道"
+        val serverName = target?.serverName ?: "RMS ChatRoom"
 
         Log.d(TAG, "Showing notification for message from ${message.username}")
         notificationHelper.showMessageNotification(
@@ -186,6 +192,41 @@ class ChatRepository @Inject constructor(
             serverName = serverName
         )
     }
+
+    fun setCurrentUser(user: User?) {
+        currentUserId = user?.id
+    }
+
+    suspend fun loadCurrentUserFromToken() {
+        val token = authRepository.getToken() ?: run {
+            currentUserId = null
+            return
+        }
+
+        authRepository.verifyToken(token)
+            .onSuccess { user -> currentUserId = user.id }
+            .onFailure { e -> Log.w(TAG, "Failed to load current user for notifications: ${e.message}") }
+    }
+
+    private fun findMessageTarget(channelId: Long): MessageTarget? {
+        _currentServer.value?.let { server ->
+            server.channels?.firstOrNull { it.id == channelId }?.let { channel ->
+                return MessageTarget(channel.name, server.name)
+            }
+        }
+
+        for (server in _servers.value) {
+            val channel = server.channels?.firstOrNull { it.id == channelId } ?: continue
+            return MessageTarget(channel.name, server.name)
+        }
+
+        return null
+    }
+
+    private data class MessageTarget(
+        val channelName: String,
+        val serverName: String
+    )
 
     fun cancelNotifications() {
         notificationHelper.cancelAllMessageNotifications()

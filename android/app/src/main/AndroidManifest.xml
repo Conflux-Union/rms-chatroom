@@ -5,6 +5,7 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
@@ -63,6 +64,12 @@
             android:name=".service.VoiceCallService"
             android:exported="false"
             android:foregroundServiceType="microphone|mediaPlayback|mediaProjection" />
+
+        <!-- Optional foreground service for background message notifications -->
+        <service
+            android:name=".service.MessageConnectionService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
 
         <!-- Floating window service for voice call -->
         <service
