@@ -444,8 +444,7 @@ class LiveKitManager @Inject constructor(
                     val track = event.track
                     val participant = event.participant
                     if (track is RemoteVideoTrack && 
-                        event.publication.source == Track.Source.SCREEN_SHARE &&
-                        participant is RemoteParticipant) {
+                        event.publication.source == Track.Source.SCREEN_SHARE) {
                         val identity = participant.identity?.value ?: return@collect
                         val name = participant.name ?: identity
                         val newMap = _remoteScreenShares.value.toMutableMap()

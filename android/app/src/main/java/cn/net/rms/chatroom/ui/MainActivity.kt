@@ -23,7 +23,9 @@ import androidx.core.content.ContextCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.navigation.compose.rememberNavController
 import cn.net.rms.chatroom.BuildConfig
+import cn.net.rms.chatroom.data.local.SettingsPreferences
 import cn.net.rms.chatroom.data.repository.ChatRepository
+import cn.net.rms.chatroom.service.MessageConnectionService
 import cn.net.rms.chatroom.ui.auth.AuthViewModel
 import cn.net.rms.chatroom.ui.navigation.NavGraph
 import cn.net.rms.chatroom.ui.navigation.Screen
@@ -39,6 +41,9 @@ class MainActivity : ComponentActivity() {
 
     @Inject
     lateinit var chatRepository: ChatRepository
+
+    @Inject
+    lateinit var settingsPreferences: SettingsPreferences
 
     private val notificationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -66,8 +71,22 @@ class MainActivity : ComponentActivity() {
             RMSDiscordTheme {
                 val navController = rememberNavController()
                 val authState by authViewModel.state.collectAsState()
+                val backgroundMessageServiceEnabled by settingsPreferences
+                    .backgroundMessageServiceEnabled
+                    .collectAsState(initial = false)
 
                 val context = this@MainActivity
+
+                LaunchedEffect(authState.isLoading, authState.isAuthenticated, backgroundMessageServiceEnabled) {
+                    if (authState.isAuthenticated && backgroundMessageServiceEnabled) {
+                        MessageConnectionService.start(context)
+                    } else {
+                        MessageConnectionService.stop(context)
+                    }
+                    if (!authState.isLoading && !authState.isAuthenticated) {
+                        chatRepository.disconnectFromChannel()
+                    }
+                }
                 
                 LaunchedEffect(authState.isAuthenticated, authState.isLoading) {
                     if (!authState.isLoading) {

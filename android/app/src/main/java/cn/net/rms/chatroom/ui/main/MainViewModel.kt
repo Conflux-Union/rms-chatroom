@@ -124,6 +124,7 @@ class MainViewModel @Inject constructor(
                 authRepository.verifyToken(token)
                     .onSuccess { user ->
                         currentUserId = user.id
+                        chatRepository.setCurrentUser(user)
                         Log.d(TAG, "Loaded current user ID: $currentUserId")
                     }
                     .onFailure { e ->

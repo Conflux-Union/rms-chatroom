@@ -19,6 +19,7 @@ class SettingsPreferences @Inject constructor(
 ) {
     companion object {
         private val FLOATING_WINDOW_ENABLED = booleanPreferencesKey("floating_window_enabled")
+        private val BACKGROUND_MESSAGE_SERVICE_ENABLED = booleanPreferencesKey("background_message_service_enabled")
         private fun lastReadMessageKey(channelId: Long) = longPreferencesKey("last_read_message_$channelId")
     }
 
@@ -26,9 +27,19 @@ class SettingsPreferences @Inject constructor(
         prefs[FLOATING_WINDOW_ENABLED] ?: true
     }
 
+    val backgroundMessageServiceEnabled: Flow<Boolean> = dataStore.data.map { prefs ->
+        prefs[BACKGROUND_MESSAGE_SERVICE_ENABLED] ?: false
+    }
+
     suspend fun setFloatingWindowEnabled(enabled: Boolean) {
         dataStore.edit { prefs ->
             prefs[FLOATING_WINDOW_ENABLED] = enabled
+        }
+    }
+
+    suspend fun setBackgroundMessageServiceEnabled(enabled: Boolean) {
+        dataStore.edit { prefs ->
+            prefs[BACKGROUND_MESSAGE_SERVICE_ENABLED] = enabled
         }
     }
 
