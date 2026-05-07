@@ -15,6 +15,7 @@ import cn.net.rms.chatroom.data.api.AppUpdateResponse
 import cn.net.rms.chatroom.data.model.AttachmentResponse
 import cn.net.rms.chatroom.data.manager.MentionNotificationManager
 import cn.net.rms.chatroom.data.repository.AuthRepository
+import cn.net.rms.chatroom.data.repository.isUnauthorized
 import cn.net.rms.chatroom.data.repository.BugReportRepository
 import cn.net.rms.chatroom.data.repository.ChatRepository
 import cn.net.rms.chatroom.data.repository.ReadPositionRepository
@@ -147,10 +148,8 @@ class MainViewModel @Inject constructor(
                     servers.firstOrNull()?.let { selectServer(it.id) }
                 }
                 .onFailure { e ->
-                    _state.value = _state.value.copy(
-                        isLoading = false,
-                        error = e.message
-                    )
+                    _state.value = _state.value.copy(isLoading = false)
+                    if (!e.isUnauthorized) _state.value = _state.value.copy(error = e.message)
                 }
         }
     }
@@ -170,7 +169,7 @@ class MainViewModel @Inject constructor(
                         ?.let { selectChannel(it) }
                 }
                 .onFailure { e ->
-                    _state.value = _state.value.copy(error = e.message)
+                    if (!e.isUnauthorized) _state.value = _state.value.copy(error = e.message)
                 }
         }
     }
@@ -226,10 +225,8 @@ class MainViewModel @Inject constructor(
                     _state.value = _state.value.copy(isMessagesLoading = false)
                 }
                 .onFailure { e ->
-                    _state.value = _state.value.copy(
-                        isMessagesLoading = false,
-                        error = e.message
-                    )
+                    _state.value = _state.value.copy(isMessagesLoading = false)
+                    if (!e.isUnauthorized) _state.value = _state.value.copy(error = e.message)
                 }
         }
     }
@@ -300,7 +297,7 @@ class MainViewModel @Inject constructor(
         viewModelScope.launch {
             chatRepository.sendMessage(channelId, content, attachmentIds, replyToId)
                 .onFailure { e ->
-                    _state.value = _state.value.copy(error = "发送失败: ${e.message}")
+                    if (!e.isUnauthorized) _state.value = _state.value.copy(error = "发送失败: ${e.message}")
                 }
         }
     }
@@ -395,7 +392,7 @@ class MainViewModel @Inject constructor(
                     selectServer(serverId)
                 }
                 .onFailure { e ->
-                    _state.value = _state.value.copy(error = "创建频道失败: ${e.message}")
+                    if (!e.isUnauthorized) _state.value = _state.value.copy(error = "创建频道失败: ${e.message}")
                 }
         }
     }
@@ -415,7 +412,7 @@ class MainViewModel @Inject constructor(
                     selectServer(serverId)
                 }
                 .onFailure { e ->
-                    _state.value = _state.value.copy(error = "删除频道失败: ${e.message}")
+                    if (!e.isUnauthorized) _state.value = _state.value.copy(error = "删除频道失败: ${e.message}")
                 }
         }
     }
@@ -428,7 +425,7 @@ class MainViewModel @Inject constructor(
                     loadServers()
                 }
                 .onFailure { e ->
-                    _state.value = _state.value.copy(error = "创建服务器失败: ${e.message}")
+                    if (!e.isUnauthorized) _state.value = _state.value.copy(error = "创建服务器失败: ${e.message}")
                 }
         }
     }
@@ -450,7 +447,7 @@ class MainViewModel @Inject constructor(
                     loadServers()
                 }
                 .onFailure { e ->
-                    _state.value = _state.value.copy(error = "删除服务器失败: ${e.message}")
+                    if (!e.isUnauthorized) _state.value = _state.value.copy(error = "删除服务器失败: ${e.message}")
                 }
         }
     }
@@ -473,7 +470,7 @@ class MainViewModel @Inject constructor(
                     selectServer(serverId)
                 }
                 .onFailure { e ->
-                    _state.value = _state.value.copy(error = "排序失败: ${e.message}")
+                    if (!e.isUnauthorized) _state.value = _state.value.copy(error = "排序失败: ${e.message}")
                 }
         }
     }
@@ -487,7 +484,7 @@ class MainViewModel @Inject constructor(
                     selectServer(serverId)
                 }
                 .onFailure { e ->
-                    _state.value = _state.value.copy(error = "排序失败: ${e.message}")
+                    if (!e.isUnauthorized) _state.value = _state.value.copy(error = "排序失败: ${e.message}")
                 }
         }
     }
@@ -501,7 +498,7 @@ class MainViewModel @Inject constructor(
                     selectServer(serverId)
                 }
                 .onFailure { e ->
-                    _state.value = _state.value.copy(error = "创建分组失败: ${e.message}")
+                    if (!e.isUnauthorized) _state.value = _state.value.copy(error = "创建分组失败: ${e.message}")
                 }
         }
     }
@@ -515,7 +512,7 @@ class MainViewModel @Inject constructor(
                     selectServer(serverId)
                 }
                 .onFailure { e ->
-                    _state.value = _state.value.copy(error = "删除分组失败: ${e.message}")
+                    if (!e.isUnauthorized) _state.value = _state.value.copy(error = "删除分组失败: ${e.message}")
                 }
         }
     }
@@ -526,7 +523,7 @@ class MainViewModel @Inject constructor(
         viewModelScope.launch {
             chatRepository.editMessage(channelId, messageId, content)
                 .onFailure { e ->
-                    _state.value = _state.value.copy(error = "编辑失败: ${e.message}")
+                    if (!e.isUnauthorized) _state.value = _state.value.copy(error = "编辑失败: ${e.message}")
                 }
         }
     }
@@ -536,7 +533,7 @@ class MainViewModel @Inject constructor(
         viewModelScope.launch {
             chatRepository.deleteMessage(channelId, messageId)
                 .onFailure { e ->
-                    _state.value = _state.value.copy(error = "撤回失败: ${e.message}")
+                    if (!e.isUnauthorized) _state.value = _state.value.copy(error = "撤回失败: ${e.message}")
                 }
         }
     }
@@ -555,7 +552,7 @@ class MainViewModel @Inject constructor(
                     _state.value = _state.value.copy(error = "禁言成功")
                 }
                 .onFailure { e ->
-                    _state.value = _state.value.copy(error = "禁言失败: ${e.message}")
+                    if (!e.isUnauthorized) _state.value = _state.value.copy(error = "禁言失败: ${e.message}")
                 }
         }
     }
@@ -575,7 +572,7 @@ class MainViewModel @Inject constructor(
         viewModelScope.launch {
             chatRepository.addReaction(messageId, emoji)
                 .onFailure { e ->
-                    _state.value = _state.value.copy(error = "添加表情失败: ${e.message}")
+                    if (!e.isUnauthorized) _state.value = _state.value.copy(error = "添加表情失败: ${e.message}")
                 }
         }
     }
@@ -584,7 +581,7 @@ class MainViewModel @Inject constructor(
         viewModelScope.launch {
             chatRepository.removeReaction(messageId, emoji)
                 .onFailure { e ->
-                    _state.value = _state.value.copy(error = "移除表情失败: ${e.message}")
+                    if (!e.isUnauthorized) _state.value = _state.value.copy(error = "移除表情失败: ${e.message}")
                 }
         }
     }

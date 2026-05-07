@@ -16,6 +16,7 @@ import cn.net.rms.chatroom.data.model.MusicSeekRequest
 import cn.net.rms.chatroom.data.model.QueueItem
 import cn.net.rms.chatroom.data.model.Song
 import cn.net.rms.chatroom.data.repository.AuthRepository
+import cn.net.rms.chatroom.data.repository.isUnauthorized
 import cn.net.rms.chatroom.data.websocket.MusicWebSocket
 import cn.net.rms.chatroom.data.websocket.MusicWebSocketEvent
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -372,7 +373,7 @@ class MusicViewModel @Inject constructor(
                 }
                 _state.value = newState
             } catch (e: Exception) {
-                _state.value = _state.value.copy(error = "退出登录失败")
+                if (!e.isUnauthorized) _state.value = _state.value.copy(error = "退出登录失败")
             }
         }
     }
@@ -404,7 +405,7 @@ class MusicViewModel @Inject constructor(
                 _state.value = _state.value.copy(
                     searchResults = emptyList(),
                     isSearching = false,
-                    error = "搜索失败: ${e.message}"
+                    error = if (e.isUnauthorized) null else "搜索失败: ${e.message}"
                 )
             }
         }
@@ -439,7 +440,7 @@ class MusicViewModel @Inject constructor(
                 api.addToMusicQueue(getAuthHeader(), MusicQueueAddRequest(roomName, song))
                 refreshQueue(roomName)
             } catch (e: Exception) {
-                _state.value = _state.value.copy(error = "添加失败: ${e.message}")
+                if (!e.isUnauthorized) _state.value = _state.value.copy(error = "添加失败: ${e.message}")
             }
         }
     }
@@ -451,7 +452,7 @@ class MusicViewModel @Inject constructor(
                 api.removeFromMusicQueue(getAuthHeader(), roomName, index)
                 refreshQueue(roomName)
             } catch (e: Exception) {
-                _state.value = _state.value.copy(error = "删除失败: ${e.message}")
+                if (!e.isUnauthorized) _state.value = _state.value.copy(error = "删除失败: ${e.message}")
             }
         }
     }
@@ -463,7 +464,7 @@ class MusicViewModel @Inject constructor(
                 api.clearMusicQueue(getAuthHeader(), MusicRoomRequest(roomName))
                 refreshQueue(roomName)
             } catch (e: Exception) {
-                _state.value = _state.value.copy(error = "清空失败: ${e.message}")
+                if (!e.isUnauthorized) _state.value = _state.value.copy(error = "清空失败: ${e.message}")
             }
         }
     }
@@ -502,7 +503,7 @@ class MusicViewModel @Inject constructor(
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     playbackState = "idle",
-                    error = "播放失败: ${e.message}"
+                    error = if (e.isUnauthorized) null else "播放失败: ${e.message}"
                 )
             }
         }
@@ -518,7 +519,7 @@ class MusicViewModel @Inject constructor(
                     playbackState = "paused"
                 )
             } catch (e: Exception) {
-                _state.value = _state.value.copy(error = "暂停失败")
+                if (!e.isUnauthorized) _state.value = _state.value.copy(error = "暂停失败")
             }
         }
     }
@@ -535,7 +536,7 @@ class MusicViewModel @Inject constructor(
                     )
                 }
             } catch (e: Exception) {
-                _state.value = _state.value.copy(error = "恢复播放失败")
+                if (!e.isUnauthorized) _state.value = _state.value.copy(error = "恢复播放失败")
             }
         }
     }
@@ -547,7 +548,7 @@ class MusicViewModel @Inject constructor(
                 api.musicBotSkip(getAuthHeader(), MusicRoomRequest(roomName))
                 refreshQueue(roomName)
             } catch (e: Exception) {
-                _state.value = _state.value.copy(error = "跳过失败")
+                if (!e.isUnauthorized) _state.value = _state.value.copy(error = "跳过失败")
             }
         }
     }
@@ -559,7 +560,7 @@ class MusicViewModel @Inject constructor(
                 api.musicBotPrevious(getAuthHeader(), MusicRoomRequest(roomName))
                 refreshQueue(roomName)
             } catch (e: Exception) {
-                _state.value = _state.value.copy(error = "上一首失败")
+                if (!e.isUnauthorized) _state.value = _state.value.copy(error = "上一首失败")
             }
         }
     }
@@ -588,7 +589,7 @@ class MusicViewModel @Inject constructor(
                     playbackState = "idle"
                 )
             } catch (e: Exception) {
-                _state.value = _state.value.copy(error = "停止机器人失败")
+                if (!e.isUnauthorized) _state.value = _state.value.copy(error = "停止机器人失败")
             }
         }
     }
