@@ -1,8 +1,10 @@
 name: Dependabot Auto-Merge
 
 on:
-  pull_request:
-    types: [opened, synchronize, reopened]
+  workflow_run:
+    workflows: ["PR Checks"]
+    types:
+      - completed
 
 permissions:
   contents: write
@@ -11,18 +13,31 @@ permissions:
 jobs:
   auto-merge:
     runs-on: ubuntu-latest
-    if: ${{ github.actor == 'dependabot[bot]' }}
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
 
     steps:
-      - name: Dependabot metadata
-        id: metadata
-        uses: dependabot/fetch-metadata@v3
-        with:
-          github-token: "${{ secrets.GITHUB_TOKEN }}"
+      - name: Auto-merge Dependabot PR
+        run: |
+          HEAD_SHA="${{ github.event.workflow_run.head_sha }}"
+          PRS='${{ github.event.workflow_run.pull_requests }}'
 
-      # Auto-merge all Dependabot PRs (CI must pass before merge)
-      - name: Enable auto-merge for Dependabot PRs
-        run: gh pr merge --auto --squash "$PR_URL"
+          echo "$PRS" | jq -r '.[] | .number' | while read PR_NUMBER; do
+            PR_DATA=$(gh api "repos/${{ github.repository }}/pulls/$PR_NUMBER")
+            PR_SHA=$(echo "$PR_DATA" | jq -r '.head.sha')
+            AUTHOR=$(echo "$PR_DATA" | jq -r '.user.login')
+
+            if [ "$PR_SHA" != "$HEAD_SHA" ]; then
+              echo "PR #$PR_NUMBER: head sha mismatch ($PR_SHA vs $HEAD_SHA), skipping"
+              continue
+            fi
+
+            if [ "$AUTHOR" != "dependabot[bot]" ]; then
+              echo "PR #$PR_NUMBER: author is $AUTHOR, not dependabot[bot], skipping"
+              continue
+            fi
+
+            echo "Merging PR #$PR_NUMBER"
+            gh pr merge --squash "$PR_NUMBER" --repo "${{ github.repository }}"
+          done
         env:
-          PR_URL: ${{ github.event.pull_request.html_url }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
