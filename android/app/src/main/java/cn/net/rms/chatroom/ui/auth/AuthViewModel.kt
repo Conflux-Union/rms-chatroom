@@ -35,6 +35,23 @@ class AuthViewModel @Inject constructor(
 
     init {
         checkAuth()
+        observeTokenCleared()
+    }
+
+    /**
+     * Watch for token removal by TokenAuthenticator (e.g. refresh failed
+     * on a background request). When tokens disappear, silently transition
+     * to unauthenticated state so the user lands on the login screen.
+     */
+    private fun observeTokenCleared() {
+        viewModelScope.launch {
+            authRepository.tokenFlow.collect { token ->
+                if (token == null && _state.value.isAuthenticated) {
+                    Log.d(TAG, "Token cleared externally, transitioning to unauthenticated")
+                    _state.value = AuthState(isLoading = false, isAuthenticated = false)
+                }
+            }
+        }
     }
 
     private fun checkAuth() {
@@ -90,12 +107,7 @@ class AuthViewModel @Inject constructor(
         if (refreshToken == null) {
             Log.d(TAG, "No refresh token available, forcing re-login")
             authRepository.clearTokens()
-            _state.value = AuthState(
-                isLoading = false,
-                isAuthenticated = false,
-                token = null,
-                error = "登录已过期，请重新登录"
-            )
+            _state.value = AuthState(isLoading = false, isAuthenticated = false)
             return
         }
 
@@ -117,23 +129,13 @@ class AuthViewModel @Inject constructor(
                     .onFailure { e ->
                         Log.e(TAG, "Post-refresh verify failed", e)
                         authRepository.clearTokens()
-                        _state.value = AuthState(
-                            isLoading = false,
-                            isAuthenticated = false,
-                            token = null,
-                            error = "登录已过期，请重新登录"
-                        )
+                        _state.value = AuthState(isLoading = false, isAuthenticated = false)
                     }
             }
             .onFailure { e ->
                 Log.e(TAG, "Token refresh failed", e)
                 authRepository.clearTokens()
-                _state.value = AuthState(
-                    isLoading = false,
-                    isAuthenticated = false,
-                    token = null,
-                    error = "登录已过期，请重新登录"
-                )
+                _state.value = AuthState(isLoading = false, isAuthenticated = false)
             }
     }
 
