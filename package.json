@@ -12,9 +12,9 @@
     "electron:build": "pnpm build:electron && cd electron && npm run build"
   },
   "devDependencies": {
-    "@rollup/rollup-linux-x64-gnu": "4.60.2",
-    "@rollup/rollup-win32-x64-msvc": "4.60.2",
-    "rollup": "^4.60.2",
+    "@rollup/rollup-linux-x64-gnu": "4.60.3",
+    "@rollup/rollup-win32-x64-msvc": "4.60.3",
+    "rollup": "^4.60.3",
     "typescript": "~6.0.3"
   },
   "dependencies": {
