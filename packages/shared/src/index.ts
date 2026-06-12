@@ -11,7 +11,6 @@ export type { VoiceParticipant, AudioDevice, ScreenShareInfo } from './stores/vo
 // Composables
 export { useWebSocket } from './composables/useWebSocket'
 export { useChatWebSocket } from './composables/useChatWebSocket'
-export { useGlowEffect } from './composables/useGlowEffect'
 export { useSwipe } from './composables/useSwipe'
 
 // Utils
@@ -25,6 +24,7 @@ export {
   isWithinMinutes,
   formatDuration,
 } from './utils/datetime'
+export { initTheme, getThemeMode, setThemeMode } from './utils/theme'
 
 // Platform detection
 export const isElectron = typeof window !== 'undefined' && !!(window as any).electronAPI

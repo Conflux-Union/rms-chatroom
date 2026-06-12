@@ -3,7 +3,15 @@ import vue from '@vitejs/plugin-vue'
 import { resolve } from 'path'
 
 export default defineConfig({
-  plugins: [vue()],
+  plugins: [
+    vue({
+      template: {
+        compilerOptions: {
+          isCustomElement: (tag) => tag.startsWith('zhimo-'),
+        },
+      },
+    }),
+  ],
   resolve: {
     alias: {
       '@rms-discord/shared': resolve(__dirname, '../shared/src'),

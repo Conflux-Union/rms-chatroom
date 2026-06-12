@@ -1,20 +1,22 @@
 <script setup lang="ts">
 import { RouterView } from 'vue-router'
-import { NConfigProvider, NMessageProvider, NDialogProvider } from 'naive-ui'
-import { useGlowEffect } from '@rms-discord/shared'
-import { themeOverrides } from '@rms-discord/shared/naive-ui'
-import VersionBadge from '@rms-discord/shared/components/VersionBadge.vue'
-
-useGlowEffect()
+import inkWashBg from '../../shared/public/bg.webp?url'
 </script>
 
 <template>
-  <NConfigProvider :theme-overrides="themeOverrides">
-    <NMessageProvider>
-      <NDialogProvider>
-        <RouterView />
-        <VersionBadge />
-      </NDialogProvider>
-    </NMessageProvider>
-  </NConfigProvider>
+  <zhimo-ink-paper class="ink-bg" :image="inkWashBg" />
+  <RouterView />
 </template>
+
+<style>
+.ink-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+}
+
+#app > *:not(.ink-bg) {
+  position: relative;
+  z-index: 1;
+}
+</style>

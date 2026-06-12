@@ -8,24 +8,23 @@ import { useReadPosition } from '../composables/useReadPosition'
 import { useMentionNotification } from '../composables/useMentionNotification'
 import { formatDateTime, parseUTCDateTime, isWithinMinutes } from '../utils/datetime'
 import {
-  NDropdown,
-  NModal,
-  NForm,
-  NFormItem,
-  NSelect,
-  NInput,
-  NInputNumber,
-  NButton,
-  NSpace,
-  NProgress,
-  useDialog,
-} from 'naive-ui'
+  ZmDropdown,
+  ZmModal,
+  ZmForm,
+  ZmFormItem,
+  ZmSelect,
+  ZmInput,
+  ZmInputNumber,
+  ZmButton,
+  ZmSpace,
+  ZmProgress,
+  dialog,
+} from './ui'
+import type { ZmDropdownOption, ZmSelectOption } from './ui'
 import { Paperclip, Send, Upload, X, Image, Video, Music, FileText, File, MoreVertical, ArrowUp, Reply, CornerUpLeft, SmilePlus } from 'lucide-vue-next'
 import FilePreview from './FilePreview.vue'
 import type { Attachment, Message, ReactionGroup } from '../types'
 import axios from 'axios'
-
-const dialog = useDialog()
 
 const API_BASE = import.meta.env.VITE_API_BASE || ''
 
@@ -69,7 +68,7 @@ const contextMenuOptions = computed(() => {
   return opts
 })
 
-function handleContextMenuSelect(key: string) {
+function handleContextMenuSelect(key: string | number) {
   const msg = contextMenu.value.message
   if (!msg) return
   const menuX = contextMenu.value.x
@@ -1159,18 +1158,18 @@ onUnmounted(() => {
 
           <!-- Edit mode -->
           <div v-else-if="editingMessage && editingMessage.id === msg.id" class="message-edit">
-            <NInput
+            <ZmInput
               v-model:value="editingMessage.content"
               type="textarea"
-              :autosize="{ minRows: 1, maxRows: 5 }"
+              :rows="3"
               @keydown.enter.exact.prevent="saveEdit"
               @keydown.esc="cancelEdit"
             />
-            <NSpace size="small" style="margin-top: 8px">
-              <NButton size="small" type="primary" @click="saveEdit">保存</NButton>
-              <NButton size="small" @click="cancelEdit">取消</NButton>
+            <ZmSpace size="small" style="margin-top: 8px">
+              <ZmButton size="small" type="primary" @click="saveEdit">保存</ZmButton>
+              <ZmButton size="small" @click="cancelEdit">取消</ZmButton>
               <span class="edit-hint">回车保存，Esc 取消</span>
-            </NSpace>
+            </ZmSpace>
           </div>
 
           <!-- Normal message display -->
@@ -1254,12 +1253,9 @@ onUnmounted(() => {
         <div class="file-info">
           <span class="file-name">{{ file.name }}</span>
           <span class="file-size">{{ formatFileSize(file.size) }}</span>
-          <NProgress
+          <ZmProgress
             v-if="uploadProgress.get(file.name)"
-            type="line"
             :percentage="uploadProgress.get(file.name)"
-            :show-indicator="false"
-            :height="3"
             style="margin-top: 4px"
           />
         </div>
@@ -1342,8 +1338,8 @@ onUnmounted(() => {
       </button>
     </div>
 
-    <!-- Context Menu (NDropdown) -->
-    <NDropdown
+    <!-- Context Menu -->
+    <ZmDropdown
       trigger="manual"
       placement="bottom-start"
       :show="contextMenu.visible && contextMenuOptions.length > 0"
@@ -1382,46 +1378,44 @@ onUnmounted(() => {
     </Teleport>
 
     <!-- Mute Dialog -->
-    <NModal
+    <ZmModal
       v-model:show="muteDialog.visible"
-      preset="card"
       :title="`禁言用户: ${muteDialog.username}`"
-      :bordered="false"
       style="width: 420px; max-width: 90vw"
     >
-      <NForm label-placement="top">
-        <NFormItem label="范围">
-          <NSelect v-model:value="muteDialog.scope" :options="scopeOptions" />
-        </NFormItem>
+      <ZmForm>
+        <ZmFormItem label="范围">
+          <ZmSelect v-model:value="muteDialog.scope" :options="scopeOptions" />
+        </ZmFormItem>
 
-        <NFormItem label="时长">
-          <NSelect v-model:value="muteDialog.duration" :options="durationOptions" />
-        </NFormItem>
+        <ZmFormItem label="时长">
+          <ZmSelect v-model:value="muteDialog.duration" :options="durationOptions" />
+        </ZmFormItem>
 
-        <NFormItem v-if="muteDialog.duration === 'custom'" label="自定义时长（分钟）">
-          <NInputNumber
+        <ZmFormItem v-if="muteDialog.duration === 'custom'" label="自定义时长（分钟）">
+          <ZmInputNumber
             v-model:value="muteDialog.customMinutes"
             :min="1"
           />
-        </NFormItem>
+        </ZmFormItem>
 
-        <NFormItem label="原因（可选）">
-          <NInput
+        <ZmFormItem label="原因（可选）">
+          <ZmInput
             v-model:value="muteDialog.reason"
             type="textarea"
             placeholder="输入禁言原因..."
             :rows="3"
           />
-        </NFormItem>
-      </NForm>
+        </ZmFormItem>
+      </ZmForm>
 
       <template #footer>
-        <NSpace justify="end">
-          <NButton @click="hideMuteDialog">取消</NButton>
-          <NButton type="primary" @click="confirmMute">确认</NButton>
-        </NSpace>
+        <ZmSpace justify="end">
+          <ZmButton @click="hideMuteDialog">取消</ZmButton>
+          <ZmButton type="primary" @click="confirmMute">确认</ZmButton>
+        </ZmSpace>
       </template>
-    </NModal>
+    </ZmModal>
   </div>
 </template>
 
@@ -1510,8 +1504,8 @@ onUnmounted(() => {
 .message-avatar {
   width: 40px;
   height: 40px;
-  border-radius: 50%;
-  background: var(--color-gradient-primary);
+  border-radius: var(--zhimo-radius);
+  background: var(--zhimo-seal);
   display: flex;
   justify-content: center;
   align-items: center;
@@ -1753,8 +1747,8 @@ onUnmounted(() => {
 .message-input:focus {
   outline: none;
   background: var(--surface-glass-input-focus);
-  border-color: rgba(255, 255, 255, 0.5);
-  box-shadow: var(--shadow-md);
+  border-color: var(--zhimo-seal);
+  box-shadow: var(--zhimo-focus-ring);
 }
 
 /* Mobile Responsive */
@@ -1831,15 +1825,15 @@ onUnmounted(() => {
   align-items: center;
   gap: 8px;
   padding: 8px 16px;
-  background: var(--color-gradient-primary);
-  color: white;
-  border: none;
-  border-radius: 20px;
+  background: var(--zhimo-seal);
+  color: var(--zhimo-accent-fg);
+  border: 1px solid var(--zhimo-seal-hover);
+  border-radius: var(--zhimo-radius);
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
-  box-shadow: var(--shadow-glow);
+  box-shadow: none;
   animation: btn-pulse 2s ease-in-out infinite;
 }
 
@@ -2015,7 +2009,6 @@ onUnmounted(() => {
   max-height: 200px;
   overflow-y: auto;
   z-index: 100;
-  backdrop-filter: blur(20px);
 }
 
 .mention-item {
@@ -2035,8 +2028,8 @@ onUnmounted(() => {
 .mention-avatar {
   width: 28px;
   height: 28px;
-  border-radius: 50%;
-  background: var(--color-gradient-primary);
+  border-radius: var(--zhimo-radius-sm);
+  background: var(--zhimo-seal);
   display: flex;
   justify-content: center;
   align-items: center;
@@ -2159,7 +2152,6 @@ onUnmounted(() => {
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-lg);
   padding: 8px;
-  backdrop-filter: blur(20px);
   z-index: 1001;
 }
 

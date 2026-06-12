@@ -6,8 +6,8 @@ import { useVoiceStore } from '../stores/voice'
 import { useMentionNotification } from '../composables/useMentionNotification'
 import { useGlobalWebSocket } from '../composables/useGlobalWebSocket'
 import { Volume2, MicOff, Crown, ChevronDown, ChevronRight } from 'lucide-vue-next'
-import { NDropdown, NModal, NInput, NButton, NSpace, NSelect } from 'naive-ui'
-import type { DropdownOption, SelectOption } from 'naive-ui'
+import { ZmDropdown, ZmModal, ZmInput, ZmButton, ZmSpace, ZmSelect } from './ui'
+import type { ZmDropdownOption, ZmSelectOption } from './ui'
 import type { Channel, ChannelGroup } from '../types'
 import VoiceControls from '../components/VoiceControls.vue'
 import ChannelPermissionModal from '../components/ChannelPermissionModal.vue'
@@ -34,7 +34,7 @@ const newChannelGroupId = ref<number | string | null>(null) // 新频道所属�
 
 const collapsedGroups = ref<Set<number>>(new Set()) // 折叠的频道组
 
-// Channel context menu state (NDropdown)
+// Channel context menu state
 const channelDropdown = ref<{ show: boolean; x: number; y: number; channelId: number | null }>({
   show: false, x: 0, y: 0, channelId: null
 })
@@ -44,7 +44,7 @@ const groupDropdown = ref<{ show: boolean; x: number; y: number; groupId: number
   show: false, x: 0, y: 0, groupId: null
 })
 
-// Voice user context menu state (NDropdown)
+// Voice user context menu state
 const userDropdown = ref<{ show: boolean; x: number; y: number; channelId: number | null; userId: string | null }>({
   show: false, x: 0, y: 0, channelId: null, userId: null
 })
@@ -68,23 +68,23 @@ const showChannelPermissionModal = ref(false)
 const selectedChannelForPermission = ref<Channel | null>(null)
 
 // Dropdown options - computed to include dynamic group options
-const channelDropdownOptions = computed((): DropdownOption[] => {
-  const options: DropdownOption[] = [
+const channelDropdownOptions = computed((): ZmDropdownOption[] => {
+  const options: ZmDropdownOption[] = [
     { label: '权限设置', key: 'permissions' },
     { label: '移动到频道组', key: 'move' },
-    { label: '删除频道', key: 'delete', props: { style: { color: 'var(--color-danger)' } } }
+    { label: '删除频道', key: 'delete', danger: true }
   ]
   return options
 })
 
-const groupDropdownOptions: DropdownOption[] = [
+const groupDropdownOptions: ZmDropdownOption[] = [
   { label: '权限设置', key: 'permissions' },
-  { label: '删除频道组', key: 'delete', props: { style: { color: 'var(--color-danger)' } } }
+  { label: '删除频道组', key: 'delete', danger: true }
 ]
 
-const userDropdownOptions: DropdownOption[] = [
+const userDropdownOptions: ZmDropdownOption[] = [
   { label: '静音麦克风', key: 'mute' },
-  { label: '踢出频道', key: 'kick', props: { style: { color: 'var(--color-danger)' } } }
+  { label: '踢出频道', key: 'kick', danger: true }
 ]
 
 // Listen to voice_users_update from global WebSocket
@@ -172,8 +172,8 @@ function toggleGroupCollapse(groupId: number) {
 }
 
 // Group select options for create channel modal
-const groupSelectOptions = computed((): SelectOption[] => {
-  const options: SelectOption[] = [{ label: '无 (独立频道)', value: 'none' }]
+const groupSelectOptions = computed((): ZmSelectOption[] => {
+  const options: ZmSelectOption[] = [{ label: '无 (独立频道)', value: 'none' }]
   for (const group of channelGroups.value) {
     options.push({ label: group.name, value: group.id })
   }
@@ -181,7 +181,7 @@ const groupSelectOptions = computed((): SelectOption[] => {
 })
 
 // Create type options
-const createTypeOptions: SelectOption[] = [
+const createTypeOptions: ZmSelectOption[] = [
   { label: '文字频道', value: 'text' },
   { label: '语音频道', value: 'voice' },
   { label: '频道组', value: 'group' }
@@ -228,7 +228,7 @@ function showGroupContextMenu(event: MouseEvent, groupId: number) {
   console.log('[ChannelList] groupDropdown.value.show:', groupDropdown.value.show)
 }
 
-async function handleGroupDropdownSelect(key: string) {
+async function handleGroupDropdownSelect(key: string | number) {
   console.log('[ChannelList] handleGroupDropdownSelect called with key:', key)
   if (key === 'permissions') {
     console.log('[ChannelList] User selected permissions option')
@@ -347,7 +347,7 @@ function showUserContextMenu(event: MouseEvent, channelId: number, userId: strin
   userDropdown.value = { show: true, x: event.clientX, y: event.clientY, channelId, userId }
 }
 
-async function handleChannelDropdownSelect(key: string) {
+async function handleChannelDropdownSelect(key: string | number) {
   console.log('[ChannelList] handleChannelDropdownSelect called with key:', key)
   if (key === 'permissions') {
     showChannelPermissionSettings()
@@ -373,7 +373,7 @@ function showChannelPermissionSettings() {
   }
 }
 
-async function handleUserDropdownSelect(key: string) {
+async function handleUserDropdownSelect(key: string | number) {
   if (key === 'mute') {
     await muteVoiceUser()
   } else if (key === 'kick') {
@@ -607,7 +607,7 @@ async function deleteChannel() {
           <template v-for="item in draggableMixedList" :key="item.type + '-' + item.data.id">
           <div v-if="item.type === 'group'" class="channel-group" :class="{ collapsed: collapsedGroups.has(item.data.id) }">
             <div 
-              class="channel-group-header glow-effect"
+              class="channel-group-header "
               @click.stop="toggleGroupCollapse(item.data.id)"
               @contextmenu.prevent="auth.isAdmin ? showGroupContextMenu($event, item.data.id) : undefined"
             >
@@ -638,7 +638,7 @@ async function deleteChannel() {
                 <!-- Text channel in group -->
                 <div
                   v-if="channel.type === 'TEXT'"
-                  class="channel glow-effect"
+                  class="channel "
                   :class="{ active: chat.currentChannel?.id === channel.id }"
                   @click="selectChannel(channel)"
                   @contextmenu="auth.isAdmin && editMode ? showChannelContextMenu($event, channel.id) : undefined"
@@ -673,7 +673,7 @@ async function deleteChannel() {
                 <!-- Voice channel in group -->
                 <div v-else class="voice-channel-wrapper">
                   <div
-                    class="channel glow-effect"
+                    class="channel "
                     :class="{ active: chat.currentChannel?.id === channel.id }"
                     @click="selectChannel(channel)"
                     @contextmenu="auth.isAdmin && editMode ? showChannelContextMenu($event, channel.id) : undefined"
@@ -735,7 +735,7 @@ async function deleteChannel() {
           <!-- Ungrouped Text Channel -->
           <div
             v-else-if="item.type === 'channel' && item.data.type === 'TEXT'"
-            class="channel glow-effect"
+            class="channel "
             :class="{ active: chat.currentChannel?.id === item.data.id }"
             @click="selectChannel(item.data)"
             @contextmenu="auth.isAdmin && editMode ? showChannelContextMenu($event, item.data.id) : undefined"
@@ -769,7 +769,7 @@ async function deleteChannel() {
           <!-- Ungrouped Voice Channel -->
           <div v-else-if="item.type === 'channel' && item.data.type === 'VOICE'" class="voice-channel-wrapper">
             <div
-              class="channel glow-effect"
+              class="channel "
               :class="{ active: chat.currentChannel?.id === item.data.id }"
               @click="selectChannel(item.data)"
               @contextmenu="auth.isAdmin && editMode ? showChannelContextMenu($event, item.data.id) : undefined"
@@ -837,8 +837,8 @@ async function deleteChannel() {
       </div>
     </div>
 
-    <!-- Channel Context Menu (NDropdown) -->
-    <NDropdown
+    <!-- Channel Context Menu -->
+    <ZmDropdown
       placement="bottom-start"
       trigger="manual"
       :x="channelDropdown.x"
@@ -849,8 +849,8 @@ async function deleteChannel() {
       @clickoutside="channelDropdown.show = false"
     />
 
-    <!-- Channel Group Context Menu (NDropdown) -->
-    <NDropdown
+    <!-- Channel Group Context Menu -->
+    <ZmDropdown
       placement="bottom-start"
       trigger="manual"
       :x="groupDropdown.x"
@@ -861,8 +861,8 @@ async function deleteChannel() {
       @clickoutside="groupDropdown.show = false"
     />
 
-    <!-- Voice User Context Menu (NDropdown) -->
-    <NDropdown
+    <!-- Voice User Context Menu -->
+    <ZmDropdown
       placement="bottom-start"
       trigger="manual"
       :x="userDropdown.x"
@@ -874,102 +874,94 @@ async function deleteChannel() {
     />
 
     <!-- Create Channel/Group Modal -->
-    <NModal
+    <ZmModal
       v-model:show="showCreate"
-      preset="card"
       title="创建频道/频道组"
       style="width: 360px"
-      :segmented="{ content: true, footer: 'soft' }"
     >
-      <NSpace vertical>
-        <NSelect
+      <ZmSpace vertical>
+        <ZmSelect
           v-model:value="newCreateType"
           :options="createTypeOptions"
           placeholder="选择类型"
         />
-        <NInput
+        <ZmInput
           v-model:value="newItemName"
           :placeholder="newCreateType === 'group' ? '频道组名称' : '频道名称'"
           @keyup.enter="createItem"
         />
-        <NSelect
+        <ZmSelect
           v-if="newCreateType !== 'group' && channelGroups.length > 0"
           v-model:value="newChannelGroupId"
           :options="groupSelectOptions"
           placeholder="选择频道组（可选）"
           clearable
         />
-      </NSpace>
+      </ZmSpace>
       <template #footer>
-        <NSpace justify="end">
-          <NButton @click="showCreate = false">取消</NButton>
-          <NButton type="primary" @click="createItem">创建</NButton>
-        </NSpace>
+        <ZmSpace justify="end">
+          <ZmButton @click="showCreate = false">取消</ZmButton>
+          <ZmButton type="primary" @click="createItem">创建</ZmButton>
+        </ZmSpace>
       </template>
-    </NModal>
+    </ZmModal>
 
     <!-- Rename Channel Group Modal -->
-    <NModal
+    <ZmModal
       v-model:show="showRenameGroupDialog"
-      preset="card"
       title="重命名频道组"
       style="width: 360px"
-      :segmented="{ content: true, footer: 'soft' }"
     >
-      <NInput
+      <ZmInput
         v-model:value="renameGroupName"
         placeholder="新名称"
         @keyup.enter="confirmRenameGroup"
       />
       <template #footer>
-        <NSpace justify="end">
-          <NButton @click="showRenameGroupDialog = false">取消</NButton>
-          <NButton type="primary" @click="confirmRenameGroup">确定</NButton>
-        </NSpace>
+        <ZmSpace justify="end">
+          <ZmButton @click="showRenameGroupDialog = false">取消</ZmButton>
+          <ZmButton type="primary" @click="confirmRenameGroup">确定</ZmButton>
+        </ZmSpace>
       </template>
-    </NModal>
+    </ZmModal>
 
     <!-- Rename Server Modal -->
-    <NModal
+    <ZmModal
       v-model:show="showRenameServerDialog"
-      preset="card"
       title="重命名服务器"
       style="width: 360px"
-      :segmented="{ content: true, footer: 'soft' }"
     >
-      <NInput
+      <ZmInput
         v-model:value="renameServerName"
         placeholder="新名称"
         @keyup.enter="confirmRenameServer"
       />
       <template #footer>
-        <NSpace justify="end">
-          <NButton @click="showRenameServerDialog = false">取消</NButton>
-          <NButton type="primary" @click="confirmRenameServer">确定</NButton>
-        </NSpace>
+        <ZmSpace justify="end">
+          <ZmButton @click="showRenameServerDialog = false">取消</ZmButton>
+          <ZmButton type="primary" @click="confirmRenameServer">确定</ZmButton>
+        </ZmSpace>
       </template>
-    </NModal>
+    </ZmModal>
 
     <!-- Move Channel to Group Modal -->
-    <NModal
+    <ZmModal
       v-model:show="showMoveChannelDialog"
-      preset="card"
       title="移动频道到频道组"
       style="width: 360px"
-      :segmented="{ content: true, footer: 'soft' }"
     >
-      <NSelect
+      <ZmSelect
         v-model:value="moveToGroupId"
         :options="groupSelectOptions"
         placeholder="选择目标频道组"
       />
       <template #footer>
-        <NSpace justify="end">
-          <NButton @click="showMoveChannelDialog = false">取消</NButton>
-          <NButton type="primary" @click="confirmMoveChannel">确定</NButton>
-        </NSpace>
+        <ZmSpace justify="end">
+          <ZmButton @click="showMoveChannelDialog = false">取消</ZmButton>
+          <ZmButton type="primary" @click="confirmMoveChannel">确定</ZmButton>
+        </ZmSpace>
       </template>
-    </NModal>
+    </ZmModal>
 
     <!-- Channel Permission Modal -->
     <ChannelPermissionModal
@@ -1011,7 +1003,7 @@ async function deleteChannel() {
   overflow: auto;
   min-width: 272px;
   max-width: 360px;
-  border-right: 2px solid rgba(255, 166, 133, 0.50);
+  border-right: 1px solid var(--zhimo-border-strong);
 }
 
 .channel-list-content {
@@ -1050,13 +1042,14 @@ async function deleteChannel() {
 }
 
 .channel:hover {
-  background: rgba(255, 166, 133, 0.15);
+  background: var(--zhimo-bg-hover);
   color: var(--color-text-main);
 }
 
 .channel.active {
-  background: rgba(255, 166, 133, 0.6);
-  color: var(--color-text-bright);
+  background: var(--zhimo-bg-subtle);
+  color: var(--zhimo-fg);
+  box-shadow: inset 3px 0 0 var(--zhimo-seal);
 }
 
 /* remove marquee/automatic scrolling — we use ellipsis only */
@@ -1066,7 +1059,7 @@ async function deleteChannel() {
   flex: 1;
   padding: 4px 8px;
   border-radius: 6px;
-  border: 1px solid rgba(255,255,255,0.06);
+  border: 1px solid var(--zhimo-border);
   background: var(--surface-glass-input);
   color: var(--color-text-main);
   font-size: 12px;
@@ -1079,12 +1072,12 @@ async function deleteChannel() {
 /* custom input appearance */
 .custom-input {
   border-radius: 6px;
-  border: 1px solid rgba(255,255,255,0.08);
-  background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+  border: 1px solid var(--zhimo-border);
+  background: var(--zhimo-bg-subtle);
 }
 
 .custom-input:focus {
-  border-color: rgba(255,255,255,0.24);
+  border-color: var(--zhimo-seal);
   background: var(--surface-glass-input-focus);
 }
 
@@ -1126,7 +1119,7 @@ async function deleteChannel() {
 .rename-server-btn {
   margin-left: auto;
   background: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  border: 1px solid var(--zhimo-border);
   color: var(--color-text-muted);
   padding: 4px 8px;
   border-radius: 4px;
@@ -1136,9 +1129,9 @@ async function deleteChannel() {
 }
 
 .rename-server-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--zhimo-bg-hover);
   color: var(--color-text-bright);
-  border-color: rgba(255, 255, 255, 0.3);
+  border-color: var(--zhimo-border-strong);
 }
 
 .server-controls {
@@ -1190,7 +1183,7 @@ async function deleteChannel() {
 
 .add-channel-btn:hover {
   color: var(--color-text-bright);
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--zhimo-bg-hover);
 }
 
 .add-channel {
@@ -1339,8 +1332,8 @@ async function deleteChannel() {
 .voice-user-avatar {
   width: 20px;
   height: 20px;
-  border-radius: 50%;
-  background: var(--color-gradient-primary);
+  border-radius: var(--zhimo-radius-sm);
+  background: var(--zhimo-seal);
   display: flex;
   justify-content: center;
   align-items: center;
@@ -1352,7 +1345,7 @@ async function deleteChannel() {
 .voice-user-avatar-img {
   width: 20px;
   height: 20px;
-  border-radius: 50%;
+  border-radius: var(--zhimo-radius-sm);
   object-fit: cover;
 }
 
@@ -1379,7 +1372,7 @@ async function deleteChannel() {
 .edit-toggle {
   margin-left: 8px;
   background: transparent;
-  border: 1px solid rgba(255,255,255,0.08);
+  border: 1px solid var(--zhimo-border);
   color: var(--color-text-muted);
   padding: 4px;
   border-radius: var(--radius-sm);
@@ -1408,7 +1401,7 @@ async function deleteChannel() {
 }
 
 .channel-group-header:hover {
-  background: rgba(255, 166, 133, 0.15);
+  background: var(--zhimo-bg-hover);
   color: var(--color-text-main);
 }
 
@@ -1460,7 +1453,7 @@ async function deleteChannel() {
 .channel-group-header .rename-group-btn {
   margin-left: auto;
   background: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  border: 1px solid var(--zhimo-border);
   color: var(--color-text-muted);
   padding: 4px 8px;
   border-radius: 4px;
@@ -1470,9 +1463,9 @@ async function deleteChannel() {
 }
 
 .channel-group-header .rename-group-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--zhimo-bg-hover);
   color: var(--color-text-bright);
-  border-color: rgba(255, 255, 255, 0.3);
+  border-color: var(--zhimo-border-strong);
 }
 
 .group-channels {
@@ -1522,13 +1515,14 @@ async function deleteChannel() {
 }
 
 .group-channels .channel:hover {
-  background: rgba(255, 166, 133, 0.15);
+  background: var(--zhimo-bg-hover);
   color: var(--color-text-main);
 }
 
 .group-channels .channel.active {
-  background: rgba(255, 166, 133, 0.6);
-  color: var(--color-text-bright);
+  background: var(--zhimo-bg-subtle);
+  color: var(--zhimo-fg);
+  box-shadow: inset 3px 0 0 var(--zhimo-seal);
 }
 
 .group-channels .voice-channel-wrapper {
@@ -1546,13 +1540,14 @@ async function deleteChannel() {
 }
 
 .group-channels .voice-channel-wrapper .channel:hover {
-  background: rgba(255, 166, 133, 0.15);
+  background: var(--zhimo-bg-hover);
   color: var(--color-text-main);
 }
 
 .group-channels .voice-channel-wrapper .channel.active {
-  background: rgba(255, 166, 133, 0.6);
-  color: var(--color-text-bright);
+  background: var(--zhimo-bg-subtle);
+  color: var(--zhimo-fg);
+  box-shadow: inset 3px 0 0 var(--zhimo-seal);
 }
 
 /* Draggable styles */
@@ -1562,12 +1557,12 @@ async function deleteChannel() {
 
 .drag-ghost {
   opacity: 0.5;
-  background: rgba(255, 166, 133, 0.3) !important;
+  background: var(--zhimo-bg-hover) !important;
   border-radius: var(--radius-sm);
 }
 
 .drag-chosen {
-  background: rgba(255, 166, 133, 0.2) !important;
+  background: var(--zhimo-bg-subtle) !important;
 }
 
 .drag-dragging {
@@ -1592,32 +1587,29 @@ async function deleteChannel() {
 
 /* Mention Badge (left) - bigger, more pronounced pulse */
 .mention-badge {
-  background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%);
-  color: white;
+  background: var(--zhimo-seal);
+  color: var(--zhimo-accent-fg);
   font-size: 10px;
   font-weight: 800;
   padding: 4px 6px;
   border-radius: 10px;
   white-space: nowrap;
-  box-shadow: 0 2px 4px rgba(255, 107, 107, 0.3);
+  box-shadow: none;
   animation: pulse-mention 2s ease-in-out infinite;
 }
 
 @keyframes pulse-mention {
   0% {
-    background-color: rgba(238, 90, 112, 0.555);
-    box-shadow: 0 4px 4px rgba(238, 90, 112, 0.126);
+    background-color: var(--zhimo-seal);
     opacity: 1;
   }
   50% {
-    background-color: rgba(83, 58, 62, 0.557);
-    box-shadow: 0 4px 4px rgba(238, 90, 112, 0.555);
-    color: rgb(0, 0, 0);
+    background-color: var(--zhimo-seal-hover);
+    color: var(--zhimo-accent-fg);
     opacity: 0.7;
   }
   100% {
-    background-color: rgba(238, 90, 112, 0.555);
-    box-shadow: 0 4px 4px rgba(238, 90, 112, 0.126);
+    background-color: var(--zhimo-seal);
     opacity: 1;
   }
 }

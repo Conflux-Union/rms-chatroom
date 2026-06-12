@@ -1,46 +1,41 @@
 <template>
-  <NModal
+  <ZmModal
     v-model:show="showModal"
     preset="card"
     :title="'选择要共享的窗口/屏幕'"
     :style="{ width: 'min(980px, 95vw)', maxHeight: '85vh' }"
     :segmented="{ content: true, footer: 'soft' }"
-    :closable="true"
     @update:show="handleShowChange"
   >
-    <template #header-extra>
-      <NSpace>
-        <NInput
-          v-model:value="keyword"
-          placeholder="搜索窗口名..."
-          clearable
-          style="width: 200px"
-        />
-        <NButton :loading="loading" @click="refreshSources">
-          {{ loading ? '刷新中...' : '刷新列表' }}
-        </NButton>
-      </NSpace>
-    </template>
+    <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+      <ZmInput
+        v-model:value="keyword"
+        placeholder="搜索窗口名..."
+        style="width: 200px"
+      />
+      <ZmButton :loading="loading" @click="refreshSources">
+        {{ loading ? '刷新中...' : '刷新列表' }}
+      </ZmButton>
+    </div>
 
     <div class="ss-grid">
-      <NCard
+      <ZmCard
         v-for="s in filteredSources"
         :key="s.id"
         hoverable
-        :content-style="{ padding: 0 }"
         class="ss-card"
         @click="selectAndStart(s)"
       >
         <div class="ss-thumb">
           <img v-if="s.thumbnail" :src="s.thumbnail" alt="" />
-          <NEmpty v-else description="无预览" :show-icon="false" size="small" />
+          <ZmEmpty v-else description="无预览" />
         </div>
         <div class="ss-name">
-          <NEllipsis :tooltip="{ width: 300 }">{{ s.name }}</NEllipsis>
+          <ZmEllipsis>{{ s.name }}</ZmEllipsis>
         </div>
-      </NCard>
+      </ZmCard>
 
-      <NEmpty
+      <ZmEmpty
         v-if="!loading && filteredSources.length === 0"
         description="没找到可共享的窗口/屏幕"
         class="ss-empty"
@@ -48,16 +43,16 @@
     </div>
 
     <template #footer>
-      <NSpace justify="end">
-        <NButton @click="closeModal">取消</NButton>
-      </NSpace>
+      <ZmSpace justify="end">
+        <ZmButton @click="closeModal">取消</ZmButton>
+      </ZmSpace>
     </template>
-  </NModal>
+  </ZmModal>
 </template>
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { NModal, NCard, NButton, NInput, NSpace, NEmpty, NEllipsis } from 'naive-ui'
+import { ZmModal, ZmCard, ZmButton, ZmInput, ZmSpace, ZmEmpty, ZmEllipsis } from './ui'
 import { useVoiceStore } from '../stores/voice'
 
 type CaptureSource = {
@@ -157,7 +152,7 @@ watch(
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--n-color-embedded);
+  background: var(--zhimo-bg-subtle);
 }
 
 .ss-thumb img {

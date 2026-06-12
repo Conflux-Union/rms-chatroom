@@ -3,7 +3,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useMusicStore, type Song } from '../stores/music'
 import { useVoiceStore } from '../stores/voice'
 import { formatDuration } from '../utils/datetime'
-import { NSlider, NSelect, NModal, NButton, NSpace, NInput, NSpin } from 'naive-ui'
+import { ZmSlider, ZmSelect, ZmModal, ZmButton, ZmSpace, ZmInput } from './ui'
 import { Music, Bot, SkipBack, Pause, Play, SkipForward, Plus, Trash2, X, Search, Loader2, Volume2 } from 'lucide-vue-next'
 
 const music = useMusicStore()
@@ -170,16 +170,14 @@ async function handleStopBot() {
     </div>
 
     <div class="music-content">
-      <!-- Login Platform Select Dialog (NModal) -->
-      <NModal
+      <!-- Login Platform Select Dialog -->
+      <ZmModal
         v-model:show="showLoginSelect"
-        preset="card"
         title="选择登录平台"
         style="width: 360px"
-        :segmented="{ content: true }"
       >
-        <NSpace vertical size="large">
-          <NButton
+        <ZmSpace vertical size="large">
+          <ZmButton
             v-if="!music.platformLoginStatus.qq.logged_in"
             block
             size="large"
@@ -187,8 +185,8 @@ async function handleStopBot() {
             @click="startLogin('qq', 'qq')"
           >
             QQ 音乐 (QQ 登录)
-          </NButton>
-          <NButton
+          </ZmButton>
+          <ZmButton
             v-if="!music.platformLoginStatus.qq.logged_in"
             block
             size="large"
@@ -196,8 +194,8 @@ async function handleStopBot() {
             @click="startLogin('qq', 'wx')"
           >
             QQ 音乐 (微信登录)
-          </NButton>
-          <NButton
+          </ZmButton>
+          <ZmButton
             v-if="!music.platformLoginStatus.netease.logged_in"
             block
             size="large"
@@ -205,18 +203,16 @@ async function handleStopBot() {
             @click="startLogin('netease')"
           >
             网易云音乐
-          </NButton>
-        </NSpace>
-      </NModal>
+          </ZmButton>
+        </ZmSpace>
+      </ZmModal>
 
-      <!-- QR Code Login Dialog (NModal) -->
-      <NModal
+      <!-- QR Code Login Dialog -->
+      <ZmModal
         :show="!!music.qrCodeUrl"
-        preset="card"
         :title="'扫码登录 ' + (music.loginPlatform === 'qq' ? 'QQ 音乐' : '网易云音乐')"
         style="width: 320px"
-        :segmented="{ content: true, footer: 'soft' }"
-        @update:show="(v) => { if (!v) music.qrCodeUrl = null }"
+        @update:show="(v: boolean) => { if (!v) music.qrCodeUrl = null }"
       >
         <div class="qr-login-content">
           <img :src="music.qrCodeUrl || ''" alt="QR Code" class="qr-code" />
@@ -230,14 +226,14 @@ async function handleStopBot() {
           </p>
         </div>
         <template #footer>
-          <NSpace justify="center">
-            <NButton v-if="music.loginStatus === 'expired'" type="primary" @click="startLogin(music.loginPlatform, music.loginType)">
+          <ZmSpace justify="center">
+            <ZmButton v-if="music.loginStatus === 'expired'" type="primary" @click="startLogin(music.loginPlatform, music.loginType)">
               刷新二维码
-            </NButton>
-            <NButton @click="music.qrCodeUrl = null">关闭</NButton>
-          </NSpace>
+            </ZmButton>
+            <ZmButton @click="music.qrCodeUrl = null">关闭</ZmButton>
+          </ZmSpace>
         </template>
-      </NModal>
+      </ZmModal>
 
       <!-- Now Playing -->
       <div v-if="music.currentSong" class="now-playing">
@@ -265,7 +261,7 @@ async function handleStopBot() {
         <!-- Progress Bar - Full Width -->
         <div class="progress-container">
           <span class="time-current">{{ formatDuration(music.positionMs) }}</span>
-          <NSlider
+          <ZmSlider
             v-model:value="progressValue"
             :min="0"
             :max="100"
@@ -277,7 +273,7 @@ async function handleStopBot() {
         <!-- Volume Control - Full Width -->
         <div class="volume-control">
           <Volume2 :size="16" class="volume-icon" />
-          <NSlider
+          <ZmSlider
             :value="music.volume * 100"
             @update:value="(v: number) => handleVolumeChange(v / 100)"
             :min="0"
@@ -293,7 +289,7 @@ async function handleStopBot() {
       <div v-else class="empty-state">
         <Music class="empty-icon" :size="48" />
         <p>暂无播放</p>
-        <button class="add-song-btn glow-effect" @click="showSearch = true">
+        <button class="add-song-btn " @click="showSearch = true">
           添加歌曲
         </button>
       </div>
@@ -333,39 +329,33 @@ async function handleStopBot() {
         </div>
       </div>
 
-      <!-- Search Dialog (NModal) -->
-      <NModal
+      <!-- Search Dialog -->
+      <ZmModal
         v-model:show="showSearch"
-        preset="card"
         title="搜索歌曲"
         style="width: 500px; max-height: 80vh"
-        :segmented="{ content: true, footer: 'soft' }"
       >
-        <template #header-extra>
-          <NSelect
-            v-model:value="music.searchPlatform"
-            :options="[
-              { label: '全部', value: 'all' },
-              { label: 'QQ 音乐', value: 'qq' },
-              { label: '网易云', value: 'netease' },
-            ]"
-            style="width: 100px"
-            size="small"
-          />
-        </template>
-
-        <NSpace vertical>
-          <NSpace>
-            <NInput
+        <ZmSpace vertical>
+          <ZmSpace>
+            <ZmSelect
+              v-model:value="music.searchPlatform"
+              :options="[
+                { label: '全部', value: 'all' },
+                { label: 'QQ 音乐', value: 'qq' },
+                { label: '网易云', value: 'netease' },
+              ]"
+              style="width: 100px"
+            />
+            <ZmInput
               v-model:value="searchInput"
               placeholder="搜索歌曲..."
               @keyup.enter="handleSearch"
               style="flex: 1"
             />
-            <NButton type="primary" @click="handleSearch" :loading="music.isSearching">
-              <template #icon><Search :size="18" /></template>
-            </NButton>
-          </NSpace>
+            <ZmButton type="primary" @click="handleSearch" :loading="music.isSearching">
+              <Search :size="18" />
+            </ZmButton>
+          </ZmSpace>
 
           <div class="search-results">
             <div
@@ -390,14 +380,14 @@ async function handleStopBot() {
               {{ music.isSearching ? '搜索中...' : '未找到结果' }}
             </div>
           </div>
-        </NSpace>
+        </ZmSpace>
 
         <template #footer>
-          <NSpace justify="end">
-            <NButton @click="showSearch = false">关闭</NButton>
-          </NSpace>
+          <ZmSpace justify="end">
+            <ZmButton @click="showSearch = false">关闭</ZmButton>
+          </ZmSpace>
         </template>
-      </NModal>
+      </ZmModal>
     </div>
   </div>
 </template>
@@ -485,7 +475,7 @@ async function handleStopBot() {
   overflow: hidden;
 }
 
-/* QR Login Content (inside NModal) */
+/* QR Login Content */
 .qr-login-content {
   text-align: center;
 }
@@ -811,7 +801,7 @@ async function handleStopBot() {
   font-size: 14px;
 }
 
-/* Search Results (inside NModal) */
+/* Search Results */
 .search-results {
   max-height: 400px;
   overflow-y: auto;

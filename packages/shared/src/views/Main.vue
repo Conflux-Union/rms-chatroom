@@ -263,7 +263,7 @@ watch(
     <!-- Music Button (shown when connected to voice) -->
     <button 
       v-if="voice.isConnected" 
-      class="music-toggle-btn glow-effect"
+      class="music-toggle-btn "
       @click="showMusicPanel = !showMusicPanel"
       :class="{ active: showMusicPanel }"
     >
@@ -283,11 +283,9 @@ watch(
 .app-container {
   display: flex;
   height: 100vh;
-  height: 100dvh; /* Dynamic viewport height for mobile browsers */
+  height: 100dvh;
   color: var(--color-text-main);
-  background: var(--surface-glass);
-  backdrop-filter: blur(var(--blur-strength));
-  -webkit-backdrop-filter: blur(var(--blur-strength));
+  background: transparent;
 }
 
 /* Mobile Header - Hidden on desktop */
@@ -299,9 +297,7 @@ watch(
   right: 0;
   height: 56px;
   background: var(--surface-glass-strong);
-  backdrop-filter: blur(var(--blur-strength));
-  -webkit-backdrop-filter: blur(var(--blur-strength));
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  border-bottom: 1px solid var(--zhimo-border-strong);
   z-index: 200;
   align-items: center;
   padding: 0 16px;
@@ -401,13 +397,14 @@ watch(
   right: 20px;
   width: 56px;
   height: 56px;
-  border-radius: 50%;
-  background: var(--color-gradient-primary);
-  border: none;
+  border-radius: var(--zhimo-radius);
+  background: var(--zhimo-seal);
+  color: var(--zhimo-accent-fg);
+  border: 1px solid var(--zhimo-seal-hover);
   font-size: 24px;
   cursor: pointer;
-  box-shadow: var(--shadow-glow);
-  transition: all 0.3s ease;
+  box-shadow: var(--zhimo-shadow-sm);
+  transition: background var(--transition-fast), border-color var(--transition-fast), transform var(--transition-fast);
   z-index: 100;
   display: flex;
   align-items: center;
@@ -415,11 +412,13 @@ watch(
 }
 
 .music-toggle-btn:hover {
-  transform: scale(1.1);
+  background: var(--zhimo-seal-hover);
+  transform: translateY(-1px);
 }
 
 .music-toggle-btn.active {
-  background: var(--color-primary);
+  background: var(--zhimo-accent);
+  border-color: var(--zhimo-accent);
 }
 
 /* Music Sidebar */
@@ -431,9 +430,7 @@ watch(
   height: 100vh;
   height: 100dvh;
   background: var(--surface-glass-strong, rgba(20, 20, 30, 0.95));
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border-left: 1px solid rgba(255, 255, 255, 0.1);
+  border-left: 1px solid var(--zhimo-border-strong);
   z-index: 99;
   display: flex;
   flex-direction: column;
@@ -473,12 +470,11 @@ watch(
     width: 312px;
     z-index: 150;
     background: var(--surface-glass-strong);
-    backdrop-filter: blur(var(--blur-strength));
-    -webkit-backdrop-filter: blur(var(--blur-strength));
     transform: translateX(-100%);
     transition: transform 0.3s ease;
     flex-direction: row;
-    border-right: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: var(--zhimo-shadow-md);
+    border-right: 1px solid var(--zhimo-border-strong);
   }
 
   .sidebar-container.mobile-open {

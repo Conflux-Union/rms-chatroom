@@ -1,28 +1,43 @@
-:root {
-  /* Palette */
-  --color-primary: rgb(252, 121, 97);
-  --color-primary-hover: rgb(214, 86, 69);
-  --color-gradient-primary: linear-gradient(135deg, rgb(252, 121, 97), rgb(235, 92, 80));
-  
-  --color-text-main: #1a1a1a;
-  --color-text-muted: #666666;
-  --color-text-light: #ffffff;
-  --color-text-bright: #000000;
+/* Legacy design tokens bridged onto ZhiMo UI paper-and-ink tokens.
+   Component styles keep using --color- and --surface- names; the values
+   come from zhimo-ui tokens.css so light/dark ("night reading") themes
+   switch automatically via [data-theme="dark"] on <html>. */
 
-  /* Surface (Glassmorphism) */
-  --surface-glass: rgba(255, 255, 255, 0.7);
-  --surface-glass-strong: rgba(255, 255, 255, 0.8);
-  --surface-glass-darker: rgba(255, 255, 255, 0.6);
-  --surface-glass-input: rgba(255, 255, 255, 0.5);
-  --surface-glass-input-focus: rgba(255, 255, 255, 0.65);
-  --blur-strength: 40px;
+:root {
+  /* Palette: seal red is the single accent color */
+  --color-primary: var(--zhimo-seal);
+  --color-primary-hover: var(--zhimo-seal-hover);
+  --color-accent: var(--zhimo-seal);
+  --color-accent-rgb: 184, 67, 47;
+  --color-gradient-primary: var(--zhimo-seal);
+  --color-gradient-secondary: var(--zhimo-bg-hover);
+
+  --color-text-main: var(--zhimo-fg);
+  --color-text-muted: var(--zhimo-fg-muted);
+  --color-text-light: #ffffff;
+  --color-text-bright: var(--zhimo-fg);
+
+  /* Paper surfaces. Legacy names stay alive, but values are paper, not glass. */
+  --surface-glass: var(--zhimo-bg);
+  --surface-glass-strong: var(--zhimo-bg);
+  --surface-glass-darker: var(--zhimo-bg-subtle);
+  --surface-glass-input: var(--zhimo-bg-subtle);
+  --surface-glass-input-focus: var(--zhimo-bg);
+  --surface-glass-hover: var(--zhimo-bg-hover);
+  --color-background: var(--zhimo-bg);
+  --color-background-soft: var(--zhimo-bg-subtle);
+
+  /* Paper structure lines */
+  --color-border: var(--zhimo-border);
+  --color-border-strong: var(--zhimo-border-strong);
+  --surface-hover: var(--zhimo-bg-hover);
 
   /* Status Colors */
-  --color-success: #2ed573;
-  --color-error: #ff4757;
-  --color-warning: #ffa502;
-  --color-online: #43b581;
-  --color-offline: #747f8d;
+  --color-success: var(--zhimo-success);
+  --color-error: var(--zhimo-danger);
+  --color-warning: var(--zhimo-warning);
+  --color-online: var(--zhimo-success);
+  --color-offline: var(--zhimo-fg-muted);
 
   /* Spacing */
   --spacing-xs: 4px;
@@ -32,20 +47,20 @@
   --spacing-xl: 32px;
   --spacing-xxl: 48px;
 
-  /* Radius */
-  --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 20px;
-  --radius-pill: 9999px;
+  /* Radius: print-like sharp corners */
+  --radius-sm: var(--zhimo-radius-sm);
+  --radius-md: var(--zhimo-radius);
+  --radius-lg: 6px;
+  --radius-pill: var(--zhimo-radius-full);
 
-  /* Shadows */
-  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.05);
-  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.08);
-  --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.12);
-  --shadow-glow: 0 8px 20px rgba(252, 121, 97, 0.25);
+  /* Shadows: thin ink lines carry hierarchy, shadows stay minimal */
+  --shadow-sm: var(--zhimo-shadow-sm);
+  --shadow-md: var(--zhimo-shadow-md);
+  --shadow-lg: var(--zhimo-shadow-lg);
+  --shadow-glow: none;
 
   /* Transitions */
-  --transition-fast: 0.2s ease;
+  --transition-fast: var(--zhimo-transition);
   --transition-normal: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   --transition-bounce: 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }

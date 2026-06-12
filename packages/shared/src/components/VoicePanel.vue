@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch, nextTick } from 'vue'
+import { ZmModal, ZmButton, ZmSpace, ZmInput, ZmDropdown, ZmSpin } from './ui'
+import type { ZmDropdownOption } from './ui'
 import { useChatStore } from '../stores/chat'
 import { useVoiceStore } from '../stores/voice'
 import { useAuthStore } from '../stores/auth'
 import { authFetch } from '../utils/authFetch'
-import { Volume2, VolumeX, Mic, MicOff, Phone, AlertTriangle, Crown, Link, Copy, Check, UserX, Monitor, MonitorOff } from 'lucide-vue-next'
-import { NModal, NButton, NSpace, NInput, NDropdown, NSpin } from 'naive-ui'
-import type { DropdownOption } from 'naive-ui'
+import { Volume2, VolumeX, Mic, MicOff, Phone, Crown, Link, Copy, Check, UserX, Monitor, MonitorOff } from 'lucide-vue-next'
 
 // Detect iOS devices
 const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
@@ -54,18 +54,16 @@ const swipedUserId = ref<string | null>(null)
 const touchStartX = ref(0)
 const touchCurrentX = ref(0)
 
-// Desktop context menu state (NDropdown)
+// Desktop context menu state (ZmDropdown)
 const participantDropdown = ref<{ show: boolean; x: number; y: number; participantId: string }>({
   show: false, x: 0, y: 0, participantId: ''
 })
 
 // Dropdown options for participant context menu
-const participantDropdownOptions: DropdownOption[] = [
-  { label: '静音麦克风', key: 'mute', icon: () => h(MicOff, { size: 14 }) },
-  { label: '踢出频道', key: 'kick', props: { style: { color: 'var(--color-error, #ef4444)' } } }
+const participantDropdownOptions: ZmDropdownOption[] = [
+  { label: '静音麦克风', key: 'mute' },
+  { label: '踢出频道', key: 'kick', danger: true }
 ]
-
-import { h } from 'vue'
 
 // Screen share state
 const screenShareExpanded = ref(true)
@@ -142,7 +140,7 @@ function hideParticipantDropdown() {
   participantDropdown.value = { show: false, x: 0, y: 0, participantId: '' }
 }
 
-async function handleParticipantDropdownSelect(key: string) {
+async function handleParticipantDropdownSelect(key: string | number) {
   if (key === 'mute') {
     await voice.muteParticipant(participantDropdown.value.participantId, true)
   } else if (key === 'kick') {
@@ -298,7 +296,7 @@ function closeInviteDialog() {
       <div v-if="!voice.isConnected" class="voice-connect">
         <p>点击加入语音频道</p>
         <button
-          class="join-btn glow-effect"
+          class="join-btn "
           :disabled="voice.isConnecting"
           @click="joinVoice"
         >
@@ -398,7 +396,7 @@ function closeInviteDialog() {
             <!-- 语音控制按钮（移到用户容器内） -->
             <div class="voice-controlss">
               <button
-                class="control-btn glow-effect"
+                class="control-btn "
                 :class="{ active: voice.isMuted }"
                 @click="voice.toggleMute()"
                 :title="voice.isMuted ? '取消静音' : '静音'"
@@ -407,7 +405,7 @@ function closeInviteDialog() {
                 <Mic v-else :size="20" />
               </button>
               <button
-                class="control-btn glow-effect"
+                class="control-btn "
                 :class="{ active: voice.isDeafened }"
                 @click="voice.toggleDeafen()"
                 :title="voice.isDeafened ? '打开扬声器' : '关闭扬声器'"
@@ -417,7 +415,7 @@ function closeInviteDialog() {
               </button>
               <button
                 v-if="auth.isAdmin"
-                class="control-btn glow-effect"
+                class="control-btn "
                 :class="{ 
                   'host-mode-active': voice.hostModeEnabled && isCurrentUserHost,
                   'host-mode-disabled': hostButtonDisabled 
@@ -430,14 +428,14 @@ function closeInviteDialog() {
               </button>
               <button
                 v-if="auth.isAdmin"
-                class="control-btn glow-effect invite-btn"
+                class="control-btn  invite-btn"
                 @click="createInviteLink"
                 title="创建邀请链接"
               >
                 <Link :size="20" />
               </button>
               <button
-                class="control-btn glow-effect"
+                class="control-btn "
                 :class="{ 'screen-share-active': voice.isScreenSharing }"
                 @click="voice.toggleScreenShare()"
                 :title="voice.isScreenSharing ? '停止共享屏幕' : '共享屏幕'"
@@ -446,7 +444,7 @@ function closeInviteDialog() {
                 <Monitor v-else :size="20" />
               </button>
               <button
-                class="control-btn disconnect glow-effect"
+                class="control-btn disconnect "
                 @click="voice.disconnect()"
                 title="断开连接"
               >
@@ -492,20 +490,16 @@ function closeInviteDialog() {
       </div>
     </div>
 
-    <!-- Invite Link Dialog (NModal) -->
-    <NModal
+    <!-- Invite Link Dialog -->
+    <ZmModal
       v-model:show="showInviteDialog"
       preset="card"
       title="邀请访客"
       style="width: 440px"
       :segmented="{ content: true, footer: 'soft' }"
     >
-      <template #header-extra>
-        <Link class="invite-icon" :size="24" />
-      </template>
-
       <div v-if="inviteLoading" class="invite-loading">
-        <NSpin size="medium" />
+        <ZmSpin />
         <p>正在生成链接...</p>
       </div>
 
@@ -515,50 +509,44 @@ function closeInviteDialog() {
 
       <div v-else-if="inviteUrl" class="invite-content">
         <p class="invite-note">此链接仅可使用一次，访客离开后无法再次加入。</p>
-        <NSpace>
-          <NInput :value="inviteUrl" readonly style="flex: 1; font-family: monospace;" />
-          <NButton @click="copyInviteLink" :type="inviteCopied ? 'success' : 'primary'">
-            <template #icon>
-              <Check v-if="inviteCopied" :size="18" />
-              <Copy v-else :size="18" />
-            </template>
-          </NButton>
-        </NSpace>
+        <ZmSpace>
+          <ZmInput :value="inviteUrl" style="flex: 1; font-family: monospace;" />
+          <ZmButton @click="copyInviteLink" :type="inviteCopied ? 'success' : 'primary'">
+            <Check v-if="inviteCopied" :size="18" />
+            <Copy v-else :size="18" />
+          </ZmButton>
+        </ZmSpace>
       </div>
 
       <template #footer>
-        <NSpace justify="end">
-          <NButton @click="closeInviteDialog">关闭</NButton>
-        </NSpace>
+        <ZmSpace justify="end">
+          <ZmButton @click="closeInviteDialog">关闭</ZmButton>
+        </ZmSpace>
       </template>
-    </NModal>
+    </ZmModal>
 
-    <!-- Volume Warning Dialog (NModal) -->
-    <NModal
+    <!-- Volume Warning Dialog -->
+    <ZmModal
       v-model:show="showVolumeWarning"
       preset="card"
       title="高音量警告"
       style="width: 400px"
       :segmented="{ content: true, footer: 'soft' }"
     >
-      <template #header-extra>
-        <AlertTriangle class="warning-icon" :size="24" style="color: var(--color-warning, #f59e0b);" />
-      </template>
-
       <p class="warning-message">
         高音量可能损害您的听力和音频设备。
       </p>
 
       <template #footer>
-        <NSpace justify="end">
-          <NButton @click="closeVolumeWarning">取消</NButton>
-          <NButton type="warning" @click="confirmVolumeWarning">我已了解</NButton>
-        </NSpace>
+        <ZmSpace justify="end">
+          <ZmButton @click="closeVolumeWarning">取消</ZmButton>
+          <ZmButton type="warning" @click="confirmVolumeWarning">我已了解</ZmButton>
+        </ZmSpace>
       </template>
-    </NModal>
+    </ZmModal>
 
-    <!-- Participant Context Menu (NDropdown) -->
-    <NDropdown
+    <!-- Participant Context Menu -->
+    <ZmDropdown
       placement="bottom-start"
       trigger="manual"
       :x="participantDropdown.x"
@@ -1172,7 +1160,7 @@ function closeInviteDialog() {
   z-index: 1;
 }
 
-/* Invite Dialog Styles (minimal - NModal handles most) */
+/* Invite Dialog Styles (minimal - ZmModal handles most) */
 .invite-icon {
   color: #3b82f6;
 }

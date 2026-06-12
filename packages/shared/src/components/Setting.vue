@@ -1,16 +1,17 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref, computed, nextTick } from 'vue'
+import { onMounted, onUnmounted, ref, computed } from 'vue'
 import { useVoiceStore } from '../stores/voice'
-import { NModal, NSelect, NButton, NSpace, NProgress } from 'naive-ui'
+import { ZmModal, ZmSelect, ZmButton, ZmSpace, ZmProgress } from './ui'
+import type { ZmSelectOption } from './ui'
 import { Mic, Volume2 } from 'lucide-vue-next'
 
 const emit = defineEmits<{ (e: 'close'): void }>()
 
-const visible = ref(false)
+const show = ref(true)
 
 function handleClose() {
-  visible.value = false
-  setTimeout(() => emit('close'), 250)
+  show.value = false
+  emit('close')
 }
 
 declare global {
@@ -130,9 +131,6 @@ function onKeyDown(e: KeyboardEvent) {
 }
 
 onMounted(async () => {
-  nextTick(() => {
-    visible.value = true
-  })
   await voice.enumerateDevices()
   await loadShortcuts()
   window.addEventListener('keydown', onKeyDown, true)
@@ -275,17 +273,12 @@ function stopOutputTest() {
 </script>
 
 <template>
-  <NModal
-    v-model:show="visible"
-    preset="card"
+  <ZmModal
+    v-model:show="show"
     title="设置"
-    :bordered="false"
-    :closable="true"
-    :mask-closable="true"
     style="width: 520px; max-width: 90vw"
-    @after-leave="emit('close')"
   >
-    <NSpace vertical :size="20">
+    <ZmSpace vertical :size="20">
       <!-- Input Device -->
       <div class="setting-row">
         <div class="setting-label">
@@ -293,24 +286,22 @@ function stopOutputTest() {
           <span>输入设备</span>
         </div>
         <div class="setting-ctrl">
-          <NSelect
+          <ZmSelect
             v-model:value="selectedInput"
             :options="inputOptions"
             style="flex: 1"
           />
-          <NButton
+          <ZmButton
             size="small"
             :type="micTestActive ? 'error' : 'default'"
             @click="micTestActive ? stopMicTest() : startMicTest()"
           >
             {{ micTestActive ? '停止' : '测试' }}
-          </NButton>
+          </ZmButton>
         </div>
-        <NProgress
-          type="line"
+        <ZmProgress
           :percentage="micLevel"
           :show-indicator="false"
-          :height="8"
           style="margin-top: 8px"
         />
       </div>
@@ -322,18 +313,18 @@ function stopOutputTest() {
           <span>输出设备</span>
         </div>
         <div class="setting-ctrl">
-          <NSelect
+          <ZmSelect
             v-model:value="selectedOutput"
             :options="outputOptions"
             style="flex: 1"
           />
-          <NButton
+          <ZmButton
             size="small"
             :type="outputTestPlaying ? 'error' : 'default'"
             @click="outputTestPlaying ? stopOutputTest() : startOutputTest()"
           >
             {{ outputTestPlaying ? '停止' : '播放' }}
-          </NButton>
+          </ZmButton>
         </div>
       </div>
 
@@ -349,7 +340,7 @@ function stopOutputTest() {
             @click="startCapture('toggleWindow')"
             placeholder="点击后按下快捷键"
           />
-          <NButton size="small" @click="save('toggleWindow')">保存</NButton>
+          <ZmButton size="small" @click="save('toggleWindow')">保存</ZmButton>
         </div>
       </div>
 
@@ -365,20 +356,20 @@ function stopOutputTest() {
             @click="startCapture('toggleMic')"
             placeholder="点击后按下快捷键"
           />
-          <NButton size="small" @click="save('toggleMic')">保存</NButton>
+          <ZmButton size="small" @click="save('toggleMic')">保存</ZmButton>
         </div>
       </div>
 
       <!-- Status tip -->
       <div v-if="tip" class="tip">{{ tip }}</div>
-    </NSpace>
+    </ZmSpace>
 
     <template #footer>
-      <NSpace justify="end">
-        <NButton @click="stopCapture(); handleClose()">关闭</NButton>
-      </NSpace>
+      <ZmSpace justify="end">
+        <ZmButton @click="stopCapture(); handleClose()">关闭</ZmButton>
+      </ZmSpace>
     </template>
-  </NModal>
+  </ZmModal>
 </template>
 
 <style scoped>

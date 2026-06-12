@@ -8,20 +8,12 @@
 
 html, body {
   height: 100%;
-  font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
-  background-color: #f5f0eb;
-  background-size: cover;
-  background-position: center;
-  background-repeat: no-repeat;
-  background-attachment: fixed;
+  font-family: var(--zhimo-font);
+  background-color: var(--zhimo-bg);
   color: var(--color-text-main);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  transition: background-image 0.5s ease-in-out;
-}
-
-body.bg-loaded {
-  background-image: url('/bg.webp');
+  transition: background-color 0.3s ease;
 }
 
 #app {
@@ -34,16 +26,16 @@ body.bg-loaded {
 }
 
 ::-webkit-scrollbar-track {
-  background: rgba(255, 255, 255, 0.1);
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.2);
+  background: var(--zhimo-border);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.3);
+  background: var(--zhimo-border-strong);
 }
 
 input:focus, button:focus {
@@ -59,19 +51,15 @@ a:hover {
   text-decoration: underline;
 }
 
-/* Glass panel base */
+/* Paper panel base (kept legacy class names; surfaces are now solid paper) */
 .glass-panel {
   background: var(--surface-glass);
-  backdrop-filter: blur(var(--blur-strength));
-  -webkit-backdrop-filter: blur(var(--blur-strength));
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  border: 1px solid var(--zhimo-border);
 }
 
 .glass-panel-dark {
   background: var(--surface-glass-darker);
-  backdrop-filter: blur(var(--blur-strength));
-  -webkit-backdrop-filter: blur(var(--blur-strength));
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--zhimo-border);
 }
 
 /* Primary button */
@@ -88,9 +76,9 @@ a:hover {
 }
 
 .btn-primary:hover {
-  transform: translateY(-2px);
-  filter: brightness(1.1);
-  box-shadow: 0 12px 28px rgba(220, 38, 127, 0.35);
+  transform: translateY(-1px);
+  filter: brightness(1.05);
+  box-shadow: var(--shadow-md);
 }
 
 .btn-primary:active {
@@ -101,13 +89,12 @@ a:hover {
 .form-input {
   width: 100%;
   padding: 12px 16px;
-  border: 1px solid transparent;
+  border: 1px solid var(--zhimo-border);
   border-radius: var(--radius-md);
   background: var(--surface-glass-input);
   color: var(--color-text-main);
   font-size: 1rem;
-  transition: all var(--transition-fast);
-  backdrop-filter: blur(10px);
+  transition: border-color var(--transition-fast), background var(--transition-fast);
 }
 
 .form-input::placeholder {
@@ -117,78 +104,17 @@ a:hover {
 
 .form-input:focus {
   background: var(--surface-glass-input-focus);
-  border-color: rgba(255, 255, 255, 0.5);
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-md);
+  border-color: var(--zhimo-seal);
+  box-shadow: var(--zhimo-focus-ring);
 }
 
-/* Glow Effect - Vercel/Apple Style Proximity Glow */
-.glow-effect {
-  position: relative;
-  --x: -1000px;
-  --y: -1000px;
-  --glow-size: 600px;
-  --glow-color: rgb(252, 121, 97);
-  --border-width: 2px;
-}
-
-.glow-effect::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  padding: var(--border-width);
-  background: radial-gradient(
-    var(--glow-size) circle at var(--x) var(--y),
-    var(--glow-color),
-    transparent 40%
-  );
-  -webkit-mask: 
-    linear-gradient(#fff 0 0) content-box, 
-    linear-gradient(#fff 0 0);
-  mask: 
-    linear-gradient(#fff 0 0) content-box, 
-    linear-gradient(#fff 0 0);
-  -webkit-mask-composite: xor;
-  mask-composite: exclude;
-  pointer-events: none;
-  z-index: 2;
-  opacity: 1;
-  filter: brightness(1.5);
-}
-
-/* Glow for primary/themed buttons - use white glow */
-.btn.glow-effect,
-.join-btn.glow-effect,
-.modal-actions .primary.glow-effect,
-.server-icon.active.glow-effect,
-.control-btn.active.glow-effect,
-.control-btn.disconnect.glow-effect {
-  border: none;
-  --glow-color: rgba(255, 255, 255, 0.9);
-}
-
-/* Glow for inputs */
-.glow-input-wrapper {
-  position: relative;
-  border-radius: var(--radius-md);
-}
-
-.glow-input-wrapper .form-input {
-  border: none;
-}
-
-/* Reduce expensive effects while scrolling: disable blurs, filters and transitions */
+/* Reduce expensive effects while scrolling */
 .rms-scroll-active .glass-panel,
 .rms-scroll-active .glass-panel-dark,
 .rms-scroll-active .form-input,
 .rms-scroll-active .btn-primary,
-.rms-scroll-active .glow-effect::before,
 .rms-scroll-active .emoji-picker,
 .rms-scroll-active .emoji-btn {
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
-  filter: none !important;
   transition: none !important;
   will-change: auto !important;
 }
