@@ -314,7 +314,7 @@ function disconnect() {
 
           <p v-if="errorMessage" class="error-text">{{ errorMessage }}</p>
 
-          <button class="btn glow-effect" @click="joinVoice">
+          <button class="btn " @click="joinVoice">
             加入语音
           </button>
 
@@ -362,7 +362,7 @@ function disconnect() {
 
           <div class="voice-controls">
             <button
-              class="control-btn glow-effect"
+              class="control-btn "
               :class="{ active: isMuted }"
               @click="toggleMute"
               :title="isMuted ? '取消静音' : '静音'"
@@ -371,7 +371,7 @@ function disconnect() {
               <Mic v-else :size="20" />
             </button>
             <button
-              class="control-btn glow-effect"
+              class="control-btn "
               :class="{ active: isDeafened }"
               @click="toggleDeafen"
               :title="isDeafened ? '打开扬声器' : '关闭扬声器'"
@@ -380,7 +380,7 @@ function disconnect() {
               <Volume2 v-else :size="20" />
             </button>
             <button
-              class="control-btn disconnect glow-effect"
+              class="control-btn disconnect "
               @click="disconnect"
               title="断开连接"
             >

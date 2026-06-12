@@ -9,7 +9,8 @@
     "build:web": "pnpm --filter @rms-discord/web build",
     "build:electron": "pnpm --filter @rms-discord/electron-renderer build",
     "electron:start": "cd electron && npm start",
-    "electron:build": "pnpm build:electron && cd electron && npm run build"
+    "electron:build": "pnpm build:electron && cd electron && npm run build",
+    "test:ui-style": "node scripts/check-zhimo-theme.mjs"
   },
   "devDependencies": {
     "@rollup/rollup-linux-x64-gnu": "4.60.2",

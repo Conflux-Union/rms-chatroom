@@ -2,8 +2,8 @@
 import { ref, computed } from 'vue'
 import { useChatStore } from '../stores/chat'
 import { useAuthStore } from '../stores/auth'
-import { NModal, NInput, NButton, NSpace, NDropdown } from 'naive-ui'
-import type { DropdownOption } from 'naive-ui'
+import { ZmModal, ZmInput, ZmButton, ZmSpace, ZmDropdown } from './ui'
+import type { ZmDropdownOption } from './ui'
 import Settings from './Setting.vue'
 import ServerPermissionModal from './ServerPermissionModal.vue'
 
@@ -18,16 +18,16 @@ const showSettings = ref(false)
 const showServerPermissionModal = ref(false)
 const selectedServerForPermission = ref<number | null>(null)
 
-// Context menu state (NDropdown)
+// Context menu state (ZmDropdown)
 const serverDropdown = ref<{ show: boolean; x: number; y: number; serverId: number | null }>({
   show: false, x: 0, y: 0, serverId: null
 })
 
 // Dropdown options - 根据用户权限动态生成
-const serverDropdownOptions = computed((): DropdownOption[] => {
-  const options: DropdownOption[] = [
+const serverDropdownOptions = computed((): ZmDropdownOption[] => {
+  const options: ZmDropdownOption[] = [
     { label: '权限设置', key: 'permissions' },
-    { label: '删除服务器', key: 'delete', props: { style: { color: 'var(--color-danger)' } } }
+    { label: '删除服务器', key: 'delete', danger: true }
   ]
   return options
 })
@@ -62,7 +62,7 @@ function hideDropdown() {
   serverDropdown.value.show = false
 }
 
-async function handleDropdownSelect(key: string) {
+async function handleDropdownSelect(key: string | number) {
   if (key === 'permissions' && serverDropdown.value.serverId) {
     selectedServerForPermission.value = serverDropdown.value.serverId
     showServerPermissionModal.value = true
@@ -96,7 +96,7 @@ function onServerPermissionSaved(val: { minLevel: number; permMinLevel: number; 
       <div
         v-for="server in chat.servers"
         :key="server.id"
-        class="server-icon glow-effect"
+        class="server-icon "
         :class="{ active: chat.currentServer?.id === server.id }"
         @click="selectServer(server.id)"
         @contextmenu="canShowContextMenu() ? showContextMenu($event, server.id) : undefined"
@@ -105,12 +105,12 @@ function onServerPermissionSaved(val: { minLevel: number; permMinLevel: number; 
         {{ server.name.charAt(0).toUpperCase() }}
       </div>
 
-      <div v-if="auth.isAdmin" class="server-icon add-server glow-effect" @click="showCreate = true" title="创建服务器">
+      <div v-if="auth.isAdmin" class="server-icon add-server " @click="showCreate = true" title="创建服务器">
         +
       </div>
 
-      <!-- Context Menu (NDropdown) -->
-      <NDropdown
+      <!-- Context Menu (ZmDropdown) -->
+      <ZmDropdown
         placement="bottom-start"
         trigger="manual"
         :x="serverDropdown.x"
@@ -121,31 +121,31 @@ function onServerPermissionSaved(val: { minLevel: number; permMinLevel: number; 
         @clickoutside="serverDropdown.show = false"
       />
 
-      <!-- Create Server Modal (NModal) -->
-      <NModal
+      <!-- Create Server Modal (ZmModal) -->
+      <ZmModal
         v-model:show="showCreate"
         preset="card"
         title="创建服务器"
         style="width: 360px"
         :segmented="{ content: true, footer: 'soft' }"
       >
-        <NInput
+        <ZmInput
           v-model:value="newServerName"
           placeholder="服务器名称"
           @keyup.enter="createServer"
         />
         <template #footer>
-          <NSpace justify="end">
-            <NButton @click="showCreate = false">取消</NButton>
-            <NButton type="primary" @click="createServer">创建</NButton>
-          </NSpace>
+          <ZmSpace justify="end">
+            <ZmButton @click="showCreate = false">取消</ZmButton>
+            <ZmButton type="primary" @click="createServer">创建</ZmButton>
+          </ZmSpace>
         </template>
-      </NModal>
+      </ZmModal>
     </div>
 
     <div class="bottom-area">
       <div
-        class="server-icon glow-effect settings-btn"
+        class="server-icon  settings-btn"
         title="设置"
         @click.stop="showSettings = true"
       >
@@ -174,7 +174,7 @@ function onServerPermissionSaved(val: { minLevel: number; permMinLevel: number; 
 .server-list {
   width: 80px;
   height: 100vh;
-  border-right: 2px solid rgba(255, 166, 133, 0.50);
+  border-right: 1px solid var(--zhimo-border-strong);
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -184,11 +184,11 @@ function onServerPermissionSaved(val: { minLevel: number; permMinLevel: number; 
 }
 
 .server-icon {
-  width: 50px;
-  height: 50px;
-  border-radius: 50%;
-  background: var(--surface-glass);
-  margin: 0 auto 15px;
+  width: 48px;
+  height: 42px;
+  border-radius: var(--zhimo-radius);
+  background: var(--zhimo-bg-subtle);
+  margin: 0 auto 12px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -196,25 +196,28 @@ function onServerPermissionSaved(val: { minLevel: number; permMinLevel: number; 
   font-weight: 600;
   font-size: 18px;
   color: var(--color-text-main);
-  transition: all var(--transition-fast);
-  border: 2px solid transparent;
+  transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast), transform var(--transition-fast);
+  border: 1px solid var(--zhimo-border);
+  box-shadow: none;
 }
 
 .server-icon:hover {
-  transform: scale(1.1);
-  border-color: var(--color-accent);
-  box-shadow: var(--shadow-glow);
+  transform: translateY(-1px);
+  background: var(--zhimo-bg-hover);
+  border-color: var(--zhimo-border-strong);
+  color: var(--zhimo-fg);
 }
 
 .server-icon.active {
-  background: var(--color-gradient-primary);
-  color: white;
-  box-shadow: var(--shadow-glow);
+  background: var(--zhimo-seal);
+  border-color: var(--zhimo-seal-hover);
+  color: var(--zhimo-accent-fg);
 }
 
 .add-server {
-  background: var(--color-gradient-secondary);
-  color: rgba(28, 28, 28, 0.804);
+  background: var(--zhimo-bg);
+  color: var(--zhimo-seal);
+  border-style: dashed;
   font-size: 24px;
 }
 

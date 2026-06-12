@@ -2,11 +2,20 @@ import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
 import { resolve } from 'path';
 export default defineConfig({
-    plugins: [vue()],
+    plugins: [
+        vue({
+            template: {
+                compilerOptions: {
+                    isCustomElement: (tag) => tag.startsWith('zhimo-'),
+                },
+            },
+        }),
+    ],
     define: {
-        // Electron production needs absolute API URL
-        'import.meta.env.VITE_API_BASE': JSON.stringify('https://chatroom.rms.net.cn'),
-        'import.meta.env.VITE_WS_BASE': JSON.stringify('wss://chatroom.rms.net.cn'),
+        // Only set absolute URLs for production build
+        // In dev mode, use empty string to enable vite proxy
+        'import.meta.env.VITE_API_BASE': JSON.stringify(process.env.NODE_ENV === 'production' ? 'https://chatroom.rms.net.cn' : ''),
+        'import.meta.env.VITE_WS_BASE': JSON.stringify(process.env.NODE_ENV === 'production' ? 'wss://chatroom.rms.net.cn' : ''),
     },
     resolve: {
         alias: {
@@ -21,10 +30,22 @@ export default defineConfig({
             '/api': {
                 target: 'https://chatroom.rms.net.cn',
                 changeOrigin: true,
+                secure: false,
+                configure: (proxy, options) => {
+                    proxy.on('proxyReq', (proxyReq, req, res) => {
+                        const target = options.target || '';
+                        const url = req.url || '';
+                        console.log('[Proxy]', req.method, url, '->', target + url);
+                    });
+                    proxy.on('proxyRes', (proxyRes, req, res) => {
+                        console.log('[Proxy Response]', proxyRes.statusCode, req.url || '');
+                    });
+                },
             },
             '/ws': {
-                target: 'ws://chatroom.rms.net.cn',
+                target: 'wss://chatroom.rms.net.cn',
                 ws: true,
+                changeOrigin: true,
             },
         },
     },

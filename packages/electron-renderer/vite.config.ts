@@ -3,7 +3,15 @@ import vue from '@vitejs/plugin-vue'
 import { resolve } from 'path'
 
 export default defineConfig({
-  plugins: [vue()],
+  plugins: [
+    vue({
+      template: {
+        compilerOptions: {
+          isCustomElement: (tag) => tag.startsWith('zhimo-'),
+        },
+      },
+    }),
+  ],
   define: {
     // Only set absolute URLs for production build
     // In dev mode, use empty string to enable vite proxy
