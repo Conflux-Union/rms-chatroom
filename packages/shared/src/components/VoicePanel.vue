@@ -566,6 +566,10 @@ function closeInviteDialog() {
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
+  /* Frosted surface so participant text stays readable over the ink-wash. */
+  background: var(--zhimo-surface-bg);
+  backdrop-filter: var(--zhimo-surface-blur);
+  -webkit-backdrop-filter: var(--zhimo-surface-blur);
 }
 
 .voice-header {

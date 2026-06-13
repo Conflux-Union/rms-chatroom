@@ -66,127 +66,67 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="page-shell">
-    <div class="page-surface">
-      <div class="page-surface__inner">
-        <div class="page-content">
-          <h1 class="title">RMS ChatRoom</h1>
-          <p class="subtitle">{{ isTryingSilentLogin ? '正在尝试无感登录...' : '欢迎！请使用 RMS 账号登录' }}</p>
-          <button class="btn " :disabled="isTryingSilentLogin" @click="handleLogin">
-            {{ isTryingSilentLogin ? '请稍候...' : 'RMS 账号登录' }}
-          </button>
-        </div>
+  <div class="login-shell">
+    <zhimo-card class="login-card">
+      <div class="login-content">
+        <h1 class="title">RMS ChatRoom</h1>
+        <p class="subtitle">{{ isTryingSilentLogin ? '正在尝试无感登录...' : '欢迎！请使用 RMS 账号登录' }}</p>
+        <zhimo-button
+          size="lg"
+          block
+          :loading="isTryingSilentLogin || undefined"
+          @click="handleLogin"
+        >
+          {{ isTryingSilentLogin ? '请稍候...' : 'RMS 账号登录' }}
+        </zhimo-button>
       </div>
-    </div>
+    </zhimo-card>
   </div>
 </template>
 
 <style scoped>
-.page-shell {
+/* A full page, not a modal: just center a paper card on the global
+   <zhimo-ink-paper> background painted in App.vue. No dimming backdrop. */
+.login-shell {
   min-height: 100vh;
   min-height: 100dvh;
-  width: 100%;
-  display: flex;
-  justify-content: flex-end;
-  align-items: stretch;
-  padding-left: clamp(2rem, 10vw, 20rem);
-}
-
-.page-surface {
-  min-height: 100vh;
-  min-height: 100dvh;
-  width: auto;
-  min-width: 480px;
-  max-width: 100%;
-  flex: 0 0 auto;
-  padding: var(--spacing-xxl) var(--spacing-xl);
-  background: var(--surface-glass);
-  border-left: 1px solid var(--zhimo-border-strong);
-  box-shadow: none;
   display: flex;
   justify-content: center;
   align-items: center;
-  transition: width 0.35s var(--transition-normal), padding 0.3s var(--transition-normal);
+  padding: var(--spacing-xl);
 }
 
-.page-surface__inner {
+.login-card {
   width: 100%;
-  max-width: 440px;
-  display: flex;
-  justify-content: center;
-  align-items: center;
+  max-width: 420px;
+  box-shadow: var(--zhimo-shadow-md);
 }
 
-.page-content {
-  width: 100%;
+.login-content {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-xl);
+  gap: var(--spacing-lg);
+  padding: var(--spacing-md) var(--spacing-sm);
+  text-align: center;
 }
 
 .title {
-  color: var(--color-text-main);
-  text-align: center;
-  font-size: 2.25rem;
-  font-weight: 700;
+  color: var(--zhimo-fg);
   font-family: var(--zhimo-font-serif);
-  letter-spacing: 0;
+  font-size: 2rem;
+  font-weight: 700;
   margin: 0;
 }
 
 .subtitle {
-  color: var(--color-text-muted);
-  text-align: center;
-  font-size: 1.1rem;
+  color: var(--zhimo-fg-muted);
+  font-size: 1rem;
   margin: 0;
 }
 
-.btn {
-  width: 100%;
-  padding: 16px;
-  border: 1px solid var(--zhimo-seal-hover);
-  border-radius: var(--zhimo-radius);
-  background: var(--zhimo-seal);
-  color: var(--zhimo-accent-fg);
-  font-size: 1.1rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background var(--transition-fast), border-color var(--transition-fast), transform var(--transition-fast);
-  box-shadow: none;
-}
-
-.btn:hover {
-  transform: translateY(-1px);
-  background: var(--zhimo-seal-hover);
-}
-
-.btn:active {
-  transform: translateY(0) scale(0.98);
-}
-
-.btn:disabled {
-  cursor: wait;
-  opacity: 0.8;
-  transform: none;
-}
-
-@media (max-width: 960px) {
-  .page-shell {
-    padding-left: 0;
-    justify-content: center;
-  }
-  .page-surface {
-    width: 100%;
-    min-width: 100%;
-    padding: var(--spacing-xl) var(--spacing-md);
-    background: var(--surface-glass-strong);
-  }
-}
-
 @media (max-width: 600px) {
-  .page-surface {
-    align-items: flex-start;
-    padding-top: 40px;
+  .login-shell {
+    padding: var(--spacing-md);
   }
 }
 </style>

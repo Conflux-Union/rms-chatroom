@@ -1467,6 +1467,10 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   border-bottom: 1px dashed rgba(128, 128, 128, 0.4);
+  /* Frosted band so the channel name reads over the vivid ink canvas. */
+  background: var(--zhimo-surface-bg);
+  backdrop-filter: var(--zhimo-surface-blur);
+  -webkit-backdrop-filter: var(--zhimo-surface-blur);
 }
 
 .channel-hash {
@@ -1530,6 +1534,13 @@ onUnmounted(() => {
   flex: 1;
   min-width: 0;
   overflow: hidden;
+  /* Each message floats as a frosted bubble on the vivid ink canvas: the ink
+     stays sharp in the gutters/gaps while text reads against frosted paper. */
+  padding: 6px 12px;
+  border-radius: var(--zhimo-radius);
+  background: var(--zhimo-surface-bg);
+  backdrop-filter: var(--zhimo-surface-blur);
+  -webkit-backdrop-filter: var(--zhimo-surface-blur);
 }
 
 .message-header {
