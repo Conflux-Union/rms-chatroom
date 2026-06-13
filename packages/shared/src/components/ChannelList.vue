@@ -1046,10 +1046,26 @@ async function deleteChannel() {
   color: var(--color-text-main);
 }
 
+/* ZhiMo selection idiom (mirrors <zhimo-option>): a small seal stamp leads
+   the row and the content turns seal-red. The stamp's space is always
+   reserved so rows don't shift when activated. */
+.channel::before {
+  content: '';
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 1px;
+  background: var(--zhimo-seal);
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+}
+
 .channel.active {
-  background: var(--zhimo-bg-subtle);
-  color: var(--zhimo-fg);
-  box-shadow: inset 3px 0 0 var(--zhimo-seal);
+  color: var(--zhimo-seal);
+}
+
+.channel.active::before {
+  opacity: 1;
 }
 
 /* remove marquee/automatic scrolling — we use ellipsis only */
@@ -1520,9 +1536,7 @@ async function deleteChannel() {
 }
 
 .group-channels .channel.active {
-  background: var(--zhimo-bg-subtle);
-  color: var(--zhimo-fg);
-  box-shadow: inset 3px 0 0 var(--zhimo-seal);
+  color: var(--zhimo-seal);
 }
 
 .group-channels .voice-channel-wrapper {
@@ -1545,9 +1559,7 @@ async function deleteChannel() {
 }
 
 .group-channels .voice-channel-wrapper .channel.active {
-  background: var(--zhimo-bg-subtle);
-  color: var(--zhimo-fg);
-  box-shadow: inset 3px 0 0 var(--zhimo-seal);
+  color: var(--zhimo-seal);
 }
 
 /* Draggable styles */

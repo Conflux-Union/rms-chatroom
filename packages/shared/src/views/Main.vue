@@ -285,6 +285,9 @@ watch(
   height: 100vh;
   height: 100dvh;
   color: var(--color-text-main);
+  /* Stay transparent: the ink-wash shows vivid here. Readability is handled
+     per-region — frosted rails and frosted message bubbles — so the ink can
+     breathe across the chat canvas instead of being washed out globally. */
   background: transparent;
 }
 
@@ -338,6 +341,11 @@ watch(
 .sidebar-container {
   display: flex;
   flex-shrink: 0;
+  /* Frosted rail group: server + channel rails are dense small text, so they
+     sit on one frosted sheet (ink ghosts through, stays readable). */
+  background: var(--zhimo-surface-bg);
+  backdrop-filter: var(--zhimo-surface-blur);
+  -webkit-backdrop-filter: var(--zhimo-surface-blur);
 }
 
 .main-content {
@@ -353,6 +361,15 @@ watch(
   justify-content: center;
   align-items: center;
   color: var(--color-text-muted);
+}
+
+.no-channel p {
+  margin: 0;
+  padding: 12px 24px;
+  border-radius: var(--zhimo-radius);
+  background: var(--zhimo-surface-bg);
+  backdrop-filter: var(--zhimo-surface-blur);
+  -webkit-backdrop-filter: var(--zhimo-surface-blur);
 }
 
 /* .user-panel {
@@ -429,7 +446,9 @@ watch(
   width: 380px;
   height: 100vh;
   height: 100dvh;
-  background: var(--surface-glass-strong, rgba(20, 20, 30, 0.95));
+  background: var(--zhimo-surface-bg);
+  backdrop-filter: var(--zhimo-surface-blur);
+  -webkit-backdrop-filter: var(--zhimo-surface-blur);
   border-left: 1px solid var(--zhimo-border-strong);
   z-index: 99;
   display: flex;
