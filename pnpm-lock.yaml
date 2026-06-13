@@ -40,8 +40,8 @@ importers:
         specifier: ^5.0.4
         version: 5.0.4(@vue/compiler-sfc@3.5.32)(pinia@3.0.4(typescript@6.0.3)(vue@3.5.32(typescript@6.0.3)))(vue@3.5.32(typescript@6.0.3))
       zhimo-ui:
-        specifier: link:../../../zhimo-ui
-        version: link:../../../zhimo-ui
+        specifier: ^0.1.0
+        version: 0.1.0
     devDependencies:
       '@types/node':
         specifier: ^25.6.0
@@ -86,8 +86,8 @@ importers:
         specifier: ^5.0.4
         version: 5.0.4(@vue/compiler-sfc@3.5.32)(pinia@3.0.4(typescript@6.0.3)(vue@3.5.32(typescript@6.0.3)))(vue@3.5.32(typescript@6.0.3))
       zhimo-ui:
-        specifier: link:../../../zhimo-ui
-        version: link:../../../zhimo-ui
+        specifier: ^0.1.0
+        version: 0.1.0
     devDependencies:
       '@types/node':
         specifier: ^25.6.0
@@ -114,8 +114,8 @@ importers:
         specifier: ^5.0.4
         version: 5.0.4(@vue/compiler-sfc@3.5.32)(pinia@3.0.4(typescript@6.0.3)(vue@3.5.32(typescript@6.0.3)))(vue@3.5.32(typescript@6.0.3))
       zhimo-ui:
-        specifier: link:../../../zhimo-ui
-        version: link:../../../zhimo-ui
+        specifier: ^0.1.0
+        version: 0.1.0
     devDependencies:
       '@types/node':
         specifier: ^25.6.0
@@ -1047,6 +1047,9 @@ packages:
     engines: {node: '>= 14.6'}
     hasBin: true
 
+  zhimo-ui@0.1.0:
+    resolution: {integrity: sha512-r+8SeKPRmZAhcnJxbo2cVJbeX86jugcVRKcJ/rhbbMYdCwTdqtnQmVTht8p12LENMAyYmLS9RIm088ZQrFFvuQ==}
+
 snapshots:
 
   '@babel/generator@7.29.1':
@@ -1849,3 +1852,5 @@ snapshots:
       sdp: 3.2.2
 
   yaml@2.8.3: {}
+
+  zhimo-ui@0.1.0: {}
