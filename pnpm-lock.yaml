@@ -40,8 +40,8 @@ importers:
         specifier: ^5.0.4
         version: 5.0.4(@vue/compiler-sfc@3.5.32)(pinia@3.0.4(typescript@6.0.3)(vue@3.5.32(typescript@6.0.3)))(vue@3.5.32(typescript@6.0.3))
       zhimo-ui:
-        specifier: file:../../../zhimo-ui
-        version: file:../zhimo-ui
+        specifier: link:../../../zhimo-ui
+        version: link:../../../zhimo-ui
     devDependencies:
       '@types/node':
         specifier: ^25.6.0
@@ -86,8 +86,8 @@ importers:
         specifier: ^5.0.4
         version: 5.0.4(@vue/compiler-sfc@3.5.32)(pinia@3.0.4(typescript@6.0.3)(vue@3.5.32(typescript@6.0.3)))(vue@3.5.32(typescript@6.0.3))
       zhimo-ui:
-        specifier: file:../../../zhimo-ui
-        version: file:../zhimo-ui
+        specifier: link:../../../zhimo-ui
+        version: link:../../../zhimo-ui
     devDependencies:
       '@types/node':
         specifier: ^25.6.0
@@ -114,8 +114,8 @@ importers:
         specifier: ^5.0.4
         version: 5.0.4(@vue/compiler-sfc@3.5.32)(pinia@3.0.4(typescript@6.0.3)(vue@3.5.32(typescript@6.0.3)))(vue@3.5.32(typescript@6.0.3))
       zhimo-ui:
-        specifier: file:../../../zhimo-ui
-        version: file:../zhimo-ui
+        specifier: link:../../../zhimo-ui
+        version: link:../../../zhimo-ui
     devDependencies:
       '@types/node':
         specifier: ^25.6.0
@@ -1047,9 +1047,6 @@ packages:
     engines: {node: '>= 14.6'}
     hasBin: true
 
-  zhimo-ui@file:../zhimo-ui:
-    resolution: {directory: ../zhimo-ui, type: directory}
-
 snapshots:
 
   '@babel/generator@7.29.1':
@@ -1852,5 +1849,3 @@ snapshots:
       sdp: 3.2.2
 
   yaml@2.8.3: {}
-
-  zhimo-ui@file:../zhimo-ui: {}
