@@ -1,4 +1,7 @@
 <template>
+  <!-- Teleport to <body> so position:fixed escapes the frosted sidebar's
+       containing block (backdrop-filter traps fixed descendants). -->
+  <Teleport to="body">
   <div v-if="isOpen" class="modal-overlay" @click.self="handleClose">
     <div class="modal-content">
       <div class="modal-header">
@@ -39,6 +42,7 @@
       </div>
     </div>
   </div>
+  </Teleport>
 </template>
 
 <script setup lang="ts">

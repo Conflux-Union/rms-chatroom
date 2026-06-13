@@ -23,17 +23,23 @@ const hostStyle = computed(() =>
 </script>
 
 <template>
-  <zhimo-modal
-    :open="show ? true : undefined"
-    :heading="title"
-    :style="hostStyle"
-    @close="emit('update:show', false)"
-  >
-    <slot />
-    <div v-if="hasFooter" slot="footer" class="zm-modal-footer">
-      <slot name="footer" /><slot name="action" />
-    </div>
-  </zhimo-modal>
+  <!-- Teleport to <body> so the modal's position:fixed escapes any frosted
+       ancestor. backdrop-filter on a parent (e.g. the sidebar) makes it the
+       containing block for fixed descendants, which would pin the dialog to
+       the sidebar instead of the viewport. -->
+  <Teleport to="body">
+    <zhimo-modal
+      :open="show ? true : undefined"
+      :heading="title"
+      :style="hostStyle"
+      @close="emit('update:show', false)"
+    >
+      <slot />
+      <div v-if="hasFooter" slot="footer" class="zm-modal-footer">
+        <slot name="footer" /><slot name="action" />
+      </div>
+    </zhimo-modal>
+  </Teleport>
 </template>
 
 <style scoped>
