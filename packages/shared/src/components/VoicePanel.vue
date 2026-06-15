@@ -997,6 +997,7 @@ function closeInviteDialog() {
   background: var(--surface-glass);
   backdrop-filter: blur(10px);
   border: 1px solid rgba(255, 255, 255, 0.2);
+  color: var(--color-text);
   font-size: 20px;
   cursor: pointer;
   transition: all var(--transition-fast);
