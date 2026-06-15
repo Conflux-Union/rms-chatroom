@@ -158,6 +158,11 @@ class AuthException(
     val isUnauthorized: Boolean = false
 ) : Exception(message)
 
+/** True when the failure is a 401 that TokenAuthenticator already handled (or tried to). */
+val Throwable.isUnauthorized: Boolean
+    get() = (this as? AuthException)?.isUnauthorized == true
+            || (this as? HttpException)?.code() == 401
+
 fun Exception.toAuthException(): AuthException {
     return when (this) {
         is UnknownHostException -> AuthException("无法连接服务器，请检查网络", isUnauthorized = false)
