@@ -13,9 +13,9 @@
     "test:ui-style": "node scripts/check-zhimo-theme.mjs"
   },
   "devDependencies": {
-    "@rollup/rollup-linux-x64-gnu": "4.60.2",
-    "@rollup/rollup-win32-x64-msvc": "4.60.2",
-    "rollup": "^4.60.2",
+    "@rollup/rollup-linux-x64-gnu": "4.62.0",
+    "@rollup/rollup-win32-x64-msvc": "4.62.0",
+    "rollup": "^4.62.0",
     "typescript": "~6.0.3"
   },
   "dependencies": {
