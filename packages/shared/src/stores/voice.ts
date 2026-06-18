@@ -14,11 +14,13 @@ import type { Channel } from '../types'
 import { useAuthStore } from './auth'
 import { useChatStore } from './chat'
 import { authFetch } from '../utils/authFetch'
+import { announceParticipantJoined } from '../composables/voiceAnnounce'
 
 const API_BASE = import.meta.env.VITE_API_BASE || ''
 
 const STORAGE_KEY_INPUT = 'rms-voice-input-device'
 const STORAGE_KEY_OUTPUT = 'rms-voice-output-device'
+const STORAGE_KEY_ANNOUNCE = 'rms-voice-announce-enabled'
 let firstAddedRoom = true
 
 const capturePickerOpen = ref(false)
@@ -96,6 +98,14 @@ export const useVoiceStore = defineStore('voice', () => {
   const screenShareLocked = ref(false)
   const screenSharerId = ref<string | null>(null)
   const screenSharerName = ref<string | null>(null)
+
+  // TTS announce when someone joins voice (Web Speech API)
+  const voiceAnnounceEnabled = ref(localStorage.getItem(STORAGE_KEY_ANNOUNCE) !== 'false')
+  function setVoiceAnnounceEnabled(enabled: boolean) {
+    voiceAnnounceEnabled.value = enabled
+    if (enabled) localStorage.removeItem(STORAGE_KEY_ANNOUNCE)
+    else localStorage.setItem(STORAGE_KEY_ANNOUNCE, 'false')
+  }
 
   // Server-side mute state cache (from API)
   const serverMuteState = ref<Map<string, boolean>>(new Map())
@@ -511,6 +521,8 @@ export const useVoiceStore = defineStore('voice', () => {
 
       room.value.on(RoomEvent.ParticipantConnected, async (participant) => {
         updateParticipants()
+        const name = participant.name || participant.identity
+        announceParticipantJoined(name, { enabled: voiceAnnounceEnabled.value })
         // Host mode: auto-mute new participants (only host triggers this)
         const auth = useAuthStore()
         if (hostModeEnabled.value && hostModeHostId.value === String(auth.user?.id)) {
@@ -1314,6 +1326,8 @@ export const useVoiceStore = defineStore('voice', () => {
     attachLocalScreenShare,
     detachScreenShare,
     diagnoseAudioRouting,
+    voiceAnnounceEnabled,
+    setVoiceAnnounceEnabled,
   }
 })
 
