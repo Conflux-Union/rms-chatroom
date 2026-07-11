@@ -137,6 +137,106 @@ func (c *QQMusicClient) IsLoggedIn() bool {
 	return true
 }
 
+// NeedsRefresh reports whether the musickey expires within threshold (or has
+// already expired) and the credential carries refresh material to renew it.
+func (c *QQMusicClient) NeedsRefresh(threshold time.Duration) bool {
+	cred := c.credential
+	if cred == nil || cred.MusicID == 0 || cred.MusicKey == "" {
+		return false
+	}
+	if cred.RefreshKey == "" && cred.RefreshToken == "" {
+		return false
+	}
+	if cred.CreateTime <= 0 || cred.ExpiresIn <= 0 {
+		return false
+	}
+	return time.Now().Unix() >= cred.CreateTime+cred.ExpiresIn-int64(threshold/time.Second)
+}
+
+// RefreshCredential renews the musickey using stored refresh material.
+// Mirrors qqmusic-api refresh_credential: music.login.LoginServer.Login with
+// loginMode=2 and login-type-specific params.
+func (c *QQMusicClient) RefreshCredential() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	old := c.credential
+	if old == nil || old.MusicID == 0 || old.MusicKey == "" {
+		return fmt.Errorf("no credential to refresh")
+	}
+	if old.RefreshKey == "" && old.RefreshToken == "" {
+		return fmt.Errorf("credential has no refresh material")
+	}
+
+	var params map[string]interface{}
+	switch old.LoginType {
+	case 1: // WeChat
+		params = map[string]interface{}{
+			"openid":        old.OpenID,
+			"refresh_token": old.RefreshToken,
+			"str_musicid":   c.effectiveUin(),
+			"musickey":      old.MusicKey,
+			"unionid":       old.UnionID,
+			"refresh_key":   old.RefreshKey,
+			"loginMode":     2,
+		}
+	case 2: // QQ
+		params = map[string]interface{}{
+			"openid":        old.OpenID,
+			"access_token":  old.AccessToken,
+			"refresh_token": old.RefreshToken,
+			"expired_in":    old.ExpiredAt,
+			"musicid":       old.MusicID,
+			"musickey":      old.MusicKey,
+			"refresh_key":   old.RefreshKey,
+			"loginMode":     2,
+		}
+	default:
+		params = map[string]interface{}{
+			"openid":        old.OpenID,
+			"access_token":  old.AccessToken,
+			"refresh_token": old.RefreshToken,
+			"expired_in":    old.ExpiredAt,
+			"str_musicid":   c.effectiveUin(),
+			"musicid":       old.MusicID,
+			"musickey":      old.MusicKey,
+			"unionid":       old.UnionID,
+			"refresh_key":   old.RefreshKey,
+			"loginMode":     2,
+		}
+	}
+
+	body := c.buildRequestBody("music.login.LoginServer", "Login", params)
+
+	respData, err := c.doRequest(body)
+	if err != nil {
+		return fmt.Errorf("refresh request: %w", err)
+	}
+
+	key := "music.login.LoginServer.Login"
+	moduleMap, _ := respData[key].(map[string]interface{})
+	if moduleMap == nil {
+		return fmt.Errorf("missing key %s in refresh response", key)
+	}
+	respCode, _ := moduleMap["code"].(float64)
+	if int(respCode) != 0 {
+		return fmt.Errorf("refresh failed with code %d", int(respCode))
+	}
+	data, _ := moduleMap["data"].(map[string]interface{})
+	if data == nil {
+		return fmt.Errorf("no data in refresh response")
+	}
+
+	cred := credentialFromLoginData(data, old.LoginType)
+	if cred.MusicKey == "" {
+		return fmt.Errorf("refresh response has no musickey")
+	}
+	mergeMissingCredFields(cred, old)
+	c.credential = cred
+	log.Printf("qqmusic: credential refreshed, key expires in %ds", cred.ExpiresIn)
+	return c.SaveCredential()
+}
+
 // SearchSongs searches QQ Music for songs matching keyword.
 func (c *QQMusicClient) SearchSongs(keyword string, num int) ([]SongResult, error) {
 	if num <= 0 {
@@ -619,20 +719,7 @@ func (c *QQMusicClient) completeQQLogin(sigURL string, cookies []*http.Cookie) e
 		return fmt.Errorf("no data in login response")
 	}
 
-	musicID, _ := data["musicid"].(float64)
-	musicKey, _ := data["musickey"].(string)
-	createTime, _ := data["musickeyCreateTime"].(float64)
-	expiresIn, _ := data["keyExpiresIn"].(float64)
-
-	cred := &QQCredential{
-		MusicID:    int(musicID),
-		MusicKey:   musicKey,
-		LoginType:  2,
-		CreateTime: int64(createTime),
-		ExpiresIn:  int64(expiresIn),
-	}
-	populateExtendedCredFields(cred, data)
-	c.credential = cred
+	c.credential = credentialFromLoginData(data, 2)
 	return c.SaveCredential()
 }
 
@@ -713,20 +800,7 @@ func (c *QQMusicClient) completeWXLogin(wxCode string) error {
 		return fmt.Errorf("no data in wx login response")
 	}
 
-	musicID, _ := data["musicid"].(float64)
-	musicKey, _ := data["musickey"].(string)
-	createTime, _ := data["musickeyCreateTime"].(float64)
-	expiresIn, _ := data["keyExpiresIn"].(float64)
-
-	cred := &QQCredential{
-		MusicID:    int(musicID),
-		MusicKey:   musicKey,
-		LoginType:  1,
-		CreateTime: int64(createTime),
-		ExpiresIn:  int64(expiresIn),
-	}
-	populateExtendedCredFields(cred, data)
-	c.credential = cred
+	c.credential = credentialFromLoginData(data, 1)
 	return c.SaveCredential()
 }
 
@@ -740,6 +814,61 @@ func (c *QQMusicClient) effectiveUin() string {
 		return strconv.Itoa(c.credential.MusicID)
 	}
 	return "0"
+}
+
+// credentialFromLoginData builds a QQCredential from a login/refresh response data block.
+func credentialFromLoginData(data map[string]interface{}, loginType int) *QQCredential {
+	musicID, _ := data["musicid"].(float64)
+	musicKey, _ := data["musickey"].(string)
+	createTime, _ := data["musickeyCreateTime"].(float64)
+	expiresIn, _ := data["keyExpiresIn"].(float64)
+
+	cred := &QQCredential{
+		MusicID:    int(musicID),
+		MusicKey:   musicKey,
+		LoginType:  loginType,
+		CreateTime: int64(createTime),
+		ExpiresIn:  int64(expiresIn),
+	}
+	populateExtendedCredFields(cred, data)
+	// Without a create time the expiry (and refresh scheduling) can't be
+	// tracked; anchor it to now as a conservative fallback.
+	if cred.CreateTime == 0 {
+		cred.CreateTime = time.Now().Unix()
+	}
+	return cred
+}
+
+// mergeMissingCredFields carries identity/refresh fields over from old when a
+// refresh response omits them, so subsequent refreshes keep working.
+func mergeMissingCredFields(cred, old *QQCredential) {
+	if cred.MusicID == 0 {
+		cred.MusicID = old.MusicID
+	}
+	if cred.OpenID == "" {
+		cred.OpenID = old.OpenID
+	}
+	if cred.RefreshToken == "" {
+		cred.RefreshToken = old.RefreshToken
+	}
+	if cred.AccessToken == "" {
+		cred.AccessToken = old.AccessToken
+	}
+	if cred.RefreshKey == "" {
+		cred.RefreshKey = old.RefreshKey
+	}
+	if cred.UnionID == "" {
+		cred.UnionID = old.UnionID
+	}
+	if cred.StrMusicID == "" {
+		cred.StrMusicID = old.StrMusicID
+	}
+	if cred.EncryptUin == "" {
+		cred.EncryptUin = old.EncryptUin
+	}
+	if cred.ExpiredAt == 0 {
+		cred.ExpiredAt = old.ExpiredAt
+	}
 }
 
 // populateExtendedCredFields extracts extended fields from a login response into cred.

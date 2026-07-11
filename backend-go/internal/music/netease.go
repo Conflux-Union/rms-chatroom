@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log"
 	"math/big"
 	"math/rand"
 	"net/http"
@@ -235,14 +236,21 @@ func (c *NeteaseClient) injectCookies(r *reqv3.Request) {
 	}
 }
 
-// collectCookies saves response Set-Cookie headers back into the shared jar.
+// collectCookies saves response Set-Cookie headers back into the shared jar
+// and re-persists the credential file when any cookie actually changed, so
+// server-side cookie rotation survives a process restart.
 func (c *NeteaseClient) collectCookies(resp *reqv3.Response) {
 	cookies := resp.Cookies()
 	if len(cookies) == 0 {
 		return
 	}
 	u, _ := url.Parse("https://music.163.com")
+	existing := make(map[string]string)
+	for _, ck := range c.jar.Cookies(u) {
+		existing[ck.Name] = ck.Value
+	}
 	var toSet []*http.Cookie
+	changed := false
 	for _, ck := range cookies {
 		if ck.Domain == "" {
 			ck.Domain = ".music.163.com"
@@ -254,8 +262,16 @@ func (c *NeteaseClient) collectCookies(resp *reqv3.Response) {
 		if ck.Name == "__csrf" {
 			c.csrf = ck.Value
 		}
+		if existing[ck.Name] != ck.Value {
+			changed = true
+		}
 	}
 	c.jar.SetCookies(u, toSet)
+	if changed {
+		if err := c.SaveCredential(); err != nil {
+			log.Printf("netease: failed to persist rotated cookies: %v", err)
+		}
+	}
 }
 
 func (c *NeteaseClient) weapiRequest(endpoint string, params map[string]interface{}) (map[string]interface{}, error) {
@@ -539,6 +555,38 @@ func (c *NeteaseClient) getSongURLWithBitrate(id int64, br int) (string, error) 
 	}
 	u, _ := first["url"].(string)
 	return u, nil
+}
+
+// HasSession reports whether a MUSIC_U auth cookie is present in the jar,
+// without hitting the network.
+func (c *NeteaseClient) HasSession() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	u, _ := url.Parse("https://music.163.com")
+	for _, ck := range c.jar.Cookies(u) {
+		if ck.Name == "MUSIC_U" && ck.Value != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// RefreshLogin renews the login session server-side (weapi login/token/refresh).
+// Rotated cookies in the response are captured by collectCookies and persisted.
+func (c *NeteaseClient) RefreshLogin() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	result, err := c.weapiRequest("/weapi/login/token/refresh", map[string]interface{}{})
+	if err != nil {
+		return err
+	}
+	code, _ := result["code"].(float64)
+	if int(code) != 200 {
+		return fmt.Errorf("login refresh failed with code %v", result["code"])
+	}
+	return nil
 }
 
 // GetLoginStatus checks if the client is logged in.
