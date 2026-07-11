@@ -98,10 +98,6 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: ubuntu-22.04
-            args: '--target x86_64'
-          - os: macos-latest
-            args: '--target universal-apple-darwin'
           - os: windows-latest
             args: '--target x86_64'
 
@@ -122,19 +118,11 @@ jobs:
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.os == 'macos-latest' && 'universal-apple-darwin' || '' }}
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
-
-      - name: Install Linux dependencies
-        if: matrix.os == 'ubuntu-22.04'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libdbus-1-dev libssl-dev
 
       - name: Install dependencies
         run: pnpm install
@@ -164,29 +152,11 @@ jobs:
         with:
           tagName: ${{ needs.extract-version.outputs.tag_name }}
           releaseName: 'Release ${{ needs.extract-version.outputs.version_name }}'
-          releaseBody: 'Desktop app builds for Windows, macOS, and Linux'
+          releaseBody: 'Desktop app builds for Windows'
           releaseDraft: false
           prerelease: ${{ contains(needs.extract-version.outputs.version_name, '-dev') }}
           args: ${{ matrix.args }}
           updaterJsonPreferNsis: true
-
-      - name: Upload Linux artifacts
-        if: matrix.os == 'ubuntu-22.04'
-        uses: actions/upload-artifact@v7
-        with:
-          name: desktop-linux
-          path: |
-            src-tauri/target/*/release/bundle/appimage/*.AppImage
-            src-tauri/target/*/release/bundle/deb/*.deb
-          retention-days: 7
-
-      - name: Upload macOS artifacts
-        if: matrix.os == 'macos-latest'
-        uses: actions/upload-artifact@v7
-        with:
-          name: desktop-macos
-          path: src-tauri/target/*/release/bundle/dmg/*.dmg
-          retention-days: 7
 
       - name: Upload Windows artifacts
         if: matrix.os == 'windows-latest'
@@ -351,14 +321,7 @@ jobs:
             cp artifacts/android-apk/app-release.apk release-assets/rms-chatroom-${{ needs.extract-version.outputs.version_name }}.apk
           fi
 
-          # Desktop apps (Tauri)
-          if [ -d artifacts/desktop-linux ]; then
-            cp artifacts/desktop-linux/*.AppImage release-assets/ 2>/dev/null || true
-            cp artifacts/desktop-linux/*.deb release-assets/ 2>/dev/null || true
-          fi
-          if [ -d artifacts/desktop-macos ]; then
-            cp artifacts/desktop-macos/*.dmg release-assets/ 2>/dev/null || true
-          fi
+          # Desktop apps (Tauri) - Windows only
           if [ -d artifacts/desktop-windows ]; then
             cp artifacts/desktop-windows/*.exe release-assets/ 2>/dev/null || true
             cp artifacts/desktop-windows/*.msi release-assets/ 2>/dev/null || true
@@ -389,8 +352,6 @@ jobs:
 
             - **Android APK:** `rms-chatroom-${{ needs.extract-version.outputs.version_name }}.apk`
             - **Windows:** `.exe` installer
-            - **macOS:** `.dmg` installer
-            - **Linux:** `.AppImage` portable app or `.deb` package
 
             ## 📖 Installation
 
@@ -401,10 +362,6 @@ jobs:
 
             ### Desktop (Tauri)
             - **Windows:** Run the `.exe` installer
-            - **macOS:** Open the `.dmg` and drag to Applications
-            - **Linux:**
-              - **Debian/Ubuntu:** Install the `.deb` package with `sudo dpkg -i <filename>.deb`
-              - **Other distros:** Make the `.AppImage` executable and run it
 
             ---
 
