@@ -25,6 +25,7 @@ jobs:
           filters: |
             frontend:
               - 'packages/**'
+              - 'src-tauri/**'
               - 'package.json'
               - 'pnpm-lock.yaml'
               - 'pnpm-workspace.yaml'
@@ -63,8 +64,8 @@ jobs:
       - name: Build web frontend
         run: pnpm build:web
 
-      - name: Build electron renderer
-        run: pnpm build:electron
+      - name: Build desktop frontend
+        run: pnpm build:desktop
 
   go-backend-check:
     name: Go Backend Check

@@ -1,0 +1,54 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "RMS Chat",
+  "version": "1.0.0",
+  "identifier": "cn.net.rms.chatroom",
+  "build": {
+    "frontendDist": "../packages/desktop/dist",
+    "devUrl": "http://localhost:5173",
+    "beforeDevCommand": "pnpm --filter @rms-discord/desktop dev",
+    "beforeBuildCommand": "pnpm --filter @rms-discord/desktop build"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "RMS Chat",
+        "width": 1200,
+        "height": 800,
+        "resizable": true,
+        "fullscreen": false,
+        "center": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' blob: data:; script-src-elem 'self' blob: data:; worker-src 'self' blob:; img-src 'self' blob: data: http://m701.music.126.net https://isure.stream.qqmusic.qq.com; media-src 'self' blob: data: http://m701.music.126.net https://isure.stream.qqmusic.qq.com; connect-src 'self' blob: data: https://chatroom.rms.net.cn http://chatroom.rms.net.cn wss://chatroom.rms.net.cn ws://chatroom.rms.net.cn http://m701.music.126.net https://isure.stream.qqmusic.qq.com http://localhost:8000 http://127.0.0.1:8000 ws://localhost:8000 ws://127.0.0.1:8000 https://api.github.com"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis", "dmg", "appimage", "deb"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "windows": {
+      "nsis": {
+        "installMode": "perMachine",
+        "languages": ["SimpChinese", "English"]
+      }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "active": true,
+      "endpoints": [
+        "https://github.com/Conflux-Union/rms-chatroom/releases/latest/download/latest.json"
+      ],
+      "dialog": false,
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEJDQkNCMTgxMzIwQUE0REQKUldUZHBBb3lnYkc4dkM1NXNyQTZ4V0ZkUGFQRk1ob3ByYXNWVGFZT25scHNGRE9TZll2THMyL0EK"
+    }
+  }
+}

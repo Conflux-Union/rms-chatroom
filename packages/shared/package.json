@@ -16,6 +16,10 @@
     "./style.css": "./src/style.css"
   },
   "dependencies": {
+    "@tauri-apps/api": "^2",
+    "@tauri-apps/plugin-shell": "^2",
+    "@tauri-apps/plugin-updater": "^2",
+    "@tauri-apps/plugin-process": "^2",
     "axios": "^1.16.0",
     "livekit-client": "^2.18.8",
     "lucide-vue-next": "^1.0.0",

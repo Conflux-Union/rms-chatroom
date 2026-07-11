@@ -2,7 +2,6 @@
 import { computed, ref } from 'vue'
 import { useVoiceStore } from '../stores/voice'
 import { useAuthStore } from '../stores/auth'
-import ScreenSharePicker from './ScreenSharePicker.vue'
 import { Volume2, VolumeX, Mic, MicOff, Phone, Crown, Monitor, MonitorOff } from 'lucide-vue-next'
 
 const voice = useVoiceStore()
@@ -18,43 +17,13 @@ const hostButtonDisabled = computed(() =>
   voice.hostModeEnabled && !isCurrentUserHost.value
 )
 
-const showScreenPicker = ref(false)
 
 async function onScreenShareClick() {
-  // 1) 正在共享：保持原逻辑，直接停
   if (voice.isScreenSharing) {
     await voice.toggleScreenShare()
     return
   }
-
-  // 2) 被别人锁了：保持原逻辑，直接不动
   if (screenShareButtonDisabled.value) return
-
-  // 3) Electron：检查是否已选 capture source
-  const api = (window as any).electronAPI
-  const isElectron = !!api?.getCaptureSources && !!api?.setCaptureSource
-
-  if (isElectron) {
-    let hasSelected = false
-
-    // 你 store 里也用到了这个接口判断是否选过 :contentReference[oaicite:3]{index=3}
-    if (api?.getSelectedCaptureSourceId) {
-      const id = await api.getSelectedCaptureSourceId()
-      hasSelected = !!id
-    }
-
-    // 没选过：弹出你写的 Vue 选择窗口
-    if (!hasSelected) {
-      showScreenPicker.value = true
-      return
-    }
-
-    // 选过：直接走你原来的共享逻辑（lock -> LiveKit）
-    await voice.toggleScreenShare()
-    return
-  }
-
-  // 4) 非 Electron：走浏览器自己的系统选择框 + 原逻辑
   await voice.toggleScreenShare()
 }
 
@@ -78,7 +47,6 @@ const screenShareTooltip = computed(() => {
 
 <template>
   <div v-if="voice.isConnected" class="voice-controls">
-    <ScreenSharePicker v-model="voice.capturePickerOpen" />
     <div class="voice-status">
       <div class="status-info">
         <Volume2 class="status-icon" :size="16" />

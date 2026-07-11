@@ -3,6 +3,8 @@ import { ref, computed } from 'vue'
 import type { User } from '../types'
 import axios from 'axios'
 
+const _isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
+
 const API_BASE = import.meta.env.VITE_API_BASE || ''
 const SILENT_SSO_LOGOUT_KEY = 'rms_silent_sso_logged_out'
 const ACCESS_TOKEN_KEY = 'access_token'
@@ -14,6 +16,9 @@ const REFRESH_TOKEN_MAX_AGE = 30 * 24 * 60 * 60
 
 function canUseCookieStorage(): boolean {
   if (typeof window === 'undefined') return false
+  // Tauri webview origin (tauri.localhost) is not the backend API origin,
+  // so cookies won't be sent cross-origin. Use localStorage instead.
+  if (_isTauri) return false
   return window.location.protocol === 'http:' || window.location.protocol === 'https:'
 }
 

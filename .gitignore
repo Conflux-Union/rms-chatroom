@@ -86,10 +86,12 @@ Thumbs.db
 # Uploads
 uploads/
 
-# Electron build artifacts
-electron/dist/
-electron/out/
-electron/release/
+# Tauri build artifacts
+src-tauri/target/
+src-tauri/gen/
+
+# Playwright MCP artifacts
+.playwright-mcp/
 
 # Go build artifacts
 backend-go/rms-discord-server

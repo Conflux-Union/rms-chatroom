@@ -67,8 +67,14 @@ func main() {
 
 	e.Use(middleware.Recover())
 	e.Use(middleware.Logger())
+	// Tauri desktop webview origins are not known at config time.
+	// Always allow them so the desktop app can make API calls.
+	allowOrigins := make([]string, 0, len(cfg.CORSOrigins)+3)
+	allowOrigins = append(allowOrigins, cfg.CORSOrigins...)
+	allowOrigins = append(allowOrigins, "https://tauri.localhost", "http://tauri.localhost", "tauri://localhost")
+
 	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
-		AllowOrigins:     cfg.CORSOrigins,
+		AllowOrigins:     allowOrigins,
 		AllowMethods:     []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete, http.MethodOptions},
 		AllowHeaders:     []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept, echo.HeaderAuthorization},
 		AllowCredentials: true,

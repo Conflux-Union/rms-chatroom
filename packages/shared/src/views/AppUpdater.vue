@@ -1,5 +1,9 @@
 <template>
-  <div v-if="visible" class="mask">
+  <!-- Teleport to <body> so position:fixed escapes #app's global
+       `#app > *:not(.ink-bg) { position: relative }` rule, which would
+       override .mask's position:fixed and pin the dialog to the document flow. -->
+  <Teleport to="body">
+    <div v-if="visible" class="mask">
     <div class="box">
       <div class="title">
         {{ forced ? "需要更新才能继续使用" : "发现新版本" }}
@@ -7,7 +11,6 @@
 
       <div class="info">
         <div>状态：{{ stateText }}</div>
-        <div v-if="sourceText">更新源：{{ sourceText }}</div>
         <div v-if="versionText">版本：{{ versionText }}</div>
       </div>
 
@@ -21,7 +24,6 @@
       </div>
 
       <div class="actions">
-        <!-- 强制更新：只给更新 + 退出 -->
         <template v-if="forced">
           <button class="btn primary" :disabled="btnDisabled" @click="forceUpdateAction">
             {{ forceBtnText }}
@@ -29,7 +31,6 @@
           <button class="btn danger" @click="quit">退出</button>
         </template>
 
-        <!-- 可选更新：下载/安装/稍后 -->
         <template v-else>
           <button
             v-if="state === 'available'"
@@ -55,124 +56,155 @@
       </div>
     </div>
   </div>
+  </Teleport>
 </template>
 
-<script setup>
-import { onMounted, onBeforeUnmount, ref, computed } from "vue";
+<script setup lang="ts">
+import { onMounted, ref, computed } from 'vue'
+import { isTauri } from '../index'
 
-const visible = ref(false);
+const visible = ref(false)
+const state = ref<'idle' | 'checking' | 'available' | 'none' | 'downloading' | 'downloaded' | 'error'>('idle')
+const forced = ref(false)
+const percent = ref(0)
+const transferred = ref(0)
+const total = ref(0)
+const message = ref('')
+const versionText = ref('')
 
-const state = ref("idle"); // idle/checking/available/none/downloading/downloaded/error
-const forced = ref(false);
-
-const percent = ref(0);
-const transferred = ref(0);
-const total = ref(0);
-const message = ref("");
-const versionText = ref("");
-
-// 新增：显示当前选择的更新源
-const sourceText = ref("");
+let updateObj: any = null
 
 const stateText = computed(() => {
-  const map = {
-    idle: "空闲",
-    checking: "检查更新中",
-    available: "有新版本（待下载）",
-    none: "已是最新版本",
-    downloading: "正在下载",
-    downloaded: "下载完成",
-    error: "错误",
-  };
-  return map[state.value] || state.value;
-});
+  const map: Record<string, string> = {
+    idle: '空闲',
+    checking: '检查更新中',
+    available: '有新版本（待下载）',
+    none: '已是最新版本',
+    downloading: '正在下载',
+    downloaded: '下载完成',
+    error: '错误',
+  }
+  return map[state.value] || state.value
+})
 
-const btnDisabled = computed(() => state.value === "checking" || state.value === "downloading");
+const btnDisabled = computed(() => state.value === 'checking' || state.value === 'downloading')
 
 const forceBtnText = computed(() => {
-  if (state.value === "downloaded") return "安装并重启";
-  if (state.value === "downloading") return "下载中…";
-  if (state.value === "available") return "更新（开始下载）";
-  return "更新";
-});
+  if (state.value === 'downloaded') return '安装并重启'
+  if (state.value === 'downloading') return '下载中…'
+  if (state.value === 'available') return '更新（开始下载）'
+  return '更新'
+})
 
-function formatBytes(n) {
-  if (!Number.isFinite(n) || n <= 0) return "0 B";
-  const units = ["B", "KB", "MB", "GB"];
-  let i = 0;
-  let v = n;
+function formatBytes(n: number) {
+  if (!Number.isFinite(n) || n <= 0) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB']
+  let i = 0
+  let v = n
   while (v >= 1024 && i < units.length - 1) {
-    v /= 1024;
-    i++;
+    v /= 1024
+    i++
   }
-  return `${v.toFixed(1)} ${units[i]}`;
+  return `${v.toFixed(1)} ${units[i]}`
+}
+
+function isForcedUpdate(body: string): boolean {
+  const t = String(body || '').toLowerCase()
+  const words = [
+    'security', 'forced', 'force update', 'mandatory', 'must update',
+    '强制更新', '必须更新', '安全更新',
+  ].map(w => w.toLowerCase())
+  return words.some(w => t.includes(w))
 }
 
 async function check() {
-  await window.electronAPI?.updaterCheck?.();
+  if (!isTauri) return
+  state.value = 'checking'
+  try {
+    const { check } = await import('@tauri-apps/plugin-updater')
+    const update = await check()
+    if (update) {
+      updateObj = update
+      versionText.value = update.version
+      forced.value = isForcedUpdate(update.body || '')
+      state.value = 'available'
+
+      if (forced.value) {
+        await download()
+      }
+    } else {
+      state.value = 'none'
+      visible.value = false
+    }
+  } catch (e: any) {
+    state.value = 'error'
+    message.value = String(e?.message || e)
+    visible.value = true
+  }
 }
 
 async function download() {
-  await window.electronAPI?.updaterDownload?.();
+  if (!updateObj) return
+  state.value = 'downloading'
+  try {
+    let contentLength = 0
+    let chunkLength = 0
+    await updateObj.downloadAndInstall((event: any) => {
+      if (event.event === 'Started') {
+        contentLength = event.data.contentLength || 0
+        total.value = contentLength
+        transferred.value = 0
+      } else if (event.event === 'Progress') {
+        chunkLength += event.data.chunkLength
+        transferred.value = chunkLength
+        if (contentLength > 0) {
+          percent.value = (chunkLength / contentLength) * 100
+        }
+      } else if (event.event === 'Finished') {
+        state.value = 'downloaded'
+        percent.value = 100
+      }
+    })
+    // downloadAndInstall may auto-install; if we reach here without error, mark as downloaded
+    state.value = 'downloaded'
+  } catch (e: any) {
+    state.value = 'error'
+    message.value = String(e?.message || e)
+    visible.value = true
+  }
 }
 
 async function install() {
-  await window.electronAPI?.updaterInstall?.();
+  if (!updateObj) return
+  try {
+    const { relaunch } = await import('@tauri-apps/plugin-process')
+    await relaunch()
+  } catch (e: any) {
+    state.value = 'error'
+    message.value = String(e?.message || e)
+  }
 }
 
 async function quit() {
-  await window.electronAPI?.quitApp?.();
+  if (!isTauri) return
+  const { invoke } = await import('@tauri-apps/api/core')
+  await invoke('quit_app')
 }
 
-// 强制更新按钮：available -> download；downloaded -> install
 async function forceUpdateAction() {
-  if (state.value === "downloaded") return install();
-  if (state.value === "available") return download();
+  if (state.value === 'downloaded') return install()
+  if (state.value === 'available') return download()
 }
 
 function later() {
-  visible.value = false;
+  visible.value = false
 }
 
-let off = null;
-
 onMounted(() => {
-  off = window.electronAPI?.onUpdaterStatus?.((data) => {
-    state.value = data.state || "idle";
-    forced.value = !!data.forced;
-
-    // 新增：显示源（主进程会发 CN / INTL / GITHUB）
-    if (data.source) {
-      const s = String(data.source).toUpperCase();
-      sourceText.value = s === "CN" ? "国内源" : s === "INTL" ? "海外源" : s === "GITHUB" ? "GitHub" : s;
-    }
-
-    // 版本信息
-    const v = data?.info?.version || data?.info?.releaseName || "";
-    if (v) versionText.value = String(v);
-
-    if (data.percent != null) percent.value = data.percent;
-    if (data.transferred != null) transferred.value = data.transferred;
-    if (data.total != null) total.value = data.total;
-    if (data.message) message.value = data.message;
-
-    // Close dialog when no updates available
-    if (state.value === "none") {
-      visible.value = false;
-      return;
-    }
-
-    if (forced.value) {
-      if (["available", "downloading", "downloaded", "error"].includes(state.value)) visible.value = true;
-    } else {
-      if (["available", "downloaded", "error"].includes(state.value)) visible.value = true;
-    }
-  });
-});
-
-onBeforeUnmount(() => {
-  if (typeof off === "function") off();
-});
+  if (isTauri) {
+    check()
+  }
+})
 </script>
 
 <style scoped>

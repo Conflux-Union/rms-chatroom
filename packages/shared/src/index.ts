@@ -27,4 +27,6 @@ export {
 export { initTheme, getThemeMode, setThemeMode } from './utils/theme'
 
 // Platform detection
-export const isElectron = typeof window !== 'undefined' && !!(window as any).electronAPI
+export const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
+// Backward compat alias
+export const isElectron = isTauri
