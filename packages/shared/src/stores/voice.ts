@@ -16,6 +16,8 @@ import { useChatStore } from './chat'
 import { authFetch } from '../utils/authFetch'
 import { announceParticipantJoined } from '../composables/voiceAnnounce'
 
+import { isTauri } from '../index'
+
 const API_BASE = import.meta.env.VITE_API_BASE || ''
 
 const STORAGE_KEY_INPUT = 'rms-voice-input-device'
@@ -68,6 +70,8 @@ export const useVoiceStore = defineStore('voice', () => {
   const isDeafened = ref(false)
   const participants = ref<VoiceParticipant[]>([])
   const error = ref<string | null>(null)
+  const webrtcNotSupported = ref(false)
+  const chromiumBrowserPath = ref<string | null>(null)
   const currentVoiceChannel = ref<Channel | null>(null)
 
 
@@ -494,6 +498,7 @@ export const useVoiceStore = defineStore('voice', () => {
 
     isConnecting.value = true
     error.value = null
+    webrtcNotSupported.value = false
 
     try {
       const response = await authFetch(`${API_BASE}/api/voice/${channel.id}/token`)
@@ -713,11 +718,50 @@ export const useVoiceStore = defineStore('voice', () => {
 
       return true
     } catch (e) {
-      error.value = e instanceof Error ? e.message : 'Failed to connect'
+      const msg = e instanceof Error ? e.message : 'Failed to connect'
       console.log('Voice connect error:' + e)
+
+      // Detect WebRTC not supported (e.g. WebKitGTK without WebRTC compiled in)
+      if (msg.includes('LiveKit doesn\'t seem to be supported') || msg.includes("WebRTC")) {
+        webrtcNotSupported.value = true
+        if (isTauri) {
+          // Try to find a Chromium-based browser for app mode fallback
+          try {
+            const { invoke } = await import('@tauri-apps/api/core')
+            const path = await invoke<string | null>('find_chromium_browser')
+            chromiumBrowserPath.value = path
+            if (path) {
+              error.value = '当前桌面环境不支持 WebRTC 语音。点击下方按钮在浏览器中打开语音。'
+            } else {
+              error.value = '当前桌面环境不支持 WebRTC 语音，且未检测到 Chrome/Chromium 浏览器。请安装 Chromium 或使用网页版。'
+            }
+          } catch {
+            error.value = msg
+          }
+        } else {
+          error.value = msg
+        }
+      } else {
+        error.value = msg
+      }
       return false
     } finally {
       isConnecting.value = false
+    }
+  }
+
+  /// Open the web app in a Chromium browser app mode for voice chat.
+  async function openVoiceInBrowser() {
+    if (!chromiumBrowserPath.value) return
+    const webUrl = window.location.origin + window.location.pathname + '#/voice-redirect'
+    try {
+      const { invoke } = await import('@tauri-apps/api/core')
+      await invoke('open_in_chromium_app', {
+        browserPath: chromiumBrowserPath.value,
+        url: window.location.origin,
+      })
+    } catch (e) {
+      console.error('Failed to open browser:', e)
     }
   }
 
@@ -1279,6 +1323,9 @@ export const useVoiceStore = defineStore('voice', () => {
     diagnoseAudioRouting,
     voiceAnnounceEnabled,
     setVoiceAnnounceEnabled,
+    webrtcNotSupported,
+    chromiumBrowserPath,
+    openVoiceInBrowser,
   }
 })
 
