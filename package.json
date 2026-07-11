@@ -5,16 +5,17 @@
   "type": "module",
   "scripts": {
     "dev:web": "pnpm --filter @rms-discord/web dev",
-    "dev:electron": "pnpm --filter @rms-discord/electron-renderer dev",
+    "dev:desktop": "tauri dev",
     "build:web": "pnpm --filter @rms-discord/web build",
-    "build:electron": "pnpm --filter @rms-discord/electron-renderer build",
-    "electron:start": "cd electron && npm start",
-    "electron:build": "pnpm build:electron && cd electron && npm run build",
+    "build:desktop": "pnpm --filter @rms-discord/desktop build",
+    "desktop:dev": "tauri dev",
+    "desktop:build": "tauri build",
     "test:ui-style": "node scripts/check-zhimo-theme.mjs"
   },
   "devDependencies": {
     "@rollup/rollup-linux-x64-gnu": "4.60.2",
     "@rollup/rollup-win32-x64-msvc": "4.60.2",
+    "@tauri-apps/cli": "^2",
     "rollup": "^4.60.2",
     "typescript": "~6.0.3"
   },

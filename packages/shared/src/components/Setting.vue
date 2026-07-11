@@ -4,6 +4,7 @@ import { useVoiceStore } from '../stores/voice'
 import { ZmModal, ZmSelect, ZmButton, ZmSpace, ZmProgress } from './ui'
 import type { ZmSelectOption } from './ui'
 import { Mic, Volume2 } from 'lucide-vue-next'
+import { isTauri } from '../index'
 
 const emit = defineEmits<{ (e: 'close'): void }>()
 
@@ -12,15 +13,6 @@ const show = ref(true)
 function handleClose() {
   show.value = false
   emit('close')
-}
-
-declare global {
-  interface Window {
-    hotkey?: {
-      get: () => Promise<{ toggleWindow?: string; toggleMic?: string }>
-      set: (key: string, accelerator: string) => Promise<{ ok: boolean; error?: string }>
-    }
-  }
 }
 
 const voice = useVoiceStore()
@@ -94,16 +86,20 @@ function eventToAccelerator(e: KeyboardEvent): string | null {
 
 async function loadShortcuts() {
   tip.value = ''
-  const s = await window.hotkey?.get()
+  if (!isTauri) return
+  const { invoke } = await import('@tauri-apps/api/core')
+  const s = await invoke<Record<string, string>>('get_shortcuts')
   toggleWindow.value = s?.toggleWindow || 'CommandOrControl+Alt+K'
   toggleMic.value = s?.toggleMic || 'CommandOrControl+Alt+M'
 }
 
 async function save(key: 'toggleWindow' | 'toggleMic') {
   tip.value = ''
+  if (!isTauri) return
+  const { invoke } = await import('@tauri-apps/api/core')
   const val = (key === 'toggleWindow' ? toggleWindow.value : toggleMic.value).trim()
-  const r = await window.hotkey?.set(key, val)
-  tip.value = r?.ok ? '已保存' : r?.error || '保存失败'
+  const r = await invoke<Record<string, boolean>>('set_shortcut', { key, accelerator: val })
+  tip.value = r?.ok ? '已保存' : '保存失败'
 }
 
 function startCapture(key: 'toggleWindow' | 'toggleMic') {

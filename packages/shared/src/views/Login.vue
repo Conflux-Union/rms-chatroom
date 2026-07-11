@@ -1,53 +1,61 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, onBeforeUnmount, ref } from 'vue'
 import { useAuthStore } from '../stores/auth'
 import { useRouter } from 'vue-router'
+import { isTauri } from '../index'
 
 const auth = useAuthStore()
 const router = useRouter()
 const isTryingSilentLogin = ref(false)
 
-// Electron 环境：监听主进程回调（token/code），然后交给你们已有的 Callback 页面处理
-const electronAPI = (window as any).electronAPI
+// Tauri desktop: listen for OAuth callback from Rust side
+let unlisten: (() => void) | null = null
 
-if (electronAPI?.onAuthCallback) {
-  electronAPI.onAuthCallback((data: any) => {
-    const { token, code } = data || {}
-    if (token) {
-      router.replace({ path: '/callback', query: { token } })
-    } else if (code) {
-      router.replace({ path: '/callback', query: { code } })
-    }
+if (isTauri) {
+  import('@tauri-apps/api/event').then(({ listen }) => {
+    listen('auth-callback', (event) => {
+      const { access_token, refresh_token, token, code } = event.payload as any || {}
+      if (access_token || token) {
+        router.replace({ path: '/callback', query: { access_token: access_token || token, refresh_token: refresh_token || undefined } })
+      } else if (code) {
+        router.replace({ path: '/callback', query: { code } })
+      }
+    }).then((fn) => { unlisten = fn })
   })
 }
+
+onBeforeUnmount(() => {
+  if (unlisten) unlisten()
+})
 
 async function handleLogin() {
   const loginUrl = auth.getLoginUrl()
 
-  // ✅ Electron：走系统浏览器，不要 window.location 跳走主窗口
-  if (electronAPI?.getCallbackUrl && electronAPI?.openExternal) {
-    const cb = await electronAPI.getCallbackUrl() // 形如 http://127.0.0.1:53333/callback
+  // Tauri desktop: open SSO in system browser, use local callback server
+  if (isTauri) {
+    const { invoke } = await import('@tauri-apps/api/core')
+    const { open } = await import('@tauri-apps/plugin-shell')
+    const cb = await invoke('get_callback_url') as string
     if (!cb) {
-      console.error('callbackUrl 为空，无法走浏览器 SSO')
+      console.error('callbackUrl is empty, cannot launch browser SSO')
       return
     }
 
-    // 把 loginUrl 里的 redirect_url 换成 cb
-    const u = new URL(loginUrl)
+    const u = new URL(loginUrl, window.location.origin)
     if (u.searchParams.has('redirect_url')) {
       u.searchParams.set('redirect_url', cb)
     }
 
-    await electronAPI.openExternal(u.toString())
+    await open(u.toString())
     return
   }
 
-  // ✅ 网页端：保持原逻辑
+  // Web: navigate directly
   window.location.href = loginUrl
 }
 
 onMounted(async () => {
-  if (electronAPI?.getCallbackUrl || !auth.canAttemptSilentLogin()) {
+  if (isTauri || !auth.canAttemptSilentLogin()) {
     return
   }
 
