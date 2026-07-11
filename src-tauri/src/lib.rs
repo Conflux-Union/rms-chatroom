@@ -141,6 +141,48 @@ fn quit_app(app: AppHandle) {
     app.exit(0);
 }
 
+/// Detect available Chromium-based browser and return its executable path.
+/// Used by the frontend to open the web app in app mode when WebKitGTK lacks WebRTC.
+#[tauri::command]
+fn find_chromium_browser() -> Option<String> {
+    let candidates = [
+        "google-chrome",
+        "google-chrome-stable",
+        "chromium",
+        "chromium-browser",
+        "brave-browser",
+        "microsoft-edge",
+        "vivaldi",
+    ];
+
+    for cmd in &candidates {
+        if let Ok(output) = std::process::Command::new("which")
+            .arg(cmd)
+            .output()
+        {
+            if output.status.success() {
+                let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if !path.is_empty() {
+                    return Some(path);
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Open a URL in Chromium app mode (chromeless standalone window).
+#[tauri::command]
+fn open_in_chromium_app(browser_path: String, url: String) -> Result<(), String> {
+    std::process::Command::new(&browser_path)
+        .arg("--app")
+        .arg(&url)
+        .arg("--new-window")
+        .spawn()
+        .map_err(|e| format!("Failed to launch browser: {}", e))?;
+    Ok(())
+}
+
 fn register_default_shortcuts(app: &AppHandle) {
     let shortcuts = get_shortcuts(app.clone());
     let state = app.state::<Mutex<ShortcutManager>>();
@@ -203,8 +245,10 @@ pub fn run() {
             register_default_shortcuts(app.handle());
 
             // Enable WebRTC and media stream in WebKitGTK (Linux only)
-            // WebKitGTK disables these by default; without this, RTCPeerConnection
-            // is undefined and LiveKit throws "browser not supported".
+            // WebKitGTK disables these by default. On distros that compile
+            // WebKitGTK with -DENABLE_WEB_RTC=ON, this exposes RTCPeerConnection.
+            // On distros without WebRTC compiled in, the frontend falls back to
+            // opening the web app in a system Chromium browser for voice.
             #[cfg(target_os = "linux")]
             {
                 if let Some(webview) = app.get_webview_window("main") {
@@ -212,7 +256,6 @@ pub fn run() {
                         use webkit2gtk::{PermissionRequestExt, SettingsExt, WebViewExt};
                         let webview = wv.inner();
 
-                        // Enable WebRTC and media stream
                         if let Some(settings) = webview.settings() {
                             settings.set_enable_webrtc(true);
                             settings.set_enable_media_stream(true);
@@ -221,8 +264,6 @@ pub fn run() {
                             settings.set_media_playback_requires_user_gesture(false);
                         }
 
-                        // Auto-allow permission requests (camera, microphone, display)
-                        // In a desktop app the OS already handles device access.
                         webview.connect_permission_request(|_wv, req| {
                             req.allow();
                             true
@@ -239,6 +280,8 @@ pub fn run() {
             get_shortcuts,
             set_shortcut,
             quit_app,
+            find_chromium_browser,
+            open_in_chromium_app,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

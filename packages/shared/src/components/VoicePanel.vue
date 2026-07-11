@@ -24,6 +24,7 @@ const inviteUrl = ref('')
 const inviteCopied = ref(false)
 const inviteLoading = ref(false)
 const inviteError = ref('')
+const showWebRTCFallback = ref(false)
 
 onMounted(() => {
   console.log('[VoicePanel] Component mounted - Initial state report')
@@ -153,7 +154,12 @@ async function joinVoice() {
   if (!chat.currentChannel) return
   const success = await voice.joinVoice(chat.currentChannel)
   if (!success && voice.error) {
-    alert(voice.error)
+    if (voice.webrtcNotSupported && voice.chromiumBrowserPath) {
+      // Show fallback dialog instead of alert
+      showWebRTCFallback.value = true
+    } else {
+      alert(voice.error)
+    }
   }
 }
 
@@ -302,6 +308,23 @@ function closeInviteDialog() {
         >
           {{ voice.isConnecting ? '连接中...' : '加入语音' }}
         </button>
+      </div>
+
+      <!-- WebRTC fallback dialog for Linux desktop without WebRTC support -->
+      <div v-if="showWebRTCFallback" class="webrtc-fallback-overlay" @click.self="showWebRTCFallback = false">
+        <div class="webrtc-fallback-dialog">
+          <h3>语音需要浏览器支持</h3>
+          <p class="fallback-desc">
+            当前桌面环境 (WebKitGTK) 不支持 WebRTC，无法直接使用语音功能。
+            检测到系统已安装 Chromium 内核浏览器，可以在浏览器中以独立窗口打开语音。
+          </p>
+          <div class="fallback-actions">
+            <button class="btn-cancel" @click="showWebRTCFallback = false">取消</button>
+            <button class="btn-open-browser" @click="voice.openVoiceInBrowser(); showWebRTCFallback = false">
+              在浏览器中打开
+            </button>
+          </div>
+        </div>
       </div>
 
       <div v-else class="voice-connected">
@@ -1248,5 +1271,61 @@ function closeInviteDialog() {
     width: 44px;
     height: 44px;
   }
+}
+
+.webrtc-fallback-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+
+.webrtc-fallback-dialog {
+  background: var(--surface-glass-strong, #1e1e2e);
+  border-radius: 12px;
+  padding: 24px;
+  max-width: 400px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.webrtc-fallback-dialog h3 {
+  margin: 0 0 12px;
+  font-size: 18px;
+  color: var(--color-text);
+}
+
+.fallback-desc {
+  font-size: 14px;
+  color: var(--color-text-muted);
+  line-height: 1.5;
+  margin-bottom: 20px;
+}
+
+.fallback-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+}
+
+.fallback-actions .btn-cancel {
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: transparent;
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.fallback-actions .btn-open-browser {
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: none;
+  background: var(--color-gradient-primary, #5865f2);
+  color: #fff;
+  cursor: pointer;
+  font-weight: 600;
 }
 </style>
