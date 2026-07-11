@@ -201,6 +201,36 @@ pub fn run() {
             app.manage(callback_state);
             app.manage(Mutex::new(ShortcutManager::default()));
             register_default_shortcuts(app.handle());
+
+            // Enable WebRTC and media stream in WebKitGTK (Linux only)
+            // WebKitGTK disables these by default; without this, RTCPeerConnection
+            // is undefined and LiveKit throws "browser not supported".
+            #[cfg(target_os = "linux")]
+            {
+                if let Some(webview) = app.get_webview_window("main") {
+                    let _ = webview.with_webview(|wv| {
+                        use webkit2gtk::{PermissionRequestExt, SettingsExt, WebViewExt};
+                        let webview = wv.inner();
+
+                        // Enable WebRTC and media stream
+                        if let Some(settings) = webview.settings() {
+                            settings.set_enable_webrtc(true);
+                            settings.set_enable_media_stream(true);
+                            settings.set_enable_mediasource(true);
+                            settings.set_enable_media(true);
+                            settings.set_media_playback_requires_user_gesture(false);
+                        }
+
+                        // Auto-allow permission requests (camera, microphone, display)
+                        // In a desktop app the OS already handles device access.
+                        webview.connect_permission_request(|_wv, req| {
+                            req.allow();
+                            true
+                        });
+                    });
+                }
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
