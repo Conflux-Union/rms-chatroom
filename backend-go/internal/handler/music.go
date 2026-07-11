@@ -27,6 +27,18 @@ var (
 	neteaseUnikeyMu sync.Mutex
 )
 
+const (
+	qqCredentialFile      = "qq_credential.json"
+	neteaseCredentialFile = "netease_credential.json"
+
+	// Credential auto-renewal cadence: the QQ musickey only lives ~3 days, so
+	// refresh it once it is within a day of expiry; the NetEase session has no
+	// visible expiry, so ping login/token/refresh daily to keep it alive.
+	musicRefreshCheckInterval = time.Hour
+	qqRefreshThreshold        = 24 * time.Hour
+	neteaseKeepAliveInterval  = 24 * time.Hour
+)
+
 // Login poller cancellation (one per platform)
 var (
 	loginPollers   = make(map[string]chan struct{})
@@ -105,8 +117,10 @@ func getRoomState(roomName string) *RoomMusicState {
 
 func init() {
 	// Initialize music clients
-	qqClient = music.NewQQMusicClient("qq_credential.json")
-	neteaseClient = music.NewNeteaseClient("netease_credential.json")
+	qqClient = music.NewQQMusicClient(qqCredentialFile)
+	neteaseClient = music.NewNeteaseClient(neteaseCredentialFile)
+
+	go musicCredentialRefreshLoop()
 
 	// Wire GetRoomPlaybackState for late-joiner support in ws/music.go
 	ws.GetRoomPlaybackState = func(roomName string) map[string]interface{} {
@@ -131,6 +145,34 @@ func init() {
 			"position_ms": pos,
 			"is_playing":  true,
 		}
+	}
+}
+
+// musicCredentialRefreshLoop keeps music platform logins alive: it renews the
+// QQ musickey before expiry and periodically refreshes the NetEase session.
+func musicCredentialRefreshLoop() {
+	var lastNeteaseKeepAlive time.Time
+
+	refresh := func() {
+		if qc := qqClient; qc != nil && qc.NeedsRefresh(qqRefreshThreshold) {
+			if err := qc.RefreshCredential(); err != nil {
+				log.Printf("music: qq credential refresh failed: %v", err)
+			}
+		}
+		if nc := neteaseClient; nc != nil && time.Since(lastNeteaseKeepAlive) >= neteaseKeepAliveInterval && nc.HasSession() {
+			if err := nc.RefreshLogin(); err != nil {
+				log.Printf("music: netease session refresh failed: %v", err)
+			} else {
+				lastNeteaseKeepAlive = time.Now()
+			}
+		}
+	}
+
+	refresh()
+	ticker := time.NewTicker(musicRefreshCheckInterval)
+	defer ticker.Stop()
+	for range ticker.C {
+		refresh()
 	}
 }
 
@@ -513,18 +555,20 @@ func musicLoginCheckAll() echo.HandlerFunc {
 func musicLogout() echo.HandlerFunc {
 	return func(c echo.Context) error {
 		platform := c.QueryParam("platform")
+		// Recreate clients with the credential path kept, so a later re-login
+		// is persisted again (the file was just removed, nothing is loaded).
 		switch platform {
 		case "qq":
-			os.Remove("qq_credential.json")
-			qqClient = music.NewQQMusicClient("")
+			os.Remove(qqCredentialFile)
+			qqClient = music.NewQQMusicClient(qqCredentialFile)
 		case "netease":
-			os.Remove("netease_credential.json")
-			neteaseClient = music.NewNeteaseClient("")
+			os.Remove(neteaseCredentialFile)
+			neteaseClient = music.NewNeteaseClient(neteaseCredentialFile)
 		default:
-			os.Remove("qq_credential.json")
-			os.Remove("netease_credential.json")
-			qqClient = music.NewQQMusicClient("")
-			neteaseClient = music.NewNeteaseClient("")
+			os.Remove(qqCredentialFile)
+			os.Remove(neteaseCredentialFile)
+			qqClient = music.NewQQMusicClient(qqCredentialFile)
+			neteaseClient = music.NewNeteaseClient(neteaseCredentialFile)
 		}
 		return c.JSON(http.StatusOK, map[string]interface{}{"success": true})
 	}
