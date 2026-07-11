@@ -141,7 +141,10 @@ jobs:
           export const COMMIT_HASH = "$COMMIT_HASH"
           EOF
 
-          echo "Generated version.ts with version $VERSION_NAME($VERSION_CODE)"
+          # Update tauri.conf.json version from tag
+          node -e "const fs=require('fs');const f='src-tauri/tauri.conf.json';const c=JSON.parse(fs.readFileSync(f,'utf8'));c.version='$VERSION_NAME';fs.writeFileSync(f,JSON.stringify(c,null,2)+'\n')"
+
+          echo "Generated version.ts and set tauri version to $VERSION_NAME($VERSION_CODE)"
 
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
