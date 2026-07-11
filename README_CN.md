@@ -10,7 +10,7 @@
 - **实时聊天** - 基于 WebSocket 的即时消息，支持断线重连和心跳检测
 - **语音通话** - 基于 LiveKit 的 WebRTC 语音通信
 - **音乐分享** - QQ 音乐 + 网易云音乐，跨客户端同步播放
-- **多平台** - Web、桌面端 (Electron)、Android
+- **多平台** - Web、桌面端 (Tauri, Windows)、Android
 - **双维度权限** - 每个资源可配置 `permission_level` AND/OR `group_level`
 - **降噪** - 通过 AudioWorklet 支持 RNNoise 和 DTLN
 - **语音管理** - 静音参与者、主持人模式、访客邀请
@@ -22,8 +22,8 @@ rms-discord/
 ├── packages/                # pnpm monorepo
 │   ├── shared/             # 共享组件、状态管理、composables
 │   ├── web/                # Web 入口
-│   └── electron-renderer/  # Electron 渲染进程入口
-├── electron/               # Electron 主进程
+│   └── desktop/            # 桌面端 (Tauri) 渲染入口
+├── src-tauri/              # Tauri v2 Rust 后端
 ├── backend-go/             # Go 后端 (Echo 框架)
 ├── android/                # Kotlin + Jetpack Compose
 └── pnpm-workspace.yaml
@@ -144,7 +144,7 @@ Redirect URL 验证防止开放重定向：仅允许 `cors_origins` 下的 `/cal
 
 ```bash
 pnpm build:web                # Web 前端
-pnpm build:electron           # Electron 渲染进程
+pnpm build:desktop            # 桌面端 (Tauri) 前端
 cd backend-go && go build ./cmd/server/main.go  # Go 二进制
 cd android && ./gradlew assembleRelease          # Android APK
 ```
@@ -152,19 +152,19 @@ cd android && ./gradlew assembleRelease          # Android APK
 ## 部署
 
 ```bash
-python deploy.py --release   # 打标签 + CI/CD（Android、Electron、服务器）
+python deploy.py --release   # 打标签 + CI/CD（Android、Tauri 桌面端、服务器）
 python deploy.py --hot-fix   # 热修复版本
 python deploy.py --debug     # 调试部署（不打标签）
 ```
 
-GitHub Actions 构建 Android APK、Electron 应用 (Windows/macOS/Linux)，部署服务器二进制，创建 GitHub Release。
+GitHub Actions 构建 Android APK、Tauri 桌面端应用 (Windows)，部署服务器二进制，创建 GitHub Release。
 
 ## 平台支持
 
 | 平台 | 状态 | 备注 |
 |------|------|------|
 | Web | 生产环境 | Chrome、Firefox、Safari |
-| 桌面端 | 生产环境 | Windows、macOS、Linux (Electron) |
+| 桌面端 | 生产环境 | Windows (Tauri) |
 | Android | 生产环境 | Android 8.0+ |
 | iOS | 计划中 | - |
 

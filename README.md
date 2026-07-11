@@ -10,7 +10,7 @@ A modern communication platform with real-time chat, voice calls, and music shar
 - **Real-time Chat** - WebSocket-powered instant messaging with reconnection and heartbeat
 - **Voice Calls** - WebRTC-based voice communication via LiveKit
 - **Music Sharing** - QQ Music + NetEase Cloud Music with synchronized playback
-- **Multi-platform** - Web, Desktop (Electron), and Android
+- **Multi-platform** - Web, Desktop (Tauri, Windows), and Android
 - **Dual-dimension Permissions** - `permission_level` AND/OR `group_level` per resource
 - **Noise Cancellation** - RNNoise and DTLN via AudioWorklet
 - **Voice Admin Controls** - Mute participants, host mode, guest invites
@@ -22,8 +22,8 @@ rms-discord/
 ├── packages/                # pnpm monorepo
 │   ├── shared/             # Shared components, stores, composables
 │   ├── web/                # Web entry point
-│   └── electron-renderer/  # Electron renderer entry point
-├── electron/               # Electron main process
+│   └── desktop/            # Desktop (Tauri) renderer entry point
+├── src-tauri/              # Tauri v2 Rust backend
 ├── backend-go/             # Go backend (Echo framework)
 ├── android/                # Kotlin + Jetpack Compose
 └── pnpm-workspace.yaml
@@ -144,7 +144,7 @@ Backward compatible: defaults (`perm_min_level=0`, `logic_operator=AND`) reduce 
 
 ```bash
 pnpm build:web                # Web frontend
-pnpm build:electron           # Electron renderer
+pnpm build:desktop            # Desktop (Tauri) frontend
 cd backend-go && go build ./cmd/server/main.go  # Go binary
 cd android && ./gradlew assembleRelease          # Android APK
 ```
@@ -152,19 +152,19 @@ cd android && ./gradlew assembleRelease          # Android APK
 ## Deployment
 
 ```bash
-python deploy.py --release   # Tag + CI/CD (Android, Electron, Server)
+python deploy.py --release   # Tag + CI/CD (Android, Tauri Desktop, Server)
 python deploy.py --hot-fix   # Hot-fix version
 python deploy.py --debug     # Debug deploy (no tag)
 ```
 
-GitHub Actions builds Android APK, Electron apps (Windows/macOS/Linux), deploys server binary, and creates GitHub Release.
+GitHub Actions builds Android APK, Tauri Desktop app (Windows), deploys server binary, and creates GitHub Release.
 
 ## Platform Support
 
 | Platform | Status | Notes |
 |----------|--------|-------|
 | Web | Production | Chrome, Firefox, Safari |
-| Desktop | Production | Windows, macOS, Linux (Electron) |
+| Desktop | Production | Windows (Tauri) |
 | Android | Production | Android 8.0+ |
 | iOS | Planned | - |
 
