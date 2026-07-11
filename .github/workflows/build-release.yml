@@ -99,7 +99,7 @@ jobs:
       matrix:
         include:
           - os: windows-latest
-            args: '--target x86_64'
+            args: '--target x86_64-pc-windows-msvc'
 
     steps:
       - name: Checkout code
