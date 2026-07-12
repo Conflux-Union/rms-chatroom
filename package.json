@@ -13,11 +13,11 @@
     "test:ui-style": "node scripts/check-zhimo-theme.mjs"
   },
   "devDependencies": {
-    "@rollup/rollup-linux-x64-gnu": "4.60.2",
-    "@rollup/rollup-win32-x64-msvc": "4.60.2",
+    "@rollup/rollup-linux-x64-gnu": "4.62.2",
+    "@rollup/rollup-win32-x64-msvc": "4.62.2",
     "@tauri-apps/cli": "^2",
-    "rollup": "^4.60.2",
-    "typescript": "~6.0.3"
+    "rollup": "^4.62.2",
+    "typescript": "~7.0.2"
   },
   "dependencies": {
     "vue-draggable-plus": "^0.6.1"
