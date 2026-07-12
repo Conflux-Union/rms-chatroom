@@ -12,8 +12,8 @@
     "@rms-discord/shared": "workspace:*",
     "pinia": "^3.0.4",
     "zhimo-ui": "^0.1.0",
-    "vue": "^3.5.33",
-    "vue-router": "^5.0.6"
+    "vue": "^3.5.39",
+    "vue-router": "^5.1.0"
   },
   "devDependencies": {
     "@types/node": "^25.6.0",
