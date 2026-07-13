@@ -29,6 +29,13 @@ func main() {
 		log.Fatalf("failed to load config: %v", err)
 	}
 
+	// Fail fast on a missing database_url instead of starting up and 500-ing
+	// on the first request. sql.Open is lazy and never connects, so a Ping is
+	// required to actually validate the DSN.
+	if cfg.DatabaseURL == "" {
+		log.Fatal("database_url is required (set it in config.json or the DATABASE_URL env var)")
+	}
+
 	// Parse DSN from database_url (strip mysql:// prefix if present)
 	dsn := cfg.DatabaseURL
 	dsn = strings.TrimPrefix(dsn, "mysql://")
@@ -59,6 +66,9 @@ func main() {
 	db.SetMaxOpenConns(25)
 	db.SetMaxIdleConns(5)
 	db.SetConnMaxLifetime(5 * time.Minute)
+	if err := db.Ping(); err != nil {
+		log.Fatalf("failed to connect to database: %v", err)
+	}
 
 	ssoClient := sso.NewClient(cfg.SSOBaseURL)
 
@@ -83,19 +93,26 @@ func main() {
 	// Wire up BroadcastFunc so HTTP handlers can broadcast WS events.
 	// Filter recipients by channel access permission; fall back to
 	// unfiltered broadcast on transient DB errors to avoid silently
-	// dropping events for messages already persisted.
+	// dropping events for messages already persisted. The permission rule
+	// is memoized via ChannelPermCache so repeated edits/reactions to the
+	// same channel don't re-query the DB on every broadcast.
 	handler.BroadcastFunc = func(channelID int64, payload map[string]interface{}) {
-		var minLevel, permMinLevel int
-		var logicOp string
-		err := db.QueryRow(
-			"SELECT min_level, perm_min_level, logic_operator FROM channels WHERE id = ?", channelID,
-		).Scan(&minLevel, &permMinLevel, &logicOp)
+		rule, err := ws.ChannelPermCache.Get(channelID, func() (permission.PermRule, error) {
+			var minLevel, permMinLevel int
+			var logicOp string
+			err := db.QueryRow(
+				"SELECT min_level, perm_min_level, logic_operator FROM channels WHERE id = ?", channelID,
+			).Scan(&minLevel, &permMinLevel, &logicOp)
+			if err != nil {
+				return permission.PermRule{}, err
+			}
+			return permission.PermRule{PermMinLevel: permMinLevel, GroupMinLevel: minLevel, LogicOperator: logicOp}, nil
+		})
 		if err != nil {
 			log.Printf("broadcast: channel %d permission query failed, falling back to unfiltered: %v", channelID, err)
 			ws.ChatManager.BroadcastToAllUsers(payload)
 			return
 		}
-		rule := permission.PermRule{PermMinLevel: permMinLevel, GroupMinLevel: minLevel, LogicOperator: logicOp}
 		ws.ChatManager.BroadcastFiltered(payload, func(user *permission.UserInfo) bool {
 			return permission.CanAccess(user, rule)
 		})
