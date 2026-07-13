@@ -58,6 +58,7 @@ class ChatRepository @Inject constructor(
     companion object {
         private const val TAG = "ChatRepository"
         private const val CACHE_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000L // 7 days
+        private const val MESSAGES_PAGE_SIZE = 50
     }
 
     // Track if app is in foreground (set by Activity)
@@ -77,6 +78,14 @@ class ChatRepository @Inject constructor(
 
     private val _messages = MutableStateFlow<List<Message>>(emptyList())
     val messages: StateFlow<List<Message>> = _messages.asStateFlow()
+
+    // Pagination state for the current channel's history.
+    // hasMoreMessages: false once an older page returns fewer than MESSAGES_PAGE_SIZE.
+    // isLoadingOlder: guards against concurrent older-page requests.
+    private val _hasMoreMessages = MutableStateFlow(true)
+    val hasMoreMessages: StateFlow<Boolean> = _hasMoreMessages.asStateFlow()
+    private val _isLoadingOlder = MutableStateFlow(false)
+    val isLoadingOlder: StateFlow<Boolean> = _isLoadingOlder.asStateFlow()
 
     // Voice channel users: Map<channelId, List<VoiceUser>>
     private val _voiceChannelUsers = MutableStateFlow<Map<Long, List<VoiceUser>>>(emptyMap())
@@ -271,17 +280,34 @@ class ChatRepository @Inject constructor(
 
     fun setCurrentChannel(channel: Channel) {
         _currentChannel.value = channel
+        // Drop the previous channel's messages immediately so they cannot be
+        // shown or used as a pagination cursor before the new channel loads.
+        _messages.value = emptyList()
     }
 
     suspend fun fetchMessages(channelId: Long): Result<List<Message>> {
-        // First load from cache for instant display
+        // Fresh load (channel switch / pull-to-refresh): reset the "has more"
+        // flag. Leave _isLoadingOlder alone — an in-flight older fetch resets
+        // itself via its own finally, and resetting here would prematurely drop
+        // the scroll-restore anchor during a same-channel pull-to-refresh.
+        _hasMoreMessages.value = true
+
+        // First load from cache for instant display (newest page only, so the
+        // display matches the network page that will replace it and does not
+        // briefly flash a longer cached list).
         loadCachedMessages(channelId)
 
         return try {
             val token = authRepository.getToken()
                 ?: return Result.failure(AuthException("未登录，请先登录"))
-            val messageList = api.getMessages(authRepository.getAuthHeader(token), channelId)
+            val messageList = api.getMessages(authRepository.getAuthHeader(token), channelId, limit = MESSAGES_PAGE_SIZE)
+            // Drop the result if the user switched channels mid-flight.
+            if (_currentChannel.value?.id != channelId) return Result.success(emptyList())
             _messages.value = messageList
+            // A short page means the channel history fits within one page.
+            if (messageList.size < MESSAGES_PAGE_SIZE) {
+                _hasMoreMessages.value = false
+            }
             // Update cache
             cacheMessages(messageList)
             Result.success(messageList)
@@ -297,12 +323,58 @@ class ChatRepository @Inject constructor(
         }
     }
 
+    // Prepend one older page of history for the current channel. The cursor is
+    // the id of the oldest currently-loaded message; the server returns older
+    // messages in chronological order, which we prepend directly.
+    suspend fun fetchOlderMessages(channelId: Long): Result<List<Message>> {
+        // Guard concurrent / exhausted pagination.
+        if (_isLoadingOlder.value || !_hasMoreMessages.value) return Result.success(emptyList())
+        val oldest = _messages.value.firstOrNull()
+            ?: return Result.success(emptyList())
+        // Ignore if the user switched channels, or if the loaded head still
+        // belongs to a previous channel (stale data before the new load lands).
+        if (_currentChannel.value?.id != channelId || oldest.channelId != channelId) {
+            return Result.success(emptyList())
+        }
+        val oldestId = oldest.id
+
+        _isLoadingOlder.value = true
+        return try {
+            val token = authRepository.getToken()
+                ?: return Result.failure(AuthException("未登录，请先登录"))
+            val older = api.getMessages(authRepository.getAuthHeader(token), channelId, limit = MESSAGES_PAGE_SIZE, before = oldestId)
+            // Channel switched away while the request was in flight: discard.
+            if (_currentChannel.value?.id != channelId) return Result.success(emptyList())
+            // Cursor must still be the list head. A concurrent fetchMessages
+            // (pull-to-refresh / channel switch) replaces the list, so a stale
+            // older page must not be prepended onto a different head.
+            if (_messages.value.firstOrNull()?.id != oldestId) return Result.success(emptyList())
+            if (older.isNotEmpty()) {
+                _messages.value = older + _messages.value
+                cacheMessages(older)
+            }
+            // A short page means we have reached the top of the history.
+            if (older.size < MESSAGES_PAGE_SIZE) {
+                _hasMoreMessages.value = false
+            }
+            Result.success(older)
+        } catch (e: Exception) {
+            Log.e(TAG, "fetchOlderMessages failed", e)
+            Result.failure(e.toAuthException())
+        } finally {
+            _isLoadingOlder.value = false
+        }
+    }
+
     private suspend fun loadCachedMessages(channelId: Long) {
         try {
             val cached = messageDao.getMessagesByChannelOnce(channelId)
             if (cached.isNotEmpty()) {
-                _messages.value = cached.map { it.toMessage() }
-                Log.d(TAG, "Loaded ${cached.size} cached messages")
+                // Show only the newest page from cache so the viewport matches
+                // the network page that replaces it (avoids a long-list flash).
+                val page = cached.takeLast(MESSAGES_PAGE_SIZE).map { it.toMessage() }
+                _messages.value = page
+                Log.d(TAG, "Loaded ${page.size} cached messages (of ${cached.size})")
             }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to load cached messages", e)

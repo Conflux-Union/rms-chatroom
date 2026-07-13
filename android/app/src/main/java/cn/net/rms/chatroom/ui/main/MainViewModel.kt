@@ -71,6 +71,8 @@ class MainViewModel @Inject constructor(
     val state: StateFlow<MainState> = _state.asStateFlow()
 
     val messages = chatRepository.messages
+    val hasMoreMessages = chatRepository.hasMoreMessages
+    val isLoadingOlder = chatRepository.isLoadingOlder
     val connectionState: StateFlow<ConnectionState> = chatRepository.connectionState
     val voiceChannelUsers: StateFlow<Map<Long, List<VoiceUser>>> = globalWebSocket.voiceChannelUsers
 
@@ -264,6 +266,15 @@ class MainViewModel @Inject constructor(
     fun refreshMessages() {
         val channelId = _state.value.currentChannel?.id ?: return
         loadMessages(channelId)
+    }
+
+    // Prepend one older page of history for the current text channel.
+    fun loadOlderMessages() {
+        val channel = _state.value.currentChannel ?: return
+        if (channel.type != ChannelType.TEXT) return
+        viewModelScope.launch {
+            chatRepository.fetchOlderMessages(channel.id)
+        }
     }
 
     private fun observeWebSocket() {
