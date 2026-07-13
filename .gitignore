@@ -95,3 +95,7 @@ src-tauri/gen/
 
 # Go build artifacts
 backend-go/rms-discord-server
+
+# Agent instruction files (local, not shared)
+AGENTS.md
+CLAUDE.md
