@@ -35,6 +35,10 @@ const messageInput = ref('')
 const messagesContainer = ref<HTMLElement | null>(null)
 const fileInput = ref<HTMLInputElement | null>(null)
 
+// True while prepending older messages. Suppresses the length-watch auto-scroll
+// (which would yank the user back to the bottom) and guards re-entrancy.
+const isFetchingOlder = ref(false)
+
 // File upload state
 const pendingFiles = ref<File[]>([])
 const uploadedAttachments = ref<Attachment[]>([])
@@ -200,6 +204,9 @@ watch(
   () => chat.currentChannel,
   async (channel) => {
     if (channel && channel.type === 'TEXT') {
+      // Clear any in-flight "load older" lock from the previous channel so the
+      // new channel can paginate immediately.
+      isFetchingOlder.value = false
       await chat.fetchMessages(channel.id)
       await checkMuteStatus()
 
@@ -226,10 +233,13 @@ watch(
   { immediate: true }
 )
 
-// Auto-scroll when new messages arrive
+// Auto-scroll when new messages arrive.
+// Skip when prepending older messages (isFetchingOlder) — loadOlderMessages
+// restores the scroll position itself instead of jumping to the bottom.
 watch(
   () => chat.messages.length,
   async () => {
+    if (isFetchingOlder.value) return
     await nextTick()
     scrollToBottom()
     refreshMessageObserver()
@@ -252,9 +262,49 @@ function scrollToBottom() {
   })
 }
 
+// Load one page of older messages and keep the user's viewport steady.
+// The store prepends; we anchor on the current oldest message and restore its
+// viewport position so the view does not jump. Using the element's rect (not a
+// scrollHeight delta) keeps the restore exact even if a WebSocket message lands
+// during the fetch.
+async function loadOlderMessages() {
+  if (isFetchingOlder.value) return
+  if (!chat.currentChannel || !chat.hasMore || chat.messages.length === 0) return
+  const container = messagesContainer.value
+  if (!container) return
+
+  isFetchingOlder.value = true
+  const anchorId = chat.messages[0].id
+  const containerTop = container.getBoundingClientRect().top
+  const anchorEl = container.querySelector<HTMLElement>(`[data-message-id="${anchorId}"]`)
+  const anchorRelTop = anchorEl ? anchorEl.getBoundingClientRect().top - containerTop : 0
+
+  await chat.fetchMessages(chat.currentChannel.id, anchorId)
+
+  await nextTick()
+  const newAnchorEl = container.querySelector<HTMLElement>(`[data-message-id="${anchorId}"]`)
+  if (newAnchorEl) {
+    const newRelTop = newAnchorEl.getBoundingClientRect().top - container.getBoundingClientRect().top
+    container.scrollTop += newRelTop - anchorRelTop
+  }
+
+  refreshMessageObserver()
+  isFetchingOlder.value = false
+}
+
 // Save read position when user stops scrolling (debounced)
 function handleMessagesScroll() {
   if (!chat.currentChannel || chat.messages.length === 0) return
+
+  // Scrolled near the top: load one more page of older history.
+  if (
+    chat.hasMore &&
+    !isFetchingOlder.value &&
+    messagesContainer.value &&
+    messagesContainer.value.scrollTop < 100
+  ) {
+    loadOlderMessages()
+  }
 
   isScrollActive.value = true
 
@@ -1099,6 +1149,9 @@ onUnmounted(() => {
       @wheel.passive="handleWheelScroll"
       @touchmove.passive="handleWheelScroll"
     >
+      <div v-if="chat.isLoadingOlder" class="loading-more-indicator">
+        加载更早的消息…
+      </div>
       <div
         v-for="(msg, index) in chat.messages"
         :key="msg.id"
@@ -1488,6 +1541,24 @@ onUnmounted(() => {
   flex: 1;
   overflow-y: auto;
   padding: 16px;
+  position: relative;
+}
+
+/* Loading indicator shown while prepending older messages.
+   Absolutely positioned so it does not affect scrollHeight, which keeps
+   scroll-position restoration in loadOlderMessages exact. */
+.loading-more-indicator {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 4px 14px;
+  font-size: 13px;
+  color: var(--text-muted, #b9bbbe);
+  background: var(--background-secondary, #2f3136);
+  border-radius: 8px;
+  z-index: 5;
+  pointer-events: none;
 }
 
 .message {
