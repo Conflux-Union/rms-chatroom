@@ -40,7 +40,11 @@ type Config struct {
 
 func defaults() Config {
 	return Config{
-		DatabaseURL:              "sqlite3://./discord.db",
+		// No default DatabaseURL: the only registered driver is mysql and the
+		// DSN handling assumes a mysql:// scheme. Leaving this empty forces
+		// database_url to be set in config.json or via the DATABASE_URL env
+		// var, rather than silently starting with an unusable sqlite default.
+		DatabaseURL:              "",
 		SSOBaseURL:               "https://sso.rms.net.cn",
 		Host:                     "0.0.0.0",
 		Port:                     8000,

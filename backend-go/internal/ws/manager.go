@@ -41,12 +41,11 @@ func newConn(ws *websocket.Conn, user *permission.UserInfo) *Conn {
 	}
 }
 
-// ConnectionManager manages WebSocket connections grouped by channel and user.
+// ConnectionManager manages WebSocket connections indexed by user ID.
+// All broadcasts are global; recipients are filtered per-message by permission
+// rather than tracked per channel.
 type ConnectionManager struct {
 	mu sync.RWMutex
-
-	// channel_id -> connections (for channel-scoped broadcasts)
-	channels map[int64][]*Conn
 
 	// user_id -> connections (for global/user-scoped broadcasts)
 	globals map[int64][]*Conn
@@ -58,33 +57,9 @@ type ConnectionManager struct {
 // NewConnectionManager creates a new manager instance.
 func NewConnectionManager() *ConnectionManager {
 	return &ConnectionManager{
-		channels:      make(map[int64][]*Conn),
 		globals:       make(map[int64][]*Conn),
 		stopHeartbeat: make(chan struct{}),
 	}
-}
-
-// ConnectChannel registers a connection under a channel ID.
-func (m *ConnectionManager) ConnectChannel(channelID int64, c *Conn) {
-	m.mu.Lock()
-	m.channels[channelID] = append(m.channels[channelID], c)
-	m.mu.Unlock()
-}
-
-// DisconnectChannel removes a connection from a channel.
-func (m *ConnectionManager) DisconnectChannel(channelID int64, c *Conn) {
-	m.mu.Lock()
-	conns := m.channels[channelID]
-	for i, cc := range conns {
-		if cc == c {
-			m.channels[channelID] = append(conns[:i], conns[i+1:]...)
-			break
-		}
-	}
-	if len(m.channels[channelID]) == 0 {
-		delete(m.channels, channelID)
-	}
-	m.mu.Unlock()
 }
 
 // ConnectGlobal registers a connection under the user's ID for global broadcasts.
@@ -110,24 +85,6 @@ func (m *ConnectionManager) DisconnectGlobal(c *Conn) {
 		delete(m.globals, uid)
 	}
 	m.mu.Unlock()
-}
-
-// BroadcastToChannel sends a JSON message to all connections in a channel.
-func (m *ConnectionManager) BroadcastToChannel(channelID int64, msg interface{}) {
-	data, err := json.Marshal(msg)
-	if err != nil {
-		return
-	}
-	m.mu.RLock()
-	conns := m.channels[channelID]
-	for _, c := range conns {
-		select {
-		case c.send <- data:
-		default:
-			// Drop message if buffer full
-		}
-	}
-	m.mu.RUnlock()
 }
 
 // BroadcastToAllUsers sends a JSON message to every global connection.
@@ -258,9 +215,6 @@ func (m *ConnectionManager) scanConnections() {
 	for _, conns := range m.globals {
 		scan(conns)
 	}
-	for _, conns := range m.channels {
-		scan(conns)
-	}
 	m.mu.RUnlock()
 
 	// Send server-initiated ping to inactive connections
@@ -336,3 +290,58 @@ var (
 	VoiceManager       = NewConnectionManager()
 	GlobalStateManager = NewConnectionManager()
 )
+
+// permCacheTTL bounds how long a cached permission rule is trusted. Channel
+// permission rules change rarely; a short TTL keeps stale data from lingering
+// after an admin edit without adding a cache-invalidation dependency.
+//
+// Trade-off: if an admin tightens a channel's access rule, edits/deletes/
+// reactions broadcast over the next permCacheTTL window are still filtered
+// against the old (more permissive) rule, so a user may receive a live push
+// for up to 30s after losing access. Initial message fetch is unaffected (it
+// reads the rule fresh). This staleness is an acceptable cost for avoiding a
+// DB query on every broadcast.
+const permCacheTTL = 30 * time.Second
+
+// PermRuleCache memoizes channel permission rules so BroadcastFunc does not
+// hit the database on every edit/delete/reaction broadcast. A miss or expired
+// entry calls loader to fetch the rule (typically a DB query).
+//
+// The read-check-then-write pattern is not single-flighted: concurrent cold-
+// cache misses for the same channel may each call loader. Since all loaders
+// return the same row, the only cost is redundant queries during a brief
+// stampede, not incorrect data.
+type PermRuleCache struct {
+	mu      sync.RWMutex
+	entries map[int64]*permCacheEntry
+}
+
+type permCacheEntry struct {
+	rule    permission.PermRule
+	fetched time.Time
+}
+
+// ChannelPermCache is the process-wide cache used by BroadcastFunc.
+var ChannelPermCache = &PermRuleCache{entries: make(map[int64]*permCacheEntry)}
+
+// Get returns the cached PermRule for channelID, calling loader when the entry
+// is missing or older than permCacheTTL. A loader error is not cached: the next
+// call retries, so a transient DB failure self-heals within one broadcast.
+func (c *PermRuleCache) Get(channelID int64, loader func() (permission.PermRule, error)) (permission.PermRule, error) {
+	c.mu.RLock()
+	if e := c.entries[channelID]; e != nil && time.Since(e.fetched) < permCacheTTL {
+		c.mu.RUnlock()
+		return e.rule, nil
+	}
+	c.mu.RUnlock()
+
+	rule, err := loader()
+	if err != nil {
+		return permission.PermRule{}, err
+	}
+
+	c.mu.Lock()
+	c.entries[channelID] = &permCacheEntry{rule: rule, fetched: time.Now()}
+	c.mu.Unlock()
+	return rule, nil
+}

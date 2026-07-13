@@ -462,6 +462,11 @@ func (h *ServerHandler) GetAllMessages(c echo.Context) error {
 
 	result := make([]channelMsgsResp, 0, len(textChannels))
 	for _, ch := range textChannels {
+		// One indexed query per channel. The N here equals the number of
+		// accessible text channels (small), not the message count, so this is
+		// not a harmful N+1. A single IN(...) query was considered but would
+		// require reading the full history of every channel (no per-channel
+		// LIMIT in a portable IN query) — far worse.
 		rows, err := h.db.Query(
 			"SELECT id, channel_id, user_id, username, content, created_at, is_deleted, edited_at FROM messages WHERE channel_id = ? AND is_deleted = FALSE ORDER BY id DESC LIMIT ?",
 			ch.ID, limit,
