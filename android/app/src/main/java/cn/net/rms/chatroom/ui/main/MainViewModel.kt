@@ -159,13 +159,14 @@ class MainViewModel @Inject constructor(
             chatRepository.fetchServer(serverId)
                 .onSuccess { server ->
                     _state.value = _state.value.copy(currentServer = server)
-                    // Fetch channel groups
+                    // Fetch channel groups before picking the default channel so the
+                    // display order (groups vs ungrouped channels) is known.
                     fetchChannelGroups(serverId)
                     // Fetch voice channel users once and update GlobalWebSocket
                     val voiceUsers = chatRepository.fetchAllVoiceChannelUsers()
                     globalWebSocket.updateVoiceChannelUsers(voiceUsers)
-                    // Auto-select first text channel
-                    server.channels?.firstOrNull { it.type == ChannelType.TEXT }
+                    // Auto-select the first text channel by display order
+                    findFirstTextChannel(server, _state.value.channelGroups)
                         ?.let { selectChannel(it) }
                 }
                 .onFailure { e ->
@@ -174,16 +175,45 @@ class MainViewModel @Inject constructor(
         }
     }
 
-    private fun fetchChannelGroups(serverId: Long) {
-        viewModelScope.launch {
-            chatRepository.fetchChannelGroups(serverId)
-                .onSuccess { groups ->
-                    _state.value = _state.value.copy(channelGroups = groups)
-                }
-                .onFailure { e ->
-                    Log.e(TAG, "Failed to fetch channel groups: ${e.message}")
-                }
+    private suspend fun fetchChannelGroups(serverId: Long) {
+        chatRepository.fetchChannelGroups(serverId)
+            .onSuccess { groups ->
+                _state.value = _state.value.copy(channelGroups = groups)
+            }
+            .onFailure { e ->
+                Log.e(TAG, "Failed to fetch channel groups: ${e.message}")
+            }
+    }
+
+    // Pick the first text channel a user would see in the channel list.
+    // Mirrors the mixedList ordering in ChannelListColumn: groups and ungrouped
+    // channels are merged by unified position (group.position vs channel.topPosition),
+    // and group channels are ordered by channel.position.
+    private fun findFirstTextChannel(
+        server: Server,
+        groups: List<ChannelGroup>
+    ): Channel? {
+        val channels = server.channels ?: return null
+
+        data class UnifiedItem(val position: Int, val channel: Channel?, val group: ChannelGroup?)
+        val groupItems = groups.map { UnifiedItem(it.position, channel = null, group = it) }
+        val ungroupedItems = channels
+            .filter { it.groupId == null }
+            .map { UnifiedItem(it.topPosition, channel = it, group = null) }
+
+        for (item in (groupItems + ungroupedItems).sortedBy { it.position }) {
+            if (item.channel != null && item.channel.type == ChannelType.TEXT) {
+                return item.channel
+            }
+            if (item.group != null) {
+                val firstText = channels
+                    .filter { it.groupId == item.group.id }
+                    .sortedBy { it.position }
+                    .firstOrNull { it.type == ChannelType.TEXT }
+                if (firstText != null) return firstText
+            }
         }
+        return channels.firstOrNull { it.type == ChannelType.TEXT }
     }
 
     fun selectChannel(channel: Channel) {
