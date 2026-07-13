@@ -9,24 +9,24 @@
 # ================================
 # Retrofit
 # ================================
+# Retrofit ships its own consumer rules; only the annotated API interfaces need
+# hand-keeping. The broad `-keep class retrofit2.** { *; }` defeated shrinking.
 -keepattributes Signature
 -keepattributes Exceptions
 -keepclassmembers,allowshrinking,allowobfuscation interface * {
     @retrofit2.http.* <methods>;
 }
 -dontwarn retrofit2.**
--keep class retrofit2.** { *; }
 
 # ================================
-# OkHttp
+# OkHttp / Okio
 # ================================
+# Both ship consumer rules that keep what they need. Suppress warnings only.
 -dontwarn okhttp3.**
--keep class okhttp3.** { *; }
 -dontwarn okio.**
--keep class okio.** { *; }
 
 # ================================
-# Gson
+# Gson (reflection-based serialization)
 # ================================
 -keepattributes *Annotation*
 -keepattributes Signature
@@ -39,8 +39,7 @@
 -keepclassmembers class * extends com.google.gson.reflect.TypeToken {
     <init>();
 }
-
-# Keep all data model classes
+# Keep all data model classes (serialized/deserialized by name via Gson)
 -keep class cn.net.rms.chatroom.data.model.** { *; }
 -keepclassmembers class cn.net.rms.chatroom.data.model.** {
     <fields>;
@@ -60,12 +59,17 @@
 -keep class * implements com.google.gson.JsonDeserializer
 
 # ================================
-# LiveKit
+# LiveKit / WebRTC
 # ================================
--keep class io.livekit.** { *; }
--dontwarn io.livekit.**
--keep class org.webrtc.** { *; }
+# LiveKit's AAR ships a consumer proguard.txt that keeps protobuf messages
+# (`* extends GeneratedMessageLite`) and the WebRTC JNI surface
+# (`livekit.org.webrtc.**`). We only need to keep the app-facing SDK classes and
+# silence JNI warnings; the former blanket `-keep class io.livekit.** { *; }`
+# was over-broad.
 -dontwarn org.webrtc.**
+-dontwarn livekit.org.webrtc.**
+-dontwarn io.livekit.**
+-keep class io.livekit.android.** { *; }
 
 # ================================
 # Room Database
@@ -94,8 +98,9 @@
 # ================================
 # Jetpack Compose
 # ================================
+# No runtime reflection in Compose; the compiler plugin handles retention.
+# Removed the blanket `-keep class androidx.compose.** { *; }`.
 -dontwarn androidx.compose.**
--keep class androidx.compose.** { *; }
 
 # ================================
 # Coroutines
@@ -114,7 +119,8 @@
 # ================================
 # DataStore
 # ================================
--keep class androidx.datastore.** { *; }
+# No reflection; removed the blanket `-keep class androidx.datastore.** { *; }`.
+-dontwarn androidx.datastore.**
 
 # ================================
 # WebSocket
