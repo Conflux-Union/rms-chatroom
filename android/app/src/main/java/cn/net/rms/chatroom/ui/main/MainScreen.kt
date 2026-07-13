@@ -269,7 +269,10 @@ fun MainScreen(
                             onGetMessageIndex = { messageId -> mainViewModel.getMessageIndexById(messageId) },
                             onAddReaction = { messageId, emoji -> mainViewModel.addReaction(messageId, emoji) },
                             onRemoveReaction = { messageId, emoji -> mainViewModel.removeReaction(messageId, emoji) },
-                            onFetchChannelMembers = { mainViewModel.fetchChannelMembers() }
+                            onFetchChannelMembers = { mainViewModel.fetchChannelMembers() },
+                            hasMore = mainViewModel.hasMoreMessages.collectAsState().value,
+                            isLoadingOlder = mainViewModel.isLoadingOlder.collectAsState().value,
+                            onLoadOlderMessages = { mainViewModel.loadOlderMessages() }
                         )
                     }
 

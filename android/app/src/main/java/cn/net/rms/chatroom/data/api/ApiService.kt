@@ -101,7 +101,9 @@ interface ApiService {
     suspend fun getMessages(
         @Header("Authorization") token: String,
         @Path("id") channelId: Long,
-        @Query("limit") limit: Int = 50
+        @Query("limit") limit: Int = 50,
+        // Cursor for paginating older history: returns messages with id < `before`.
+        @Query("before") before: Long? = null
     ): List<Message>
 
     @POST("api/channels/{id}/messages")

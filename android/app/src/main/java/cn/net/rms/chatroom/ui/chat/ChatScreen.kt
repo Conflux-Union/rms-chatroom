@@ -92,12 +92,15 @@ import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -144,6 +147,8 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -179,7 +184,10 @@ fun ChatScreen(
     onGetMessageIndex: (Long) -> Int = { -1 },
     onAddReaction: (Long, String) -> Unit = { _, _ -> },
     onRemoveReaction: (Long, String) -> Unit = { _, _ -> },
-    onFetchChannelMembers: () -> Unit = {}
+    onFetchChannelMembers: () -> Unit = {},
+    hasMore: Boolean = true,
+    isLoadingOlder: Boolean = false,
+    onLoadOlderMessages: () -> Unit = {}
 ) {
     val listState = rememberLazyListState()
     var messageText by remember { mutableStateOf("") }
@@ -225,18 +233,88 @@ fun ChatScreen(
         }
     }
 
-    // Auto-scroll to bottom when new messages arrive
-    LaunchedEffect(messages.size) {
-        if (messages.isNotEmpty()) {
+    // Whether the viewport is parked near the bottom. Appended messages only
+    // auto-scroll the view when the user is already following the tail.
+    val isAtBottom by remember {
+        derivedStateOf {
+            val info = listState.layoutInfo
+            val last = info.visibleItemsInfo.lastOrNull() ?: return@derivedStateOf true
+            last.index >= info.totalItemsCount - 2
+        }
+    }
+
+    // Tracks the first message id across recompositions to detect prepend
+    // (older page) vs append (new message) vs full replace (channel switch).
+    val lastFirstId = remember { mutableStateOf<Long?>(null) }
+    // Anchor captured right before an "older" fetch; consumed to restore the
+    // exact viewport position once the older page is prepended.
+    var pendingRestore by remember { mutableStateOf<Pair<Long, Int>?>(null) }
+
+    // Latest values for the long-lived pagination trigger (LaunchedEffect(Unit)).
+    // rememberUpdatedState avoids capturing stale parameter values that would
+    // otherwise freeze the trigger to the first composition's messages/hasMore.
+    val currentHasMore by rememberUpdatedState(hasMore)
+    val currentIsLoadingOlder by rememberUpdatedState(isLoadingOlder)
+    val currentMessages by rememberUpdatedState(messages)
+
+    // Scroll handling keyed on both list size and the older-loading flag:
+    //  - prepend: restore the viewport on the previously-first item
+    //  - full replace / first load: jump to the newest message
+    //  - append: follow the tail only when the user is at the bottom
+    //  - older fetch finished without new history: release the anchor
+    LaunchedEffect(messages.size, isLoadingOlder) {
+        if (messages.isEmpty()) {
+            lastFirstId.value = null
+            pendingRestore = null
+            return@LaunchedEffect
+        }
+        val currentFirstId = messages.first().id
+        val prevFirstId = lastFirstId.value
+        val isPrepend = prevFirstId != null &&
+            currentFirstId != prevFirstId &&
+            messages.any { it.id == prevFirstId }
+        val isFullReplace = prevFirstId != null && messages.none { it.id == prevFirstId }
+        when {
+            isPrepend -> {
+                pendingRestore?.let { (id, offset) ->
+                    val newIndex = messages.indexOfFirst { it.id == id }
+                    if (newIndex > 0) listState.scrollToItem(newIndex, offset)
+                }
+                pendingRestore = null
+            }
+            isFullReplace || prevFirstId == null -> {
+                listState.animateScrollToItem(messages.size - 1)
+            }
+            !isLoadingOlder && pendingRestore?.first == currentFirstId -> {
+                // Older fetch finished without prepending (failed / reached top).
+                pendingRestore = null
+            }
+            isAtBottom -> {
+                listState.animateScrollToItem(messages.size - 1)
+            }
+        }
+        lastFirstId.value = currentFirstId
+    }
+
+    // Auto-scroll to bottom when keyboard appears (only if following the tail).
+    val imeVisible = WindowInsets.isImeVisible
+    LaunchedEffect(imeVisible) {
+        if (imeVisible && messages.isNotEmpty() && isAtBottom) {
             listState.animateScrollToItem(messages.size - 1)
         }
     }
 
-    // Auto-scroll to bottom when keyboard appears
-    val imeVisible = WindowInsets.isImeVisible
-    LaunchedEffect(imeVisible) {
-        if (imeVisible && messages.isNotEmpty()) {
-            listState.animateScrollToItem(messages.size - 1)
+    // Load one older page when the user scrolls near the top of the list.
+    LaunchedEffect(Unit) {
+        snapshotFlow {
+            val first = listState.layoutInfo.visibleItemsInfo.firstOrNull()
+                ?: return@snapshotFlow false
+            first.index == 0 && first.offset > -400
+        }.distinctUntilChanged().filter { it }.collect {
+            if (currentHasMore && !currentIsLoadingOlder && pendingRestore == null && currentMessages.isNotEmpty()) {
+                pendingRestore = currentMessages.first().id to listState.firstVisibleItemScrollOffset
+                onLoadOlderMessages()
+            }
         }
     }
 
@@ -306,7 +384,8 @@ fun ChatScreen(
                         }
                     }
                     else -> {
-                        LazyColumn(
+                        Box(modifier = Modifier.fillMaxSize()) {
+                            LazyColumn(
                             modifier = Modifier
                                 .fillMaxSize()
                                 .padding(horizontal = 16.dp),
@@ -358,6 +437,23 @@ fun ChatScreen(
                                     }
                                 )
                             }
+                        }
+                        // Older-page loading indicator, overlaid so it does not
+                        // shift the LazyColumn indices used for scroll restore.
+                        if (isLoadingOlder) {
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.TopCenter)
+                                    .padding(top = 8.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(20.dp),
+                                    strokeWidth = 2.dp,
+                                    color = TiColor
+                                )
+                            }
+                        }
                         }
                     }
                 }
