@@ -8,6 +8,9 @@ import { useReadPosition } from '../composables/useReadPosition'
 
 const API_BASE = import.meta.env.VITE_API_BASE || ''
 
+// Page size for message history pagination. Backend caps limit at 100.
+const MESSAGES_PAGE_SIZE = 50
+
 // Voice channel user info from API
 interface VoiceChannelUser {
   id: string
@@ -22,6 +25,10 @@ export const useChatStore = defineStore('chat', () => {
   const currentServer = ref<Server | null>(null)
   const currentChannel = ref<Channel | null>(null)
   const messages = ref<Message[]>([])
+  // Pagination state for the current channel's history (cursor = oldest loaded message id).
+  // hasMore: false once a page returns fewer than MESSAGES_PAGE_SIZE (reached the top).
+  const hasMore = ref(true)
+  const isLoadingOlder = ref(false)
   // Map: channelId -> users in that voice channel
   const voiceChannelUsers = ref<Map<number, VoiceChannelUser[]>>(new Map())
   // Mute status from WebSocket error
@@ -267,23 +274,45 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   async function fetchMessages(channelId: number, before?: number) {
+    // Guard against concurrent "load older" requests for the same channel.
+    if (before && isLoadingOlder.value) return []
+
+    if (before) {
+      isLoadingOlder.value = true
+    } else {
+      // Fresh load (channel switch): reset pagination state.
+      hasMore.value = true
+    }
+
     try {
-      const params: Record<string, any> = { limit: 50 }
+      const params: Record<string, any> = { limit: MESSAGES_PAGE_SIZE }
       if (before) params.before = before
 
       const resp = await axios.get(`${API_BASE}/api/channels/${channelId}/messages`, {
         headers: getAuthHeaders(),
         params,
       })
+      // Drop the response if the user switched channels while the request was in flight;
+      // otherwise a stale page would pollute the new channel's list and hasMore flag.
+      if (currentChannel.value?.id !== channelId) return []
       if (before) {
+        // Cursor must still be loaded. If the channel was switched away and back,
+        // messages was cleared and this older-page request is stale.
+        if (!messages.value.some((m) => m.id === before)) return []
         messages.value = [...resp.data, ...messages.value]
       } else {
         messages.value = resp.data
+      }
+      // A short page means we've reached the top of the history.
+      if (resp.data.length < MESSAGES_PAGE_SIZE) {
+        hasMore.value = false
       }
       return resp.data
     } catch (e) {
       console.error('Failed to fetch messages:', e)
       return []
+    } finally {
+      if (before) isLoadingOlder.value = false
     }
   }
 
@@ -291,6 +320,8 @@ export const useChatStore = defineStore('chat', () => {
     currentChannel.value = channel
     if (channel) {
       messages.value = []
+      hasMore.value = true
+      isLoadingOlder.value = false
     }
   }
 
@@ -408,6 +439,8 @@ export const useChatStore = defineStore('chat', () => {
     currentServer,
     currentChannel,
     messages,
+    hasMore,
+    isLoadingOlder,
     voiceChannelUsers,
     isMutedByWs,
     muteReasonByWs,
