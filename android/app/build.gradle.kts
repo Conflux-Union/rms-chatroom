@@ -46,6 +46,12 @@ android {
         versionName = fullVersionName
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // Ship only arm64 native libs. The WebRTC .so from LiveKit is ~12 MB per
+        // ABI; x86/x86_64 only served emulators and were bloating the APK.
+        ndk {
+            abiFilters += "arm64-v8a"
+        }
     }
 
     buildTypes {
