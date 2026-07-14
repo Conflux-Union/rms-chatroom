@@ -1,6 +1,7 @@
 package cn.net.rms.chatroom.ui.main
 
 import android.net.Uri
+import android.os.SystemClock
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -25,6 +26,8 @@ import cn.net.rms.chatroom.data.websocket.ConnectionState
 import cn.net.rms.chatroom.data.websocket.GlobalWebSocket
 import cn.net.rms.chatroom.data.websocket.WebSocketEvent
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -45,6 +48,9 @@ data class MainState(
     val updateInfo: AppUpdateResponse? = null,
     val isDownloading: Boolean = false,
     val downloadComplete: Boolean = false,
+    val downloadedBytes: Long = 0L,
+    val downloadTotalBytes: Long = 0L,
+    val downloadSpeedBps: Long = 0L,
     val lastReadMessageId: Long? = null,
     val showContinueReading: Boolean = false,
     val channelMembers: List<ChannelMember> = emptyList(),
@@ -83,6 +89,8 @@ class MainViewModel @Inject constructor(
 
     // Current user info for mention detection
     private var currentUserId: Long? = null
+
+    private var downloadProgressJob: Job? = null
 
     init {
         loadServers()
@@ -408,14 +416,51 @@ class MainViewModel @Inject constructor(
 
     fun downloadUpdate() {
         val downloadUrl = _state.value.updateInfo?.downloadUrl ?: return
-        _state.value = _state.value.copy(isDownloading = true)
+        _state.value = _state.value.copy(
+            isDownloading = true,
+            downloadedBytes = 0L,
+            downloadTotalBytes = 0L,
+            downloadSpeedBps = 0L
+        )
         updateRepository.downloadUpdate(downloadUrl)
+        startDownloadProgressPolling()
+    }
+
+    private fun startDownloadProgressPolling() {
+        downloadProgressJob?.cancel()
+        downloadProgressJob = viewModelScope.launch {
+            var lastBytes = 0L
+            var lastTime = SystemClock.elapsedRealtime()
+            while (_state.value.isDownloading) {
+                delay(500)
+                val progress = updateRepository.queryDownloadProgress() ?: continue
+                val now = SystemClock.elapsedRealtime()
+                val elapsed = now - lastTime
+                // Mirror fallback re-enqueues the download and byte counts restart
+                if (progress.bytesDownloaded < lastBytes) {
+                    lastBytes = 0L
+                }
+                val speed = if (elapsed > 0) {
+                    (progress.bytesDownloaded - lastBytes) * 1000 / elapsed
+                } else 0L
+                lastBytes = progress.bytesDownloaded
+                lastTime = now
+                _state.value = _state.value.copy(
+                    downloadedBytes = progress.bytesDownloaded,
+                    downloadTotalBytes = progress.totalBytes,
+                    downloadSpeedBps = speed.coerceAtLeast(0L)
+                )
+            }
+        }
     }
 
     fun onDownloadComplete(success: Boolean) {
+        downloadProgressJob?.cancel()
+        downloadProgressJob = null
         _state.value = _state.value.copy(
             isDownloading = false,
-            downloadComplete = success
+            downloadComplete = success,
+            downloadSpeedBps = 0L
         )
         if (success) {
             updateRepository.installApk()

@@ -22,6 +22,11 @@ import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
 
+data class DownloadProgress(
+    val bytesDownloaded: Long,
+    val totalBytes: Long
+)
+
 @Singleton
 class UpdateRepository @Inject constructor(
     @ApplicationContext private val context: Context,
@@ -186,6 +191,24 @@ class UpdateRepository @Inject constructor(
         val downloadManager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
         downloadId = downloadManager.enqueue(request)
         return downloadId
+    }
+
+    /**
+     * Query the current download's progress from DownloadManager.
+     * Reads the live downloadId, so it keeps tracking after a mirror
+     * fallback re-enqueues the download (byte counts restart from 0).
+     */
+    suspend fun queryDownloadProgress(): DownloadProgress? = withContext(Dispatchers.IO) {
+        if (downloadId == -1L) return@withContext null
+        val downloadManager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+        val cursor = downloadManager.query(DownloadManager.Query().setFilterById(downloadId))
+        cursor.use {
+            if (!it.moveToFirst()) return@withContext null
+            DownloadProgress(
+                bytesDownloaded = it.getLong(it.getColumnIndexOrThrow(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR)),
+                totalBytes = it.getLong(it.getColumnIndexOrThrow(DownloadManager.COLUMN_TOTAL_SIZE_BYTES))
+            )
+        }
     }
 
     fun installApk() {
