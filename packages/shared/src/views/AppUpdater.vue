@@ -15,8 +15,14 @@
       </div>
 
       <div v-if="state === 'downloading'" class="progress">
-        <div>下载中：{{ percent.toFixed(1) }}%</div>
-        <div class="sub">{{ formatBytes(transferred) }} / {{ formatBytes(total) }}</div>
+        <div class="progress-row">
+          <span>下载中{{ total > 0 ? `：${percent.toFixed(1)}%` : '' }}</span>
+          <span class="speed">{{ formatBytes(speed) }}/s</span>
+        </div>
+        <div class="bar" :class="{ indeterminate: total <= 0 }">
+          <div class="bar-fill" :style="total > 0 ? { width: `${percent}%` } : undefined"></div>
+        </div>
+        <div class="sub">{{ formatBytes(transferred) }} / {{ total > 0 ? formatBytes(total) : '未知大小' }}</div>
       </div>
 
       <div v-if="state === 'error'" class="error">
@@ -69,6 +75,7 @@ const forced = ref(false)
 const percent = ref(0)
 const transferred = ref(0)
 const total = ref(0)
+const speed = ref(0)
 const message = ref('')
 const versionText = ref('')
 
@@ -146,27 +153,44 @@ async function check() {
 async function download() {
   if (!updateObj) return
   state.value = 'downloading'
+  percent.value = 0
+  transferred.value = 0
+  total.value = 0
+  speed.value = 0
   try {
     let contentLength = 0
     let chunkLength = 0
+    let lastSampleTime = Date.now()
+    let lastSampleBytes = 0
     await updateObj.downloadAndInstall((event: any) => {
       if (event.event === 'Started') {
         contentLength = event.data.contentLength || 0
         total.value = contentLength
         transferred.value = 0
+        lastSampleTime = Date.now()
+        lastSampleBytes = 0
       } else if (event.event === 'Progress') {
         chunkLength += event.data.chunkLength
         transferred.value = chunkLength
         if (contentLength > 0) {
           percent.value = (chunkLength / contentLength) * 100
         }
+        const now = Date.now()
+        const elapsed = now - lastSampleTime
+        if (elapsed >= 500) {
+          speed.value = ((chunkLength - lastSampleBytes) / elapsed) * 1000
+          lastSampleTime = now
+          lastSampleBytes = chunkLength
+        }
       } else if (event.event === 'Finished') {
         state.value = 'downloaded'
         percent.value = 100
+        speed.value = 0
       }
     })
     // downloadAndInstall may auto-install; if we reach here without error, mark as downloaded
     state.value = 'downloaded'
+    speed.value = 0
   } catch (e: any) {
     state.value = 'error'
     message.value = String(e?.message || e)
@@ -231,6 +255,36 @@ onMounted(() => {
 }
 .info { font-size: 13px; color: #333; }
 .progress { margin-top: 10px; font-size: 13px; }
+.progress-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.speed { font-size: 12px; color: #666; }
+.bar {
+  position: relative;
+  height: 8px;
+  margin-top: 8px;
+  border-radius: 4px;
+  background: #eee;
+  overflow: hidden;
+}
+.bar-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0;
+  border-radius: 4px;
+  background: #111;
+  transition: width 0.2s ease;
+}
+.bar.indeterminate .bar-fill {
+  width: 30%;
+  animation: bar-slide 1.2s ease-in-out infinite;
+}
+@keyframes bar-slide {
+  0% { left: -30%; }
+  100% { left: 100%; }
+}
 .sub { margin-top: 6px; font-size: 12px; color: #666; }
 .error { margin-top: 10px; color: #b00020; font-size: 13px; }
 .actions { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; }

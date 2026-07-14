@@ -356,23 +356,39 @@ fun MainScreen(
             onDismissRequest = { if (!updateInfo.forceUpdate) mainViewModel.dismissUpdate() },
             title = { Text("发现新版本") },
             text = {
-                Text("版本: ${updateInfo.versionName}")
+                Column {
+                    Text("版本: ${updateInfo.versionName}")
+                    if (mainState.isDownloading) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        val totalBytes = mainState.downloadTotalBytes
+                        if (totalBytes > 0) {
+                            val progress = (mainState.downloadedBytes.toFloat() / totalBytes).coerceIn(0f, 1f)
+                            LinearProgressIndicator(
+                                progress = { progress },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                "${(progress * 100).toInt()}%  ${formatBytes(mainState.downloadedBytes)} / ${formatBytes(totalBytes)}  ·  ${formatBytes(mainState.downloadSpeedBps)}/s",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        } else {
+                            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                "${formatBytes(mainState.downloadedBytes)}  ·  ${formatBytes(mainState.downloadSpeedBps)}/s",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                    }
+                }
             },
             confirmButton = {
                 TextButton(
                     onClick = { mainViewModel.downloadUpdate() },
                     enabled = !mainState.isDownloading
                 ) {
-                    if (mainState.isDownloading) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(16.dp),
-                            strokeWidth = 2.dp
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("下载中...")
-                    } else {
-                        Text("下载更新")
-                    }
+                    Text(if (mainState.isDownloading) "下载中..." else "下载更新")
                 }
             },
             dismissButton = {
@@ -400,4 +416,16 @@ fun MainScreen(
             }
         )
     }
+}
+
+private fun formatBytes(bytes: Long): String {
+    if (bytes <= 0) return "0 B"
+    val units = arrayOf("B", "KB", "MB", "GB")
+    var value = bytes.toDouble()
+    var unit = 0
+    while (value >= 1024 && unit < units.size - 1) {
+        value /= 1024
+        unit++
+    }
+    return "%.1f %s".format(value, units[unit])
 }
