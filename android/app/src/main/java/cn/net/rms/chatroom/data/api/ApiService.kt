@@ -265,66 +265,55 @@ interface ApiService {
         @Body request: MusicRoomRequest
     ): MusicSuccessResponse
 
-    // Music - Bot Control (per room)
-    @GET("api/music/bot/status/{roomName}")
-    suspend fun getMusicBotStatus(
+    // Music - Room playback control (backend is the master controller;
+    // clients play audio locally and follow /ws/music broadcast commands)
+    @GET("api/music/playback/status/{roomName}")
+    suspend fun getMusicPlaybackStatus(
         @Header("Authorization") token: String,
         @Path("roomName") roomName: String
-    ): MusicBotStatusResponse
+    ): MusicPlaybackStatusResponse
 
-    @POST("api/music/bot/start")
-    suspend fun startMusicBot(
-        @Header("Authorization") token: String,
-        @Body request: MusicBotStartRequest
-    ): MusicSuccessResponse
-
-    @POST("api/music/bot/stop")
-    suspend fun stopMusicBot(
+    @POST("api/music/playback/stop")
+    suspend fun stopMusicPlayback(
         @Header("Authorization") token: String,
         @Body request: MusicRoomRequest
     ): MusicSuccessResponse
 
-    @POST("api/music/bot/play")
-    suspend fun musicBotPlay(
-        @Header("Authorization") token: String,
-        @Body request: MusicBotStartRequest
-    ): MusicSuccessResponse
-
-    @POST("api/music/bot/pause")
-    suspend fun musicBotPause(
+    @POST("api/music/playback/play")
+    suspend fun musicPlaybackPlay(
         @Header("Authorization") token: String,
         @Body request: MusicRoomRequest
     ): MusicSuccessResponse
 
-    @POST("api/music/bot/resume")
-    suspend fun musicBotResume(
+    @POST("api/music/playback/pause")
+    suspend fun musicPlaybackPause(
         @Header("Authorization") token: String,
         @Body request: MusicRoomRequest
     ): MusicSuccessResponse
 
-    @POST("api/music/bot/skip")
-    suspend fun musicBotSkip(
+    @POST("api/music/playback/resume")
+    suspend fun musicPlaybackResume(
         @Header("Authorization") token: String,
         @Body request: MusicRoomRequest
     ): MusicSuccessResponse
 
-    @POST("api/music/bot/previous")
-    suspend fun musicBotPrevious(
+    @POST("api/music/playback/skip")
+    suspend fun musicPlaybackSkip(
         @Header("Authorization") token: String,
         @Body request: MusicRoomRequest
     ): MusicSuccessResponse
 
-    @POST("api/music/bot/seek")
-    suspend fun musicBotSeek(
+    @POST("api/music/playback/previous")
+    suspend fun musicPlaybackPrevious(
+        @Header("Authorization") token: String,
+        @Body request: MusicRoomRequest
+    ): MusicSuccessResponse
+
+    @POST("api/music/playback/seek")
+    suspend fun musicPlaybackSeek(
         @Header("Authorization") token: String,
         @Body request: MusicSeekRequest
     ): MusicSuccessResponse
-
-    @GET("api/music/bot/progress/{roomName}")
-    suspend fun getMusicProgress(
-        @Header("Authorization") token: String,
-        @Path("roomName") roomName: String
-    ): MusicProgressResponse
 
     // File Upload
     @Multipart

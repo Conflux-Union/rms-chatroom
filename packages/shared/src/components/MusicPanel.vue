@@ -4,7 +4,7 @@ import { useMusicStore, type Song } from '../stores/music'
 import { useVoiceStore } from '../stores/voice'
 import { formatDuration } from '../utils/datetime'
 import { ZmSlider, ZmSelect, ZmModal, ZmButton, ZmSpace, ZmInput } from './ui'
-import { Music, Bot, SkipBack, Pause, Play, SkipForward, Plus, Trash2, X, Search, Loader2, Volume2 } from 'lucide-vue-next'
+import { Music, Disc3, SkipBack, Pause, Play, SkipForward, Plus, Trash2, X, Search, Loader2, Volume2 } from 'lucide-vue-next'
 
 const music = useMusicStore()
 const voice = useVoiceStore()
@@ -31,7 +31,7 @@ const progressValue = computed({
   set: (value: number) => {
     if (currentRoomName.value) {
       const newPosition = Math.floor((value / 100) * music.durationMs)
-      music.botSeek(currentRoomName.value, newPosition)
+      music.seek(currentRoomName.value, newPosition)
     }
   }
 })
@@ -68,7 +68,7 @@ async function handleAddToQueue(song: Song) {
   music.searchResults = []
 }
 
-async function handleBotPlayPause() {
+async function handlePlayPause() {
   if (!currentRoomName.value && music.playbackState !== 'paused') return
 
   // Prevent rapid clicks
@@ -82,15 +82,15 @@ async function handleBotPlayPause() {
   try {
     if (music.isPlaying) {
       console.log('Pausing playback')
-      await music.botPause(currentRoomName.value)
+      await music.pause(currentRoomName.value)
     } else if (music.playbackState === 'paused') {
       // Resume from paused state
       console.log('Resuming playback')
-      await music.botResume(currentRoomName.value)
+      await music.resume(currentRoomName.value)
     } else if (currentRoomName.value) {
       // Start new playback
       console.log('Starting new playback')
-      await music.botPlay(currentRoomName.value)
+      await music.play(currentRoomName.value)
     }
   } finally {
     // Add a small delay to prevent rapid toggling
@@ -112,21 +112,21 @@ async function handleRemoveFromQueue(index: number) {
   }
 }
 
-async function handleBotSkip() {
+async function handleSkipNext() {
   if (currentRoomName.value) {
-    await music.botSkip(currentRoomName.value)
+    await music.skipNext(currentRoomName.value)
   }
 }
 
-async function handleBotPrevious() {
+async function handleSkipPrevious() {
   if (currentRoomName.value) {
-    await music.botPrevious(currentRoomName.value)
+    await music.skipPrevious(currentRoomName.value)
   }
 }
 
-async function handleStopBot() {
+async function handleStopPlayback() {
   if (currentRoomName.value) {
-    await music.stopBot(currentRoomName.value)
+    await music.stopPlayback(currentRoomName.value)
   }
 }
 </script>
@@ -136,13 +136,13 @@ async function handleStopBot() {
     <div class="music-header">
       <Music class="header-icon" :size="20" />
       <span class="header-title">音乐播放器</span>
-      <span 
-        v-if="music.botConnected" 
-        class="bot-status connected"
-        @click="handleStopBot"
-        title="机器人已连接 - 点击断开"
+      <span
+        v-if="music.playbackActive"
+        class="playback-status active"
+        @click="handleStopPlayback"
+        title="房间播放中 - 点击停止"
       >
-        <Bot :size="14" /> 机器人
+        <Disc3 :size="14" /> 播放中
       </span>
       <span 
         v-if="music.platformLoginStatus.qq.logged_in" 
@@ -244,10 +244,10 @@ async function handleStopBot() {
             <div class="song-artist">{{ music.currentSong.artist }}</div>
           </div>
           <div class="playback-controls">
-            <button class="control-btn" @click="handleBotPrevious" title="上一首"><SkipBack :size="18" /></button>
+            <button class="control-btn" @click="handleSkipPrevious" title="上一首"><SkipBack :size="18" /></button>
             <button
               class="control-btn play-btn"
-              @click="handleBotPlayPause"
+              @click="handlePlayPause"
               :disabled="!voice.isConnected && music.playbackState !== 'paused' || isProcessingPlayback"
               :title="voice.isConnected || music.playbackState === 'paused' ? '' : '请先加入语音频道'"
             >
@@ -255,7 +255,7 @@ async function handleStopBot() {
               <Pause v-else-if="music.isPlaying" :size="22" />
               <Play v-else :size="22" />
             </button>
-            <button class="control-btn" @click="handleBotSkip" title="下一首"><SkipForward :size="18" /></button>
+            <button class="control-btn" @click="handleSkipNext" title="下一首"><SkipForward :size="18" /></button>
           </div>
         </div>
         <!-- Progress Bar - Full Width -->
@@ -447,7 +447,7 @@ async function handleStopBot() {
   background: linear-gradient(135deg, #e60026, #c20020);
 }
 
-.bot-status {
+.playback-status {
   font-size: 12px;
   padding: 4px 12px;
   border-radius: 12px;
@@ -457,11 +457,11 @@ async function handleStopBot() {
   margin-right: 8px;
 }
 
-.bot-status:hover {
+.playback-status:hover {
   background: rgba(255, 255, 255, 0.2);
 }
 
-.bot-status.connected {
+.playback-status.active {
   background: linear-gradient(135deg, #6366f1, #8b5cf6);
   color: #fff;
 }

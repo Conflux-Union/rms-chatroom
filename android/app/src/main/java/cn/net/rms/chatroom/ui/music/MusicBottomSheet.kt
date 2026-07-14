@@ -2,6 +2,7 @@ package cn.net.rms.chatroom.ui.music
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import cn.net.rms.chatroom.data.manager.MusicState
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -53,7 +54,7 @@ fun MusicBottomSheet(
     onLoginClick: () -> Unit,
     onQQLogoutClick: () -> Unit,
     onNeteaseLogoutClick: () -> Unit,
-    onStopBot: () -> Unit,
+    onStopPlayback: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -65,11 +66,11 @@ fun MusicBottomSheet(
         MusicHeader(
             qqLoggedIn = state.qqLoggedIn,
             neteaseLoggedIn = state.neteaseLoggedIn,
-            botConnected = state.botConnected,
+            playbackActive = state.playbackActive,
             onLoginClick = onLoginClick,
             onQQLogoutClick = onQQLogoutClick,
             onNeteaseLogoutClick = onNeteaseLogoutClick,
-            onStopBot = onStopBot
+            onStopPlayback = onStopPlayback
         )
 
         // Content
@@ -115,11 +116,11 @@ fun MusicBottomSheet(
 private fun MusicHeader(
     qqLoggedIn: Boolean,
     neteaseLoggedIn: Boolean,
-    botConnected: Boolean,
+    playbackActive: Boolean,
     onLoginClick: () -> Unit,
     onQQLogoutClick: () -> Unit,
     onNeteaseLogoutClick: () -> Unit,
-    onStopBot: () -> Unit
+    onStopPlayback: () -> Unit
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -147,12 +148,12 @@ private fun MusicHeader(
 
             Spacer(modifier = Modifier.weight(1f))
 
-            // Bot status badge
-            if (botConnected) {
+            // Room playback badge; tap to stop playback for the whole room
+            if (playbackActive) {
                 Surface(
                     modifier = Modifier
                         .clip(RoundedCornerShape(12.dp))
-                        .clickable { onStopBot() },
+                        .clickable { onStopPlayback() },
                     color = TiColor.copy(alpha = 0.2f)
                 ) {
                     Row(
@@ -160,14 +161,14 @@ private fun MusicHeader(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(
-                            imageVector = Icons.Default.SmartToy,
+                            imageVector = Icons.Default.GraphicEq,
                             contentDescription = null,
                             tint = TiColor,
                             modifier = Modifier.size(14.dp)
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            text = "机器人",
+                            text = "播放中",
                             style = MaterialTheme.typography.labelSmall,
                             color = TiColor
                         )
