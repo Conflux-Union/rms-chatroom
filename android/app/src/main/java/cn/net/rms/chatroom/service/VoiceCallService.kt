@@ -20,6 +20,7 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
 import cn.net.rms.chatroom.R
 import cn.net.rms.chatroom.data.livekit.LiveKitManager
+import cn.net.rms.chatroom.data.repository.VoiceRepository
 import cn.net.rms.chatroom.data.local.SettingsPreferences
 import cn.net.rms.chatroom.ui.MainActivity
 import dagger.hilt.android.AndroidEntryPoint
@@ -77,6 +78,9 @@ class VoiceCallService : Service() {
     lateinit var liveKitManager: LiveKitManager
 
     @Inject
+    lateinit var voiceRepository: VoiceRepository
+
+    @Inject
     lateinit var settingsPreferences: SettingsPreferences
 
     private var wakeLock: PowerManager.WakeLock? = null
@@ -107,7 +111,9 @@ class VoiceCallService : Service() {
                     liveKitManager.setMuted(false)
                 }
                 ACTION_HANG_UP -> {
-                    liveKitManager.disconnect()
+                    // Leave via the repository so session state (current channel,
+                    // host mode, music playback room) is cleared, not just LiveKit
+                    voiceRepository.leaveVoice()
                     stopSelf()
                 }
             }
