@@ -20,13 +20,14 @@
     "@tauri-apps/plugin-process": "^2",
     "@tauri-apps/plugin-shell": "^2",
     "@tauri-apps/plugin-updater": "^2",
+    "@tauri-apps/plugin-process": "^2",
     "axios": "^1.18.1",
-    "livekit-client": "^2.18.8",
+    "livekit-client": "^2.20.1",
     "lucide-vue-next": "^1.0.0",
     "pinia": "^3.0.4",
-    "vue": "^3.5.33",
+    "vue": "^3.5.39",
     "vue-draggable-plus": "^0.6.1",
-    "vue-router": "^5.0.6",
+    "vue-router": "^5.1.0",
     "zhimo-ui": "^0.1.0"
   },
   "devDependencies": {
