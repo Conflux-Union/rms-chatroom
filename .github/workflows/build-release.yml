@@ -374,3 +374,32 @@ jobs:
           files: release-assets/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Route updater download URL through China mirror
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ needs.extract-version.outputs.tag_name }}
+        run: |
+          # tauri-action uploads latest.json pointing at the official GitHub
+          # asset URL, which is unreachable from mainland China. Rewrite the
+          # platform download URLs through gh-proxy; signature/version/pub_date
+          # are left exactly as tauri-action produced them.
+          if ! gh release download "$TAG_NAME" -R Conflux-Union/rms-chatroom -p latest.json -D /tmp --clobber 2>/dev/null; then
+            echo "latest.json not found in release; skipping URL rewrite"
+            exit 0
+          fi
+          python3 << 'PYEOF'
+          import json
+          path = '/tmp/latest.json'
+          with open(path) as f:
+              data = json.load(f)
+          mirror = 'https://gh-proxy.com/'
+          for info in data.get('platforms', {}).values():
+              url = info.get('url', '')
+              if url.startswith('https://github.com/') and not url.startswith(mirror):
+                  info['url'] = mirror + url
+          with open(path, 'w') as f:
+              json.dump(data, f, indent=2)
+          print(json.dumps(data, indent=2))
+          PYEOF
+          gh release upload "$TAG_NAME" /tmp/latest.json -R Conflux-Union/rms-chatroom --clobber
