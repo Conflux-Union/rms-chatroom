@@ -1,6 +1,7 @@
 package cn.net.rms.chatroom.ui.main
 
 import android.net.Uri
+import android.os.SystemClock
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -25,6 +26,8 @@ import cn.net.rms.chatroom.data.websocket.ConnectionState
 import cn.net.rms.chatroom.data.websocket.GlobalWebSocket
 import cn.net.rms.chatroom.data.websocket.WebSocketEvent
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -45,6 +48,9 @@ data class MainState(
     val updateInfo: AppUpdateResponse? = null,
     val isDownloading: Boolean = false,
     val downloadComplete: Boolean = false,
+    val downloadedBytes: Long = 0L,
+    val downloadTotalBytes: Long = 0L,
+    val downloadSpeedBps: Long = 0L,
     val lastReadMessageId: Long? = null,
     val showContinueReading: Boolean = false,
     val channelMembers: List<ChannelMember> = emptyList(),
@@ -71,6 +77,8 @@ class MainViewModel @Inject constructor(
     val state: StateFlow<MainState> = _state.asStateFlow()
 
     val messages = chatRepository.messages
+    val hasMoreMessages = chatRepository.hasMoreMessages
+    val isLoadingOlder = chatRepository.isLoadingOlder
     val connectionState: StateFlow<ConnectionState> = chatRepository.connectionState
     val voiceChannelUsers: StateFlow<Map<Long, List<VoiceUser>>> = globalWebSocket.voiceChannelUsers
 
@@ -81,6 +89,8 @@ class MainViewModel @Inject constructor(
 
     // Current user info for mention detection
     private var currentUserId: Long? = null
+
+    private var downloadProgressJob: Job? = null
 
     init {
         loadServers()
@@ -159,13 +169,14 @@ class MainViewModel @Inject constructor(
             chatRepository.fetchServer(serverId)
                 .onSuccess { server ->
                     _state.value = _state.value.copy(currentServer = server)
-                    // Fetch channel groups
+                    // Fetch channel groups before picking the default channel so the
+                    // display order (groups vs ungrouped channels) is known.
                     fetchChannelGroups(serverId)
                     // Fetch voice channel users once and update GlobalWebSocket
                     val voiceUsers = chatRepository.fetchAllVoiceChannelUsers()
                     globalWebSocket.updateVoiceChannelUsers(voiceUsers)
-                    // Auto-select first text channel
-                    server.channels?.firstOrNull { it.type == ChannelType.TEXT }
+                    // Auto-select the first text channel by display order
+                    findFirstTextChannel(server, _state.value.channelGroups)
                         ?.let { selectChannel(it) }
                 }
                 .onFailure { e ->
@@ -174,16 +185,45 @@ class MainViewModel @Inject constructor(
         }
     }
 
-    private fun fetchChannelGroups(serverId: Long) {
-        viewModelScope.launch {
-            chatRepository.fetchChannelGroups(serverId)
-                .onSuccess { groups ->
-                    _state.value = _state.value.copy(channelGroups = groups)
-                }
-                .onFailure { e ->
-                    Log.e(TAG, "Failed to fetch channel groups: ${e.message}")
-                }
+    private suspend fun fetchChannelGroups(serverId: Long) {
+        chatRepository.fetchChannelGroups(serverId)
+            .onSuccess { groups ->
+                _state.value = _state.value.copy(channelGroups = groups)
+            }
+            .onFailure { e ->
+                Log.e(TAG, "Failed to fetch channel groups: ${e.message}")
+            }
+    }
+
+    // Pick the first text channel a user would see in the channel list.
+    // Mirrors the mixedList ordering in ChannelListColumn: groups and ungrouped
+    // channels are merged by unified position (group.position vs channel.topPosition),
+    // and group channels are ordered by channel.position.
+    private fun findFirstTextChannel(
+        server: Server,
+        groups: List<ChannelGroup>
+    ): Channel? {
+        val channels = server.channels ?: return null
+
+        data class UnifiedItem(val position: Int, val channel: Channel?, val group: ChannelGroup?)
+        val groupItems = groups.map { UnifiedItem(it.position, channel = null, group = it) }
+        val ungroupedItems = channels
+            .filter { it.groupId == null }
+            .map { UnifiedItem(it.topPosition, channel = it, group = null) }
+
+        for (item in (groupItems + ungroupedItems).sortedBy { it.position }) {
+            if (item.channel != null && item.channel.type == ChannelType.TEXT) {
+                return item.channel
+            }
+            if (item.group != null) {
+                val firstText = channels
+                    .filter { it.groupId == item.group.id }
+                    .sortedBy { it.position }
+                    .firstOrNull { it.type == ChannelType.TEXT }
+                if (firstText != null) return firstText
+            }
         }
+        return channels.firstOrNull { it.type == ChannelType.TEXT }
     }
 
     fun selectChannel(channel: Channel) {
@@ -234,6 +274,15 @@ class MainViewModel @Inject constructor(
     fun refreshMessages() {
         val channelId = _state.value.currentChannel?.id ?: return
         loadMessages(channelId)
+    }
+
+    // Prepend one older page of history for the current text channel.
+    fun loadOlderMessages() {
+        val channel = _state.value.currentChannel ?: return
+        if (channel.type != ChannelType.TEXT) return
+        viewModelScope.launch {
+            chatRepository.fetchOlderMessages(channel.id)
+        }
     }
 
     private fun observeWebSocket() {
@@ -367,14 +416,51 @@ class MainViewModel @Inject constructor(
 
     fun downloadUpdate() {
         val downloadUrl = _state.value.updateInfo?.downloadUrl ?: return
-        _state.value = _state.value.copy(isDownloading = true)
+        _state.value = _state.value.copy(
+            isDownloading = true,
+            downloadedBytes = 0L,
+            downloadTotalBytes = 0L,
+            downloadSpeedBps = 0L
+        )
         updateRepository.downloadUpdate(downloadUrl)
+        startDownloadProgressPolling()
+    }
+
+    private fun startDownloadProgressPolling() {
+        downloadProgressJob?.cancel()
+        downloadProgressJob = viewModelScope.launch {
+            var lastBytes = 0L
+            var lastTime = SystemClock.elapsedRealtime()
+            while (_state.value.isDownloading) {
+                delay(500)
+                val progress = updateRepository.queryDownloadProgress() ?: continue
+                val now = SystemClock.elapsedRealtime()
+                val elapsed = now - lastTime
+                // Mirror fallback re-enqueues the download and byte counts restart
+                if (progress.bytesDownloaded < lastBytes) {
+                    lastBytes = 0L
+                }
+                val speed = if (elapsed > 0) {
+                    (progress.bytesDownloaded - lastBytes) * 1000 / elapsed
+                } else 0L
+                lastBytes = progress.bytesDownloaded
+                lastTime = now
+                _state.value = _state.value.copy(
+                    downloadedBytes = progress.bytesDownloaded,
+                    downloadTotalBytes = progress.totalBytes,
+                    downloadSpeedBps = speed.coerceAtLeast(0L)
+                )
+            }
+        }
     }
 
     fun onDownloadComplete(success: Boolean) {
+        downloadProgressJob?.cancel()
+        downloadProgressJob = null
         _state.value = _state.value.copy(
             isDownloading = false,
-            downloadComplete = success
+            downloadComplete = success,
+            downloadSpeedBps = 0L
         )
         if (success) {
             updateRepository.installApk()

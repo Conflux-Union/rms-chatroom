@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "RMS Chat",
+  "productName": "RMSChat",
   "version": "1.0.0",
   "identifier": "cn.net.rms.chatroom",
   "build": {
@@ -45,6 +45,8 @@
     "updater": {
       "active": true,
       "endpoints": [
+        "https://gh-proxy.com/https://github.com/Conflux-Union/rms-chatroom/releases/latest/download/latest.json",
+        "https://moeyy.cn/gh-proxy/https://github.com/Conflux-Union/rms-chatroom/releases/latest/download/latest.json",
         "https://github.com/Conflux-Union/rms-chatroom/releases/latest/download/latest.json"
       ],
       "dialog": false,

@@ -182,6 +182,141 @@ func (h *MessageHandler) loadReactions(messageID int64) []reactionGroupResp {
 	return result
 }
 
+// placeholders returns a "?,?,?" string of n parameter markers.
+func placeholders(n int) string {
+	if n <= 0 {
+		return ""
+	}
+	b := make([]byte, n*2-1)
+	for i := 0; i < n; i++ {
+		b[i*2] = '?'
+		if i < n-1 {
+			b[i*2+1] = ','
+		}
+	}
+	return string(b)
+}
+
+// loadAttachmentsBatch fetches attachments for all given message IDs in one
+// query, grouped by message_id.
+func (h *MessageHandler) loadAttachmentsBatch(messageIDs []int64) map[int64][]attachmentResp {
+	result := make(map[int64][]attachmentResp)
+	if len(messageIDs) == 0 {
+		return result
+	}
+	args := make([]interface{}, len(messageIDs))
+	for i, id := range messageIDs {
+		args[i] = id
+	}
+	query := "SELECT message_id, id, filename, content_type, size FROM attachments WHERE message_id IN (" +
+		placeholders(len(messageIDs)) + ")"
+	rows, err := h.db.Query(query, args...)
+	if err != nil {
+		return result
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var msgID int64
+		var a attachmentResp
+		if err := rows.Scan(&msgID, &a.ID, &a.Filename, &a.ContentType, &a.Size); err != nil {
+			continue
+		}
+		a.URL = fmt.Sprintf("/api/files/%d", a.ID)
+		result[msgID] = append(result[msgID], a)
+	}
+	return result
+}
+
+// loadReplyToBatch fetches reply target messages for the given message IDs in
+// one query. Missing or deleted targets are omitted from the map; the caller
+// treats absence as nil.
+func (h *MessageHandler) loadReplyToBatch(replyToIDs []int64) map[int64]*replyToResp {
+	result := make(map[int64]*replyToResp)
+	if len(replyToIDs) == 0 {
+		return result
+	}
+	args := make([]interface{}, len(replyToIDs))
+	for i, id := range replyToIDs {
+		args[i] = id
+	}
+	query := "SELECT id, user_id, username, content, is_deleted FROM messages WHERE id IN (" +
+		placeholders(len(replyToIDs)) + ")"
+	rows, err := h.db.Query(query, args...)
+	if err != nil {
+		return result
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var r replyToResp
+		var isDeleted bool
+		if err := rows.Scan(&r.ID, &r.UserID, &r.Username, &r.Content, &isDeleted); err != nil {
+			continue
+		}
+		if isDeleted {
+			r.Content = "[Message deleted]"
+		} else {
+			r.Content = truncateContent(r.Content, 100)
+		}
+		result[r.ID] = &r
+	}
+	return result
+}
+
+// loadReactionsBatch fetches reactions for all given message IDs in one query,
+// grouped by message_id with emojis ordered by first appearance (matching the
+// per-message created_at ordering of loadReactions).
+func (h *MessageHandler) loadReactionsBatch(messageIDs []int64) map[int64][]reactionGroupResp {
+	result := make(map[int64][]reactionGroupResp)
+	if len(messageIDs) == 0 {
+		return result
+	}
+	args := make([]interface{}, len(messageIDs))
+	for i, id := range messageIDs {
+		args[i] = id
+	}
+	query := "SELECT message_id, emoji, user_id, username FROM reactions WHERE message_id IN (" +
+		placeholders(len(messageIDs)) + ") ORDER BY created_at"
+	rows, err := h.db.Query(query, args...)
+	if err != nil {
+		return result
+	}
+	defer rows.Close()
+	type groupState struct {
+		g     *reactionGroupResp
+		order []string
+		m     map[string]*reactionGroupResp
+	}
+	states := make(map[int64]*groupState)
+	for rows.Next() {
+		var msgID int64
+		var emoji, username string
+		var userID int64
+		if err := rows.Scan(&msgID, &emoji, &userID, &username); err != nil {
+			continue
+		}
+		st, ok := states[msgID]
+		if !ok {
+			st = &groupState{m: map[string]*reactionGroupResp{}}
+			states[msgID] = st
+		}
+		if _, exists := st.m[emoji]; !exists {
+			st.m[emoji] = &reactionGroupResp{Emoji: emoji}
+			st.order = append(st.order, emoji)
+		}
+		g := st.m[emoji]
+		g.Count++
+		g.Users = append(g.Users, reactionUserResp{ID: userID, Username: username})
+	}
+	for msgID, st := range states {
+		groups := make([]reactionGroupResp, 0, len(st.order))
+		for _, e := range st.order {
+			groups = append(groups, *st.m[e])
+		}
+		result[msgID] = groups
+	}
+	return result
+}
+
 // GetMessages returns paginated messages for a channel.
 // GET /api/channels/:channel_id/messages
 func (h *MessageHandler) GetMessages(c echo.Context) error {
@@ -237,9 +372,10 @@ func (h *MessageHandler) GetMessages(c echo.Context) error {
 	}
 	defer rows.Close()
 
+	// First pass: scan messages and collect IDs needed for batch loading.
 	var msgs []messageResp
-	var userIDs []int
-	userIDSet := map[int]bool{}
+	messageIDs := make([]int64, 0)
+	replyToIDSet := make(map[int64]bool)
 	for rows.Next() {
 		var m messageResp
 		var createdAt time.Time
@@ -260,19 +396,45 @@ func (h *MessageHandler) GetMessages(c echo.Context) error {
 		}
 		if replyToID.Valid {
 			m.ReplyToID = &replyToID.Int64
+			replyToIDSet[replyToID.Int64] = true
 		}
 
-		m.Attachments = h.loadAttachments(m.ID)
-		m.ReplyTo = h.loadReplyTo(m.ReplyToID)
-		m.Mentions = parseMentions(m.Content)
-		m.Reactions = h.loadReactions(m.ID)
+		messageIDs = append(messageIDs, m.ID)
+		msgs = append(msgs, m)
+	}
 
-		uid := int(m.UserID)
+	// Batch load related entities: 3 queries regardless of message count,
+	// instead of 3 per message (N+1).
+	attachmentsByMsg := h.loadAttachmentsBatch(messageIDs)
+	reactionsByMsg := h.loadReactionsBatch(messageIDs)
+	replyToIDs := make([]int64, 0, len(replyToIDSet))
+	for id := range replyToIDSet {
+		replyToIDs = append(replyToIDs, id)
+	}
+	replyByMsg := h.loadReplyToBatch(replyToIDs)
+
+	// Second pass: attach batched data, collect user IDs for avatar lookup.
+	userIDs := make([]int, 0, len(msgs))
+	userIDSet := map[int]bool{}
+	for i := range msgs {
+		msgs[i].Attachments = attachmentsByMsg[msgs[i].ID]
+		if msgs[i].Attachments == nil {
+			msgs[i].Attachments = []attachmentResp{}
+		}
+		msgs[i].Reactions = reactionsByMsg[msgs[i].ID]
+		if msgs[i].Reactions == nil {
+			msgs[i].Reactions = []reactionGroupResp{}
+		}
+		if msgs[i].ReplyToID != nil {
+			msgs[i].ReplyTo = replyByMsg[*msgs[i].ReplyToID]
+		}
+		msgs[i].Mentions = parseMentions(msgs[i].Content)
+
+		uid := int(msgs[i].UserID)
 		if !userIDSet[uid] {
 			userIDSet[uid] = true
 			userIDs = append(userIDs, uid)
 		}
-		msgs = append(msgs, m)
 	}
 
 	// Batch fetch avatars

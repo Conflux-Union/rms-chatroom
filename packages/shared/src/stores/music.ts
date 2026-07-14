@@ -62,9 +62,9 @@ export const useMusicStore = defineStore('music', () => {
   // Current song URL for audio playback
   const currentSongUrl = ref<string | null>(null)
 
-  // Bot state
-  const botConnected = ref(false)
-  const botRoom = ref<string | null>(null)
+  // Room playback state (backend is the master controller per room)
+  const playbackActive = ref(false)
+  const playbackRoom = ref<string | null>(null)
 
   // WebSocket and audio state (managed by store, not component)
   let musicWs: WebSocket | null = null
@@ -272,59 +272,40 @@ export const useMusicStore = defineStore('music', () => {
     return `${mins}:${secs.toString().padStart(2, '0')}`
   }
   
-  // --- Bot functions ---
-  
-  async function startBot(roomName: string) {
+  // --- Room playback control ---
+
+  async function stopPlayback(roomName: string) {
     try {
-      const res = await authFetch(`${API_BASE}/api/music/bot/start`, {
+      await authFetch(`${API_BASE}/api/music/playback/stop`, {
         method: 'POST',
         headers: jsonHeaders,
         body: JSON.stringify({ room_name: roomName })
       })
-      const data = await res.json()
-      if (data.success) {
-        botConnected.value = true
-        botRoom.value = roomName
-      }
-      return data.success
+      playbackActive.value = false
+      playbackRoom.value = null
     } catch (e) {
-      console.error('Failed to start bot:', e)
-      return false
+      console.error('Failed to stop playback:', e)
     }
   }
-  
-  async function stopBot(roomName: string) {
-    try {
-      await authFetch(`${API_BASE}/api/music/bot/stop`, {
-        method: 'POST',
-        headers: jsonHeaders,
-        body: JSON.stringify({ room_name: roomName })
-      })
-      botConnected.value = false
-      botRoom.value = null
-    } catch (e) {
-      console.error('Failed to stop bot:', e)
-    }
-  }
-  
-  async function getBotStatus(roomName: string) {
+
+  async function fetchPlaybackStatus(roomName: string) {
     if (!roomName) return null
     try {
-      const res = await authFetch(`${API_BASE}/api/music/bot/status/${roomName}`)
+      const res = await authFetch(`${API_BASE}/api/music/playback/status/${roomName}`)
       const data = await res.json()
-      botConnected.value = data.connected
-      botRoom.value = data.room
+      playbackActive.value = data.active
+      playbackRoom.value = data.room
       isPlaying.value = data.is_playing
       return data
     } catch (e) {
-      console.error('Failed to get bot status:', e)
+      console.error('Failed to get playback status:', e)
       return null
     }
   }
-  
-  async function botPlay(roomName: string) {
+
+  async function play(roomName: string) {
     try {
-      const res = await authFetch(`${API_BASE}/api/music/bot/play`, {
+      const res = await authFetch(`${API_BASE}/api/music/playback/play`, {
         method: 'POST',
         headers: jsonHeaders,
         body: JSON.stringify({ room_name: roomName })
@@ -332,19 +313,19 @@ export const useMusicStore = defineStore('music', () => {
       const data = await res.json()
       if (data.success) {
         isPlaying.value = true
-        botConnected.value = true
-        botRoom.value = roomName
+        playbackActive.value = true
+        playbackRoom.value = roomName
       }
       return data.success
     } catch (e) {
-      console.error('Bot play failed:', e)
+      console.error('Play failed:', e)
       return false
     }
   }
-  
-  async function botPause(roomName: string) {
+
+  async function pause(roomName: string) {
     try {
-      await authFetch(`${API_BASE}/api/music/bot/pause`, {
+      await authFetch(`${API_BASE}/api/music/playback/pause`, {
         method: 'POST',
         headers: jsonHeaders,
         body: JSON.stringify({ room_name: roomName })
@@ -352,13 +333,13 @@ export const useMusicStore = defineStore('music', () => {
       isPlaying.value = false
       playbackState.value = 'paused'
     } catch (e) {
-      console.error('Bot pause failed:', e)
+      console.error('Pause failed:', e)
     }
   }
-  
-  async function botResume(roomName: string) {
+
+  async function resume(roomName: string) {
     try {
-      const res = await authFetch(`${API_BASE}/api/music/bot/resume`, {
+      const res = await authFetch(`${API_BASE}/api/music/playback/resume`, {
         method: 'POST',
         headers: jsonHeaders,
         body: JSON.stringify({ room_name: roomName })
@@ -369,13 +350,13 @@ export const useMusicStore = defineStore('music', () => {
         playbackState.value = 'playing'
       }
     } catch (e) {
-      console.error('Bot resume failed:', e)
+      console.error('Resume failed:', e)
     }
   }
-  
-  async function botSkip(roomName: string) {
+
+  async function skipNext(roomName: string) {
     try {
-      const res = await authFetch(`${API_BASE}/api/music/bot/skip`, {
+      const res = await authFetch(`${API_BASE}/api/music/playback/skip`, {
         method: 'POST',
         headers: jsonHeaders,
         body: JSON.stringify({ room_name: roomName })
@@ -383,13 +364,13 @@ export const useMusicStore = defineStore('music', () => {
       await res.json()
       await refreshQueue(roomName)
     } catch (e) {
-      console.error('Bot skip failed:', e)
+      console.error('Skip failed:', e)
     }
   }
-  
-  async function botPrevious(roomName: string) {
+
+  async function skipPrevious(roomName: string) {
     try {
-      const res = await authFetch(`${API_BASE}/api/music/bot/previous`, {
+      const res = await authFetch(`${API_BASE}/api/music/playback/previous`, {
         method: 'POST',
         headers: jsonHeaders,
         body: JSON.stringify({ room_name: roomName })
@@ -397,37 +378,19 @@ export const useMusicStore = defineStore('music', () => {
       await res.json()
       await refreshQueue(roomName)
     } catch (e) {
-      console.error('Bot previous failed:', e)
+      console.error('Previous failed:', e)
     }
   }
-  
-  async function botSeek(roomName: string, seekPositionMs: number) {
+
+  async function seek(roomName: string, seekPositionMs: number) {
     try {
-      await authFetch(`${API_BASE}/api/music/bot/seek`, {
+      await authFetch(`${API_BASE}/api/music/playback/seek`, {
         method: 'POST',
         headers: jsonHeaders,
         body: JSON.stringify({ room_name: roomName, position_ms: seekPositionMs })
       })
     } catch (e) {
-      console.error('Bot seek failed:', e)
-    }
-  }
-  
-  async function getProgress(roomName: string) {
-    if (!roomName) return null
-    try {
-      const res = await authFetch(`${API_BASE}/api/music/bot/progress/${roomName}`)
-      const data = await res.json()
-      positionMs.value = data.position_ms || 0
-      durationMs.value = data.duration_ms || 0
-      playbackState.value = data.state || 'idle'
-      if (data.current_song) {
-        currentSong.value = data.current_song
-      }
-      return data
-    } catch (e) {
-      console.error('Failed to get progress:', e)
-      return null
+      console.error('Seek failed:', e)
     }
   }
 
@@ -595,6 +558,21 @@ export const useMusicStore = defineStore('music', () => {
           // Seek to position
           console.log('[MusicStore] Received seek command, position:', msg.position_ms)
           audio.currentTime = (msg.position_ms || 0) / 1000
+        } else if (msg.type === 'stop') {
+          // Room playback stopped (queue cleared or playback stopped)
+          console.log('[MusicStore] Received stop command')
+          audio.pause()
+          audio.src = ''
+          isPlaying.value = false
+          playbackState.value = 'idle'
+          currentSong.value = null
+          positionMs.value = 0
+          playbackActive.value = false
+          playbackRoom.value = null
+          const roomName = msg.room_name || currentWsRoom
+          if (roomName) {
+            refreshQueue(roomName)
+          }
         } else if (msg.type === 'music_state' && msg.data) {
           // Only process if for our room
           if (msg.data.room_name && msg.data.room_name !== currentRoom) {
@@ -650,7 +628,7 @@ export const useMusicStore = defineStore('music', () => {
         if (newChannel) {
           const roomName = `voice_${newChannel.id}`
           await refreshQueue(roomName)
-          await getBotStatus(roomName)
+          await fetchPlaybackStatus(roomName)
           connectMusicWs(roomName)
         } else if (oldChannel) {
           // Left voice channel, disconnect WebSocket and stop audio
@@ -706,19 +684,17 @@ export const useMusicStore = defineStore('music', () => {
     durationMs,
     getSongUrl,
 
-    // Bot state
-    botConnected,
-    botRoom,
-    startBot,
-    stopBot,
-    getBotStatus,
-    botPlay,
-    botPause,
-    botResume,
-    botSkip,
-    botPrevious,
-    botSeek,
-    getProgress,
+    // Room playback control
+    playbackActive,
+    playbackRoom,
+    stopPlayback,
+    fetchPlaybackStatus,
+    play,
+    pause,
+    resume,
+    skipNext,
+    skipPrevious,
+    seek,
     updateProgress,
 
     // WebSocket and audio state

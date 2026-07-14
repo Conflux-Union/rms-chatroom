@@ -241,21 +241,11 @@ data class MusicSearchResponse(
     val songs: List<Song>
 )
 
-data class MusicBotStatusResponse(
-    val connected: Boolean,
+data class MusicPlaybackStatusResponse(
+    val active: Boolean,
     val room: String?,
     @SerializedName("is_playing")
     val isPlaying: Boolean
-)
-
-data class MusicProgressResponse(
-    @SerializedName("position_ms")
-    val positionMs: Long,
-    @SerializedName("duration_ms")
-    val durationMs: Long,
-    val state: String,
-    @SerializedName("current_song")
-    val currentSong: Song?
 )
 
 data class MusicLoginCheckResponse(
@@ -295,11 +285,6 @@ data class MusicSearchRequest(
     val keyword: String,
     val num: Int = 20,
     val platform: String = "all"  // "all", "qq", or "netease"
-)
-
-data class MusicBotStartRequest(
-    @SerializedName("room_name")
-    val roomName: String
 )
 
 data class MusicRoomRequest(

@@ -4,6 +4,7 @@ import android.util.Log
 import com.google.gson.Gson
 import com.google.gson.JsonParser
 import cn.net.rms.chatroom.BuildConfig
+import cn.net.rms.chatroom.data.auth.TokenAuthenticator
 import cn.net.rms.chatroom.data.model.Song
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -39,6 +40,8 @@ sealed class MusicWebSocketEvent {
     data class Pause(val roomName: String, val serverTime: Double? = null) : MusicWebSocketEvent()
     data class Resume(val roomName: String, val positionMs: Long, val serverTime: Double? = null) : MusicWebSocketEvent()
     data class Seek(val roomName: String, val positionMs: Long, val serverTime: Double? = null) : MusicWebSocketEvent()
+    data class Stop(val roomName: String) : MusicWebSocketEvent()
+    data class QueueFinished(val roomName: String) : MusicWebSocketEvent()
     data class SongUnavailable(val roomName: String, val songName: String, val reason: String) : MusicWebSocketEvent()
     data class MusicLoginStatus(val status: String, val platform: String) : MusicWebSocketEvent()
     object Connected : MusicWebSocketEvent()
@@ -49,7 +52,8 @@ sealed class MusicWebSocketEvent {
 @Singleton
 class MusicWebSocket @Inject constructor(
     private val client: OkHttpClient,
-    private val gson: Gson
+    private val gson: Gson,
+    private val tokenAuthenticator: TokenAuthenticator
 ) {
     companion object {
         private const val TAG = "MusicWebSocket"
@@ -96,14 +100,25 @@ class MusicWebSocket @Inject constructor(
     }
 
     private fun doConnect() {
-        val token = currentToken ?: return
-        val roomName = currentRoomName ?: return
+        if (currentToken == null || currentRoomName == null) return
 
         if (_connectionState.value == ConnectionState.RECONNECTING) {
             // Keep reconnecting state
         } else {
             _connectionState.value = ConnectionState.CONNECTING
         }
+
+        scope.launch {
+            if (!shouldReconnect) return@launch
+            // WS auth happens only at handshake; refresh a near-expiry token first
+            tokenAuthenticator.getFreshToken()?.let { currentToken = it }
+            openWebSocket()
+        }
+    }
+
+    private fun openWebSocket() {
+        val token = currentToken ?: return
+        val roomName = currentRoomName ?: return
 
         val encodedRoom = URLEncoder.encode(roomName, "UTF-8")
         val url = "${BuildConfig.WS_BASE_URL}/ws/music?token=$token&room_name=$encodedRoom"
@@ -163,16 +178,7 @@ class MusicWebSocket @Inject constructor(
                     val roomName = json.get("room_name")?.asString ?: ""
                     val url = json.get("url")?.asString ?: ""
                     val positionMs = json.get("position_ms")?.asLong ?: 0L
-
-                    val songObj = json.getAsJsonObject("song")
-                    val song = Song(
-                        mid = songObj.get("mid")?.asString ?: "",
-                        name = songObj.get("name")?.asString ?: "",
-                        artist = songObj.get("artist")?.asString ?: "",
-                        album = songObj.get("album")?.asString ?: "",
-                        duration = songObj.get("duration")?.asInt ?: 0,
-                        cover = songObj.get("cover")?.asString ?: ""
-                    )
+                    val song = parseSong(json.getAsJsonObject("song"))
 
                     Log.d(TAG, "Play command: room=$roomName, song=${song.name}, url=$url, serverTime=$serverTime")
                     _events.tryEmit(MusicWebSocketEvent.Play(roomName, song, url, positionMs, serverTime))
@@ -194,6 +200,16 @@ class MusicWebSocket @Inject constructor(
                     Log.d(TAG, "Seek command: room=$roomName, position=$positionMs, serverTime=$serverTime")
                     _events.tryEmit(MusicWebSocketEvent.Seek(roomName, positionMs, serverTime))
                 }
+                "stop" -> {
+                    val roomName = json.get("room_name")?.asString ?: ""
+                    Log.d(TAG, "Stop command: room=$roomName")
+                    _events.tryEmit(MusicWebSocketEvent.Stop(roomName))
+                }
+                "queue_finished" -> {
+                    val roomName = json.get("room_name")?.asString ?: ""
+                    Log.d(TAG, "Queue finished: room=$roomName")
+                    _events.tryEmit(MusicWebSocketEvent.QueueFinished(roomName))
+                }
                 "music_state" -> {
                     val data = json.getAsJsonObject("data")
                     val roomName = data.get("room_name")?.asString ?: ""
@@ -205,15 +221,7 @@ class MusicWebSocket @Inject constructor(
                     val dataServerTime = data.get("server_time")?.asDouble
 
                     val currentSong = if (data.has("current_song") && !data.get("current_song").isJsonNull) {
-                        val songObj = data.getAsJsonObject("current_song")
-                        Song(
-                            mid = songObj.get("mid")?.asString ?: "",
-                            name = songObj.get("name")?.asString ?: "",
-                            artist = songObj.get("artist")?.asString ?: "",
-                            album = songObj.get("album")?.asString ?: "",
-                            duration = songObj.get("duration")?.asInt ?: 0,
-                            cover = songObj.get("cover")?.asString ?: ""
-                        )
+                        parseSong(data.getAsJsonObject("current_song"))
                     } else null
 
                     Log.d(TAG, "Music state update: room=$roomName, state=$state, song=${currentSong?.name}")
@@ -232,8 +240,15 @@ class MusicWebSocket @Inject constructor(
                 }
                 "song_unavailable" -> {
                     val roomName = json.get("room_name")?.asString ?: ""
-                    val songName = json.get("song_name")?.asString ?: ""
-                    val reason = json.get("reason")?.asString ?: "Unknown reason"
+                    // Server sends a "song" object + "error"; older payloads used "song_name"/"reason"
+                    val songName = when {
+                        json.has("song") && json.get("song").isJsonObject ->
+                            json.getAsJsonObject("song").get("name")?.asString ?: ""
+                        else -> json.get("song_name")?.asString ?: ""
+                    }
+                    val reason = json.get("reason")?.asString
+                        ?: json.get("error")?.asString
+                        ?: "Unknown reason"
                     Log.w(TAG, "Song unavailable: room=$roomName, song=$songName, reason=$reason")
                     _events.tryEmit(MusicWebSocketEvent.SongUnavailable(roomName, songName, reason))
                 }
@@ -259,6 +274,18 @@ class MusicWebSocket @Inject constructor(
         } catch (e: Exception) {
             Log.e(TAG, "Failed to parse music message: $text", e)
         }
+    }
+
+    private fun parseSong(songObj: com.google.gson.JsonObject): Song {
+        return Song(
+            mid = songObj.get("mid")?.asString ?: "",
+            name = songObj.get("name")?.asString ?: "",
+            artist = songObj.get("artist")?.asString ?: "",
+            album = songObj.get("album")?.asString ?: "",
+            duration = songObj.get("duration")?.asInt ?: 0,
+            cover = songObj.get("cover")?.asString ?: "",
+            platform = songObj.get("platform")?.asString ?: "qq"
+        )
     }
 
     private fun handlePong() {

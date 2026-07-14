@@ -121,16 +121,10 @@ fun VoiceScreen(
         }
     }
 
+    // Music playback follows the *joined* voice channel via MusicPlaybackManager,
+    // so it keeps playing when this screen leaves composition
     val voiceRoomName = remember(channelId) { "voice_$channelId" }
 
-    // Set current room for music queue, disconnect when leaving
-    DisposableEffect(voiceRoomName) {
-        musicViewModel.setCurrentRoom(voiceRoomName)
-        onDispose {
-            musicViewModel.setCurrentRoom(null)
-        }
-    }
-    
     // Permission denied dialog
     if (showPermissionDeniedDialog) {
         AlertDialog(
@@ -242,9 +236,9 @@ fun VoiceScreen(
                 state = musicState,
                 voiceRoomName = voiceRoomName,
                 voiceConnected = state.isConnected,
-                onTogglePlayPause = { musicViewModel.togglePlayPause(voiceRoomName) },
-                onSkip = { musicViewModel.botSkip() },
-                onSeek = { musicViewModel.botSeek(it) },
+                onTogglePlayPause = { musicViewModel.togglePlayPause() },
+                onSkip = { musicViewModel.skipNext() },
+                onSeek = { musicViewModel.seek(it) },
                 onVolumeChange = { musicViewModel.setVolume(it) },
                 onRemoveFromQueue = { musicViewModel.removeFromQueue(it) },
                 onClearQueue = { musicViewModel.clearQueue() },
@@ -275,7 +269,7 @@ fun VoiceScreen(
                 },
                 onQQLogoutClick = { musicViewModel.logout("qq") },
                 onNeteaseLogoutClick = { musicViewModel.logout("netease") },
-                onStopBot = { musicViewModel.stopBot() }
+                onStopPlayback = { musicViewModel.stopPlayback() }
             )
         }
     }

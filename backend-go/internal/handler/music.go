@@ -362,16 +362,31 @@ func RegisterMusicRoutes(g *echo.Group, jwtSecret string) {
 	g.DELETE("/queue/:room_name/:index", musicQueueRemove(jwtSecret))
 	g.GET("/queue/:room_name", musicQueueGet(jwtSecret))
 	g.POST("/queue/clear", musicQueueClear(jwtSecret))
-	g.POST("/bot/start", musicBotStart(jwtSecret))
-	g.POST("/bot/stop", musicBotStop(jwtSecret))
-	g.GET("/bot/status/:room_name", musicBotStatus(jwtSecret))
-	g.POST("/bot/play", musicBotPlay(jwtSecret))
-	g.POST("/bot/pause", musicBotPause(jwtSecret))
-	g.POST("/bot/resume", musicBotResume(jwtSecret))
-	g.POST("/bot/skip", musicBotSkip(jwtSecret))
-	g.POST("/bot/previous", musicBotPrevious(jwtSecret))
-	g.POST("/bot/seek", musicBotSeek(jwtSecret))
-	g.GET("/bot/progress/:room_name", musicBotProgress(jwtSecret))
+	// Room playback control: the backend is the master controller of per-room
+	// playback state; clients play the audio URLs locally and follow the
+	// play/pause/resume/seek/stop commands broadcast over /ws/music.
+	g.POST("/playback/play", musicPlaybackPlay(jwtSecret))
+	g.POST("/playback/pause", musicPlaybackPause(jwtSecret))
+	g.POST("/playback/resume", musicPlaybackResume(jwtSecret))
+	g.POST("/playback/skip", musicPlaybackSkip(jwtSecret))
+	g.POST("/playback/previous", musicPlaybackPrevious(jwtSecret))
+	g.POST("/playback/seek", musicPlaybackSeek(jwtSecret))
+	g.POST("/playback/stop", musicPlaybackStop(jwtSecret))
+	g.GET("/playback/status/:room_name", musicPlaybackStatus(jwtSecret))
+	g.GET("/playback/progress/:room_name", musicPlaybackProgress(jwtSecret))
+
+	// Deprecated /bot/* aliases from the removed music-bot design, kept for
+	// clients shipped before the client-side playback rework.
+	g.POST("/bot/start", musicLegacyBotStart(jwtSecret))
+	g.POST("/bot/stop", musicPlaybackStop(jwtSecret))
+	g.GET("/bot/status/:room_name", musicPlaybackStatus(jwtSecret))
+	g.POST("/bot/play", musicPlaybackPlay(jwtSecret))
+	g.POST("/bot/pause", musicPlaybackPause(jwtSecret))
+	g.POST("/bot/resume", musicPlaybackResume(jwtSecret))
+	g.POST("/bot/skip", musicPlaybackSkip(jwtSecret))
+	g.POST("/bot/previous", musicPlaybackPrevious(jwtSecret))
+	g.POST("/bot/seek", musicPlaybackSeek(jwtSecret))
+	g.GET("/bot/progress/:room_name", musicPlaybackProgress(jwtSecret))
 }
 
 func musicLoginQRCode() echo.HandlerFunc {
@@ -730,7 +745,9 @@ func musicQueueClear(jwtSecret string) echo.HandlerFunc {
 	}
 }
 
-func musicBotStart(jwtSecret string) echo.HandlerFunc {
+// musicLegacyBotStart only serves the deprecated /bot/start route: room state
+// is now created implicitly by queue/playback calls, so this is a no-op ack.
+func musicLegacyBotStart(jwtSecret string) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		if _, err := authenticateFromEcho(c, jwtSecret); err != nil {
 			return err
@@ -744,7 +761,7 @@ func musicBotStart(jwtSecret string) echo.HandlerFunc {
 	}
 }
 
-func musicBotStop(jwtSecret string) echo.HandlerFunc {
+func musicPlaybackStop(jwtSecret string) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		if _, err := authenticateFromEcho(c, jwtSecret); err != nil {
 			return err
@@ -757,11 +774,13 @@ func musicBotStop(jwtSecret string) echo.HandlerFunc {
 		roomStatesMu.Lock()
 		delete(roomStates, req.RoomName)
 		roomStatesMu.Unlock()
+		// Clients play audio locally, so they must be told to stop explicitly.
+		broadcastMusicCommand("stop", map[string]interface{}{"room_name": req.RoomName})
 		return c.JSON(http.StatusOK, map[string]interface{}{"success": true, "room_name": req.RoomName})
 	}
 }
 
-func musicBotStatus(jwtSecret string) echo.HandlerFunc {
+func musicPlaybackStatus(jwtSecret string) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		if _, err := authenticateFromEcho(c, jwtSecret); err != nil {
 			return err
@@ -771,7 +790,8 @@ func musicBotStatus(jwtSecret string) echo.HandlerFunc {
 		s, ok := roomStates[roomName]
 		roomStatesMu.RUnlock()
 		resp := map[string]interface{}{
-			"connected":    ok,
+			"active":       ok,
+			"connected":    ok, // legacy field name from the bot-era API
 			"room":         roomName,
 			"is_playing":   false,
 			"queue_length": 0,
@@ -786,7 +806,7 @@ func musicBotStatus(jwtSecret string) echo.HandlerFunc {
 	}
 }
 
-func musicBotPlay(jwtSecret string) echo.HandlerFunc {
+func musicPlaybackPlay(jwtSecret string) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		if _, err := authenticateFromEcho(c, jwtSecret); err != nil {
 			return err
@@ -811,7 +831,7 @@ func musicBotPlay(jwtSecret string) echo.HandlerFunc {
 	}
 }
 
-func musicBotPause(jwtSecret string) echo.HandlerFunc {
+func musicPlaybackPause(jwtSecret string) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		if _, err := authenticateFromEcho(c, jwtSecret); err != nil {
 			return err
@@ -835,7 +855,7 @@ func musicBotPause(jwtSecret string) echo.HandlerFunc {
 	}
 }
 
-func musicBotResume(jwtSecret string) echo.HandlerFunc {
+func musicPlaybackResume(jwtSecret string) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		if _, err := authenticateFromEcho(c, jwtSecret); err != nil {
 			return err
@@ -868,7 +888,7 @@ func musicBotResume(jwtSecret string) echo.HandlerFunc {
 	}
 }
 
-func musicBotSkip(jwtSecret string) echo.HandlerFunc {
+func musicPlaybackSkip(jwtSecret string) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		if _, err := authenticateFromEcho(c, jwtSecret); err != nil {
 			return err
@@ -898,7 +918,7 @@ func musicBotSkip(jwtSecret string) echo.HandlerFunc {
 	}
 }
 
-func musicBotPrevious(jwtSecret string) echo.HandlerFunc {
+func musicPlaybackPrevious(jwtSecret string) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		if _, err := authenticateFromEcho(c, jwtSecret); err != nil {
 			return err
@@ -928,7 +948,7 @@ func musicBotPrevious(jwtSecret string) echo.HandlerFunc {
 	}
 }
 
-func musicBotSeek(jwtSecret string) echo.HandlerFunc {
+func musicPlaybackSeek(jwtSecret string) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		if _, err := authenticateFromEcho(c, jwtSecret); err != nil {
 			return err
@@ -953,7 +973,7 @@ func musicBotSeek(jwtSecret string) echo.HandlerFunc {
 	}
 }
 
-func musicBotProgress(jwtSecret string) echo.HandlerFunc {
+func musicPlaybackProgress(jwtSecret string) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		if _, err := authenticateFromEcho(c, jwtSecret); err != nil {
 			return err

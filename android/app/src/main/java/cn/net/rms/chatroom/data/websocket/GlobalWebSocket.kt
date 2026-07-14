@@ -5,6 +5,7 @@ import com.google.gson.Gson
 import com.google.gson.JsonParser
 import com.google.gson.reflect.TypeToken
 import cn.net.rms.chatroom.BuildConfig
+import cn.net.rms.chatroom.data.auth.TokenAuthenticator
 import cn.net.rms.chatroom.data.model.VoiceUser
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -33,7 +34,8 @@ sealed class GlobalWebSocketEvent {
 @Singleton
 class GlobalWebSocket @Inject constructor(
     private val client: OkHttpClient,
-    private val gson: Gson
+    private val gson: Gson,
+    private val tokenAuthenticator: TokenAuthenticator
 ) {
     companion object {
         private const val TAG = "GlobalWebSocket"
@@ -81,13 +83,24 @@ class GlobalWebSocket @Inject constructor(
     }
 
     private fun doConnect() {
-        val token = currentToken ?: return
+        if (currentToken == null) return
 
         if (_connectionState.value == ConnectionState.RECONNECTING) {
             // Keep reconnecting state
         } else {
             _connectionState.value = ConnectionState.CONNECTING
         }
+
+        scope.launch {
+            if (!shouldReconnect) return@launch
+            // WS auth happens only at handshake; refresh a near-expiry token first
+            tokenAuthenticator.getFreshToken()?.let { currentToken = it }
+            openWebSocket()
+        }
+    }
+
+    private fun openWebSocket() {
+        val token = currentToken ?: return
 
         val url = "${BuildConfig.WS_BASE_URL}/ws/global?token=$token"
         Log.d(TAG, "Connecting to Global WebSocket")

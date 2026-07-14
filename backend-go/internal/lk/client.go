@@ -125,20 +125,6 @@ func (c *Client) ParticipantIDs(ctx context.Context, room string) (map[string]st
 	return ids, nil
 }
 
-// HasRealUsers checks if a room has non-bot participants.
-func (c *Client) HasRealUsers(ctx context.Context, room string) bool {
-	participants, err := c.ListParticipants(ctx, room)
-	if err != nil {
-		return false
-	}
-	for _, p := range participants {
-		if p.Identity != "MusicBot" && !strings.HasPrefix(p.Identity, "music-bot-") {
-			return true
-		}
-	}
-	return false
-}
-
 // RoomName returns the canonical room name for a voice channel.
 func RoomName(channelID string) string {
 	return fmt.Sprintf("voice_%s", channelID)

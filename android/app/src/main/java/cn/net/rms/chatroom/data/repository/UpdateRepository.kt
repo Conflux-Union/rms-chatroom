@@ -22,6 +22,11 @@ import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
 
+data class DownloadProgress(
+    val bytesDownloaded: Long,
+    val totalBytes: Long
+)
+
 @Singleton
 class UpdateRepository @Inject constructor(
     @ApplicationContext private val context: Context,
@@ -34,16 +39,21 @@ class UpdateRepository @Inject constructor(
         private const val GITHUB_REPO_NAME = "rms-chatroom"
         private const val GITHUB_RELEASE_API = "https://api.github.com/repos/$GITHUB_REPO_OWNER/$GITHUB_REPO_NAME/releases/latest"
 
-        // ghproxy mirrors for mainland China acceleration (updated 2025-02)
+        // ghproxy mirrors for mainland China acceleration (verified 2026-07).
+        // ghp.ci is dead (connection refused). ghproxy.net returns 403 on the
+        // api.github.com proxy but still serves release assets, so it stays
+        // useful for downloads; checkUpdate just falls through to the next.
         private val GHPROXY_MIRRORS = listOf(
-            "https://ghp.ci",
             "https://gh-proxy.com",
-            "https://ghproxy.net",
-            "https://moeyy.cn/gh-proxy"
+            "https://moeyy.cn/gh-proxy",
+            "https://ghproxy.net"
         )
     }
 
     private var downloadId: Long = -1
+    private var originalDownloadUrl: String? = null
+    private var mirrorIndex = 0
+    private var downloadCompleteCallback: ((Boolean) -> Unit)? = null
 
     /**
      * Parse version code from tag name
@@ -153,8 +163,20 @@ class UpdateRepository @Inject constructor(
             apkFile.delete()
         }
 
-        // downloadUrl is already a full URL from GitHub
-        val request = DownloadManager.Request(Uri.parse(downloadUrl))
+        // downloadUrl is the raw GitHub browser_download_url; route it through
+        // ghproxy mirrors one by one, falling back on download failure.
+        originalDownloadUrl = downloadUrl
+        mirrorIndex = 0
+        return enqueueMirrorDownload(0)
+    }
+
+    private fun enqueueMirrorDownload(index: Int): Long {
+        val original = originalDownloadUrl ?: return -1
+        val mirror = GHPROXY_MIRRORS.getOrNull(index)
+        val finalUrl = if (mirror != null) "$mirror/$original" else original
+        Log.d(TAG, "Downloading update via mirror[$index]: ${mirror ?: "direct"}")
+
+        val request = DownloadManager.Request(Uri.parse(finalUrl))
             .setTitle("RMS Chatroom Update")
             .setDescription("Downloading update...")
             .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
@@ -169,6 +191,24 @@ class UpdateRepository @Inject constructor(
         val downloadManager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
         downloadId = downloadManager.enqueue(request)
         return downloadId
+    }
+
+    /**
+     * Query the current download's progress from DownloadManager.
+     * Reads the live downloadId, so it keeps tracking after a mirror
+     * fallback re-enqueues the download (byte counts restart from 0).
+     */
+    suspend fun queryDownloadProgress(): DownloadProgress? = withContext(Dispatchers.IO) {
+        if (downloadId == -1L) return@withContext null
+        val downloadManager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+        val cursor = downloadManager.query(DownloadManager.Query().setFilterById(downloadId))
+        cursor.use {
+            if (!it.moveToFirst()) return@withContext null
+            DownloadProgress(
+                bytesDownloaded = it.getLong(it.getColumnIndexOrThrow(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR)),
+                totalBytes = it.getLong(it.getColumnIndexOrThrow(DownloadManager.COLUMN_TOTAL_SIZE_BYTES))
+            )
+        }
     }
 
     fun installApk() {
@@ -196,26 +236,42 @@ class UpdateRepository @Inject constructor(
     }
 
     fun registerDownloadReceiver(onComplete: (Boolean) -> Unit): BroadcastReceiver {
+        downloadCompleteCallback = onComplete
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(ctx: Context?, intent: Intent?) {
                 val id = intent?.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1)
-                if (id == downloadId) {
-                    val downloadManager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-                    val query = DownloadManager.Query().setFilterById(downloadId)
-                    val cursor = downloadManager.query(query)
-                    
-                    if (cursor.moveToFirst()) {
-                        val statusIndex = cursor.getColumnIndex(DownloadManager.COLUMN_STATUS)
-                        val status = cursor.getInt(statusIndex)
-                        onComplete(status == DownloadManager.STATUS_SUCCESSFUL)
-                    } else {
-                        onComplete(false)
-                    }
+                if (id != downloadId) return
+
+                val downloadManager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+                val cursor = downloadManager.query(DownloadManager.Query().setFilterById(downloadId))
+                if (!cursor.moveToFirst()) {
                     cursor.close()
+                    downloadCompleteCallback?.invoke(false)
+                    return
+                }
+
+                val status = cursor.getInt(cursor.getColumnIndex(DownloadManager.COLUMN_STATUS))
+                cursor.close()
+
+                when (status) {
+                    DownloadManager.STATUS_SUCCESSFUL -> {
+                        downloadCompleteCallback?.invoke(true)
+                    }
+                    DownloadManager.STATUS_FAILED -> {
+                        mirrorIndex++
+                        if (mirrorIndex < GHPROXY_MIRRORS.size) {
+                            Log.w(TAG, "Mirror failed, retrying with ${GHPROXY_MIRRORS[mirrorIndex]}")
+                            enqueueMirrorDownload(mirrorIndex)
+                        } else {
+                            Log.e(TAG, "All download mirrors failed")
+                            downloadCompleteCallback?.invoke(false)
+                        }
+                    }
+                    // PENDING / RUNNING: wait for the completion broadcast
                 }
             }
         }
-        
+
         val filter = IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE)
         ContextCompat.registerReceiver(
             context,

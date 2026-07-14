@@ -21,7 +21,6 @@ const API_BASE = import.meta.env.VITE_API_BASE || ''
 const STORAGE_KEY_INPUT = 'rms-voice-input-device'
 const STORAGE_KEY_OUTPUT = 'rms-voice-output-device'
 const STORAGE_KEY_ANNOUNCE = 'rms-voice-announce-enabled'
-let firstAddedRoom = true
 
 const capturePickerOpen = ref(false)
 
@@ -567,16 +566,7 @@ export const useVoiceStore = defineStore('voice', () => {
             audioElement.dataset.livekitAudio = "true"
             audioElement.dataset.participantId = participant.identity
 
-            let savedVolume = userVolumes.value.get(participant.identity) ?? 100
-
-            console.log(firstAddedRoom)
-            console.log(`  - Participant ID: ${participant.identity}`)
-            if (participant.identity.includes('music-bot') && firstAddedRoom) {
-              console.log(`Music bot detected, firstAddedRoom: true, setting default volume to 30%`)
-              savedVolume = 30;
-              userVolumes.value.set(participant.identity, 30)
-              firstAddedRoom = false;
-            }
+            const savedVolume = userVolumes.value.get(participant.identity) ?? 100
 
             console.log(`Subscribing to audio track of ${participant.identity}, saved volume: ${savedVolume}%`)
             
@@ -904,7 +894,6 @@ export const useVoiceStore = defineStore('voice', () => {
         participantAudio.audioElement.volume = Math.pow(Math.max(0, Math.min(clampedVolume, 100)) / 100, 2.6);
 
         console.log(`  - Website using Audio element volume control`)
-        console.log(`  - First added room: ${firstAddedRoom}`)
         console.log(`  - Setting audioElement.volume to: ${participantAudio.audioElement.volume}`)
         console.log(`  - Audio element paused: ${participantAudio.audioElement.paused}`)
         console.log(`  - Audio element muted: ${participantAudio.audioElement.muted}`)
