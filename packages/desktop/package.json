@@ -13,22 +13,22 @@
   "dependencies": {
     "@rms-discord/shared": "workspace:*",
     "@tauri-apps/api": "^2",
-    "@tauri-apps/plugin-shell": "^2",
-    "@tauri-apps/plugin-updater": "^2",
-    "@tauri-apps/plugin-store": "^2",
-    "@tauri-apps/plugin-process": "^2",
     "@tauri-apps/plugin-global-shortcut": "^2",
+    "@tauri-apps/plugin-process": "^2",
+    "@tauri-apps/plugin-shell": "^2",
+    "@tauri-apps/plugin-store": "^2",
+    "@tauri-apps/plugin-updater": "^2",
     "pinia": "^3.0.4",
-    "zhimo-ui": "^0.1.0",
     "vue": "^3.5.33",
-    "vue-router": "^5.0.6"
+    "vue-router": "^5.0.6",
+    "zhimo-ui": "^0.1.0"
   },
   "devDependencies": {
     "@types/node": "^25.6.0",
     "@vitejs/plugin-vue": "^6.0.6",
     "@vue/tsconfig": "^0.9.1",
     "typescript": "~6.0.3",
-    "vite": "^8.0.10",
+    "vite": "^8.1.4",
     "vue-tsc": "^3.2.7"
   }
 }

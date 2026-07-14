@@ -17,10 +17,10 @@
   },
   "dependencies": {
     "@tauri-apps/api": "^2",
+    "@tauri-apps/plugin-process": "^2",
     "@tauri-apps/plugin-shell": "^2",
     "@tauri-apps/plugin-updater": "^2",
-    "@tauri-apps/plugin-process": "^2",
-    "axios": "^1.16.0",
+    "axios": "^1.18.1",
     "livekit-client": "^2.18.8",
     "lucide-vue-next": "^1.0.0",
     "pinia": "^3.0.4",
@@ -32,6 +32,6 @@
   "devDependencies": {
     "@types/node": "^25.6.0",
     "typescript": "~6.0.3",
-    "vite": "^8.0.10"
+    "vite": "^8.1.4"
   }
 }
