@@ -1,5 +1,6 @@
 package cn.net.rms.chatroom.data.auth
 
+import android.util.Base64
 import android.util.Log
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
@@ -8,6 +9,7 @@ import cn.net.rms.chatroom.BuildConfig
 import cn.net.rms.chatroom.data.api.RefreshTokenRequest
 import cn.net.rms.chatroom.data.api.RefreshTokenResponse
 import com.google.gson.Gson
+import com.google.gson.JsonParser
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import okhttp3.Authenticator
@@ -37,6 +39,7 @@ class TokenAuthenticator @Inject constructor(
 
     companion object {
         private const val TAG = "TokenAuthenticator"
+        private const val EXPIRY_MARGIN_MS = 30_000L
     }
 
     private val lock = Any()
@@ -97,6 +100,65 @@ class TokenAuthenticator @Inject constructor(
                 clearTokens()
                 null
             }
+        }
+    }
+
+    /**
+     * Returns the stored access token, proactively refreshing it when it is
+     * within [EXPIRY_MARGIN_MS] of expiry. Used by WebSocket (re)connects,
+     * where auth happens only at handshake time so a 401-triggered refresh
+     * cannot help. Shares [lock] with [authenticate] so concurrent refreshes
+     * are serialized and refresh-token rotation is not raced.
+     *
+     * Unlike the 401 path, a failed refresh does NOT clear tokens: the
+     * failure may be a transient network error and the reconnect loop will
+     * retry. Returns null only when no access token is stored.
+     * Blocking — call from a background thread.
+     */
+    fun getFreshToken(): String? {
+        val stored = runBlocking { dataStore.data.first() }[TokenKeys.ACCESS_TOKEN_KEY] ?: return null
+        if (!isExpiringSoon(stored)) return stored
+
+        synchronized(lock) {
+            val prefs = runBlocking { dataStore.data.first() }
+            val current = prefs[TokenKeys.ACCESS_TOKEN_KEY] ?: return null
+            // Another thread may have refreshed while we waited on the lock
+            if (!isExpiringSoon(current)) return current
+
+            val refreshToken = prefs[TokenKeys.REFRESH_TOKEN_KEY] ?: return current
+            return try {
+                val refreshResponse = doRefresh(refreshToken)
+                if (refreshResponse != null) {
+                    runBlocking {
+                        dataStore.edit { p ->
+                            p[TokenKeys.ACCESS_TOKEN_KEY] = refreshResponse.accessToken
+                            p[TokenKeys.REFRESH_TOKEN_KEY] = refreshResponse.refreshToken
+                        }
+                    }
+                    Log.d(TAG, "Proactive token refresh succeeded")
+                    refreshResponse.accessToken
+                } else {
+                    Log.w(TAG, "Proactive token refresh rejected, keeping current token")
+                    current
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Proactive token refresh failed: ${e.message}")
+                current
+            }
+        }
+    }
+
+    private fun isExpiringSoon(jwt: String): Boolean {
+        return try {
+            val parts = jwt.split(".")
+            if (parts.size < 2) return false
+            val payload = Base64.decode(parts[1], Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP)
+            val exp = JsonParser.parseString(String(payload)).asJsonObject.get("exp")?.asLong
+                ?: return false
+            exp * 1000 - System.currentTimeMillis() < EXPIRY_MARGIN_MS
+        } catch (e: Exception) {
+            // Unparseable token: connect with it as-is, the server will decide
+            false
         }
     }
 
