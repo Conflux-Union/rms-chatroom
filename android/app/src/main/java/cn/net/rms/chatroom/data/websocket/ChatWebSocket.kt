@@ -4,6 +4,7 @@ import android.util.Log
 import com.google.gson.Gson
 import com.google.gson.JsonParser
 import cn.net.rms.chatroom.BuildConfig
+import cn.net.rms.chatroom.data.auth.TokenAuthenticator
 import cn.net.rms.chatroom.data.model.Attachment
 import cn.net.rms.chatroom.data.model.Message
 import cn.net.rms.chatroom.data.model.Mention
@@ -48,7 +49,8 @@ enum class ConnectionState {
 @Singleton
 class ChatWebSocket @Inject constructor(
     private val client: OkHttpClient,
-    private val gson: Gson
+    private val gson: Gson,
+    private val tokenAuthenticator: TokenAuthenticator
 ) {
     companion object {
         private const val TAG = "ChatWebSocket"
@@ -87,13 +89,24 @@ class ChatWebSocket @Inject constructor(
     }
 
     private fun doConnect() {
-        val token = currentToken ?: return
+        if (currentToken == null) return
 
         if (_connectionState.value == ConnectionState.RECONNECTING) {
             // Keep reconnecting state
         } else {
             _connectionState.value = ConnectionState.CONNECTING
         }
+
+        scope.launch {
+            if (!shouldReconnect) return@launch
+            // WS auth happens only at handshake; refresh a near-expiry token first
+            tokenAuthenticator.getFreshToken()?.let { currentToken = it }
+            openWebSocket()
+        }
+    }
+
+    private fun openWebSocket() {
+        val token = currentToken ?: return
 
         // Connect to global WebSocket endpoint (no channel ID in path)
         val url = "${BuildConfig.WS_BASE_URL}/ws/chat?token=$token"
