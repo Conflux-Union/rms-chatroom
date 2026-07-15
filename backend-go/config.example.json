@@ -26,5 +26,11 @@
   "livekit_api_secret": "",
 
   "deploy_token": "",
-  "metrics_token": ""
+  "metrics_token": "",
+
+  "auto_migrate": true,
+  "service_name": "rms-discord",
+  "update_repo": "Conflux-Union/rms-chatroom",
+  "update_mirrors": [],
+  "update_check_interval_minutes": 0
 }
