@@ -3,6 +3,8 @@ package handler
 import (
 	"archive/tar"
 	"compress/gzip"
+	"context"
+	"database/sql"
 	"fmt"
 	"io"
 	"net/http"
@@ -25,16 +27,28 @@ var (
 )
 
 // RegisterSystemRoutes registers /api/system routes.
-func RegisterSystemRoutes(g *echo.Group, cfg *config.Config) {
-	g.GET("/health", systemHealth)
+func RegisterSystemRoutes(g *echo.Group, cfg *config.Config, db *sql.DB) {
+	g.GET("/health", systemHealth(db))
 	g.GET("/version", systemVersion)
 	g.POST("/update", systemUpdate(cfg))
 }
 
-func systemHealth(c echo.Context) error {
-	return c.JSON(http.StatusOK, map[string]interface{}{
-		"status": "ok",
-	})
+// systemHealth reports process liveness plus database reachability so uptime
+// monitors catch a wedged DB, not just a dead process.
+func systemHealth(db *sql.DB) echo.HandlerFunc {
+	return func(c echo.Context) error {
+		ctx, cancel := context.WithTimeout(c.Request().Context(), 2*time.Second)
+		defer cancel()
+		if err := db.PingContext(ctx); err != nil {
+			return c.JSON(http.StatusServiceUnavailable, map[string]interface{}{
+				"status":   "degraded",
+				"database": "unreachable",
+			})
+		}
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"status": "ok",
+		})
+	}
 }
 
 func systemVersion(c echo.Context) error {

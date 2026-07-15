@@ -17,6 +17,7 @@ import cn.net.rms.chatroom.data.model.Song
 import cn.net.rms.chatroom.data.repository.AuthRepository
 import cn.net.rms.chatroom.data.repository.VoiceRepository
 import cn.net.rms.chatroom.data.repository.isUnauthorized
+import cn.net.rms.chatroom.data.telemetry.TelemetryReporter
 import cn.net.rms.chatroom.data.websocket.MusicWebSocket
 import cn.net.rms.chatroom.data.websocket.MusicWebSocketEvent
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -80,7 +81,8 @@ class MusicPlaybackManager @Inject constructor(
     private val api: ApiService,
     private val authRepository: AuthRepository,
     private val voiceRepository: VoiceRepository,
-    private val musicWebSocket: MusicWebSocket
+    private val musicWebSocket: MusicWebSocket,
+    private val telemetryReporter: TelemetryReporter
 ) {
     companion object {
         private const val TAG = "MusicPlaybackManager"
@@ -216,6 +218,18 @@ class MusicPlaybackManager @Inject constructor(
                     }
                     is MusicWebSocketEvent.MusicStateUpdate -> {
                         if (currentRoom != null && event.roomName == currentRoom) {
+                            // Drift between local playback and the server's authoritative
+                            // position quantifies sync quality; only clearly-out-of-sync
+                            // samples are reported (small offsets come from push latency).
+                            if (event.isPlaying && exoPlayer.isPlaying) {
+                                val driftMs = exoPlayer.currentPosition - event.positionMs
+                                if (kotlin.math.abs(driftMs) > 2000) {
+                                    telemetryReporter.report(
+                                        "music_drift", "playback drift",
+                                        meta = mapOf("drift_ms" to driftMs, "position_ms" to event.positionMs)
+                                    )
+                                }
+                            }
                             val previousIndex = _state.value.currentIndex
                             _state.value = _state.value.copy(
                                 isPlaying = event.isPlaying,

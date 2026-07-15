@@ -25,5 +25,6 @@
   "livekit_api_key": "",
   "livekit_api_secret": "",
 
-  "deploy_token": ""
+  "deploy_token": "",
+  "metrics_token": ""
 }

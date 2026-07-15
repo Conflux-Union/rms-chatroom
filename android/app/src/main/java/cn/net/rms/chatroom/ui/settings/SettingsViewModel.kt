@@ -30,6 +30,9 @@ class SettingsViewModel @Inject constructor(
         settingsPreferences.backgroundMessageServiceEnabled
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
+    val telemetryEnabled: StateFlow<Boolean> = settingsPreferences.telemetryEnabled
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
+
     private val _hasOverlayPermission = MutableStateFlow(checkOverlayPermission())
     val hasOverlayPermission: StateFlow<Boolean> = _hasOverlayPermission.asStateFlow()
 
@@ -50,6 +53,12 @@ class SettingsViewModel @Inject constructor(
             } else {
                 MessageConnectionService.stop(context)
             }
+        }
+    }
+
+    fun setTelemetryEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsPreferences.setTelemetryEnabled(enabled)
         }
     }
 

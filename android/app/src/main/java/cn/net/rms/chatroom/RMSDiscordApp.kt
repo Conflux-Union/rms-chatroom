@@ -7,6 +7,7 @@ import coil.disk.DiskCache
 import coil.memory.MemoryCache
 import coil.request.CachePolicy
 import coil.util.DebugLogger
+import cn.net.rms.chatroom.data.telemetry.TelemetryReporter
 import cn.net.rms.chatroom.notification.NotificationHelper
 import dagger.hilt.android.HiltAndroidApp
 import javax.inject.Inject
@@ -17,9 +18,14 @@ class RMSDiscordApp : Application(), ImageLoaderFactory {
     @Inject
     lateinit var notificationHelper: NotificationHelper
 
+    @Inject
+    lateinit var telemetryReporter: TelemetryReporter
+
     override fun onCreate() {
         super.onCreate()
         notificationHelper.createNotificationChannels()
+        telemetryReporter.installCrashHandler()
+        telemetryReporter.uploadPendingCrashes()
     }
 
     /**

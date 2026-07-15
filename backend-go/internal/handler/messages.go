@@ -11,6 +11,7 @@ import (
 
 	"github.com/labstack/echo/v4"
 
+	"github.com/RMS-Server/rms-discord-go/internal/metrics"
 	"github.com/RMS-Server/rms-discord-go/internal/middleware"
 	"github.com/RMS-Server/rms-discord-go/internal/permission"
 	"github.com/RMS-Server/rms-discord-go/internal/sso"
@@ -560,6 +561,7 @@ func (h *MessageHandler) CreateMessage(c echo.Context) error {
 		Reactions:   []reactionGroupResp{},
 	}
 
+	metrics.MessagesCreated.Inc()
 	return c.JSON(http.StatusCreated, resp)
 }
 

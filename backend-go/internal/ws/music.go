@@ -96,6 +96,20 @@ func (m *MusicRoomManager) BroadcastToAll(msg interface{}) {
 	}
 }
 
+// RoomCount returns the number of active music rooms.
+func (m *MusicRoomManager) RoomCount() int {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return len(m.rooms)
+}
+
+// ConnCount returns the number of music WebSocket connections across rooms.
+func (m *MusicRoomManager) ConnCount() int {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return len(m.connRoom)
+}
+
 // GetMusicRoomManager returns the singleton music room manager.
 func GetMusicRoomManager() *MusicRoomManager {
 	return musicRooms

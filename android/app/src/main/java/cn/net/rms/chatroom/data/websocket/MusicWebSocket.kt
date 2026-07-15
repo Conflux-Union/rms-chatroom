@@ -6,6 +6,7 @@ import com.google.gson.JsonParser
 import cn.net.rms.chatroom.BuildConfig
 import cn.net.rms.chatroom.data.auth.TokenAuthenticator
 import cn.net.rms.chatroom.data.model.Song
+import cn.net.rms.chatroom.data.telemetry.TelemetryReporter
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -53,7 +54,8 @@ sealed class MusicWebSocketEvent {
 class MusicWebSocket @Inject constructor(
     private val client: OkHttpClient,
     private val gson: Gson,
-    private val tokenAuthenticator: TokenAuthenticator
+    private val tokenAuthenticator: TokenAuthenticator,
+    private val telemetryReporter: TelemetryReporter
 ) {
     companion object {
         private const val TAG = "MusicWebSocket"
@@ -76,6 +78,7 @@ class MusicWebSocket @Inject constructor(
     private var reconnectAttempts = 0
     private var shouldReconnect = false
     private var waitingForPong = false
+    private var lastDisconnectReason: String? = null
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var heartbeatJob: Job? = null
@@ -143,6 +146,7 @@ class MusicWebSocket @Inject constructor(
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                 Log.e(TAG, "Music WebSocket failure: ${t.message}", t)
+                lastDisconnectReason = t.message ?: t.toString()
                 _connectionState.value = ConnectionState.DISCONNECTED
                 stopHeartbeat()
                 _events.tryEmit(MusicWebSocketEvent.Error(t.message ?: "WebSocket error"))
@@ -152,6 +156,7 @@ class MusicWebSocket @Inject constructor(
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
                 Log.d(TAG, "Music WebSocket closed: code=$code, reason=$reason")
+                lastDisconnectReason = "closed code=$code $reason"
                 _connectionState.value = ConnectionState.DISCONNECTED
                 stopHeartbeat()
                 _events.tryEmit(MusicWebSocketEvent.Disconnected)
@@ -346,7 +351,19 @@ class MusicWebSocket @Inject constructor(
         if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
             Log.w(TAG, "Max reconnect attempts reached")
             shouldReconnect = false
+            telemetryReporter.report(
+                "ws_reconnect_exhausted", "music",
+                meta = mapOf("ws" to "music", "attempts" to reconnectAttempts, "reason" to lastDisconnectReason)
+            )
             return
+        }
+
+        // Report the start of each outage, not every retry of it.
+        if (reconnectAttempts == 0) {
+            telemetryReporter.report(
+                "ws_reconnect", "music",
+                meta = mapOf("ws" to "music", "reason" to lastDisconnectReason)
+            )
         }
 
         reconnectJob?.cancel()

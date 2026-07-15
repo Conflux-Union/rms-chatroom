@@ -19,6 +19,7 @@ import (
 	"github.com/labstack/echo/v4"
 
 	"github.com/RMS-Server/rms-discord-go/internal/config"
+	"github.com/RMS-Server/rms-discord-go/internal/metrics"
 	"github.com/RMS-Server/rms-discord-go/internal/middleware"
 	"github.com/RMS-Server/rms-discord-go/internal/permission"
 	"github.com/RMS-Server/rms-discord-go/internal/sso"
@@ -239,6 +240,7 @@ func (h *AuthHandler) SilentLogin(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to create local session"})
 	}
 
+	metrics.AuthLogins.WithLabelValues("silent").Inc()
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"success":       true,
 		"authenticated": true,
@@ -433,6 +435,8 @@ func (h *AuthHandler) Callback(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to create local session"})
 	}
 
+	metrics.AuthLogins.WithLabelValues("oauth").Inc()
+
 	// Validate and redirect
 	if h.isWebRedirect(redirectURL) {
 		sep := "#"
@@ -535,14 +539,17 @@ func (h *AuthHandler) Refresh(c echo.Context) error {
 		 FROM auth_refresh_tokens WHERE token_hash = ?`, tokenHash,
 	).Scan(&userID, &expiresAt, &storedUsername, &storedNickname, &storedEmail, &storedPermLevel, &storedGroupLevel)
 	if err == sql.ErrNoRows {
+		metrics.AuthRefresh.WithLabelValues("invalid").Inc()
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "invalid refresh token"})
 	}
 	if err != nil {
 		log.Printf("auth/refresh: db error: %v", err)
+		metrics.AuthRefresh.WithLabelValues("error").Inc()
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "internal server error"})
 	}
 	if time.Now().UTC().After(expiresAt) {
 		h.db.Exec("DELETE FROM auth_refresh_tokens WHERE token_hash = ?", tokenHash)
+		metrics.AuthRefresh.WithLabelValues("expired").Inc()
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "refresh token expired"})
 	}
 
@@ -614,6 +621,7 @@ func (h *AuthHandler) Refresh(c echo.Context) error {
 	// Delete old token after new one is stored
 	h.db.Exec("DELETE FROM auth_refresh_tokens WHERE token_hash = ?", tokenHash)
 
+	metrics.AuthRefresh.WithLabelValues("ok").Inc()
 	return c.JSON(http.StatusOK, map[string]string{
 		"access_token":  newAccessToken,
 		"refresh_token": newRefreshToken,

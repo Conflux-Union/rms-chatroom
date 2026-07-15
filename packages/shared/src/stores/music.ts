@@ -3,6 +3,7 @@ import { ref, watch } from 'vue'
 import { useAuthStore } from './auth'
 import { useVoiceStore } from './voice'
 import { authFetch } from '../utils/authFetch'
+import { reportTelemetryEvent } from '../utils/telemetry'
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'https://chatroom.rms.net.cn'
 const WS_BASE = import.meta.env.VITE_WS_BASE || 'wss://chatroom.rms.net.cn'
@@ -402,6 +403,17 @@ export const useMusicStore = defineStore('music', () => {
     current_song?: Song;
     current_index?: number;
   }) {
+    // Drift between local audio playback and the server's authoritative
+    // position quantifies sync quality; only clearly-out-of-sync samples are
+    // reported (small offsets are expected from push latency).
+    if (audioElement && !audioElement.paused && data.state === 'playing') {
+      const driftMs = Math.round(audioElement.currentTime * 1000 - data.position_ms)
+      if (Math.abs(driftMs) > 2000) {
+        reportTelemetryEvent('music_drift', 'playback drift', {
+          meta: { drift_ms: driftMs, position_ms: data.position_ms },
+        })
+      }
+    }
     positionMs.value = data.position_ms
     durationMs.value = data.duration_ms
     playbackState.value = data.state

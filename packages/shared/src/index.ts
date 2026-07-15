@@ -25,6 +25,12 @@ export {
   formatDuration,
 } from './utils/datetime'
 export { initTheme, getThemeMode, setThemeMode } from './utils/theme'
+export {
+  installTelemetry,
+  reportTelemetryEvent,
+  isTelemetryEnabled,
+  setTelemetryEnabled,
+} from './utils/telemetry'
 
 // Platform detection
 export const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window

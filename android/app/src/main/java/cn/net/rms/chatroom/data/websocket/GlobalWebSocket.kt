@@ -7,6 +7,7 @@ import com.google.gson.reflect.TypeToken
 import cn.net.rms.chatroom.BuildConfig
 import cn.net.rms.chatroom.data.auth.TokenAuthenticator
 import cn.net.rms.chatroom.data.model.VoiceUser
+import cn.net.rms.chatroom.data.telemetry.TelemetryReporter
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -35,7 +36,8 @@ sealed class GlobalWebSocketEvent {
 class GlobalWebSocket @Inject constructor(
     private val client: OkHttpClient,
     private val gson: Gson,
-    private val tokenAuthenticator: TokenAuthenticator
+    private val tokenAuthenticator: TokenAuthenticator,
+    private val telemetryReporter: TelemetryReporter
 ) {
     companion object {
         private const val TAG = "GlobalWebSocket"
@@ -61,6 +63,7 @@ class GlobalWebSocket @Inject constructor(
     private var reconnectAttempts = 0
     private var shouldReconnect = false
     private var waitingForPong = false
+    private var lastDisconnectReason: String? = null
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var heartbeatJob: Job? = null
@@ -124,6 +127,7 @@ class GlobalWebSocket @Inject constructor(
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                 Log.e(TAG, "Global WebSocket failure: ${t.message}", t)
+                lastDisconnectReason = t.message ?: t.toString()
                 _connectionState.value = ConnectionState.DISCONNECTED
                 stopHeartbeat()
                 _events.tryEmit(GlobalWebSocketEvent.Error(t.message ?: "WebSocket error"))
@@ -133,6 +137,7 @@ class GlobalWebSocket @Inject constructor(
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
                 Log.d(TAG, "Global WebSocket closed: code=$code, reason=$reason")
+                lastDisconnectReason = "closed code=$code $reason"
                 _connectionState.value = ConnectionState.DISCONNECTED
                 stopHeartbeat()
                 _events.tryEmit(GlobalWebSocketEvent.Disconnected)
@@ -265,8 +270,20 @@ class GlobalWebSocket @Inject constructor(
         if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
             Log.w(TAG, "Max reconnect attempts reached")
             shouldReconnect = false
+            telemetryReporter.report(
+                "ws_reconnect_exhausted", "global",
+                meta = mapOf("ws" to "global", "attempts" to reconnectAttempts, "reason" to lastDisconnectReason)
+            )
             _events.tryEmit(GlobalWebSocketEvent.Error("Max reconnect attempts reached"))
             return
+        }
+
+        // Report the start of each outage, not every retry of it.
+        if (reconnectAttempts == 0) {
+            telemetryReporter.report(
+                "ws_reconnect", "global",
+                meta = mapOf("ws" to "global", "reason" to lastDisconnectReason)
+            )
         }
 
         reconnectJob?.cancel()

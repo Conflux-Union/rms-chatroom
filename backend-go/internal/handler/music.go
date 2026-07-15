@@ -14,6 +14,7 @@ import (
 	"github.com/labstack/echo/v4"
 
 	"github.com/RMS-Server/rms-discord-go/internal/jwtutil"
+	"github.com/RMS-Server/rms-discord-go/internal/metrics"
 	"github.com/RMS-Server/rms-discord-go/internal/music"
 	"github.com/RMS-Server/rms-discord-go/internal/permission"
 	"github.com/RMS-Server/rms-discord-go/internal/ws"
@@ -156,13 +157,18 @@ func musicCredentialRefreshLoop() {
 	refresh := func() {
 		if qc := qqClient; qc != nil && qc.NeedsRefresh(qqRefreshThreshold) {
 			if err := qc.RefreshCredential(); err != nil {
+				metrics.MusicCredentialRefresh.WithLabelValues("qq", "error").Inc()
 				log.Printf("music: qq credential refresh failed: %v", err)
+			} else {
+				metrics.MusicCredentialRefresh.WithLabelValues("qq", "ok").Inc()
 			}
 		}
 		if nc := neteaseClient; nc != nil && time.Since(lastNeteaseKeepAlive) >= neteaseKeepAliveInterval && nc.HasSession() {
 			if err := nc.RefreshLogin(); err != nil {
+				metrics.MusicCredentialRefresh.WithLabelValues("netease", "error").Inc()
 				log.Printf("music: netease session refresh failed: %v", err)
 			} else {
+				metrics.MusicCredentialRefresh.WithLabelValues("netease", "ok").Inc()
 				lastNeteaseKeepAlive = time.Now()
 			}
 		}
@@ -188,13 +194,16 @@ func ensureHTTPS(u string) string {
 func getSongURL(mid, platform string) (string, error) {
 	var u string
 	var err error
+	provider := "qq"
 	switch platform {
 	case "netease":
+		provider = "netease"
 		u, err = neteaseClient.GetSongURL(mid)
 	default:
 		u, err = qqClient.GetSongURL(mid)
 	}
 	if err != nil {
+		metrics.MusicProviderErrors.WithLabelValues(provider, "song_url").Inc()
 		return "", err
 	}
 	return ensureHTTPS(u), nil
@@ -1017,6 +1026,7 @@ func broadcastMusicCommand(eventType string, data map[string]interface{}) {
 	if roomName == "" {
 		return
 	}
+	metrics.MusicCommands.WithLabelValues(eventType).Inc()
 	data["type"] = eventType
 	data["server_time"] = float64(time.Now().UnixMilli()) / 1000.0
 	ws.GetMusicRoomManager().BroadcastToRoom(roomName, data)

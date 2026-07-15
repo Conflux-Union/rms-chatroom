@@ -8,6 +8,7 @@ import androidx.datastore.preferences.core.edit
 import cn.net.rms.chatroom.BuildConfig
 import cn.net.rms.chatroom.data.api.RefreshTokenRequest
 import cn.net.rms.chatroom.data.api.RefreshTokenResponse
+import cn.net.rms.chatroom.data.telemetry.TelemetryReporter
 import com.google.gson.Gson
 import com.google.gson.JsonParser
 import kotlinx.coroutines.flow.first
@@ -34,7 +35,8 @@ import javax.inject.Singleton
 @Singleton
 class TokenAuthenticator @Inject constructor(
     private val dataStore: DataStore<Preferences>,
-    private val gson: Gson
+    private val gson: Gson,
+    private val telemetryReporter: TelemetryReporter
 ) : Authenticator {
 
     companion object {
@@ -92,11 +94,23 @@ class TokenAuthenticator @Inject constructor(
                         .build()
                 } else {
                     Log.e(TAG, "Token refresh returned null, clearing tokens")
+                    // Hard refresh failure forces a re-login; report it so a
+                    // broken refresh path is visible server-side.
+                    telemetryReporter.report(
+                        "token_refresh_failure",
+                        message = "refresh rejected, tokens cleared",
+                        meta = mapOf("path" to path)
+                    )
                     clearTokens()
                     null
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Token refresh failed, clearing tokens", e)
+                telemetryReporter.report(
+                    "token_refresh_failure",
+                    message = e.toString(),
+                    meta = mapOf("path" to path)
+                )
                 clearTokens()
                 null
             }

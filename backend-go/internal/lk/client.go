@@ -11,6 +11,7 @@ import (
 	lksdk "github.com/livekit/server-sdk-go/v2"
 
 	"github.com/RMS-Server/rms-discord-go/internal/config"
+	"github.com/RMS-Server/rms-discord-go/internal/metrics"
 )
 
 // Client wraps LiveKit server SDK operations.
@@ -59,7 +60,13 @@ func (c *Client) CreateToken(identity, name, room string) (string, error) {
 		SetName(name).
 		SetValidFor(time.Hour)
 
-	return at.ToJWT()
+	jwt, err := at.ToJWT()
+	if err != nil {
+		metrics.LivekitTokenErrors.Inc()
+		return "", err
+	}
+	metrics.LivekitTokensIssued.Inc()
+	return jwt, nil
 }
 
 // ListParticipants returns all participants in a room.

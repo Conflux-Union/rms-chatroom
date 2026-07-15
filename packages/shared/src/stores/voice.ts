@@ -14,6 +14,7 @@ import type { Channel } from '../types'
 import { useAuthStore } from './auth'
 import { useChatStore } from './chat'
 import { authFetch } from '../utils/authFetch'
+import { reportTelemetryEvent } from '../utils/telemetry'
 import { announceParticipantJoined } from '../composables/voiceAnnounce'
 
 const API_BASE = import.meta.env.VITE_API_BASE || ''
@@ -712,6 +713,10 @@ export const useVoiceStore = defineStore('voice', () => {
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Failed to connect'
       console.log('Voice connect error:' + e)
+      reportTelemetryEvent('voice_join_failure', msg, {
+        stack: e instanceof Error ? e.stack : undefined,
+        meta: { channel_id: channel.id },
+      })
       error.value = msg
       return false
     } finally {
