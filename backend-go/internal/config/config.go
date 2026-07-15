@@ -17,6 +17,8 @@ type Config struct {
 	FrontendDistPath string   `json:"frontend_dist_path"`
 	CORSOrigins      []string `json:"cors_origins"`
 	DeployToken      string   `json:"deploy_token"`
+	// MetricsToken gates GET /metrics (Prometheus scrape). Empty disables the endpoint.
+	MetricsToken     string   `json:"metrics_token"`
 	LivekitHost      string   `json:"livekit_host"`
 	LivekitInternalHost string `json:"livekit_internal_host"`
 	LivekitAPIKey    string   `json:"livekit_api_key"`
@@ -113,6 +115,9 @@ func applyEnvOverrides(cfg *Config) {
 	}
 	if v := os.Getenv("JWT_SECRET"); v != "" {
 		cfg.JWTSecret = v
+	}
+	if v := os.Getenv("METRICS_TOKEN"); v != "" {
+		cfg.MetricsToken = v
 	}
 	if v := os.Getenv("CORS_ORIGINS"); v != "" {
 		cfg.CORSOrigins = strings.Split(v, ",")

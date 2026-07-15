@@ -6,6 +6,8 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/livekit/protocol/auth"
 	"github.com/livekit/protocol/webhook"
+
+	"github.com/RMS-Server/rms-discord-go/internal/metrics"
 )
 
 // WebhookHandler returns an Echo handler that verifies and processes LiveKit webhooks.
@@ -18,6 +20,8 @@ func WebhookHandler(apiKey, apiSecret string, onEvent func(eventType string)) ec
 		if err != nil {
 			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "invalid webhook signature"})
 		}
+
+		metrics.LivekitWebhookEvents.WithLabelValues(event.GetEvent()).Inc()
 
 		switch event.GetEvent() {
 		case "participant_joined", "participant_left", "track_published", "track_unpublished":

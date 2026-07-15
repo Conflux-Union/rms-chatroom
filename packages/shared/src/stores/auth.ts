@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { User } from '../types'
 import axios from 'axios'
+import { reportTelemetryEvent } from '../utils/telemetry'
 
 const _isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
 
@@ -188,7 +189,14 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function doRefreshToken(): Promise<string> {
     if (_refreshPromise) return _refreshPromise
-    _refreshPromise = _executeRefresh().finally(() => { _refreshPromise = null })
+    _refreshPromise = _executeRefresh()
+      .catch((e) => {
+        // A failed refresh surfaces to the user as an unexplained logout;
+        // report it so refresh-path breakage is visible server-side.
+        reportTelemetryEvent('token_refresh_failure', e instanceof Error ? e.message : String(e))
+        throw e
+      })
+      .finally(() => { _refreshPromise = null })
     return _refreshPromise
   }
 

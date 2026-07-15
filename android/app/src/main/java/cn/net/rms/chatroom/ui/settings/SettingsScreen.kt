@@ -37,6 +37,7 @@ fun SettingsScreen(
     val lifecycleOwner = LocalLifecycleOwner.current
     val floatingWindowEnabled by viewModel.floatingWindowEnabled.collectAsState()
     val backgroundMessageServiceEnabled by viewModel.backgroundMessageServiceEnabled.collectAsState()
+    val telemetryEnabled by viewModel.telemetryEnabled.collectAsState()
     val hasOverlayPermission by viewModel.hasOverlayPermission.collectAsState()
     val isIgnoringBatteryOptimization by viewModel.isIgnoringBatteryOptimization.collectAsState()
 
@@ -139,6 +140,29 @@ fun SettingsScreen(
                     onClick = { viewModel.openBatteryOptimizationSettings() }
                 )
             }
+
+            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+
+            SettingsSectionHeader(title = "隐私")
+
+            SettingsItem(
+                icon = Icons.Default.BugReport,
+                title = "匿名错误报告",
+                subtitle = if (telemetryEnabled) {
+                    "上报崩溃和连接质量数据帮助改进，不含任何消息内容"
+                } else {
+                    "已关闭，不会上报任何数据"
+                },
+                trailing = {
+                    Switch(
+                        checked = telemetryEnabled,
+                        onCheckedChange = { enabled ->
+                            viewModel.setTelemetryEnabled(enabled)
+                        },
+                        colors = SwitchDefaults.colors(checkedTrackColor = TiColor)
+                    )
+                }
+            )
 
             HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
 

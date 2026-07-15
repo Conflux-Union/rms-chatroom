@@ -12,6 +12,7 @@ import cn.net.rms.chatroom.data.model.ReplyTo
 import cn.net.rms.chatroom.data.model.ReactionGroup
 import cn.net.rms.chatroom.data.model.ReactionUser
 import cn.net.rms.chatroom.data.model.VoiceUser
+import cn.net.rms.chatroom.data.telemetry.TelemetryReporter
 import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -50,7 +51,8 @@ enum class ConnectionState {
 class ChatWebSocket @Inject constructor(
     private val client: OkHttpClient,
     private val gson: Gson,
-    private val tokenAuthenticator: TokenAuthenticator
+    private val tokenAuthenticator: TokenAuthenticator,
+    private val telemetryReporter: TelemetryReporter
 ) {
     companion object {
         private const val TAG = "ChatWebSocket"
@@ -72,6 +74,7 @@ class ChatWebSocket @Inject constructor(
     private var reconnectAttempts = 0
     private var shouldReconnect = false
     private var waitingForPong = false
+    private var lastDisconnectReason: String? = null
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var heartbeatJob: Job? = null
@@ -131,6 +134,7 @@ class ChatWebSocket @Inject constructor(
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                 Log.e(TAG, "WebSocket failure: ${t.message}", t)
+                lastDisconnectReason = t.message ?: t.toString()
                 _connectionState.value = ConnectionState.DISCONNECTED
                 stopHeartbeat()
                 _events.tryEmit(WebSocketEvent.Error(t.message ?: "WebSocket error"))
@@ -140,6 +144,7 @@ class ChatWebSocket @Inject constructor(
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
                 Log.d(TAG, "WebSocket closed: code=$code, reason=$reason")
+                lastDisconnectReason = "closed code=$code $reason"
                 _connectionState.value = ConnectionState.DISCONNECTED
                 stopHeartbeat()
                 _events.tryEmit(WebSocketEvent.Disconnected)
@@ -348,8 +353,20 @@ class ChatWebSocket @Inject constructor(
         if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
             Log.w(TAG, "Max reconnect attempts reached ($MAX_RECONNECT_ATTEMPTS)")
             shouldReconnect = false
+            telemetryReporter.report(
+                "ws_reconnect_exhausted", "chat",
+                meta = mapOf("ws" to "chat", "attempts" to reconnectAttempts, "reason" to lastDisconnectReason)
+            )
             _events.tryEmit(WebSocketEvent.Error("Max reconnect attempts reached"))
             return
+        }
+
+        // Report the start of each outage, not every retry of it.
+        if (reconnectAttempts == 0) {
+            telemetryReporter.report(
+                "ws_reconnect", "chat",
+                meta = mapOf("ws" to "chat", "reason" to lastDisconnectReason)
+            )
         }
 
         reconnectJob?.cancel()

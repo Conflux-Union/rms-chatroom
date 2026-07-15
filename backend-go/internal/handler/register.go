@@ -77,7 +77,11 @@ func Register(e *echo.Echo, cfg *config.Config, db *sql.DB, ssoClient *sso.Clien
 
 	// System routes
 	systemGroup := e.Group("/api/system")
-	RegisterSystemRoutes(systemGroup, cfg)
+	RegisterSystemRoutes(systemGroup, cfg, db)
+
+	// Client telemetry routes
+	telemetryGroup := e.Group("/api/telemetry")
+	RegisterTelemetryRoutes(telemetryGroup, cfg.JWTSecret, db)
 
 	// Music routes
 	musicGroup := e.Group("/api/music")

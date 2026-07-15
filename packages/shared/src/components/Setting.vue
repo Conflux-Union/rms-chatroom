@@ -3,8 +3,9 @@ import { onMounted, onUnmounted, ref, computed } from 'vue'
 import { useVoiceStore } from '../stores/voice'
 import { ZmModal, ZmSelect, ZmButton, ZmSpace, ZmProgress } from './ui'
 import type { ZmSelectOption } from './ui'
-import { Mic, Volume2 } from 'lucide-vue-next'
+import { Mic, Volume2, Activity } from 'lucide-vue-next'
 import { isTauri } from '../index'
+import { isTelemetryEnabled, setTelemetryEnabled } from '../utils/telemetry'
 
 const emit = defineEmits<{ (e: 'close'): void }>()
 
@@ -21,6 +22,13 @@ const toggleWindow = ref('')
 const toggleMic = ref('')
 const tip = ref('')
 const capturing = ref<'toggleWindow' | 'toggleMic' | null>(null)
+
+// Telemetry opt-out
+const telemetryEnabled = ref(isTelemetryEnabled())
+function toggleTelemetry() {
+  telemetryEnabled.value = !telemetryEnabled.value
+  setTelemetryEnabled(telemetryEnabled.value)
+}
 
 // Device options
 const inputOptions = computed(() => {
@@ -356,6 +364,24 @@ function stopOutputTest() {
         </div>
       </div>
 
+      <!-- Telemetry -->
+      <div class="setting-row">
+        <div class="setting-label">
+          <Activity :size="16" />
+          <span>匿名错误报告</span>
+        </div>
+        <div class="setting-ctrl">
+          <span class="telemetry-desc">上报崩溃和连接质量数据帮助改进，不含任何消息内容</span>
+          <ZmButton
+            size="small"
+            :type="telemetryEnabled ? 'primary' : 'default'"
+            @click="toggleTelemetry"
+          >
+            {{ telemetryEnabled ? '已开启' : '已关闭' }}
+          </ZmButton>
+        </div>
+      </div>
+
       <!-- Status tip -->
       <div v-if="tip" class="tip">{{ tip }}</div>
     </ZmSpace>
@@ -418,5 +444,11 @@ function stopOutputTest() {
   color: var(--color-text-muted);
   background: rgba(0, 0, 0, 0.05);
   border-radius: 8px;
+}
+
+.telemetry-desc {
+  flex: 1;
+  font-size: 12px;
+  color: var(--color-text-muted);
 }
 </style>

@@ -15,9 +15,11 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
+	"github.com/prometheus/client_golang/prometheus/collectors"
 
 	"github.com/RMS-Server/rms-discord-go/internal/config"
 	"github.com/RMS-Server/rms-discord-go/internal/handler"
+	"github.com/RMS-Server/rms-discord-go/internal/metrics"
 	"github.com/RMS-Server/rms-discord-go/internal/permission"
 	"github.com/RMS-Server/rms-discord-go/internal/sso"
 	"github.com/RMS-Server/rms-discord-go/internal/ws"
@@ -77,6 +79,7 @@ func main() {
 
 	e.Use(middleware.Recover())
 	e.Use(middleware.Logger())
+	e.Use(metrics.Middleware())
 	// Tauri desktop webview origins are not known at config time.
 	// Always allow them so the desktop app can make API calls.
 	allowOrigins := make([]string, 0, len(cfg.CORSOrigins)+3)
@@ -120,6 +123,12 @@ func main() {
 
 	handler.Register(e, cfg, db, ssoClient)
 	ws.Register(e, cfg, ssoClient, db)
+
+	// Prometheus scrape endpoint, enabled only when a scrape token is set.
+	metrics.MustRegister(collectors.NewDBStatsCollector(db, "main"))
+	if cfg.MetricsToken != "" {
+		e.GET("/metrics", metrics.Handler(cfg.MetricsToken))
+	}
 
 	// Serve frontend static files
 	distPath := cfg.FrontendDistPath

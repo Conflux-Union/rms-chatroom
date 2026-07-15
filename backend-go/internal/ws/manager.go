@@ -8,8 +8,14 @@ import (
 
 	"github.com/gorilla/websocket"
 
+	"github.com/RMS-Server/rms-discord-go/internal/metrics"
 	"github.com/RMS-Server/rms-discord-go/internal/permission"
 )
+
+// observeBroadcast records fan-out latency; use as `defer observeBroadcast(kind, time.Now())`.
+func observeBroadcast(kind string, start time.Time) {
+	metrics.WSBroadcastDuration.WithLabelValues(kind).Observe(time.Since(start).Seconds())
+}
 
 const (
 	writeWait      = 10 * time.Second
@@ -47,6 +53,9 @@ func newConn(ws *websocket.Conn, user *permission.UserInfo) *Conn {
 type ConnectionManager struct {
 	mu sync.RWMutex
 
+	// name identifies the hub (chat/voice/global) in metrics labels.
+	name string
+
 	// user_id -> connections (for global/user-scoped broadcasts)
 	globals map[int64][]*Conn
 
@@ -55,11 +64,23 @@ type ConnectionManager struct {
 }
 
 // NewConnectionManager creates a new manager instance.
-func NewConnectionManager() *ConnectionManager {
+func NewConnectionManager(name string) *ConnectionManager {
 	return &ConnectionManager{
+		name:          name,
 		globals:       make(map[int64][]*Conn),
 		stopHeartbeat: make(chan struct{}),
 	}
+}
+
+// ConnCount returns the current number of open connections across all users.
+func (m *ConnectionManager) ConnCount() int {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	n := 0
+	for _, conns := range m.globals {
+		n += len(conns)
+	}
+	return n
 }
 
 // ConnectGlobal registers a connection under the user's ID for global broadcasts.
@@ -93,6 +114,7 @@ func (m *ConnectionManager) BroadcastToAllUsers(msg interface{}) {
 	if err != nil {
 		return
 	}
+	defer observeBroadcast("all", time.Now())
 	m.mu.RLock()
 	for _, conns := range m.globals {
 		for _, c := range conns {
@@ -112,6 +134,7 @@ func (m *ConnectionManager) BroadcastFiltered(msg interface{}, filter func(user 
 	if err != nil {
 		return
 	}
+	defer observeBroadcast("filtered", time.Now())
 	m.mu.RLock()
 	for _, conns := range m.globals {
 		for _, c := range conns {
@@ -227,6 +250,9 @@ func (m *ConnectionManager) scanConnections() {
 	}
 
 	// Force close dead connections
+	if len(dead) > 0 {
+		metrics.WSDeadConnectionsClosed.WithLabelValues(m.name).Add(float64(len(dead)))
+	}
 	for _, c := range dead {
 		log.Printf("ws: force closing dead connection user=%d", c.user.ID)
 		c.ws.Close()
@@ -286,9 +312,9 @@ func (c *Conn) WritePump() {
 
 // Singleton manager instances
 var (
-	ChatManager        = NewConnectionManager()
-	VoiceManager       = NewConnectionManager()
-	GlobalStateManager = NewConnectionManager()
+	ChatManager        = NewConnectionManager("chat")
+	VoiceManager       = NewConnectionManager("voice")
+	GlobalStateManager = NewConnectionManager("global")
 )
 
 // permCacheTTL bounds how long a cached permission rule is trusted. Channel
@@ -331,10 +357,12 @@ func (c *PermRuleCache) Get(channelID int64, loader func() (permission.PermRule,
 	c.mu.RLock()
 	if e := c.entries[channelID]; e != nil && time.Since(e.fetched) < permCacheTTL {
 		c.mu.RUnlock()
+		metrics.PermCacheRequests.WithLabelValues("hit").Inc()
 		return e.rule, nil
 	}
 	c.mu.RUnlock()
 
+	metrics.PermCacheRequests.WithLabelValues("miss").Inc()
 	rule, err := loader()
 	if err != nil {
 		return permission.PermRule{}, err
