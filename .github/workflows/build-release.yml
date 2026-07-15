@@ -90,6 +90,93 @@ jobs:
           path: android/app/build/outputs/apk/release/app-release.apk
           retention-days: 7
 
+  build-server:
+    name: Build Server Bundle
+    runs-on: ubuntu-latest
+    needs: extract-version
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 9
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: backend-go/go.mod
+          cache-dependency-path: backend-go/go.sum
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Build web frontend
+        run: pnpm build:web
+
+      - name: Build server binary
+        run: |
+          VERSION_NAME="${{ needs.extract-version.outputs.version_name }}"
+          VERSION_CODE="${{ needs.extract-version.outputs.version_code }}"
+          COMMIT_HASH=$(git rev-parse --short HEAD)
+          VERSION_PKG=github.com/RMS-Server/rms-discord-go/internal/version
+
+          mkdir -p server-bundle
+          cd backend-go
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath \
+            -ldflags "-s -w -X $VERSION_PKG.Name=$VERSION_NAME -X $VERSION_PKG.Code=$VERSION_CODE -X $VERSION_PKG.Commit=$COMMIT_HASH" \
+            -o ../server-bundle/rms-discord-server ./cmd/server
+
+      - name: Package server bundle and manifest
+        env:
+          VERSION_NAME: ${{ needs.extract-version.outputs.version_name }}
+          VERSION_CODE: ${{ needs.extract-version.outputs.version_code }}
+          TAG_NAME: ${{ needs.extract-version.outputs.tag_name }}
+        run: |
+          # Bundle layout matches what the server's self-updater extracts
+          # next to its binary: the binary itself plus packages/web/dist.
+          mkdir -p server-bundle/packages/web
+          cp -r packages/web/dist server-bundle/packages/web/dist
+
+          mkdir -p server-assets
+          ASSET_NAME="rms-chatroom-server-${VERSION_NAME}-linux-amd64.tar.gz"
+          tar -czf "server-assets/$ASSET_NAME" -C server-bundle .
+
+          # server-latest.json is the update manifest: the deploy job POSTs
+          # it to the server, and periodic self-checks fetch it from
+          # releases/latest/download/ through gh-proxy mirrors.
+          python3 - "$ASSET_NAME" << 'PYEOF'
+          import hashlib, json, os, sys
+          from urllib.parse import quote
+          asset = sys.argv[1]
+          sha256 = hashlib.sha256(open(f'server-assets/{asset}', 'rb').read()).hexdigest()
+          tag = quote(os.environ['TAG_NAME'], safe='')
+          manifest = {
+              'version': os.environ['VERSION_NAME'],
+              'code': int(os.environ['VERSION_CODE']),
+              'url': f'https://github.com/Conflux-Union/rms-chatroom/releases/download/{tag}/{asset}',
+              'sha256': sha256,
+          }
+          with open('server-assets/server-latest.json', 'w') as f:
+              json.dump(manifest, f, indent=2)
+          print(json.dumps(manifest, indent=2))
+          PYEOF
+
+      - name: Upload server bundle artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: server-bundle
+          path: server-assets/
+          retention-days: 7
+
   build-desktop:
     name: Build Desktop (Tauri)
     runs-on: ${{ matrix.os }}
@@ -173,7 +260,7 @@ jobs:
 
   create-release:
     name: Create GitHub Release
-    needs: [extract-version, build-android, build-desktop]
+    needs: [extract-version, build-android, build-desktop, build-server]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -330,6 +417,11 @@ jobs:
             cp artifacts/desktop-windows/*.msi release-assets/ 2>/dev/null || true
           fi
 
+          # Server bundle (Go binary + web dist) and its update manifest
+          if [ -d artifacts/server-bundle ]; then
+            cp artifacts/server-bundle/* release-assets/
+          fi
+
           ls -lh release-assets/
 
       - name: Create Release
@@ -355,6 +447,7 @@ jobs:
 
             - **Android APK:** `rms-chatroom-${{ needs.extract-version.outputs.version_name }}.apk`
             - **Windows:** `.exe` installer
+            - **Server (self-update bundle):** `rms-chatroom-server-${{ needs.extract-version.outputs.version_name }}-linux-amd64.tar.gz`
 
             ## 📖 Installation
 
@@ -403,3 +496,82 @@ jobs:
           print(json.dumps(data, indent=2))
           PYEOF
           gh release upload "$TAG_NAME" /tmp/latest.json -R Conflux-Union/rms-chatroom --clobber
+
+  deploy-server:
+    name: Deploy Server (trigger self-update)
+    needs: [extract-version, create-release]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # -dev prereleases never reach production
+    if: ${{ !contains(needs.extract-version.outputs.version_name, '-dev') }}
+
+    steps:
+      - name: Download server bundle artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: server-bundle
+          path: server-assets
+
+      - name: Trigger self-update and verify
+        env:
+          DEPLOY_TOKEN: ${{ secrets.DEPLOY_TOKEN }}
+          DEPLOY_URL: ${{ secrets.DEPLOY_URL }}
+        run: |
+          if [ -z "${DEPLOY_TOKEN:-}" ]; then
+            echo "DEPLOY_TOKEN secret not set; skipping deploy"
+            exit 0
+          fi
+          DEPLOY_URL="${DEPLOY_URL:-https://chatroom.rms.net.cn}"
+          MANIFEST=server-assets/server-latest.json
+          CODE=$(python3 -c "import json; print(json.load(open('$MANIFEST'))['code'])")
+
+          # POST the manifest so the server can skip the mirror-dependent
+          # manifest lookup and start downloading the bundle right away.
+          trigger() {
+            curl -sS --fail --connect-timeout 10 --max-time 60 \
+              -X POST "$DEPLOY_URL/api/system/update/check?token=$DEPLOY_TOKEN" \
+              -H 'Content-Type: application/json' \
+              --data-binary @"$MANIFEST"
+          }
+
+          # GitHub runners sit outside China and the route to the server is
+          # lossy, so retry the trigger with a fixed backoff.
+          triggered=0
+          for attempt in $(seq 1 10); do
+            if trigger; then
+              triggered=1
+              echo ""
+              echo "trigger accepted (attempt $attempt)"
+              break
+            fi
+            echo "trigger attempt $attempt/10 failed; retrying in 30s"
+            sleep 30
+          done
+          if [ "$triggered" != 1 ]; then
+            echo "could not reach the server to trigger the update"
+            exit 1
+          fi
+
+          # The server downloads the bundle itself (through gh-proxy mirrors,
+          # with its own retries), swaps the binary and restarts. Poll until
+          # it reports the new build code; re-send the trigger every minute
+          # in case a whole download cycle failed server-side.
+          echo "waiting for the server to report build code $CODE"
+          for i in $(seq 1 90); do
+            sleep 10
+            VERSION=$(curl -sS --connect-timeout 10 --max-time 20 "$DEPLOY_URL/api/system/version" || true)
+            echo "poll $i/90: ${VERSION:-unreachable}"
+            case "$VERSION" in
+              *"(${CODE})(commit"*)
+                echo "server updated successfully"
+                exit 0
+                ;;
+            esac
+            if [ $((i % 6)) -eq 0 ]; then
+              echo "re-sending update trigger"
+              trigger || true
+              echo ""
+            fi
+          done
+          echo "server did not report build code $CODE within 15 minutes"
+          exit 1
