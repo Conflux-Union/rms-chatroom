@@ -200,9 +200,13 @@ let scrollSaveTimeout: ReturnType<typeof setTimeout> | null = null
 // Mention notification tracking
 const { clearChannelMention } = useMentionNotification()
 
+// Keyed on the channel id, not the object reference: re-selecting the same
+// channel (or the server refetch swapping in fresh channel objects) must not
+// reload the pane, while a real channel switch always does.
 watch(
-  () => chat.currentChannel,
-  async (channel) => {
+  () => chat.currentChannel?.id,
+  async () => {
+    const channel = chat.currentChannel
     if (channel && channel.type === 'TEXT') {
       // Clear any in-flight "load older" lock from the previous channel so the
       // new channel can paginate immediately.

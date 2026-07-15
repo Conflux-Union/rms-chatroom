@@ -280,8 +280,12 @@ export const useChatStore = defineStore('chat', () => {
     if (before) {
       isLoadingOlder.value = true
     } else {
-      // Fresh load (channel switch): reset pagination state.
+      // Fresh load (channel switch): clear the pane and reset pagination in
+      // the same action as the fetch, so no caller can end up with a cleared
+      // list that never reloads.
+      messages.value = []
       hasMore.value = true
+      isLoadingOlder.value = false
     }
 
     try {
@@ -317,16 +321,9 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   function setCurrentChannel(channel: Channel | null) {
-    // Re-selecting the already-current channel must not clear messages:
-    // ChatArea's watcher only refetches when the ref value actually changes,
-    // so clearing here on a same-reference re-click would leave the pane empty.
-    const isSameChannel = channel !== null && currentChannel.value?.id === channel.id
+    // Selection only. Clearing and reloading the message list is fetchMessages'
+    // fresh-load branch, driven by ChatArea's id-keyed watcher.
     currentChannel.value = channel
-    if (channel && !isSameChannel) {
-      messages.value = []
-      hasMore.value = true
-      isLoadingOlder.value = false
-    }
   }
 
   function addMessage(message: Message) {
