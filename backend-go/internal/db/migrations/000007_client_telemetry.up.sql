@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS client_telemetry (
     message VARCHAR(2048) NOT NULL DEFAULT '',
     stack TEXT NULL,
     meta JSON NULL,
-    created_at DATETIME NOT NULL DEFAULT (UTC_TIMESTAMP()),
+    created_at DATETIME NOT NULL,
     INDEX idx_client_telemetry_type_time (event_type, created_at),
     INDEX idx_client_telemetry_platform_time (platform, created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
