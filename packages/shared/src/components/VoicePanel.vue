@@ -36,8 +36,16 @@ onMounted(() => {
   voice.enumerateDevices()
 })
 
+// Whether the user is connected to the voice channel currently being viewed.
+// voice.isConnected alone is global: it stays true while browsing other
+// voice channels, which must show the join prompt instead.
+const isConnectedHere = computed(() =>
+  voice.isConnected && voice.currentVoiceChannel?.id === chat.currentChannel?.id
+)
+const isConnectedElsewhere = computed(() => voice.isConnected && !isConnectedHere.value)
+
 // Host mode computed
-const isCurrentUserHost = computed(() => 
+const isCurrentUserHost = computed(() =>
   voice.hostModeHostId === String(auth.user?.id)
 )
 const hostButtonDisabled = computed(() => 
@@ -247,7 +255,7 @@ function closeInviteDialog() {
     <div class="voice-header">
       <Volume2 class="channel-icon" :size="20" />
       <span class="channel-name">{{ chat.currentChannel?.name }}</span>
-      <span v-if="voice.isConnected" class="connection-mode connected">
+      <span v-if="isConnectedHere" class="connection-mode connected">
         已连接
       </span>
     </div>
@@ -293,8 +301,11 @@ function closeInviteDialog() {
       </div>
       -->
 
-      <div v-if="!voice.isConnected" class="voice-connect">
-        <p>点击加入语音频道</p>
+      <div v-if="!isConnectedHere" class="voice-connect">
+        <p v-if="isConnectedElsewhere">
+          你正在「{{ voice.currentVoiceChannel?.name }}」中，加入后将自动切换到此频道
+        </p>
+        <p v-else>点击加入语音频道</p>
         <button
           class="join-btn "
           :disabled="voice.isConnecting"
@@ -304,7 +315,7 @@ function closeInviteDialog() {
         </button>
       </div>
 
-      <div class="voice-connected">
+      <div v-else class="voice-connected">
         <!-- Voice users and controls -->
         <div class="voice-main-content">
           <div class="voice-users-container">
