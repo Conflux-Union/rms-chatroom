@@ -18,10 +18,12 @@ import (
 	"github.com/prometheus/client_golang/prometheus/collectors"
 
 	"github.com/RMS-Server/rms-discord-go/internal/config"
+	dbm "github.com/RMS-Server/rms-discord-go/internal/db"
 	"github.com/RMS-Server/rms-discord-go/internal/handler"
 	"github.com/RMS-Server/rms-discord-go/internal/metrics"
 	"github.com/RMS-Server/rms-discord-go/internal/permission"
 	"github.com/RMS-Server/rms-discord-go/internal/sso"
+	"github.com/RMS-Server/rms-discord-go/internal/update"
 	"github.com/RMS-Server/rms-discord-go/internal/ws"
 )
 
@@ -58,6 +60,15 @@ func main() {
 	// (MySQL 5.7 doesn't support UTC_TIMESTAMP() as column DEFAULT)
 	if !strings.Contains(dsn, "time_zone=") {
 		dsn += "&time_zone=%27%2B00%3A00%27"
+	}
+
+	// Apply pending schema migrations before opening the main pool so the
+	// server never serves requests against an outdated schema. Required for
+	// unattended self-updates.
+	if cfg.AutoMigrate {
+		if err := dbm.Migrate(dsn); err != nil {
+			log.Fatalf("database migration failed: %v", err)
+		}
 	}
 
 	db, err := sql.Open("mysql", dsn)
@@ -121,7 +132,17 @@ func main() {
 		})
 	}
 
-	handler.Register(e, cfg, db, ssoClient)
+	// Pull-based self-updater: triggered by CI via /api/system/update/check,
+	// optionally also on a timer as a fallback when CI cannot reach us.
+	updater, err := update.New(cfg.UpdateRepo, cfg.UpdateMirrors, cfg.ServiceName)
+	if err != nil {
+		log.Printf("self-updater disabled: %v", err)
+		updater = nil
+	} else if cfg.UpdateCheckIntervalMinutes > 0 {
+		updater.StartPeriodic(time.Duration(cfg.UpdateCheckIntervalMinutes) * time.Minute)
+	}
+
+	handler.Register(e, cfg, db, ssoClient, updater)
 	ws.Register(e, cfg, ssoClient, db)
 
 	// Prometheus scrape endpoint, enabled only when a scrape token is set.

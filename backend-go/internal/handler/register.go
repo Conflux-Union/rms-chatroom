@@ -8,10 +8,11 @@ import (
 	"github.com/RMS-Server/rms-discord-go/internal/config"
 	mw "github.com/RMS-Server/rms-discord-go/internal/middleware"
 	"github.com/RMS-Server/rms-discord-go/internal/sso"
+	"github.com/RMS-Server/rms-discord-go/internal/update"
 )
 
 // Register registers all HTTP API routes.
-func Register(e *echo.Echo, cfg *config.Config, db *sql.DB, ssoClient *sso.Client) {
+func Register(e *echo.Echo, cfg *config.Config, db *sql.DB, ssoClient *sso.Client, updater *update.Updater) {
 	authH := NewAuthHandler(db, ssoClient, cfg)
 	serverH := NewServerHandler(db, ssoClient)
 	channelH := NewChannelHandler(db, ssoClient)
@@ -77,7 +78,7 @@ func Register(e *echo.Echo, cfg *config.Config, db *sql.DB, ssoClient *sso.Clien
 
 	// System routes
 	systemGroup := e.Group("/api/system")
-	RegisterSystemRoutes(systemGroup, cfg, db)
+	RegisterSystemRoutes(systemGroup, cfg, db, updater)
 
 	// Client telemetry routes
 	telemetryGroup := e.Group("/api/telemetry")

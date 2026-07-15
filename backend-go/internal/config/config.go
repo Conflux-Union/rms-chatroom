@@ -18,26 +18,39 @@ type Config struct {
 	CORSOrigins      []string `json:"cors_origins"`
 	DeployToken      string   `json:"deploy_token"`
 	// MetricsToken gates GET /metrics (Prometheus scrape). Empty disables the endpoint.
-	MetricsToken     string   `json:"metrics_token"`
-	LivekitHost      string   `json:"livekit_host"`
+	MetricsToken        string `json:"metrics_token"`
+	LivekitHost         string `json:"livekit_host"`
 	LivekitInternalHost string `json:"livekit_internal_host"`
-	LivekitAPIKey    string   `json:"livekit_api_key"`
-	LivekitAPISecret string   `json:"livekit_api_secret"`
-	JWTSecret        string   `json:"jwt_secret"`
+	LivekitAPIKey       string `json:"livekit_api_key"`
+	LivekitAPISecret    string `json:"livekit_api_secret"`
+	JWTSecret           string `json:"jwt_secret"`
 
 	// OAuth 2.0 configuration
-	OAuthBaseURL            string `json:"oauth_base_url"`
-	OAuthAuthorizeEndpoint  string `json:"oauth_authorize_endpoint"`
-	OAuthTokenEndpoint      string `json:"oauth_token_endpoint"`
-	OAuthUserinfoEndpoint   string `json:"oauth_userinfo_endpoint"`
-	OAuthClientID           string `json:"oauth_client_id"`
-	OAuthClientSecret       string `json:"oauth_client_secret"`
-	OAuthRedirectURI        string `json:"oauth_redirect_uri"`
-	OAuthScope              string `json:"oauth_scope"`
+	OAuthBaseURL           string `json:"oauth_base_url"`
+	OAuthAuthorizeEndpoint string `json:"oauth_authorize_endpoint"`
+	OAuthTokenEndpoint     string `json:"oauth_token_endpoint"`
+	OAuthUserinfoEndpoint  string `json:"oauth_userinfo_endpoint"`
+	OAuthClientID          string `json:"oauth_client_id"`
+	OAuthClientSecret      string `json:"oauth_client_secret"`
+	OAuthRedirectURI       string `json:"oauth_redirect_uri"`
+	OAuthScope             string `json:"oauth_scope"`
 
 	// Token expiry configuration
 	AccessTokenExpireMinutes int `json:"access_token_expire_minutes"`
 	RefreshTokenExpireDays   int `json:"refresh_token_expire_days"`
+
+	// AutoMigrate runs the embedded DB migrations on startup (default true).
+	AutoMigrate bool `json:"auto_migrate"`
+	// ServiceName is the systemd unit restarted after a self-update.
+	ServiceName string `json:"service_name"`
+	// UpdateRepo is the GitHub repo self-updates pull release bundles from.
+	UpdateRepo string `json:"update_repo"`
+	// UpdateMirrors are gh-proxy style URL prefixes tried before direct
+	// GitHub access; empty means the built-in mirror list.
+	UpdateMirrors []string `json:"update_mirrors"`
+	// UpdateCheckIntervalMinutes enables periodic self-update checks when
+	// > 0; 0 (default) means updates only run when CI triggers them.
+	UpdateCheckIntervalMinutes int `json:"update_check_interval_minutes"`
 }
 
 func defaults() Config {
@@ -61,6 +74,9 @@ func defaults() Config {
 		OAuthScope:               "openid profile email",
 		AccessTokenExpireMinutes: 15,
 		RefreshTokenExpireDays:   30,
+		AutoMigrate:              true,
+		ServiceName:              "rms-discord",
+		UpdateRepo:               "Conflux-Union/rms-chatroom",
 	}
 }
 
