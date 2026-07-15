@@ -454,10 +454,11 @@ export const useVoiceStore = defineStore('voice', () => {
   async function joinVoice(channel: Channel): Promise<boolean> {
     if (isConnecting.value) return false
 
-    // Leave current channel if already connected
-    if (isConnected.value) {
-      disconnect()
-    }
+    // Leave current channel if already connected. disconnect() clears state
+    // synchronously; keep the returned promise so we can wait for the old
+    // room to fully close before connecting (awaiting here would break the
+    // iOS user-gesture requirement below).
+    const leavePromise = isConnected.value ? disconnect() : null
 
     // CRITICAL: Activate AudioContext IMMEDIATELY in user gesture call stack (iOS requirement)
     // This must happen BEFORE any async operations
@@ -495,6 +496,9 @@ export const useVoiceStore = defineStore('voice', () => {
     error.value = null
 
     try {
+      // Ensure the previous room is fully disconnected before joining
+      if (leavePromise) await leavePromise
+
       const response = await authFetch(`${API_BASE}/api/voice/${channel.id}/token`)
 
       if (!response.ok) {
@@ -504,7 +508,7 @@ export const useVoiceStore = defineStore('voice', () => {
 
       const { token, url } = await response.json()
 
-      room.value = new Room({
+      const newRoom = new Room({
         adaptiveStream: true,
         dynacast: true,
         audioCaptureDefaults: {
@@ -517,6 +521,7 @@ export const useVoiceStore = defineStore('voice', () => {
           audioPreset: AudioPresets.musicHighQualityStereo,
         },
       })
+      room.value = newRoom
 
       room.value.on(RoomEvent.ParticipantConnected, async (participant) => {
         updateParticipants()
@@ -553,6 +558,8 @@ export const useVoiceStore = defineStore('voice', () => {
       })
       room.value.on(RoomEvent.ActiveSpeakersChanged, () => updateParticipants())
       room.value.on(RoomEvent.Disconnected, () => {
+        // Ignore late events from a room we already replaced or tore down
+        if (room.value !== newRoom) return
         isConnected.value = false
         participants.value = []
         currentVoiceChannel.value = null
@@ -712,11 +719,13 @@ export const useVoiceStore = defineStore('voice', () => {
     }
   }
 
-  function disconnect() {
+  // State cleanup runs synchronously; the returned promise resolves once the
+  // LiveKit room has actually closed (awaited by joinVoice when switching).
+  async function disconnect() {
     stopSyncInterval()
     participantAudioMap.clear()
     serverMuteState.value.clear()
-    
+
     if (audioContext.value) {
       audioContext.value.close()
       audioContext.value = null
@@ -728,11 +737,8 @@ export const useVoiceStore = defineStore('voice', () => {
       masterGain = null
     }
 
-
-    if (room.value) {
-      room.value.disconnect()
-      room.value = null
-    }
+    const oldRoom = room.value
+    room.value = null
     isConnected.value = false
     participants.value = []
     currentVoiceChannel.value = null
@@ -747,6 +753,10 @@ export const useVoiceStore = defineStore('voice', () => {
     screenShareLocked.value = false
     screenSharerId.value = null
     screenSharerName.value = null
+
+    if (oldRoom) {
+      await oldRoom.disconnect()
+    }
   }
 
   async function toggleMute(): Promise<boolean> {
