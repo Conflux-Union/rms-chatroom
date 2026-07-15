@@ -317,8 +317,12 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   function setCurrentChannel(channel: Channel | null) {
+    // Re-selecting the already-current channel must not clear messages:
+    // ChatArea's watcher only refetches when the ref value actually changes,
+    // so clearing here on a same-reference re-click would leave the pane empty.
+    const isSameChannel = channel !== null && currentChannel.value?.id === channel.id
     currentChannel.value = channel
-    if (channel) {
+    if (channel && !isSameChannel) {
       messages.value = []
       hasMore.value = true
       isLoadingOlder.value = false
