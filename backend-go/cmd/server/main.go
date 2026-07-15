@@ -127,9 +127,7 @@ func main() {
 		distPath = filepath.Join(filepath.Dir(os.Args[0]), distPath)
 	}
 	if info, err := os.Stat(distPath); err == nil && info.IsDir() {
-		e.Static("/assets", filepath.Join(distPath, "assets"))
-		e.Static("/worklets", filepath.Join(distPath, "worklets"))
-		e.File("/*", filepath.Join(distPath, "index.html"))
+		registerFrontend(e, distPath)
 	}
 
 	addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
@@ -148,4 +146,17 @@ func main() {
 	if err := e.Shutdown(ctx); err != nil {
 		log.Fatalf("shutdown error: %v", err)
 	}
+}
+
+// registerFrontend serves the built web frontend: any path matching a real
+// file under distPath (favicons, notification audio, hashed assets) is served
+// as-is, and everything else falls back to index.html so SPA routes survive
+// hard reloads. Registered API/WS routes are unaffected — the HTML5 fallback
+// only fires for paths the router reports as unrouted 404 HTTPErrors, and
+// handlers write their not-found responses via c.JSON directly.
+func registerFrontend(e *echo.Echo, distPath string) {
+	e.Use(middleware.StaticWithConfig(middleware.StaticConfig{
+		Root:  distPath,
+		HTML5: true,
+	}))
 }
