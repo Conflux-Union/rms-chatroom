@@ -10,7 +10,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674
 	github.com/imroc/req/v3 v3.59.0
-	github.com/labstack/echo/v4 v4.15.2
+	github.com/labstack/echo/v4 v4.15.3
 	github.com/livekit/protocol v1.45.6
 	github.com/livekit/server-sdk-go/v2 v2.16.3
 	github.com/prometheus/client_golang v1.22.0
