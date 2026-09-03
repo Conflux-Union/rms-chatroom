@@ -19,7 +19,8 @@ const routes = [
     component: () => import('@rms-discord/shared/views/Callback.vue'),
   },
   {
-    path: '/voice-invite/:token',
+    path: '/voice/invite/:token',
+    alias: '/voice-invite/:token',
     name: 'VoiceInvite',
     component: () => import('@rms-discord/shared/views/VoiceInvite.vue'),
     meta: { requiresAuth: false },
