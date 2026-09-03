@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import android.content.Intent
+import cn.net.rms.chatroom.BuildConfig
 import cn.net.rms.chatroom.data.livekit.AudioDeviceInfo
 import cn.net.rms.chatroom.data.livekit.ConnectionState
 import cn.net.rms.chatroom.data.livekit.ParticipantInfo
@@ -57,6 +58,9 @@ data class VoiceState(
     val screenShareButtonDisabled: Boolean get() = screenShareLocked && !isCurrentUserScreenSharer && !isScreenSharing
 }
 
+internal fun buildVoiceInviteUrl(apiBaseUrl: String, token: String): String =
+    "${apiBaseUrl.trimEnd('/')}/voice/invite/$token"
+
 @HiltViewModel
 class VoiceViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
@@ -109,7 +113,12 @@ class VoiceViewModel @Inject constructor(
                 voiceRepository.isSpeakerOn,
                 voiceRepository.participants,
                 _isLoading,
-                voiceRepository.error
+                voiceRepository.error,
+                _isAdmin,
+                _userId,
+                _inviteUrl,
+                _inviteLoading,
+                _inviteError
             ) { values ->
                 @Suppress("UNCHECKED_CAST")
                 VoiceState(
@@ -124,14 +133,14 @@ class VoiceViewModel @Inject constructor(
                     error = values[8] as String?,
                     availableDevices = _state.value.availableDevices,
                     selectedDevice = _state.value.selectedDevice,
-                    isAdmin = _isAdmin.value,
-                    userId = _userId.value,
+                    isAdmin = values[9] as Boolean,
+                    userId = values[10] as Long?,
                     hostModeEnabled = _state.value.hostModeEnabled,
                     hostModeHostId = _state.value.hostModeHostId,
                     hostModeHostName = _state.value.hostModeHostName,
-                    inviteUrl = _inviteUrl.value,
-                    inviteLoading = _inviteLoading.value,
-                    inviteError = _inviteError.value,
+                    inviteUrl = values[11] as String?,
+                    inviteLoading = values[12] as Boolean,
+                    inviteError = values[13] as String?,
                     isScreenSharing = _state.value.isScreenSharing,
                     remoteScreenShares = _state.value.remoteScreenShares
                 )
@@ -343,7 +352,7 @@ class VoiceViewModel @Inject constructor(
         viewModelScope.launch {
             val result = voiceRepository.createVoiceInvite(channelId)
             result.onSuccess { response ->
-                _inviteUrl.value = response.inviteUrl
+                _inviteUrl.value = buildVoiceInviteUrl(BuildConfig.API_BASE_URL, response.token)
             }.onFailure { error ->
                 _inviteError.value = error.message ?: "Failed to create invite"
             }

@@ -341,8 +341,6 @@ data class HostModeResponse(
 )
 
 data class InviteCreateResponse(
-    @SerializedName("invite_url")
-    val inviteUrl: String,
     val token: String
 )
 
