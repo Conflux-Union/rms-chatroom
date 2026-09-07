@@ -359,6 +359,8 @@ fun VoiceScreen(
                 key(activeScreenShare.participantId) {
                     RemoteScreenShareView(
                         screenShare = activeScreenShare,
+                        ignored = state.screenShareIgnored,
+                        onToggleWatch = { viewModel.toggleScreenShareWatch() },
                         modifier = Modifier
                             .fillMaxWidth()
                             .aspectRatio(16f / 9f)
@@ -1345,18 +1347,62 @@ private fun AudioDeviceItem(
 @Composable
 private fun RemoteScreenShareView(
     screenShare: ScreenShareInfo,
+    ignored: Boolean,
+    onToggleWatch: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val videoTrack = screenShare.videoTrack
     val eglBase = remember { livekit.org.webrtc.EglBase.create() }
     var rendererAttached by remember { mutableStateOf(false) }
-    
+
     DisposableEffect(videoTrack) {
         onDispose {
             rendererAttached = false
         }
     }
-    
+
+    // No video while the share is ignored (or still connecting): show a
+    // lightweight placeholder instead of a renderer
+    if (videoTrack == null) {
+        Surface(
+            modifier = modifier.clip(RoundedCornerShape(12.dp)),
+            color = SurfaceDarker
+        ) {
+            Column(
+                modifier = Modifier.fillMaxSize(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.DesktopWindows,
+                    contentDescription = null,
+                    modifier = Modifier.size(32.dp),
+                    tint = TextMuted
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "${screenShare.participantName} 正在共享屏幕",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextPrimary
+                )
+                if (ignored) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedButton(onClick = onToggleWatch) {
+                        Text("观看")
+                    }
+                } else {
+                    Text(
+                        text = "正在接入视频流...",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextMuted,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            }
+        }
+        return
+    }
+
     Surface(
         modifier = modifier.clip(RoundedCornerShape(12.dp)),
         color = SurfaceDarker
@@ -1382,7 +1428,25 @@ private fun RemoteScreenShareView(
                     } catch (_: Exception) {}
                 }
             )
-            
+
+            // Stop receiving the screen share stream
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(8.dp),
+                color = SurfaceDark.copy(alpha = 0.8f),
+                shape = RoundedCornerShape(4.dp)
+            ) {
+                Text(
+                    text = "忽略",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = TextPrimary,
+                    modifier = Modifier
+                        .clickable { onToggleWatch() }
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                )
+            }
+
             Surface(
                 modifier = Modifier
                     .align(Alignment.BottomStart)

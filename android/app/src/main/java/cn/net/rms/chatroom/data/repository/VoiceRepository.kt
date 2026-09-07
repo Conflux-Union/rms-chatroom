@@ -112,6 +112,7 @@ class VoiceRepository @Inject constructor(
     // Screen share state
     val isScreenSharing: StateFlow<Boolean> = liveKitManager.isScreenSharing
     val remoteScreenShares: StateFlow<Map<String, ScreenShareInfo>> = liveKitManager.remoteScreenShares
+    val screenShareIgnored: StateFlow<Boolean> = liveKitManager.screenShareIgnored
     
     // Screen share lock state (from server)
     private val _screenShareLocked = MutableStateFlow(false)
@@ -409,6 +410,10 @@ class VoiceRepository @Inject constructor(
 
     fun hasMediaProjectionPermission(): Boolean {
         return liveKitManager.hasMediaProjectionPermission()
+    }
+
+    fun setScreenShareIgnored(ignored: Boolean) {
+        liveKitManager.setScreenShareIgnored(ignored)
     }
     
     suspend fun fetchScreenShareStatus(channelId: Long): Result<ScreenShareStatusResponse> {

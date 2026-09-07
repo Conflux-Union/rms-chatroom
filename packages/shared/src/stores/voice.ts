@@ -22,6 +22,7 @@ const API_BASE = import.meta.env.VITE_API_BASE || ''
 const STORAGE_KEY_INPUT = 'rms-voice-input-device'
 const STORAGE_KEY_OUTPUT = 'rms-voice-output-device'
 const STORAGE_KEY_ANNOUNCE = 'rms-voice-announce-enabled'
+const STORAGE_KEY_SCREEN_SHARE_IGNORE = 'rms-voice-screen-share-ignored'
 
 const capturePickerOpen = ref(false)
 
@@ -49,7 +50,8 @@ export interface AudioDevice {
 export interface ScreenShareInfo {
   participantId: string
   participantName: string
-  track: RemoteTrackPublication
+  // Null when the share is not subscribed (ignore preference or sharer gone)
+  track: RemoteTrackPublication | null
 }
 
 interface ParticipantAudio {
@@ -93,6 +95,49 @@ export const useVoiceStore = defineStore('voice', () => {
   const isScreenSharing = ref(false)
   const localScreenShareTrack = shallowRef<LocalTrackPublication | null>(null)
   const remoteScreenShares = ref<Map<string, ScreenShareInfo>>(new Map())
+
+  // Whether this client declines remote screen share streams (video + share
+  // audio). Ignored clients still see who is sharing, they just never receive
+  // the media. Persisted so a user's choice survives reloads.
+  const screenShareIgnored = ref(localStorage.getItem(STORAGE_KEY_SCREEN_SHARE_IGNORE) === 'true')
+
+  function setScreenShareEntry(participantId: string, info: ScreenShareInfo) {
+    const newMap = new Map(remoteScreenShares.value)
+    newMap.set(participantId, info)
+    remoteScreenShares.value = newMap
+  }
+
+  function removeScreenShareEntry(participantId: string) {
+    const newMap = new Map(remoteScreenShares.value)
+    newMap.delete(participantId)
+    remoteScreenShares.value = newMap
+  }
+
+  /**
+   * Align every remote screen share publication (video and share audio) with
+   * the ignore preference. Unsubscribed tracks stop flowing from the SFU.
+   */
+  function applyScreenShareSubscription() {
+    if (!room.value) return
+    const desired = !screenShareIgnored.value
+    room.value.remoteParticipants.forEach((participant) => {
+      participant.trackPublications.forEach((pub) => {
+        if (
+          (pub.source === Track.Source.ScreenShare || pub.source === Track.Source.ScreenShareAudio) &&
+          pub.isDesired !== desired
+        ) {
+          pub.setSubscribed(desired)
+        }
+      })
+    })
+  }
+
+  function setScreenShareIgnored(ignored: boolean) {
+    screenShareIgnored.value = ignored
+    if (ignored) localStorage.setItem(STORAGE_KEY_SCREEN_SHARE_IGNORE, 'true')
+    else localStorage.removeItem(STORAGE_KEY_SCREEN_SHARE_IGNORE)
+    applyScreenShareSubscription()
+  }
   
   // Screen share lock state (from server)
   const screenShareLocked = ref(false)
@@ -536,6 +581,10 @@ export const useVoiceStore = defineStore('voice', () => {
       })
       room.value.on(RoomEvent.ParticipantDisconnected, (participant) => {
         updateParticipants()
+        // Drop their screen share entry; no TrackUnpublished is guaranteed
+        if (remoteScreenShares.value.has(participant.identity)) {
+          removeScreenShareEntry(participant.identity)
+        }
         // If host leaves, clear host mode state locally
         if (hostModeEnabled.value && participant.identity === hostModeHostId.value) {
           hostModeEnabled.value = false
@@ -607,13 +656,11 @@ export const useVoiceStore = defineStore('voice', () => {
           }
           // Handle screen share tracks
           else if (track.kind === Track.Kind.Video && pub.source === Track.Source.ScreenShare) {
-            const newMap = new Map(remoteScreenShares.value)
-            newMap.set(participant.identity, {
+            setScreenShareEntry(participant.identity, {
               participantId: participant.identity,
               participantName: participant.name || participant.identity,
               track: pub as RemoteTrackPublication,
             })
-            remoteScreenShares.value = newMap
           }
           // Handle screen share audio tracks
           else if (pub.source === Track.Source.ScreenShareAudio) {
@@ -661,9 +708,22 @@ export const useVoiceStore = defineStore('voice', () => {
 
           // Clear the screen share entry if applicable
           else if (pub.source === Track.Source.ScreenShare) {
-            const newMap = new Map(remoteScreenShares.value)
-            newMap.delete(participant.identity)
-            remoteScreenShares.value = newMap
+            if (participant.trackPublications.has(pub.trackSid)) {
+              // Locally unsubscribed (ignore preference): keep the entry so the
+              // UI can still offer watching, but rebuild it so reactivity
+              // re-evaluates the (now empty) video track.
+              const existing = remoteScreenShares.value.get(participant.identity)
+              if (existing) {
+                setScreenShareEntry(participant.identity, {
+                  participantId: existing.participantId,
+                  participantName: existing.participantName,
+                  track: null,
+                })
+              }
+            } else {
+              // Publication itself is gone (sharer stopped or left)
+              removeScreenShareEntry(participant.identity)
+            }
           }
         }
 
@@ -671,8 +731,41 @@ export const useVoiceStore = defineStore('voice', () => {
         elList.forEach((el) => el.remove())
       })
 
+      room.value.on(RoomEvent.TrackPublished, (pub, participant) => {
+        if (!(participant instanceof RemoteParticipant)) return
+        if (pub.source === Track.Source.ScreenShare) {
+          // Register the share even while not subscribed, so the UI can show
+          // who is sharing and offer to start watching
+          setScreenShareEntry(participant.identity, {
+            participantId: participant.identity,
+            participantName: participant.name || participant.identity,
+            track: pub as RemoteTrackPublication,
+          })
+        }
+        // A new share starts while the user ignores shares: decline it right
+        // away so its media never flows to this client
+        if (
+          screenShareIgnored.value &&
+          (pub.source === Track.Source.ScreenShare || pub.source === Track.Source.ScreenShareAudio) &&
+          pub.isDesired
+        ) {
+          pub.setSubscribed(false)
+        }
+      })
+
+      room.value.on(RoomEvent.TrackUnpublished, (pub, participant) => {
+        if (participant instanceof RemoteParticipant && pub.source === Track.Source.ScreenShare) {
+          removeScreenShareEntry(participant.identity)
+        }
+      })
+
 
       await room.value.connect(url, token)
+
+      // Enforce the stored ignore preference on shares that already exist
+      if (screenShareIgnored.value) {
+        applyScreenShareSubscription()
+      }
 
       await room.value.localParticipant.setMicrophoneEnabled(true)
 
@@ -690,14 +783,12 @@ export const useVoiceStore = defineStore('voice', () => {
       // Check existing remote participants for screen shares (for late joiners)
       room.value.remoteParticipants.forEach((participant) => {
         participant.trackPublications.forEach((pub) => {
-          if (pub.source === Track.Source.ScreenShare && pub.track) {
-            const newMap = new Map(remoteScreenShares.value)
-            newMap.set(participant.identity, {
+          if (pub.source === Track.Source.ScreenShare) {
+            setScreenShareEntry(participant.identity, {
               participantId: participant.identity,
               participantName: participant.name || participant.identity,
               track: pub as RemoteTrackPublication,
             })
-            remoteScreenShares.value = newMap
           }
         })
       })
@@ -1285,6 +1376,8 @@ export const useVoiceStore = defineStore('voice', () => {
     screenSharerName,
     toggleScreenShare,
     fetchScreenShareStatus,
+    screenShareIgnored,
+    setScreenShareIgnored,
     attachScreenShare,
     attachLocalScreenShare,
     detachScreenShare,
