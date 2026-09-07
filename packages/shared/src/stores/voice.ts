@@ -742,6 +742,12 @@ export const useVoiceStore = defineStore('voice', () => {
       masterGain = null
     }
 
+    // Release the screen share lock before clearing state; the server also
+    // self-heals stale locks, but this keeps the normal leave path immediate.
+    if (isScreenSharing.value) {
+      void unlockScreenShare()
+    }
+
     const oldRoom = room.value
     room.value = null
     isConnected.value = false
@@ -1055,7 +1061,8 @@ export const useVoiceStore = defineStore('voice', () => {
         `${API_BASE}/api/voice/${currentVoiceChannel.value.id}/screen-share/lock`,
         { method: 'POST' }
       )
-      if (response.ok) {
+      // 200 = acquired, 409 = held by someone else; both carry the same shape
+      if (response.ok || response.status === 409) {
         const data = await response.json()
         screenShareLocked.value = data.success || data.sharer_id !== null
         screenSharerId.value = data.sharer_id
