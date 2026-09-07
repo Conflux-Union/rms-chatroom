@@ -9,10 +9,9 @@ import { isTelemetryEnabled, setTelemetryEnabled } from '../utils/telemetry'
 
 const emit = defineEmits<{ (e: 'close'): void }>()
 
-const show = ref(true)
-
+// The parent owns visibility via v-if. Route every close path (backdrop, ✕,
+// Esc) straight to it so the two never drift apart.
 function handleClose() {
-  show.value = false
   emit('close')
 }
 
@@ -278,9 +277,10 @@ function stopOutputTest() {
 
 <template>
   <ZmModal
-    v-model:show="show"
+    :show="true"
     title="设置"
     style="width: 520px; max-width: 90vw"
+    @update:show="(v: boolean) => { if (!v) handleClose() }"
   >
     <ZmSpace vertical :size="20">
       <!-- Input Device -->
