@@ -18,10 +18,12 @@ import cn.net.rms.chatroom.data.model.ScreenShareStatusResponse
 import cn.net.rms.chatroom.data.model.VoiceInviteInfo
 import cn.net.rms.chatroom.data.model.VoiceTokenResponse
 import cn.net.rms.chatroom.data.model.VoiceUser
+import com.google.gson.Gson
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
+import retrofit2.HttpException
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -433,6 +435,23 @@ class VoiceRepository @Inject constructor(
             _screenSharerId.value = response.sharerId
             _screenSharerName.value = response.sharerName
             Result.success(response)
+        } catch (e: HttpException) {
+            // 409 = lock held by someone else; the body carries the same shape
+            // as a success response and flows into the existing conflict branch.
+            if (e.code() == 409) {
+                val body = e.response()?.errorBody()?.string()
+                val parsed = body?.let {
+                    runCatching { Gson().fromJson(it, ScreenShareLockResponse::class.java) }.getOrNull()
+                }
+                if (parsed != null) {
+                    _screenShareLocked.value = true
+                    _screenSharerId.value = parsed.sharerId
+                    _screenSharerName.value = parsed.sharerName
+                    return Result.success(parsed)
+                }
+            }
+            Log.e(TAG, "lockScreenShare failed", e)
+            Result.failure(e.toAuthException())
         } catch (e: Exception) {
             Log.e(TAG, "lockScreenShare failed", e)
             Result.failure(e.toAuthException())

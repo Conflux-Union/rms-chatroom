@@ -94,9 +94,9 @@ func RegisterVoiceHTTP(g *echo.Group, jwtSecret string, ssoClient *sso.Client, d
 	g.POST("/:channel_id/kick/:user_id", voiceKick(jwtSecret, lkc, ssoClient, db))
 	g.GET("/:channel_id/host-mode", voiceHostModeGet(db))
 	g.POST("/:channel_id/host-mode", voiceHostModeSet(jwtSecret, lkc, ssoClient, db))
-	g.POST("/:channel_id/screen-share/lock", voiceScreenShareLock(jwtSecret, db))
+	g.POST("/:channel_id/screen-share/lock", voiceScreenShareLock(jwtSecret, lkc, db))
 	g.POST("/:channel_id/screen-share/unlock", voiceScreenShareUnlock(jwtSecret, db))
-	g.GET("/:channel_id/screen-share-status", voiceScreenShareStatus(db))
+	g.GET("/:channel_id/screen-share-status", voiceScreenShareStatus(lkc, db))
 	g.POST("/:channel_id/invite", voiceInviteCreate(jwtSecret, db))
 	g.GET("/invite/:token", voiceInviteValidate(db))
 	g.POST("/invite/:token/join", voiceInviteJoin(db, lkc))
@@ -200,6 +200,7 @@ func voiceUsers(jwtSecret string, lkc *lk.Client, ssoClient *sso.Client, db *sql
 		}
 
 		hostID := resolveHostID(roomName, participants)
+		clearStaleScreenShareLock(roomName, participants)
 		users := buildUserList(ctx, lkc, ssoClient, roomName, hostID, participants)
 		return c.JSON(http.StatusOK, users)
 	}
@@ -352,16 +353,54 @@ func voiceHostModeSet(jwtSecret string, lkc *lk.Client, ssoClient *sso.Client, d
 
 // --- Screen Share ---
 
-func voiceScreenShareStatus(db *sql.DB) echo.HandlerFunc {
+// clearStaleScreenShareLock removes the screen share lock when the sharer is no
+// longer among the room participants (abnormal client exit never calls unlock).
+func clearStaleScreenShareLock(roomName string, participants []*livekit.ParticipantInfo) {
+	screenShareLockMu.RLock()
+	info := screenShareLock[roomName]
+	screenShareLockMu.RUnlock()
+	if info == nil {
+		return
+	}
+	for _, p := range participants {
+		if p.Identity == info.SharerID {
+			return
+		}
+	}
+	screenShareLockMu.Lock()
+	delete(screenShareLock, roomName)
+	screenShareLockMu.Unlock()
+	log.Printf("voice: cleared stale screen share lock in %s (sharer %s left)", roomName, info.SharerID)
+}
+
+// refreshScreenShareLock returns the effective sharer for a room, clearing the
+// lock live from LiveKit if the sharer has disconnected. On a LiveKit error the
+// lock is kept: never release on an uncertain answer.
+func refreshScreenShareLock(lkc *lk.Client, roomName string) *sharerInfo {
+	screenShareLockMu.RLock()
+	info := screenShareLock[roomName]
+	screenShareLockMu.RUnlock()
+	if info == nil {
+		return nil
+	}
+	participants, err := lkc.ListParticipants(context.Background(), roomName)
+	if err != nil {
+		return info
+	}
+	clearStaleScreenShareLock(roomName, participants)
+	screenShareLockMu.RLock()
+	defer screenShareLockMu.RUnlock()
+	return screenShareLock[roomName]
+}
+
+func voiceScreenShareStatus(lkc *lk.Client, db *sql.DB) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		channelID := c.Param("channel_id")
 		if err := verifyVoiceChannel(db, channelID); err != nil {
 			return channelError(c, err)
 		}
 		roomName := lk.RoomName(channelID)
-		screenShareLockMu.RLock()
-		info := screenShareLock[roomName]
-		screenShareLockMu.RUnlock()
+		info := refreshScreenShareLock(lkc, roomName)
 
 		if info != nil {
 			return c.JSON(http.StatusOK, map[string]interface{}{
@@ -374,7 +413,7 @@ func voiceScreenShareStatus(db *sql.DB) echo.HandlerFunc {
 	}
 }
 
-func voiceScreenShareLock(jwtSecret string, db *sql.DB) echo.HandlerFunc {
+func voiceScreenShareLock(jwtSecret string, lkc *lk.Client, db *sql.DB) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		user, err := authenticateRequest(c, jwtSecret)
 		if err != nil {
@@ -387,6 +426,8 @@ func voiceScreenShareLock(jwtSecret string, db *sql.DB) echo.HandlerFunc {
 		roomName := lk.RoomName(channelID)
 		userID := fmt.Sprintf("%d", user.ID)
 		username := displayName(user)
+
+		refreshScreenShareLock(lkc, roomName)
 
 		screenShareLockMu.Lock()
 		cur := screenShareLock[roomName]
@@ -692,10 +733,16 @@ func collectAllVoiceUsers(ctx context.Context, lkc *lk.Client, ssoClient *sso.Cl
 		}
 		roomName := lk.RoomName(chID)
 		participants, err := lkc.ListParticipants(ctx, roomName)
-		if err != nil || len(participants) == 0 {
+		if err != nil {
 			continue
 		}
+		// Stale-state cleanup runs even for emptied rooms: the last participant
+		// leaving may have been the host or the screen sharer.
 		hostID := resolveHostID(roomName, participants)
+		clearStaleScreenShareLock(roomName, participants)
+		if len(participants) == 0 {
+			continue
+		}
 		result[chID] = buildUserList(ctx, lkc, ssoClient, roomName, hostID, participants)
 	}
 	return result
