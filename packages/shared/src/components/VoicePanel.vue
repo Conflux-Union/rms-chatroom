@@ -7,7 +7,7 @@ import { useVoiceStore } from '../stores/voice'
 import { useAuthStore } from '../stores/auth'
 import { authFetch } from '../utils/authFetch'
 import { reportAvatarImgError, reportAvatarMissing } from '../utils/avatarTelemetry'
-import { Volume2, VolumeX, Mic, MicOff, Phone, Crown, Link, Copy, Check, UserX, Monitor, MonitorOff, Bell, Maximize, Minimize } from 'lucide-vue-next'
+import { Volume2, VolumeX, Mic, MicOff, Phone, Crown, Link, Copy, Check, UserX, Monitor, MonitorOff, Maximize, Minimize } from 'lucide-vue-next'
 
 // Detect iOS devices
 const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
@@ -499,14 +499,6 @@ function closeInviteDialog() {
 
             <!-- 语音控制按钮（移到用户容器内） -->
             <div class="voice-controlss">
-              <button
-                class="control-btn"
-                :class="{ active: voice.voiceAnnounceEnabled }"
-                @click="voice.setVoiceAnnounceEnabled(!voice.voiceAnnounceEnabled)"
-                :title="voice.voiceAnnounceEnabled ? '关闭进入语音提醒' : '开启进入语音提醒'"
-              >
-                <Bell :size="20" />
-              </button>
               <button
                 class="control-btn"
                 :class="{ active: voice.isMuted }"

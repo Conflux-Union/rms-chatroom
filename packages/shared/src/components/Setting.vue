@@ -3,7 +3,7 @@ import { onMounted, onUnmounted, ref, computed } from 'vue'
 import { useVoiceStore } from '../stores/voice'
 import { ZmModal, ZmSelect, ZmButton, ZmSpace, ZmProgress } from './ui'
 import type { ZmSelectOption } from './ui'
-import { Mic, Volume2, Activity } from 'lucide-vue-next'
+import { Mic, Volume2, Activity, Bell } from 'lucide-vue-next'
 import { isTauri } from '../index'
 import { isTelemetryEnabled, setTelemetryEnabled } from '../utils/telemetry'
 
@@ -28,6 +28,16 @@ function toggleTelemetry() {
   telemetryEnabled.value = !telemetryEnabled.value
   setTelemetryEnabled(telemetryEnabled.value)
 }
+
+// Voice join TTS announcement
+function toggleVoiceAnnounce() {
+  voice.setVoiceAnnounceEnabled(!voice.voiceAnnounceEnabled)
+}
+
+// setSinkId support: Chromium yes, Firefox 135+, Safari never. Without it the
+// output picker silently does nothing, so hide the row where unsupported.
+const supportsAudioOutput = typeof document !== 'undefined'
+  && typeof document.createElement('audio').setSinkId === 'function'
 
 // Device options
 const inputOptions = computed(() => {
@@ -311,7 +321,7 @@ function stopOutputTest() {
       </div>
 
       <!-- Output Device -->
-      <div class="setting-row">
+      <div v-if="supportsAudioOutput" class="setting-row">
         <div class="setting-label">
           <Volume2 :size="16" />
           <span>输出设备</span>
@@ -332,8 +342,26 @@ function stopOutputTest() {
         </div>
       </div>
 
-      <!-- Hotkey: Toggle Window -->
+      <!-- Voice join TTS announcement -->
       <div class="setting-row">
+        <div class="setting-label">
+          <Bell :size="16" />
+          <span>进入语音提醒</span>
+        </div>
+        <div class="setting-ctrl">
+          <span class="telemetry-desc">有人加入或离开当前语音频道时播报其昵称</span>
+          <ZmButton
+            size="small"
+            :type="voice.voiceAnnounceEnabled ? 'primary' : 'default'"
+            @click="toggleVoiceAnnounce"
+          >
+            {{ voice.voiceAnnounceEnabled ? '已开启' : '已关闭' }}
+          </ZmButton>
+        </div>
+      </div>
+
+      <!-- Hotkey: Toggle Window -->
+      <div v-if="isTauri" class="setting-row">
         <div class="setting-label">显示/隐藏窗口（全局快捷键）</div>
         <div class="setting-ctrl">
           <input
@@ -349,7 +377,7 @@ function stopOutputTest() {
       </div>
 
       <!-- Hotkey: Toggle Mic -->
-      <div class="setting-row">
+      <div v-if="isTauri" class="setting-row">
         <div class="setting-label">切换麦克风（全局快捷键）</div>
         <div class="setting-ctrl">
           <input

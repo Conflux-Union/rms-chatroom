@@ -16,7 +16,7 @@ import { useChatStore } from './chat'
 import { authFetch } from '../utils/authFetch'
 import { reportTelemetryEvent } from '../utils/telemetry'
 import { reportAvatarMissing } from '../utils/avatarTelemetry'
-import { announceParticipantJoined } from '../composables/voiceAnnounce'
+import { announceParticipantJoined, announceParticipantLeft } from '../composables/voiceAnnounce'
 
 const API_BASE = import.meta.env.VITE_API_BASE || ''
 
@@ -595,6 +595,7 @@ export const useVoiceStore = defineStore('voice', () => {
       })
       room.value.on(RoomEvent.ParticipantDisconnected, (participant) => {
         updateParticipants()
+        announceParticipantLeft(participant.name || participant.identity, { enabled: voiceAnnounceEnabled.value })
         // Drop their screen share entry; no TrackUnpublished is guaranteed
         if (remoteScreenShares.value.has(participant.identity)) {
           removeScreenShareEntry(participant.identity)
