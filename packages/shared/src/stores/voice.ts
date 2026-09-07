@@ -53,6 +53,8 @@ export interface ScreenShareInfo {
   participantName: string
   // Null when the share is not subscribed (ignore preference or sharer gone)
   track: RemoteTrackPublication | null
+  // Whether the sharer publishes a screen share audio track
+  hasAudio: boolean
 }
 
 interface ParticipantAudio {
@@ -102,9 +104,21 @@ export const useVoiceStore = defineStore('voice', () => {
   // the media. Persisted so a user's choice survives reloads.
   const screenShareIgnored = ref(localStorage.getItem(STORAGE_KEY_SCREEN_SHARE_IGNORE) === 'true')
 
-  function setScreenShareEntry(participantId: string, info: ScreenShareInfo) {
+  /**
+   * Merge a partial update into a screen share entry. Fields not present in
+   * the patch keep their current value (or the creation default), so audio
+   * and video track events can arrive in any order without clobbering each
+   * other.
+   */
+  function patchScreenShareEntry(participantId: string, patch: Partial<ScreenShareInfo>) {
+    const existing = remoteScreenShares.value.get(participantId)
     const newMap = new Map(remoteScreenShares.value)
-    newMap.set(participantId, info)
+    newMap.set(participantId, {
+      participantId,
+      participantName: patch.participantName ?? existing?.participantName ?? participantId,
+      track: patch.track !== undefined ? patch.track : existing?.track ?? null,
+      hasAudio: patch.hasAudio ?? existing?.hasAudio ?? false,
+    })
     remoteScreenShares.value = newMap
   }
 
@@ -138,6 +152,34 @@ export const useVoiceStore = defineStore('voice', () => {
     if (ignored) localStorage.setItem(STORAGE_KEY_SCREEN_SHARE_IGNORE, 'true')
     else localStorage.removeItem(STORAGE_KEY_SCREEN_SHARE_IGNORE)
     applyScreenShareSubscription()
+  }
+
+  // Per-sharer screen share audio volume (0-100), in-memory like userVolumes
+  const screenShareVolumes = ref<Map<string, number>>(new Map())
+
+  // participantAudioMap key for a sharer's screen share audio, kept separate
+  // from the same participant's microphone key
+  function screenShareAudioKey(participantId: string): string {
+    return `${participantId}:screen-share`
+  }
+
+  // Same perceptual curve as the non-iOS microphone volume path
+  function screenShareVolumeGain(volume: number): number {
+    return Math.pow(Math.max(0, Math.min(volume, 100)) / 100, 2.6)
+  }
+
+  function applyScreenShareVolume(participantId: string, volume: number): void {
+    const audio = participantAudioMap.get(screenShareAudioKey(participantId))
+    if (!audio) return
+    if (audio.gainNode) audio.gainNode.gain.value = screenShareVolumeGain(volume)
+    else audio.audioElement.volume = screenShareVolumeGain(volume)
+    audio.volume = volume
+  }
+
+  function setScreenShareVolume(participantId: string, volume: number): void {
+    const clampedVolume = Math.max(0, Math.min(100, volume))
+    screenShareVolumes.value.set(participantId, clampedVolume)
+    applyScreenShareVolume(participantId, clampedVolume)
   }
   
   // Screen share lock state (from server)
@@ -632,8 +674,10 @@ export const useVoiceStore = defineStore('voice', () => {
 
       room.value.on(RoomEvent.TrackSubscribed, async (track, pub, participant) => {
         if (participant instanceof RemoteParticipant) {
-          // Handle audio tracks
-          if (track.kind === Track.Kind.Audio) {
+          // Handle microphone audio tracks. Screen share audio is also
+          // Track.Kind.Audio, so exclude it here or it would take the mic's
+          // volume and clobber the mic's participantAudioMap entry.
+          if (track.kind === Track.Kind.Audio && pub.source !== Track.Source.ScreenShareAudio) {
             const audioElement = track.attach() as HTMLAudioElement
             audioElement.dataset.livekitAudio = "true"
             audioElement.dataset.participantId = participant.identity
@@ -671,8 +715,7 @@ export const useVoiceStore = defineStore('voice', () => {
           }
           // Handle screen share tracks
           else if (track.kind === Track.Kind.Video && pub.source === Track.Source.ScreenShare) {
-            setScreenShareEntry(participant.identity, {
-              participantId: participant.identity,
+            patchScreenShareEntry(participant.identity, {
               participantName: participant.name || participant.identity,
               track: pub as RemoteTrackPublication,
             })
@@ -683,7 +726,26 @@ export const useVoiceStore = defineStore('voice', () => {
             audioElement.dataset.livekitAudio = 'true'
             audioElement.dataset.participantId = participant.identity
             audioElement.dataset.screenShareAudio = 'true'
-            
+
+            const savedVolume = screenShareVolumes.value.get(participant.identity) ?? 100
+
+            if (isIOS()) {
+              // iOS: route through the Web Audio graph like microphone
+              // tracks, so the element-level mutes applied elsewhere (which
+              // iOS playback needs) cannot silence the share audio
+              connectAudioNodes(screenShareAudioKey(participant.identity), audioElement, savedVolume)
+              // connectAudioNodes maps volume linearly; apply the shared
+              // perceptual curve instead
+              const audio = participantAudioMap.get(screenShareAudioKey(participant.identity))
+              if (audio?.gainNode) audio.gainNode.gain.value = screenShareVolumeGain(savedVolume)
+            } else {
+              audioElement.volume = screenShareVolumeGain(savedVolume)
+              participantAudioMap.set(screenShareAudioKey(participant.identity), {
+                audioElement,
+                volume: savedVolume,
+              })
+            }
+
             if (selectedAudioOutput.value) {
               const el = audioElement as HTMLAudioElement & { setSinkId?: (id: string) => Promise<void> }
               if (el.setSinkId) {
@@ -691,6 +753,7 @@ export const useVoiceStore = defineStore('voice', () => {
               }
             }
             document.body.appendChild(audioElement)
+            patchScreenShareEntry(participant.identity, { hasAudio: true })
           }
         }
       })
@@ -703,7 +766,10 @@ export const useVoiceStore = defineStore('voice', () => {
         if (participant instanceof RemoteParticipant) {
           // Clear if it is a audio track
           if (track.kind === Track.Kind.Audio) {
-            const info = participantAudioMap.get(participant.identity)
+            const audioKey = pub.source === Track.Source.ScreenShareAudio
+              ? screenShareAudioKey(participant.identity)
+              : participant.identity
+            const info = participantAudioMap.get(audioKey)
 
             if (info) {
               // Only remove if the audioElement matches or is disconnected
@@ -716,8 +782,17 @@ export const useVoiceStore = defineStore('voice', () => {
               if (matched || disconnected || !info.audioElement) {
                 if (info.gainNode) info.gainNode.disconnect()
                 if (info.sourceNode) info.sourceNode.disconnect()
-                participantAudioMap.delete(participant.identity)
+                participantAudioMap.delete(audioKey)
               }
+            }
+
+            // Share audio publication itself is gone (sharer stopped sharing
+            // audio or left); a local unsubscribe keeps it available
+            if (
+              pub.source === Track.Source.ScreenShareAudio &&
+              !participant.trackPublications.has(pub.trackSid)
+            ) {
+              patchScreenShareEntry(participant.identity, { hasAudio: false })
             }
           }
 
@@ -729,11 +804,7 @@ export const useVoiceStore = defineStore('voice', () => {
               // re-evaluates the (now empty) video track.
               const existing = remoteScreenShares.value.get(participant.identity)
               if (existing) {
-                setScreenShareEntry(participant.identity, {
-                  participantId: existing.participantId,
-                  participantName: existing.participantName,
-                  track: null,
-                })
+                patchScreenShareEntry(participant.identity, { track: null })
               }
             } else {
               // Publication itself is gone (sharer stopped or left)
@@ -751,11 +822,14 @@ export const useVoiceStore = defineStore('voice', () => {
         if (pub.source === Track.Source.ScreenShare) {
           // Register the share even while not subscribed, so the UI can show
           // who is sharing and offer to start watching
-          setScreenShareEntry(participant.identity, {
-            participantId: participant.identity,
+          patchScreenShareEntry(participant.identity, {
             participantName: participant.name || participant.identity,
             track: pub as RemoteTrackPublication,
           })
+        }
+        // The sharer publishes share audio alongside the video track
+        if (pub.source === Track.Source.ScreenShareAudio) {
+          patchScreenShareEntry(participant.identity, { hasAudio: true })
         }
         // A new share starts while the user ignores shares: decline it right
         // away so its media never flows to this client
@@ -769,8 +843,12 @@ export const useVoiceStore = defineStore('voice', () => {
       })
 
       room.value.on(RoomEvent.TrackUnpublished, (pub, participant) => {
-        if (participant instanceof RemoteParticipant && pub.source === Track.Source.ScreenShare) {
+        if (!(participant instanceof RemoteParticipant)) return
+        if (pub.source === Track.Source.ScreenShare) {
           removeScreenShareEntry(participant.identity)
+        }
+        if (pub.source === Track.Source.ScreenShareAudio) {
+          patchScreenShareEntry(participant.identity, { hasAudio: false })
         }
       })
 
@@ -799,11 +877,13 @@ export const useVoiceStore = defineStore('voice', () => {
       room.value.remoteParticipants.forEach((participant) => {
         participant.trackPublications.forEach((pub) => {
           if (pub.source === Track.Source.ScreenShare) {
-            setScreenShareEntry(participant.identity, {
-              participantId: participant.identity,
+            patchScreenShareEntry(participant.identity, {
               participantName: participant.name || participant.identity,
               track: pub as RemoteTrackPublication,
             })
+          }
+          if (pub.source === Track.Source.ScreenShareAudio) {
+            patchScreenShareEntry(participant.identity, { hasAudio: true })
           }
         })
       })
@@ -860,6 +940,7 @@ export const useVoiceStore = defineStore('voice', () => {
     participants.value = []
     currentVoiceChannel.value = null
     userVolumes.value.clear()
+    screenShareVolumes.value.clear()
     volumeWarningAcknowledged.value.clear()
     hostModeEnabled.value = false
     hostModeHostId.value = null
@@ -1375,6 +1456,8 @@ export const useVoiceStore = defineStore('voice', () => {
     setUserVolume,
     acknowledgeVolumeWarning,
     isVolumeWarningAcknowledged,
+    screenShareVolumes,
+    setScreenShareVolume,
     enumerateDevices,
     setAudioInputDevice,
     setAudioOutputDevice,
