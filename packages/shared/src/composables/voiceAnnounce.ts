@@ -8,10 +8,14 @@ function isSpeechSupported(): boolean {
 }
 
 /**
- * Speak "xxx进入了语音" for a participant name. Cancels any ongoing utterance
- * so rapid joins do not queue up. Respects enabled flag.
+ * Speak "xxx进入了语音" / "xxx离开了语音" for a participant name. Cancels any
+ * ongoing utterance so rapid join/leave events do not queue up. Respects
+ * enabled flag.
  */
-export function announceParticipantJoined(
+type AnnounceAction = 'joined' | 'left'
+
+function speak(
+  action: AnnounceAction,
   name: string,
   options?: { enabled?: boolean }
 ): void {
@@ -19,7 +23,9 @@ export function announceParticipantJoined(
   if (!isSpeechSupported()) return
 
   const displayName = (name || '有人').trim() || '有人'
-  const text = `${displayName}进入了语音`
+  const text = action === 'joined'
+    ? `${displayName}进入了语音`
+    : `${displayName}离开了语音`
 
   const synth = window.speechSynthesis
   synth.cancel()
@@ -30,6 +36,20 @@ export function announceParticipantJoined(
   utterance.volume = 1
 
   synth.speak(utterance)
+}
+
+export function announceParticipantJoined(
+  name: string,
+  options?: { enabled?: boolean }
+): void {
+  speak('joined', name, options)
+}
+
+export function announceParticipantLeft(
+  name: string,
+  options?: { enabled?: boolean }
+): void {
+  speak('left', name, options)
 }
 
 export { isSpeechSupported }
