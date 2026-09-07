@@ -13,6 +13,9 @@ const API_BASE = import.meta.env.VITE_API_BASE || ''
 const STORAGE_KEY = 'rms-telemetry-enabled'
 const FLUSH_DELAY_MS = 5000
 const MAX_BATCH = 20
+// Dev builds carry no meaningful version identity (dev(0)) and often proxy to
+// production, so their events would pollute real telemetry data. Drop them.
+const IS_DEV_BUILD = VERSION_NAME === 'dev'
 // Per-event-key floor keeps a render-loop error from flooding the endpoint;
 // the global budget bounds total traffic no matter how many distinct errors fire.
 const PER_KEY_MIN_INTERVAL_MS = 60_000
@@ -121,6 +124,7 @@ export function reportTelemetryEvent(
   extra?: { stack?: string; meta?: Record<string, unknown> }
 ) {
   try {
+    if (IS_DEV_BUILD) return
     if (!isTelemetryEnabled()) return
     if (!withinBudget(`${type}:${message ?? ''}`)) return
 

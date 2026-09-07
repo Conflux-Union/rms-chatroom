@@ -79,6 +79,9 @@ func submitClientTelemetry(jwtSecret string, db *sql.DB) echo.HandlerFunc {
 		}
 		for _, ev := range batch.Events {
 			if !telemetryEventTypeRe.MatchString(ev.Type) {
+				// Production has seen bursts of these from Android clients; the
+				// rejected type value is the only way to trace the sender's bug.
+				c.Logger().Warnf("telemetry: rejected event type %q (platform=%s, len=%d)", ev.Type, batch.Platform, len(ev.Type))
 				return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid event type"})
 			}
 		}

@@ -25,8 +25,8 @@ export function reportAvatarImgError(
   url: string | undefined,
   userId: string | number | undefined
 ): void {
-  reportTelemetryEvent('avatar_img_error', urlHost(url), {
-    meta: { where, user_id: userId }
+  reportTelemetryEvent('avatar_img_error', 'img load failed', {
+    meta: { where, url_host: urlHost(url), user_id: userId }
   })
 }
 
@@ -36,8 +36,8 @@ export function reportAvatarMissing(
   userId: string | number | undefined,
   meta?: Record<string, unknown>
 ): void {
-  reportTelemetryEvent('avatar_missing', String(userId ?? 'unknown'), {
-    meta: { where, ...meta }
+  reportTelemetryEvent('avatar_missing', 'no avatar_url in data', {
+    meta: { where, user_id: userId, ...meta }
   })
 }
 
@@ -47,7 +47,7 @@ export function reportVoicePushMissingAvatar(
   missingIds: (string | number)[],
   total: number
 ): void {
-  reportTelemetryEvent('voice_push_missing_avatar', String(channelId), {
+  reportTelemetryEvent('voice_push_missing_avatar', 'push round missing avatar_url', {
     meta: {
       channel_id: channelId,
       missing: missingIds.slice(0, 10).map(String),
