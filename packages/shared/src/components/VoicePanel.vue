@@ -123,6 +123,23 @@ const activeRemoteScreenShare = computed(() => {
   return shares.values().next().value
 })
 
+// Volume of the active remote share's audio, separate from the sharer's mic
+const activeShareVolume = computed(() => {
+  const share = activeRemoteScreenShare.value
+  if (!share) return 100
+  return voice.screenShareVolumes.get(share.participantId) ?? 100
+})
+
+function handleScreenShareVolumeChange(event: Event) {
+  const share = activeRemoteScreenShare.value
+  if (!share) return
+  const target = event.target as HTMLInputElement
+  const newVolume = parseInt(target.value, 10)
+  if (!Number.isNaN(newVolume)) {
+    voice.setScreenShareVolume(share.participantId, newVolume)
+  }
+}
+
 // Watch for remote screen share changes and attach video
 watch(activeRemoteScreenShare, async (newShare) => {
   await nextTick()
@@ -373,6 +390,22 @@ function closeInviteDialog() {
                 {{ activeRemoteScreenShare.participantName }} 正在共享屏幕
               </span>
               <span v-else>你正在共享屏幕</span>
+              <div
+                v-if="activeRemoteScreenShare?.hasAudio"
+                class="screen-share-volume"
+                title="共享声音音量（不影响人声）"
+              >
+                <Volume2 class="volume-icon" :size="14" />
+                <input
+                  type="range"
+                  class="volume-slider screen-share-volume-slider"
+                  min="0"
+                  max="100"
+                  :value="activeShareVolume"
+                  @input="handleScreenShareVolumeChange"
+                />
+                <span class="volume-value">{{ activeShareVolume }}%</span>
+              </div>
               <button
                 v-if="activeRemoteScreenShare"
                 class="screen-share-toggle"
@@ -1268,6 +1301,27 @@ function closeInviteDialog() {
   cursor: pointer;
 }
 
+/* Screen share audio volume control inside the stage header. Sits before the
+toggle buttons and right-aligns against them; the buttons keep their own
+margin-left:auto when this control is absent. */
+.screen-share-volume {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 4px;
+  color: var(--color-text-muted);
+}
+
+.screen-share-volume .volume-value {
+  min-width: 34px;
+}
+
+.screen-share-volume-slider {
+  flex: none;
+  width: 90px;
+}
+
 .screen-share-toggle:first-of-type {
   margin-left: auto;
 }
@@ -1413,6 +1467,26 @@ function closeInviteDialog() {
   .screen-share-stage {
     flex: none;
     width: 100%;
+  }
+
+  /* Narrow screens: let the sharer name ellipsize and shrink the share
+  volume control so the header buttons stay reachable */
+  .screen-share-header > span:first-of-type {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .screen-share-volume {
+    flex-shrink: 0;
+  }
+
+  .screen-share-volume .volume-value {
+    display: none;
+  }
+
+  .screen-share-volume-slider {
+    width: 64px;
   }
 
   .screen-share-video {
