@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { ZmModal, ZmButton, ZmSpace, ZmInput, ZmDropdown, ZmSpin } from './ui'
 import type { ZmDropdownOption } from './ui'
 import { useChatStore } from '../stores/chat'
@@ -7,7 +7,7 @@ import { useVoiceStore } from '../stores/voice'
 import { useAuthStore } from '../stores/auth'
 import { authFetch } from '../utils/authFetch'
 import { reportAvatarImgError, reportAvatarMissing } from '../utils/avatarTelemetry'
-import { Volume2, VolumeX, Mic, MicOff, Phone, Crown, Link, Copy, Check, UserX, Monitor, MonitorOff, Bell } from 'lucide-vue-next'
+import { Volume2, VolumeX, Mic, MicOff, Phone, Crown, Link, Copy, Check, UserX, Monitor, MonitorOff, Bell, Maximize, Minimize } from 'lucide-vue-next'
 
 // Detect iOS devices
 const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
@@ -35,6 +35,12 @@ onMounted(() => {
   console.log('[VoicePanel] - Token exists:', !!auth.token)
 
   voice.enumerateDevices()
+
+  document.addEventListener('fullscreenchange', handleFullscreenChange)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('fullscreenchange', handleFullscreenChange)
 })
 
 // Whether the user is connected to the voice channel currently being viewed.
@@ -75,9 +81,40 @@ const participantDropdownOptions: ZmDropdownOption[] = [
 ]
 
 // Screen share state
-const screenShareExpanded = ref(true)
 const screenShareContainer = ref<HTMLElement | null>(null)
 const localScreenShareContainer = ref<HTMLElement | null>(null)
+
+// Whether any screen share (remote or local) is currently shown: drives the
+// stage + user strip layout
+const screenShareActive = computed(() =>
+  !!(activeRemoteScreenShare.value || voice.isScreenSharing)
+)
+
+// Fullscreen state of the screen share video
+const isVideoFullscreen = ref(false)
+
+function handleFullscreenChange() {
+  isVideoFullscreen.value = !!document.fullscreenElement
+}
+
+function toggleVideoFullscreen() {
+  const el = screenShareContainer.value || localScreenShareContainer.value
+  if (!el) return
+  if (document.fullscreenElement) {
+    document.exitFullscreen()
+    return
+  }
+  if (el.requestFullscreen) {
+    el.requestFullscreen()
+    return
+  }
+  // iOS Safari: only the video element itself can enter fullscreen
+  const video = el.querySelector('video')
+  if (video instanceof HTMLVideoElement) {
+    const enterFullscreen = (video as HTMLVideoElement & { webkitEnterFullscreen?: () => void }).webkitEnterFullscreen
+    if (typeof enterFullscreen === 'function') enterFullscreen.call(video)
+  }
+}
 
 // Computed: first remote screen share (show one at a time)
 const activeRemoteScreenShare = computed(() => {
@@ -321,9 +358,59 @@ function closeInviteDialog() {
         </button>
       </div>
 
-      <div v-else class="voice-connected">
+      <div
+        v-else
+        class="voice-connected"
+        :class="{ 'sharing-active': screenShareActive }"
+      >
         <!-- Voice users and controls -->
         <div class="voice-main-content">
+          <!-- Screen share stage: fills the left area while sharing -->
+          <div v-if="screenShareActive" class="screen-share-stage">
+            <div class="screen-share-header">
+              <Monitor :size="16" />
+              <span v-if="activeRemoteScreenShare">
+                {{ activeRemoteScreenShare.participantName }} 正在共享屏幕
+              </span>
+              <span v-else>你正在共享屏幕</span>
+              <button
+                v-if="activeRemoteScreenShare"
+                class="screen-share-toggle"
+                :class="{ 'watch-off': voice.screenShareIgnored }"
+                :title="voice.screenShareIgnored ? '接收并观看屏幕共享' : '停止接收屏幕共享视频流'"
+                @click="toggleScreenShareWatch"
+              >
+                {{ voice.screenShareIgnored ? '观看' : '忽略' }}
+              </button>
+              <button
+                class="screen-share-toggle"
+                :title="isVideoFullscreen ? '退出全屏' : '全屏'"
+                @click="toggleVideoFullscreen"
+              >
+                <Minimize v-if="isVideoFullscreen" :size="14" />
+                <Maximize v-else :size="14" />
+              </button>
+            </div>
+            <div class="screen-share-video" @dblclick="toggleVideoFullscreen">
+              <div
+                v-if="activeRemoteScreenShare && !voice.screenShareIgnored"
+                ref="screenShareContainer"
+                class="video-container"
+              ></div>
+              <div
+                v-else-if="voice.isScreenSharing"
+                ref="localScreenShareContainer"
+                class="video-container local-preview"
+              >
+                <div class="local-preview-label">预览</div>
+              </div>
+              <div v-else-if="activeRemoteScreenShare" class="video-placeholder">
+                <MonitorOff :size="32" />
+                <span>已忽略共享画面</span>
+              </div>
+            </div>
+          </div>
+
           <div class="voice-users-container">
             <div class="voice-users-header">
               <h4>语音用户 ({{ voice.participants.length }})</h4>
@@ -484,43 +571,6 @@ function closeInviteDialog() {
           <Crown :size="14" />
           <span>{{ voice.hostModeHostName }} 正在主持</span>
         </div>
-
-        <!-- Screen Share Display -->
-        <div v-if="activeRemoteScreenShare || voice.isScreenSharing" class="screen-share-section">
-          <div class="screen-share-header" @click="screenShareExpanded = !screenShareExpanded">
-            <Monitor :size="16" />
-            <span v-if="activeRemoteScreenShare">
-              {{ activeRemoteScreenShare.participantName }} 正在共享屏幕
-            </span>
-            <span v-else>你正在共享屏幕</span>
-            <button
-              v-if="activeRemoteScreenShare"
-              class="screen-share-toggle"
-              :class="{ 'watch-off': voice.screenShareIgnored }"
-              :title="voice.screenShareIgnored ? '接收并观看屏幕共享' : '停止接收屏幕共享视频流'"
-              @click.stop="toggleScreenShareWatch"
-            >
-              {{ voice.screenShareIgnored ? '观看' : '忽略' }}
-            </button>
-            <button class="screen-share-toggle">
-              {{ screenShareExpanded ? '收起' : '展开' }}
-            </button>
-          </div>
-          <div v-show="screenShareExpanded" class="screen-share-video">
-            <div
-              v-if="activeRemoteScreenShare && !voice.screenShareIgnored"
-              ref="screenShareContainer"
-              class="video-container"
-            ></div>
-            <div
-              v-else-if="voice.isScreenSharing"
-              ref="localScreenShareContainer"
-              class="video-container local-preview"
-            >
-              <div class="local-preview-label">预览</div>
-            </div>
-          </div>
-        </div>
       </div>
     </div>
 
@@ -652,6 +702,13 @@ function closeInviteDialog() {
   align-items: center;
 }
 
+/* While sharing, fill the height and keep scrolling inside the user strip
+   instead of scrolling the whole panel */
+.voice-content:has(.voice-connected.sharing-active) {
+  align-items: stretch;
+  overflow: hidden;
+}
+
 .device-selection {
   width: 100%;
   max-width: 400px;
@@ -755,6 +812,53 @@ function closeInviteDialog() {
   display: flex;
   flex-direction: column;
   flex: 1; /* 占满剩余空间 */
+  min-height: 0;
+  position: relative; /* floating control bar anchors here while sharing */
+}
+
+/* While a screen share is active the panel splits: video stage on the left,
+   user list on a fixed-width right strip */
+.voice-connected.sharing-active {
+  --users-strip-width: 260px;
+  --share-gap: 16px;
+}
+
+.voice-connected.sharing-active .voice-main-content {
+  flex: 1 1 auto;
+  height: auto;
+  min-height: 0;
+  align-items: stretch;
+  justify-content: flex-start;
+}
+
+.voice-connected.sharing-active .voice-users-container {
+  flex: 0 0 var(--users-strip-width);
+  max-width: var(--users-strip-width);
+  min-height: 0;
+  overflow: hidden;
+}
+
+.voice-connected.sharing-active .voice-users {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  margin-bottom: 0;
+}
+
+/* Voice controls float bottom-center over the video stage while sharing */
+.voice-connected.sharing-active .voice-controlss {
+  position: absolute;
+  bottom: 20px;
+  left: calc((100% - var(--users-strip-width) - var(--share-gap)) / 2);
+  transform: translateX(-50%);
+  margin-top: 0;
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: var(--zhimo-surface-bg);
+  backdrop-filter: var(--zhimo-surface-blur);
+  -webkit-backdrop-filter: var(--zhimo-surface-blur);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  z-index: 10;
 }
 
 /* 主要内容区域：水平布局 */
@@ -922,6 +1026,9 @@ function closeInviteDialog() {
 .user-name {
   flex: 1;
   color: var(--color-text-main);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .local-tag {
@@ -1128,9 +1235,13 @@ function closeInviteDialog() {
   filter: brightness(1.1);
 }
 
-/* Screen Share Section */
-.screen-share-section {
-  margin-top: 16px;
+/* Screen Share Stage (fills the left area while sharing) */
+.screen-share-stage {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
   background: var(--surface-glass);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
@@ -1178,16 +1289,35 @@ function closeInviteDialog() {
 }
 
 .screen-share-video {
-  padding: 8px;
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  background: #000;
+}
+
+.video-placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: var(--color-text-muted);
+  font-size: 13px;
 }
 
 .video-container {
   width: 100%;
-  aspect-ratio: 16 / 9;
+  height: 100%;
   background: #000;
   border-radius: var(--radius-md);
   overflow: hidden;
   position: relative;
+}
+
+.video-container:fullscreen {
+  border-radius: 0;
 }
 
 .video-container.local-preview {
@@ -1280,6 +1410,49 @@ function closeInviteDialog() {
   .control-btn {
     width: 44px;
     height: 44px;
+  }
+
+  /* Sharing on mobile: vertical stack, static controls, page-level scroll */
+  .voice-content:has(.voice-connected.sharing-active) {
+    overflow-y: auto;
+    align-items: center;
+  }
+
+  .screen-share-stage {
+    flex: none;
+    width: 100%;
+  }
+
+  .screen-share-video {
+    flex: none;
+  }
+
+  .screen-share-stage .video-container {
+    height: auto;
+    aspect-ratio: 16 / 9;
+  }
+
+  .voice-connected.sharing-active .voice-users-container {
+    flex: 1 1 auto;
+    max-width: 100%;
+    overflow: visible;
+  }
+
+  .voice-connected.sharing-active .voice-users {
+    flex: none;
+    overflow: visible;
+  }
+
+  .voice-connected.sharing-active .voice-controlss {
+    position: static;
+    left: auto;
+    transform: none;
+    padding: 0;
+    background: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    border: none;
+    border-radius: 0;
   }
 }
 </style>
