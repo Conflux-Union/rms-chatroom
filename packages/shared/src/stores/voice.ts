@@ -15,6 +15,7 @@ import { useAuthStore } from './auth'
 import { useChatStore } from './chat'
 import { authFetch } from '../utils/authFetch'
 import { reportTelemetryEvent } from '../utils/telemetry'
+import { reportAvatarMissing } from '../utils/avatarTelemetry'
 import { announceParticipantJoined } from '../composables/voiceAnnounce'
 
 const API_BASE = import.meta.env.VITE_API_BASE || ''
@@ -360,6 +361,19 @@ export const useVoiceStore = defineStore('voice', () => {
     })
 
     participants.value = list
+
+    // Avatar diagnostics: a remote participant rendering the first-letter
+    // fallback means no avatar_url ever arrived for them (no push round since
+    // they joined carried one). Local user falls back only when the JWT
+    // itself lacks the claim.
+    for (const p of list) {
+      if (!p.avatarUrl) {
+        reportAvatarMissing('voice-participants', p.id, {
+          is_local: p.isLocal,
+          channel_id: currentVoiceChannel.value?.id,
+        })
+      }
+    }
   }
 
   /**

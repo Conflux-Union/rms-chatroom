@@ -5,6 +5,7 @@ import axios from 'axios'
 import { useAuthStore } from './auth'
 import { useMentionNotification } from '../composables/useMentionNotification'
 import { useReadPosition } from '../composables/useReadPosition'
+import { reportVoicePushMissingAvatar } from '../utils/avatarTelemetry'
 
 const API_BASE = import.meta.env.VITE_API_BASE || ''
 
@@ -384,6 +385,13 @@ export const useChatStore = defineStore('chat', () => {
     const newMap = new Map<number, VoiceChannelUser[]>()
     for (const [channelId, userList] of Object.entries(users)) {
       newMap.set(Number(channelId), userList)
+      // Avatar diagnostics: a push round where a non-guest participant lacks
+      // avatar_url is the data-layer failure we are hunting. Guests never
+      // have one, so they are excluded from the report.
+      const missing = userList.filter(u => !u.avatar_url && !u.id.startsWith('guest_'))
+      if (missing.length > 0) {
+        reportVoicePushMissingAvatar(channelId, missing.map(u => u.id), userList.length)
+      }
     }
     // Set empty array for voice channels not in response
     if (currentServer.value?.channels) {
