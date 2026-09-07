@@ -10,7 +10,10 @@ import {
   LocalTrackPublication,
   ScreenSharePresets,
 } from 'livekit-client'
-import type { Channel } from '../types'
+import type {
+  Channel,
+} from '../types'
+import type { VideoCodec } from 'livekit-client'
 import { useAuthStore } from './auth'
 import { useChatStore } from './chat'
 import { authFetch } from '../utils/authFetch'
@@ -24,6 +27,49 @@ const STORAGE_KEY_INPUT = 'rms-voice-input-device'
 const STORAGE_KEY_OUTPUT = 'rms-voice-output-device'
 const STORAGE_KEY_ANNOUNCE = 'rms-voice-announce-enabled'
 const STORAGE_KEY_SCREEN_SHARE_IGNORE = 'rms-voice-screen-share-ignored'
+
+/**
+ * Pick the screen share video codec by publisher capability.
+ *
+ * AV1 is preferred (best compression + temporal SVC for weak-network frame
+ * dropping), with the backup codec pinned to VP9 so a Safari/Firefox viewer
+ * degrades the room to VP9 instead of the SDK default VP8. VP9-capable
+ * publishers use VP9 SVC directly. Firefox falls back to VP8 single-layer:
+ * its VP9/AV1 SVC publishing is broken (livekit-client disables it).
+ */
+function pickScreenShareVideoCodec(): VideoCodec {
+  if (isAV1PublishSupported()) return 'av1'
+  if (isVP9PublishSupported()) return 'vp9'
+  return 'vp8'
+}
+
+function isAV1PublishSupported(): boolean {
+  try {
+    if (typeof RTCRtpSender === 'undefined' || !('getCapabilities' in RTCRtpSender)) return false
+    // Safari reports AV1 capability on hardware that cannot actually encode it
+    // (livekit-client guards the same way), so exclude it up front.
+    if (isSafari()) return false
+    const caps = RTCRtpSender.getCapabilities('video')
+    return !!caps?.codecs.some(c => c.mimeType.toLowerCase() === 'video/av1')
+  } catch {
+    return false
+  }
+}
+
+function isVP9PublishSupported(): boolean {
+  try {
+    if (typeof RTCRtpSender === 'undefined' || !('getCapabilities' in RTCRtpSender)) return false
+    const caps = RTCRtpSender.getCapabilities('video')
+    return !!caps?.codecs.some(c => c.mimeType.toLowerCase() === 'video/vp9')
+  } catch {
+    return false
+  }
+}
+
+function isSafari(): boolean {
+  const ua = navigator.userAgent
+  return /^((?!chrome|android).)*safari/i.test(ua)
+}
 
 const capturePickerOpen = ref(false)
 
@@ -1304,13 +1350,27 @@ export const useVoiceStore = defineStore('voice', () => {
           console.log("Failed to start screen share: " + error.value)
           return false
         }
-        // Browser/Tauri: use native getDisplayMedia via LiveKit
+        // Browser/Tauri: use native getDisplayMedia via LiveKit.
+        // Codec ladder: AV1 > VP9 > VP8, picked per publisher capability.
+        const videoCodec = pickScreenShareVideoCodec()
         await room.value.localParticipant.setScreenShareEnabled(true, {
           resolution: ScreenSharePresets.h1080fps30.resolution,
           contentHint: 'motion',
           audio: true,
         }, {
-          videoEncoding: {
+          videoCodec,
+          // A subscriber that cannot decode AV1 regresses the publisher to
+          // the backup codec. The SDK types restrict this to "vp8" | "h264",
+          // but the runtime only compares backupCodec.codec against the
+          // primary codec, and VP9 is a published/subscribeable codec on this
+          // server — the cast pins the regression floor at VP9 instead of
+          // dropping the room to VP8.
+          backupCodec: videoCodec === 'av1'
+            ? { codec: 'vp9' as unknown as 'vp8' }
+            : false,
+          // For screen share the SDK reads screenShareEncoding (not
+          // videoEncoding) — put the cap on the field that takes effect.
+          screenShareEncoding: {
             maxBitrate: 2_000_000,
             maxFramerate: 30,
             priority: 'high',
