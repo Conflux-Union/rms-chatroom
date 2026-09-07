@@ -101,6 +101,11 @@ watch(() => voice.isScreenSharing, async (sharing) => {
   }
 })
 
+// Toggle receiving remote screen share streams
+function toggleScreenShareWatch() {
+  voice.setScreenShareIgnored(!voice.screenShareIgnored)
+}
+
 function handleTouchStart(event: TouchEvent, _participantId: string) {
   const touch = event.touches[0]
   if (touch) {
@@ -487,13 +492,22 @@ function closeInviteDialog() {
               {{ activeRemoteScreenShare.participantName }} 正在共享屏幕
             </span>
             <span v-else>你正在共享屏幕</span>
+            <button
+              v-if="activeRemoteScreenShare"
+              class="screen-share-toggle"
+              :class="{ 'watch-off': voice.screenShareIgnored }"
+              :title="voice.screenShareIgnored ? '接收并观看屏幕共享' : '停止接收屏幕共享视频流'"
+              @click.stop="toggleScreenShareWatch"
+            >
+              {{ voice.screenShareIgnored ? '观看' : '忽略' }}
+            </button>
             <button class="screen-share-toggle">
               {{ screenShareExpanded ? '收起' : '展开' }}
             </button>
           </div>
           <div v-show="screenShareExpanded" class="screen-share-video">
             <div
-              v-if="activeRemoteScreenShare"
+              v-if="activeRemoteScreenShare && !voice.screenShareIgnored"
               ref="screenShareContainer"
               class="video-container"
             ></div>
@@ -1141,7 +1155,6 @@ function closeInviteDialog() {
 }
 
 .screen-share-toggle {
-  margin-left: auto;
   padding: 4px 8px;
   font-size: 12px;
   background: rgba(255, 255, 255, 0.1);
@@ -1149,6 +1162,14 @@ function closeInviteDialog() {
   border-radius: var(--radius-sm);
   color: var(--color-text-muted);
   cursor: pointer;
+}
+
+.screen-share-toggle:first-of-type {
+  margin-left: auto;
+}
+
+.screen-share-toggle.watch-off {
+  color: #10b981;
 }
 
 .screen-share-toggle:hover {

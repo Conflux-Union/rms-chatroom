@@ -46,6 +46,7 @@ data class VoiceState(
     // Screen share state
     val isScreenSharing: Boolean = false,
     val remoteScreenShares: Map<String, ScreenShareInfo> = emptyMap(),
+    val screenShareIgnored: Boolean = false,
     val screenShareLocked: Boolean = false,
     val screenSharerId: String? = null,
     val screenSharerName: String? = null
@@ -202,6 +203,7 @@ class VoiceViewModel @Inject constructor(
             combine(
                 voiceRepository.isScreenSharing,
                 voiceRepository.remoteScreenShares,
+                voiceRepository.screenShareIgnored,
                 voiceRepository.screenShareLocked,
                 voiceRepository.screenSharerId,
                 voiceRepository.screenSharerName
@@ -210,14 +212,16 @@ class VoiceViewModel @Inject constructor(
                 VoiceScreenShareUpdate(
                     isSharing = values[0] as Boolean,
                     remoteShares = values[1] as Map<String, ScreenShareInfo>,
-                    locked = values[2] as Boolean,
-                    sharerId = values[3] as String?,
-                    sharerName = values[4] as String?
+                    ignored = values[2] as Boolean,
+                    locked = values[3] as Boolean,
+                    sharerId = values[4] as String?,
+                    sharerName = values[5] as String?
                 )
             }.collect { update ->
                 _state.value = _state.value.copy(
                     isScreenSharing = update.isSharing,
                     remoteScreenShares = update.remoteShares,
+                    screenShareIgnored = update.ignored,
                     screenShareLocked = update.locked,
                     screenSharerId = update.sharerId,
                     screenSharerName = update.sharerName
@@ -225,10 +229,11 @@ class VoiceViewModel @Inject constructor(
             }
         }
     }
-    
+
     private data class VoiceScreenShareUpdate(
         val isSharing: Boolean,
         val remoteShares: Map<String, ScreenShareInfo>,
+        val ignored: Boolean,
         val locked: Boolean,
         val sharerId: String?,
         val sharerName: String?
@@ -391,6 +396,10 @@ class VoiceViewModel @Inject constructor(
 
     fun hasMediaProjectionPermission(): Boolean {
         return voiceRepository.hasMediaProjectionPermission()
+    }
+
+    fun toggleScreenShareWatch() {
+        voiceRepository.setScreenShareIgnored(!_state.value.screenShareIgnored)
     }
 
     override fun onCleared() {
