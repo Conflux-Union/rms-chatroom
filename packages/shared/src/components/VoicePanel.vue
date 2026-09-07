@@ -6,6 +6,7 @@ import { useChatStore } from '../stores/chat'
 import { useVoiceStore } from '../stores/voice'
 import { useAuthStore } from '../stores/auth'
 import { authFetch } from '../utils/authFetch'
+import { reportAvatarImgError, reportAvatarMissing } from '../utils/avatarTelemetry'
 import { Volume2, VolumeX, Mic, MicOff, Phone, Crown, Link, Copy, Check, UserX, Monitor, MonitorOff, Bell } from 'lucide-vue-next'
 
 // Detect iOS devices
@@ -349,7 +350,7 @@ function closeInviteDialog() {
                         :src="participant.avatarUrl"
                         :alt="participant.name"
                         class="avatar-img"
-                        @error="(e: Event) => (e.target as HTMLImageElement).style.display = 'none'"
+                        @error="reportAvatarImgError('voice-panel', participant.avatarUrl, participant.id)"
                       />
                       <span v-else class="avatar-fallback">{{ participant.name.charAt(0).toUpperCase() }}</span>
                     </div>

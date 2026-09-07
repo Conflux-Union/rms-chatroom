@@ -5,6 +5,7 @@ import { useAuthStore } from '../stores/auth'
 import { useVoiceStore } from '../stores/voice'
 import { useMentionNotification } from '../composables/useMentionNotification'
 import { useGlobalWebSocket } from '../composables/useGlobalWebSocket'
+import { reportAvatarImgError, reportAvatarMissing } from '../utils/avatarTelemetry'
 import { Volume2, MicOff, Crown, ChevronDown, ChevronRight } from 'lucide-vue-next'
 import { ZmDropdown, ZmModal, ZmInput, ZmButton, ZmSpace, ZmSelect } from './ui'
 import type { ZmDropdownOption, ZmSelectOption } from './ui'
@@ -94,6 +95,20 @@ globalWs.onMessage((data) => {
     chat.updateVoiceChannelUsersFromPush(data.users)
   }
 })
+
+// Avatar diagnostics: sidebar renders the first-letter fallback whenever the
+// current data for a voice channel lacks avatar_url. Covers both the REST
+// initial fetch and push rounds (the push-side report in the store carries
+// the channel breakdown; this one adds the per-user view identity).
+watch(() => chat.voiceChannelUsers, (newVal) => {
+  for (const [channelId, userList] of newVal) {
+    for (const user of userList) {
+      if (!user.avatar_url && !user.id.startsWith('guest_')) {
+        reportAvatarMissing('channel-list', user.id, { channel_id: channelId })
+      }
+    }
+  }
+}, { deep: true })
 
 watch(() => chat.currentServer, (server) => {
   if (server) {
@@ -717,7 +732,7 @@ async function deleteChannel() {
                           :src="user.avatar_url"
                           :alt="user.name"
                           class="voice-user-avatar-img"
-                          @error="(e: Event) => (e.target as HTMLImageElement).style.display = 'none'"
+                          @error="reportAvatarImgError('channel-list', user.avatar_url, user.id)"
                         />
                         <span v-else class="voice-user-avatar">{{ user.name.charAt(0).toUpperCase() }}</span>
                         <Crown v-if="user.is_host" class="voice-user-host-badge" :size="10" />
@@ -813,7 +828,7 @@ async function deleteChannel() {
                     :src="user.avatar_url"
                     :alt="user.name"
                     class="voice-user-avatar-img"
-                    @error="(e: Event) => (e.target as HTMLImageElement).style.display = 'none'"
+                    @error="reportAvatarImgError('channel-list', user.avatar_url, user.id)"
                   />
                   <span v-else class="voice-user-avatar">{{ user.name.charAt(0).toUpperCase() }}</span>
                   <Crown v-if="user.is_host" class="voice-user-host-badge" :size="10" />
