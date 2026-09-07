@@ -228,14 +228,20 @@ class LiveKitManager @Inject constructor(
                 red = true    // Enable redundant audio data for reliability
             )
 
-            // High quality screen share with AV1 codec (high compression, 1080p @ 30fps, 2Mbps)
+            // Screen share codec ladder matching the web client: VP9 base with
+            // temporal SVC (L1T3) so the SFU degrades 30->15->7.5 fps per
+            // subscriber instead of hard layer switching. AV1 is not used
+            // here: most Android SoCs lack AV1 hardware encoding, and the
+            // software encoder cannot keep up with 1080p30 screen capture.
+            // simulcast stays on (unlike the old AV1 config) so weak-network
+            // viewers keep a lower spatial layer to fall back to.
             val screenShareCaptureDefaults = LocalVideoTrackOptions(
                 captureParams = ScreenSharePresets.H1080_FPS30.capture
             )
             val screenSharePublishDefaults = VideoTrackPublishDefaults(
                 videoEncoding = VideoEncoding(maxBitrate = 2_000_000, maxFps = 30),
-                videoCodec = "av1",
-                simulcast = false,
+                videoCodec = "vp9",
+                simulcast = true,
                 degradationPreference = DegradationPreference.MAINTAIN_FRAMERATE  // Prioritize framerate
             )
 
