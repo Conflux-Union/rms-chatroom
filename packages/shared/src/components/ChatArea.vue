@@ -492,7 +492,8 @@ async function uploadFiles() {
 }
 
 const canSend = computed(() => {
-  return (messageInput.value.trim() || uploadedAttachments.value.length > 0) && !isUploading.value
+  // pendingFiles count too: attachments upload only when send is clicked
+  return (messageInput.value.trim() || uploadedAttachments.value.length > 0 || pendingFiles.value.length > 0) && !isUploading.value
 })
 
 async function sendMessage() {
