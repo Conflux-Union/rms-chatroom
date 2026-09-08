@@ -105,8 +105,12 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  // Admin: update channel (rename, move to group, etc.)
-  async function updateChannel(serverId: number, channelId: number, payload: { name?: string; group_id?: number | null }) {
+  // Admin: update channel (rename, move to group, change type, etc.)
+  async function updateChannel(
+    serverId: number,
+    channelId: number,
+    payload: { name?: string; group_id?: number | null; type?: 'TEXT' | 'VOICE' | 'FORWARD' }
+  ) {
     try {
       const resp = await axios.patch(
         `${API_BASE}/api/servers/${serverId}/channels/${channelId}`,
