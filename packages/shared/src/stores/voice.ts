@@ -1350,6 +1350,10 @@ export const useVoiceStore = defineStore('voice', () => {
   function attachScreenShare(participantId: string, container: HTMLElement): void {
     const screenShare = remoteScreenShares.value.get(participantId)
     if (screenShare?.track?.videoTrack) {
+      // Drop video elements from previous mounts of the panel: the container
+      // unmount removed them from the DOM but they stay in the track's
+      // attachedElements, and attach() would keep handing back a detached one.
+      screenShare.track.videoTrack.detach()
       const videoElement = screenShare.track.videoTrack.attach()
       videoElement.style.width = '100%'
       videoElement.style.height = '100%'
@@ -1364,6 +1368,7 @@ export const useVoiceStore = defineStore('voice', () => {
    */
   function attachLocalScreenShare(container: HTMLElement): void {
     if (localScreenShareTrack.value?.videoTrack) {
+      localScreenShareTrack.value.videoTrack.detach()
       const videoElement = localScreenShareTrack.value.videoTrack.attach()
       videoElement.style.width = '100%'
       videoElement.style.height = '100%'
