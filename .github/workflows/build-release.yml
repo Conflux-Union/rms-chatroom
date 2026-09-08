@@ -248,8 +248,10 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
-          TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+          # Tauri v2 expects TAURI_SIGNING_PRIVATE_KEY / _PASSWORD (v1 used
+          # TAURI_PRIVATE_KEY); wrong names silently skip updater signing.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
         with:
           # Build only; the create-release job owns release creation and
           # asset upload. Without tagName/releaseId the action never enters
