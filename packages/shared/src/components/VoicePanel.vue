@@ -133,23 +133,23 @@ function handleScreenShareVolumeChange(event: Event) {
   }
 }
 
-// Watch for remote screen share changes and attach video. immediate: the
-// panel unmounts while browsing other channels, so re-mounting must attach
-// the (still-subscribed, unchanged) share again — the computed value alone
-// would not fire the watcher.
-watch(activeRemoteScreenShare, async (newShare) => {
+// Attach whenever the active share OR its container (re)appears. Browsing
+// between voice channels keeps this panel mounted but v-ifs the container
+// away (isConnectedHere) and back, so the container is rebuilt without the
+// share entry itself changing — watching the computed alone would never
+// re-fire, leaving the rebuilt container empty (black).
+watch([activeRemoteScreenShare, screenShareContainer], async ([newShare, container]) => {
+  if (!newShare || !container) return
   await nextTick()
-  if (newShare && screenShareContainer.value) {
-    voice.attachScreenShare(newShare.participantId, screenShareContainer.value)
-  }
+  voice.attachScreenShare(newShare.participantId, container)
 }, { immediate: true })
 
-// Watch for local screen share changes
-watch(() => voice.isScreenSharing, async (sharing) => {
+// Local screen share preview: same reasoning, re-attach when the container
+// is rebuilt while isScreenSharing itself stays true.
+watch([() => voice.isScreenSharing, localScreenShareContainer], async ([sharing, container]) => {
+  if (!sharing || !container) return
   await nextTick()
-  if (sharing && localScreenShareContainer.value) {
-    voice.attachLocalScreenShare(localScreenShareContainer.value)
-  }
+  voice.attachLocalScreenShare(container)
 }, { immediate: true })
 
 // Toggle receiving remote screen share streams
