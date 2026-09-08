@@ -6,7 +6,7 @@ import { useVoiceStore } from '../stores/voice'
 import { useMentionNotification } from '../composables/useMentionNotification'
 import { useGlobalWebSocket } from '../composables/useGlobalWebSocket'
 import { reportAvatarImgError, reportAvatarMissing } from '../utils/avatarTelemetry'
-import { Volume2, MicOff, Crown, ChevronDown, ChevronRight } from 'lucide-vue-next'
+import { Volume2, MicOff, Crown, ChevronDown, ChevronRight, Radio } from 'lucide-vue-next'
 import { ZmDropdown, ZmModal, ZmInput, ZmButton, ZmSpace, ZmSelect } from './ui'
 import type { ZmDropdownOption, ZmSelectOption } from './ui'
 import type { Channel, ChannelGroup } from '../types'
@@ -199,6 +199,7 @@ const groupSelectOptions = computed((): ZmSelectOption[] => {
 const createTypeOptions: ZmSelectOption[] = [
   { label: '文字频道', value: 'text' },
   { label: '语音频道', value: 'voice' },
+  { label: '同步频道', value: 'forward' },
   { label: '频道组', value: 'group' }
 ]
 
@@ -650,15 +651,16 @@ async function deleteChannel() {
                 class="group-channels"
               >
                 <template v-for="channel in getDraggableGroupChannels(item.data.id)" :key="channel.id">
-                <!-- Text channel in group -->
+                <!-- Text / sync channel in group -->
                 <div
-                  v-if="channel.type === 'TEXT'"
+                  v-if="channel.type === 'TEXT' || channel.type === 'FORWARD'"
                   class="channel "
                   :class="{ active: chat.currentChannel?.id === channel.id }"
                   @click="selectChannel(channel)"
                   @contextmenu="auth.isAdmin && editMode ? showChannelContextMenu($event, channel.id) : undefined"
                 >
-                  <svg class="channel-icon" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 24 24"><g fill="none"><path d="M12 3a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2h-7a2 2 0 0 1-2-2V3zm2.5 1a.5.5 0 0 0 0 1h6a.5.5 0 0 0 0-1h-6zm0 3a.5.5 0 0 0 0 1h6a.5.5 0 0 0 0-1h-6z" fill="currentColor"></path><path d="M5.25 3H11v1.5H5.25A1.75 1.75 0 0 0 3.5 6.25v8.5c0 .966.784 1.75 1.75 1.75h2.249v3.75l5.015-3.75h6.236a1.75 1.75 0 0 0 1.75-1.75V12h.5c.35 0 .687-.06 1-.17v2.92A3.25 3.25 0 0 1 18.75 18h-5.738L8 21.75a1.25 1.25 0 0 1-1.999-1V18h-.75A3.25 3.25 0 0 1 2 14.75v-8.5A3.25 3.25 0 0 1 5.25 3z" fill="currentColor"></path></g></svg>
+                  <Radio v-if="channel.type === 'FORWARD'" class="channel-icon" :size="18" />
+                  <svg v-else class="channel-icon" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 24 24"><g fill="none"><path d="M12 3a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2h-7a2 2 0 0 1-2-2V3zm2.5 1a.5.5 0 0 0 0 1h6a.5.5 0 0 0 0-1h-6zm0 3a.5.5 0 0 0 0 1h6a.5.5 0 0 0 0-1h-6z" fill="currentColor"></path><path d="M5.25 3H11v1.5H5.25A1.75 1.75 0 0 0 3.5 6.25v8.5c0 .966.784 1.75 1.75 1.75h2.249v3.75l5.015-3.75h6.236a1.75 1.75 0 0 0 1.75-1.75V12h.5c.35 0 .687-.06 1-.17v2.92A3.25 3.25 0 0 1 18.75 18h-5.738L8 21.75a1.25 1.25 0 0 1-1.999-1V18h-.75A3.25 3.25 0 0 1 2 14.75v-8.5A3.25 3.25 0 0 1 5.25 3z" fill="currentColor"></path></g></svg>
                   <template v-if="editingChannelId === channel.id">
                     <input
                       class="inline-edit custom-input"
@@ -747,15 +749,16 @@ async function deleteChannel() {
             </Transition>
           </div>
 
-          <!-- Ungrouped Text Channel -->
+          <!-- Ungrouped Text / Sync Channel -->
           <div
-            v-else-if="item.type === 'channel' && item.data.type === 'TEXT'"
+            v-else-if="item.type === 'channel' && (item.data.type === 'TEXT' || item.data.type === 'FORWARD')"
             class="channel "
             :class="{ active: chat.currentChannel?.id === item.data.id }"
             @click="selectChannel(item.data)"
             @contextmenu="auth.isAdmin && editMode ? showChannelContextMenu($event, item.data.id) : undefined"
           >
-            <svg class="channel-icon" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 24 24"><g fill="none"><path d="M12 3a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2h-7a2 2 0 0 1-2-2V3zm2.5 1a.5.5 0 0 0 0 1h6a.5.5 0 0 0 0-1h-6zm0 3a.5.5 0 0 0 0 1h6a.5.5 0 0 0 0-1h-6z" fill="currentColor"></path><path d="M5.25 3H11v1.5H5.25A1.75 1.75 0 0 0 3.5 6.25v8.5c0 .966.784 1.75 1.75 1.75h2.249v3.75l5.015-3.75h6.236a1.75 1.75 0 0 0 1.75-1.75V12h.5c.35 0 .687-.06 1-.17v2.92A3.25 3.25 0 0 1 18.75 18h-5.738L8 21.75a1.25 1.25 0 0 1-1.999-1V18h-.75A3.25 3.25 0 0 1 2 14.75v-8.5A3.25 3.25 0 0 1 5.25 3z" fill="currentColor"></path></g></svg>
+            <Radio v-if="item.data.type === 'FORWARD'" class="channel-icon" :size="18" />
+            <svg v-else class="channel-icon" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 24 24"><g fill="none"><path d="M12 3a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2h-7a2 2 0 0 1-2-2V3zm2.5 1a.5.5 0 0 0 0 1h6a.5.5 0 0 0 0-1h-6zm0 3a.5.5 0 0 0 0 1h6a.5.5 0 0 0 0-1h-6z" fill="currentColor"></path><path d="M5.25 3H11v1.5H5.25A1.75 1.75 0 0 0 3.5 6.25v8.5c0 .966.784 1.75 1.75 1.75h2.249v3.75l5.015-3.75h6.236a1.75 1.75 0 0 0 1.75-1.75V12h.5c.35 0 .687-.06 1-.17v2.92A3.25 3.25 0 0 1 18.75 18h-5.738L8 21.75a1.25 1.25 0 0 1-1.999-1V18h-.75A3.25 3.25 0 0 1 2 14.75v-8.5A3.25 3.25 0 0 1 5.25 3z" fill="currentColor"></path></g></svg>
             <template v-if="editingChannelId === item.data.id">
               <input
                 class="inline-edit custom-input"

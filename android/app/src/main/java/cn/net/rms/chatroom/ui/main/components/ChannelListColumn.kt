@@ -84,7 +84,7 @@ fun ChannelListColumn(
     unreadCounts: Map<Long, Int> = emptyMap()
 ) {
     var showCreateDialog by remember { mutableStateOf(false) }
-    var createChannelType by remember { mutableStateOf("TEXT") }
+    var createChannelType by remember { mutableStateOf("text") }
     var createChannelGroupId by remember { mutableStateOf<Long?>(null) }
     var showDeleteDialog by remember { mutableStateOf(false) }
     var channelToDelete by remember { mutableStateOf<Channel?>(null) }
@@ -206,7 +206,7 @@ fun ChannelListColumn(
                                 isAdmin = isAdmin,
                                 onAddChannel = {
                                     createChannelGroupId = group.id
-                                    createChannelType = "TEXT"
+                                    createChannelType = "text"
                                     showCreateDialog = true
                                 },
                                 onDeleteGroup = {
@@ -329,7 +329,7 @@ fun ChannelListColumn(
                         label = "添加频道",
                         onClick = {
                             createChannelGroupId = null
-                            createChannelType = "TEXT"
+                            createChannelType = "text"
                             showCreateDialog = true
                         }
                     )
@@ -499,8 +499,8 @@ private fun CreateChannelDialog(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     FilterChip(
-                        selected = selectedType == "TEXT",
-                        onClick = { selectedType = "TEXT" },
+                        selected = selectedType == "text",
+                        onClick = { selectedType = "text" },
                         label = { Text("文字") },
                         leadingIcon = {
                             Icon(
@@ -511,12 +511,24 @@ private fun CreateChannelDialog(
                         }
                     )
                     FilterChip(
-                        selected = selectedType == "VOICE",
-                        onClick = { selectedType = "VOICE" },
+                        selected = selectedType == "voice",
+                        onClick = { selectedType = "voice" },
                         label = { Text("语音") },
                         leadingIcon = {
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.VolumeUp,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    )
+                    FilterChip(
+                        selected = selectedType == "forward",
+                        onClick = { selectedType = "forward" },
+                        label = { Text("同步") },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Default.Radio,
                                 contentDescription = null,
                                 modifier = Modifier.size(16.dp)
                             )
@@ -785,7 +797,11 @@ private fun GroupedChannelItem(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
-                imageVector = if (channel.type == ChannelType.TEXT) Icons.Default.Tag else Icons.AutoMirrored.Filled.VolumeUp,
+                imageVector = when (channel.type) {
+                    ChannelType.FORWARD -> Icons.Default.Radio
+                    ChannelType.VOICE -> Icons.AutoMirrored.Filled.VolumeUp
+                    else -> Icons.Default.Tag
+                },
                 contentDescription = null,
                 modifier = Modifier.size(20.dp),
                 tint = textColor
@@ -939,7 +955,11 @@ private fun UngroupedChannelItem(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
-                imageVector = if (channel.type == ChannelType.TEXT) Icons.Default.Tag else Icons.AutoMirrored.Filled.VolumeUp,
+                imageVector = when (channel.type) {
+                    ChannelType.FORWARD -> Icons.Default.Radio
+                    ChannelType.VOICE -> Icons.AutoMirrored.Filled.VolumeUp
+                    else -> Icons.Default.Tag
+                },
                 contentDescription = null,
                 modifier = Modifier.size(20.dp),
                 tint = textColor

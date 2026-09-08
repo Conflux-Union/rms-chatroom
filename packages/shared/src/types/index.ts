@@ -36,7 +36,7 @@ export interface Channel {
   server_id: number
   group_id: number | null
   name: string
-  type: 'TEXT' | 'VOICE'
+  type: 'TEXT' | 'VOICE' | 'FORWARD'
   position: number
   top_position: number
   min_level?: number
@@ -65,6 +65,17 @@ export interface ReplyTo {
 export interface Mention {
   id: number
   username: string
+}
+
+// Forwarded message display metadata (FORWARD channels)
+export interface ForwardQuoteMeta {
+  nickname: string
+  content: string
+}
+
+export interface ForwardMeta {
+  sender_nickname?: string
+  quote?: ForwardQuoteMeta
 }
 
 export interface ReactionUser {
@@ -100,6 +111,9 @@ export interface Message {
   mentions?: Mention[]
   // Reactions feature
   reactions?: ReactionGroup[]
+  // Forwarded message fields (FORWARD channels)
+  source_platform?: string
+  forward_meta?: ForwardMeta
 }
 
 export interface MuteRecord {

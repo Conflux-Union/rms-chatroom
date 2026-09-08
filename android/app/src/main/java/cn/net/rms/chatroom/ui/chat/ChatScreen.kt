@@ -136,6 +136,7 @@ import cn.net.rms.chatroom.data.model.ReactionGroup
 import cn.net.rms.chatroom.data.websocket.ConnectionState
 import cn.net.rms.chatroom.ui.theme.DiscordRed
 import cn.net.rms.chatroom.ui.theme.DiscordYellow
+import cn.net.rms.chatroom.ui.theme.SurfaceDark
 import cn.net.rms.chatroom.ui.theme.SurfaceDarker
 import cn.net.rms.chatroom.ui.theme.SurfaceLighter
 import cn.net.rms.chatroom.ui.theme.TextMuted
@@ -166,6 +167,9 @@ fun ChatScreen(
     messages: List<Message>,
     isLoading: Boolean = false,
     connectionState: ConnectionState = ConnectionState.CONNECTED,
+    // FORWARD (sync) channels are bot-posted only: hides the composer while
+    // keeping scroll, reactions and reply jumps usable.
+    readOnly: Boolean = false,
     authToken: String? = null,
     currentUserId: Long? = null,
     currentUserPermission: Int? = null,
@@ -460,7 +464,7 @@ fun ChatScreen(
             }
 
             // Reply preview bar
-            if (replyingTo != null) {
+            if (!readOnly && replyingTo != null) {
                 ReplyPreviewBar(
                     replyingTo = replyingTo!!,
                     onDismiss = { replyingTo = null }
@@ -468,7 +472,7 @@ fun ChatScreen(
             }
 
             // Mention autocomplete dropdown
-            if (showMentionDropdown && channelMembers.isNotEmpty()) {
+            if (!readOnly && showMentionDropdown && channelMembers.isNotEmpty()) {
                 MentionAutocomplete(
                     query = mentionQuery,
                     members = channelMembers,
@@ -492,7 +496,7 @@ fun ChatScreen(
             }
 
             // Pending files preview
-            if (pendingFiles.isNotEmpty() || uploadedAttachments.isNotEmpty()) {
+            if (!readOnly && (pendingFiles.isNotEmpty() || uploadedAttachments.isNotEmpty())) {
                 PendingFilesPreview(
                     context = context,
                     pendingFiles = pendingFiles,
@@ -508,9 +512,10 @@ fun ChatScreen(
                 )
             }
 
-            // Message input
-            MessageInput(
-                value = messageText,
+            // Message input (hidden in read-only forward channels)
+            if (!readOnly) {
+                MessageInput(
+                    value = messageText,
                 onValueChange = { newValue ->
                     messageText = newValue
                     // Check for @mention trigger
@@ -576,7 +581,8 @@ fun ChatScreen(
                         }
                     }
                 }
-            )
+                )
+            }
         }
 
         AttachmentPreviewDialog(
@@ -881,6 +887,19 @@ private fun MessageItem(
                         color = TextPrimary
                     )
 
+                    // Source badge for forwarded messages (FORWARD channels)
+                    if (message.sourcePlatform != null) {
+                        Text(
+                            text = if (message.sourcePlatform == "qq") "QQ" else "服务器",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = TextMuted,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(SurfaceDark)
+                                .padding(horizontal = 4.dp, vertical = 1.dp)
+                        )
+                    }
+
                     Text(
                         text = formatTimestamp(message.createdAt),
                         style = MaterialTheme.typography.labelSmall,
@@ -928,6 +947,37 @@ private fun MessageItem(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
+                }
+            } else if (message.forwardMeta?.quote != null) {
+                // Degraded quote: the quoted source message was never
+                // forwarded to this channel, so only the bot preview remains.
+                Row(
+                    modifier = Modifier.padding(top = 2.dp, bottom = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.Reply,
+                        contentDescription = null,
+                        tint = TextMuted,
+                        modifier = Modifier.size(12.dp)
+                    )
+                    Text(
+                        text = message.forwardMeta.quote.nickname,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = TiColor,
+                        fontWeight = FontWeight.Medium
+                    )
+                    if (message.forwardMeta.quote.content.isNotBlank()) {
+                        Text(
+                            text = message.forwardMeta.quote.content.take(40) +
+                                if (message.forwardMeta.quote.content.length > 40) "..." else "",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = TextMuted,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
             }
 

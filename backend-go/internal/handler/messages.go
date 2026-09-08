@@ -2,6 +2,7 @@ package handler
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"regexp"
@@ -74,21 +75,23 @@ type reactionUserResp struct {
 }
 
 type messageResp struct {
-	ID          int64               `json:"id"`
-	ChannelID   int64               `json:"channel_id"`
-	UserID      int64               `json:"user_id"`
-	Username    string              `json:"username"`
-	AvatarURL   *string             `json:"avatar_url"`
-	Content     string              `json:"content"`
-	CreatedAt   string              `json:"created_at"`
-	Attachments []attachmentResp    `json:"attachments"`
-	IsDeleted   bool                `json:"is_deleted"`
-	DeletedBy   *int64              `json:"deleted_by"`
-	EditedAt    *string             `json:"edited_at"`
-	ReplyToID   *int64              `json:"reply_to_id"`
-	ReplyTo     *replyToResp        `json:"reply_to"`
-	Mentions    []mentionResp       `json:"mentions"`
-	Reactions   []reactionGroupResp `json:"reactions"`
+	ID             int64               `json:"id"`
+	ChannelID      int64               `json:"channel_id"`
+	UserID         int64               `json:"user_id"`
+	Username       string              `json:"username"`
+	AvatarURL      *string             `json:"avatar_url"`
+	Content        string              `json:"content"`
+	CreatedAt      string              `json:"created_at"`
+	Attachments    []attachmentResp    `json:"attachments"`
+	IsDeleted      bool                `json:"is_deleted"`
+	DeletedBy      *int64              `json:"deleted_by"`
+	EditedAt       *string             `json:"edited_at"`
+	ReplyToID      *int64              `json:"reply_to_id"`
+	ReplyTo        *replyToResp        `json:"reply_to"`
+	Mentions       []mentionResp       `json:"mentions"`
+	Reactions      []reactionGroupResp `json:"reactions"`
+	SourcePlatform string              `json:"source_platform,omitempty"`
+	ForwardMeta    json.RawMessage     `json:"forward_meta,omitempty"`
 }
 
 func extractMentions(content string) []string {
@@ -347,7 +350,7 @@ func (h *MessageHandler) GetMessages(c echo.Context) error {
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
-	if chType != "TEXT" {
+	if chType != "TEXT" && chType != "FORWARD" {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "not a text channel"})
 	}
 	accessRule := permission.PermRule{PermMinLevel: permMinLevel, GroupMinLevel: minLevel, LogicOperator: logicOperator}
@@ -355,7 +358,7 @@ func (h *MessageHandler) GetMessages(c echo.Context) error {
 		return c.JSON(http.StatusForbidden, map[string]string{"error": "you do not have permission to view this channel"})
 	}
 
-	query := "SELECT id, channel_id, user_id, username, content, created_at, is_deleted, deleted_by, edited_at, reply_to_id FROM messages WHERE channel_id = ? AND is_deleted = FALSE"
+	query := "SELECT id, channel_id, user_id, username, content, created_at, is_deleted, deleted_by, edited_at, reply_to_id, source_platform, forward_meta FROM messages WHERE channel_id = ? AND is_deleted = FALSE"
 	args := []interface{}{channelID}
 
 	if before := c.QueryParam("before"); before != "" {
@@ -383,8 +386,10 @@ func (h *MessageHandler) GetMessages(c echo.Context) error {
 		var editedAt sql.NullTime
 		var deletedBy sql.NullInt64
 		var replyToID sql.NullInt64
+		var sourcePlatform, forwardMeta sql.NullString
 		if err := rows.Scan(&m.ID, &m.ChannelID, &m.UserID, &m.Username, &m.Content,
-			&createdAt, &m.IsDeleted, &deletedBy, &editedAt, &replyToID); err != nil {
+			&createdAt, &m.IsDeleted, &deletedBy, &editedAt, &replyToID,
+			&sourcePlatform, &forwardMeta); err != nil {
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		}
 		m.CreatedAt = createdAt.UTC().Format("2006-01-02T15:04:05Z")
@@ -398,6 +403,10 @@ func (h *MessageHandler) GetMessages(c echo.Context) error {
 		if replyToID.Valid {
 			m.ReplyToID = &replyToID.Int64
 			replyToIDSet[replyToID.Int64] = true
+		}
+		m.SourcePlatform = sourcePlatform.String
+		if forwardMeta.Valid {
+			m.ForwardMeta = json.RawMessage(forwardMeta.String)
 		}
 
 		messageIDs = append(messageIDs, m.ID)
@@ -628,9 +637,10 @@ func (h *MessageHandler) EditMessage(c echo.Context) error {
 	var editedAt sql.NullTime
 	var deletedBy sql.NullInt64
 	var replyToID sql.NullInt64
+	var sourcePlatform, forwardMeta sql.NullString
 	h.db.QueryRow(
-		"SELECT id, channel_id, user_id, username, content, created_at, is_deleted, deleted_by, edited_at, reply_to_id FROM messages WHERE id = ?", msgID,
-	).Scan(&m.ID, &m.ChannelID, &m.UserID, &m.Username, &m.Content, &createdAt, &m.IsDeleted, &deletedBy, &editedAt, &replyToID)
+		"SELECT id, channel_id, user_id, username, content, created_at, is_deleted, deleted_by, edited_at, reply_to_id, source_platform, forward_meta FROM messages WHERE id = ?", msgID,
+	).Scan(&m.ID, &m.ChannelID, &m.UserID, &m.Username, &m.Content, &createdAt, &m.IsDeleted, &deletedBy, &editedAt, &replyToID, &sourcePlatform, &forwardMeta)
 	m.CreatedAt = createdAt.UTC().Format("2006-01-02T15:04:05Z")
 	if editedAt.Valid {
 		s := editedAt.Time.UTC().Format("2006-01-02T15:04:05Z")
@@ -641,6 +651,10 @@ func (h *MessageHandler) EditMessage(c echo.Context) error {
 	}
 	if replyToID.Valid {
 		m.ReplyToID = &replyToID.Int64
+	}
+	m.SourcePlatform = sourcePlatform.String
+	if forwardMeta.Valid {
+		m.ForwardMeta = json.RawMessage(forwardMeta.String)
 	}
 	m.Attachments = h.loadAttachments(m.ID)
 	m.ReplyTo = h.loadReplyTo(m.ReplyToID)
@@ -731,7 +745,7 @@ func (h *MessageHandler) GetChannelMembers(c echo.Context) error {
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
-	if chType != "TEXT" {
+	if chType != "TEXT" && chType != "FORWARD" {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "not a text channel"})
 	}
 

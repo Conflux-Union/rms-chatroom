@@ -90,7 +90,7 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  async function createChannel(serverId: number, name: string, type: 'text' | 'voice', groupId?: number | null) {
+  async function createChannel(serverId: number, name: string, type: 'text' | 'voice' | 'forward', groupId?: number | null) {
     try {
       const resp = await axios.post(
         `${API_BASE}/api/servers/${serverId}/channels`,
