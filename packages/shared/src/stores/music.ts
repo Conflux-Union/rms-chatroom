@@ -466,12 +466,10 @@ export const useMusicStore = defineStore('music', () => {
     musicWs = new WebSocket(url)
 
     musicWs.onopen = () => {
-      console.log(`[MusicStore] WebSocket connected to room ${roomName}`)
       wsConnected.value = true
     }
 
     musicWs.onclose = () => {
-      console.log('[MusicStore] WebSocket disconnected')
       wsConnected.value = false
       musicWs = null
       const voice = useVoiceStore()
@@ -530,8 +528,6 @@ export const useMusicStore = defineStore('music', () => {
 
         if (msg.type === 'play') {
           // Play new song
-          console.log('[MusicStore] Received play command:', msg.song?.name, 'URL:', msg.url)
-
           // Update store state from the play message
           if (msg.song) {
             currentSong.value = msg.song
@@ -555,24 +551,20 @@ export const useMusicStore = defineStore('music', () => {
           audio.play().catch(e => console.error('[MusicStore] Play failed:', e))
         } else if (msg.type === 'pause') {
           // Pause playback
-          console.log('[MusicStore] Received pause command')
           isPlaying.value = false
           playbackState.value = 'paused'
           audio.pause()
         } else if (msg.type === 'resume') {
           // Resume playback
-          console.log('[MusicStore] Received resume command, position:', msg.position_ms)
           isPlaying.value = true
           playbackState.value = 'playing'
           audio.currentTime = (msg.position_ms || 0) / 1000
           audio.play().catch(e => console.error('[MusicStore] Resume failed:', e))
         } else if (msg.type === 'seek') {
           // Seek to position
-          console.log('[MusicStore] Received seek command, position:', msg.position_ms)
           audio.currentTime = (msg.position_ms || 0) / 1000
         } else if (msg.type === 'stop') {
           // Room playback stopped (queue cleared or playback stopped)
-          console.log('[MusicStore] Received stop command')
           audio.pause()
           audio.src = ''
           isPlaying.value = false

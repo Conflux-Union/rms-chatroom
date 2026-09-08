@@ -189,7 +189,7 @@ async function startMicTest() {
   } catch (e) {
     micTestActive.value = false
     micLevel.value = 0
-    console.log('Mic test failed', e)
+    console.error('Mic test failed', e)
   }
 }
 
@@ -258,7 +258,7 @@ async function startOutputTest() {
       stopOutputTest()
     }, 2000)
   } catch (e) {
-    console.log('output test failed', e)
+    console.error('output test failed', e)
     outputTestPlaying.value = false
   }
 }

@@ -23,11 +23,6 @@ const channelMentions = mentionNotification.channelMentions
 const unreadCounts = mentionNotification.unreadCounts
 const globalWs = useGlobalWebSocket()
 
-// Debug: Watch channelMentions changes
-watch(channelMentions, (newVal) => {
-  console.log('[ChannelList] channelMentions changed:', newVal)
-}, { deep: true })
-
 const showCreate = ref(false)
 const newItemName = ref('')
 const newCreateType = ref<'text' | 'voice' | 'group'>('text') // 创建类型：文字频道、语音频道、频道组
@@ -136,10 +131,6 @@ watch(() => chat.currentServer, (server) => {
 onMounted(() => {
   // Load mention notifications on mount
   mentionNotification.loadChannelMentions()
-  console.log('[ChannelList] Component mounted')
-  console.log('[ChannelList] auth.isAdmin:', auth.isAdmin)
-  console.log('[ChannelList] currentServer:', chat.currentServer)
-  console.log('[ChannelList] channelGroups:', channelGroups.value)
 })
 
 // Channel groups
@@ -245,19 +236,13 @@ async function createItem() {
 }
 
 function showGroupContextMenu(event: MouseEvent, groupId: number) {
-  console.log('[ChannelList] showGroupContextMenu called for groupId:', groupId)
-  console.log('[ChannelList] auth.isAdmin:', auth.isAdmin)
   event.preventDefault()
   event.stopPropagation()
   groupDropdown.value = { show: true, x: event.clientX, y: event.clientY, groupId }
-  console.log('[ChannelList] Group dropdown shown at position:', { x: event.clientX, y: event.clientY })
-  console.log('[ChannelList] groupDropdown.value.show:', groupDropdown.value.show)
 }
 
 async function handleGroupDropdownSelect(key: string | number) {
-  console.log('[ChannelList] handleGroupDropdownSelect called with key:', key)
   if (key === 'permissions') {
-    console.log('[ChannelList] User selected permissions option')
     showGroupPermissionSettings()
   } else if (key === 'delete') {
     await deleteChannelGroup()
@@ -267,18 +252,12 @@ async function handleGroupDropdownSelect(key: string | number) {
 
 function showGroupPermissionSettings() {
   if (!groupDropdown.value.groupId || !chat.currentServer) {
-    console.log('[ChannelList] showGroupPermissionSettings: missing groupId or currentServer', {
-      groupId: groupDropdown.value.groupId,
-      currentServer: chat.currentServer
-    })
     return
   }
   const group = chat.currentServer.channelGroups?.find(g => g.id === groupDropdown.value.groupId)
-  console.log('[ChannelList] showGroupPermissionSettings: found group', group)
   if (group) {
     selectedGroupForPermission.value = group
     showGroupPermissionModal.value = true
-    console.log('[ChannelList] Modal opened for group:', group.name)
   }
 }
 
@@ -374,7 +353,6 @@ function showUserContextMenu(event: MouseEvent, channelId: number, userId: strin
 }
 
 async function handleChannelDropdownSelect(key: string | number) {
-  console.log('[ChannelList] handleChannelDropdownSelect called with key:', key)
   if (key === 'permissions') {
     showChannelPermissionSettings()
   } else if (key === 'toggleType') {
@@ -407,15 +385,12 @@ async function toggleChannelType() {
 
 function showChannelPermissionSettings() {
   if (!channelDropdown.value.channelId || !chat.currentServer) {
-    console.log('[ChannelList] showChannelPermissionSettings: missing channelId or currentServer')
     return
   }
   const channel = chat.currentServer.channels?.find(c => c.id === channelDropdown.value.channelId)
-  console.log('[ChannelList] showChannelPermissionSettings: found channel', channel)
   if (channel) {
     selectedChannelForPermission.value = channel
     showChannelPermissionModal.value = true
-    console.log('[ChannelList] Channel permission modal opened for:', channel.name)
   }
 }
 

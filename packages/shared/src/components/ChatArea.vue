@@ -329,7 +329,6 @@ function handleMessagesScroll() {
       // Update read timestamp and clear mention notification when user scrolls
       markChannelAsRead(chat.currentChannel.id)
       clearChannelMention(chat.currentChannel.id)
-      console.log('[ChatArea] Updated read timestamp on scroll')
     }
   }, 120)
 }

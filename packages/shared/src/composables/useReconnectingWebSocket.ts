@@ -148,7 +148,6 @@ export function createReconnectingWebSocket(
     }
 
     const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000)
-    console.log(`[${name}] Reconnecting in ${delay}ms (attempt ${reconnectAttempts + 1}/${MAX_RECONNECT_ATTEMPTS})`)
 
     state.value = 'reconnecting'
     reconnectTimer = window.setTimeout(() => {
@@ -182,12 +181,10 @@ export function createReconnectingWebSocket(
         return
       }
 
-      console.log(`[${name}] Connecting to ${url} (gen=${gen})`)
       ws = new WebSocket(url)
 
       ws.onopen = () => {
         if (gen !== generation) return
-        console.log(`[${name}] Connected`)
         state.value = 'connected'
         isConnected.value = true
         reconnectAttempts = 0
@@ -199,7 +196,6 @@ export function createReconnectingWebSocket(
         if (gen !== generation) return
         lastCloseCode = e.code
         lastCloseReason = e.reason
-        console.log(`[${name}] Disconnected`)
         state.value = 'disconnected'
         isConnected.value = false
         clearAllTimers()

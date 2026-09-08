@@ -27,13 +27,6 @@ const inviteLoading = ref(false)
 const inviteError = ref('')
 
 onMounted(() => {
-  console.log('[VoicePanel] Component mounted - Initial state report')
-  console.log('[VoicePanel] - API_BASE:', API_BASE)
-  console.log('[VoicePanel] - User:', auth.user)
-  console.log('[VoicePanel] - User permission level:', auth.user?.permission_level)
-  console.log('[VoicePanel] - Current channel:', chat.currentChannel)
-  console.log('[VoicePanel] - Token exists:', !!auth.token)
-
   voice.enumerateDevices()
 
   document.addEventListener('fullscreenchange', handleFullscreenChange)
