@@ -9,6 +9,7 @@ import {
   RemoteTrackPublication,
   LocalTrackPublication,
   ScreenSharePresets,
+  setLogLevel,
 } from 'livekit-client'
 import type {
   Channel,
@@ -22,6 +23,10 @@ import { reportAvatarMissing } from '../utils/avatarTelemetry'
 import { announceParticipantJoined, announceParticipantLeft } from '../composables/voiceAnnounce'
 
 const API_BASE = import.meta.env.VITE_API_BASE || ''
+
+// Quieten livekit's connection/stats chatter (it logs the signal URL with the
+// access token at info level). warn still surfaces real failures.
+setLogLevel('warn')
 
 const STORAGE_KEY_INPUT = 'rms-voice-input-device'
 const STORAGE_KEY_OUTPUT = 'rms-voice-output-device'
