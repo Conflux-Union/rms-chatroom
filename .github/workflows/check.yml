@@ -81,9 +81,8 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v6
         with:
-          go-version: '1.24'
-        env:
-          GOTOOLCHAIN: auto
+          go-version-file: backend-go/go.mod
+          cache-dependency-path: backend-go/go.sum
 
       - name: Build
         run: |
