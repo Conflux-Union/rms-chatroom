@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"database/sql"
+	"encoding/binary"
 	"fmt"
 	"image"
 	"image/color"
@@ -291,5 +292,44 @@ func assertHardLinked(t *testing.T, first, second string) {
 	}
 	if !os.SameFile(firstInfo, secondInfo) {
 		t.Fatalf("%s and %s do not share an inode", first, second)
+	}
+}
+
+func TestFixWebPRiffHeader(t *testing.T) {
+	// header + payload + leaked trailing size bytes (as ffmpeg pipe output >32KB produces)
+	// ffmpeg writes the intended RIFF size (len-12 of the broken output) as 4 trailing bytes
+	broken := make([]byte, 20)
+	copy(broken, "RIFF")
+	copy(broken[8:], "WEBP")
+	binary.LittleEndian.PutUint32(broken[4:8], 0)
+	copy(broken[12:], "VP8 \x00\x01")
+	leak := uint32(len(broken) - 8) // == len(final output) - 12
+	broken = append(broken, byte(leak), byte(leak>>8), byte(leak>>16), byte(leak>>24))
+
+	fixed := fixWebPRiffHeader(broken)
+	if got := binary.LittleEndian.Uint32(fixed[4:8]); got != uint32(len(fixed)-8) {
+		t.Fatalf("RIFF size = %d, want %d", got, len(fixed)-8)
+	}
+	if len(fixed) != len(broken)-4 {
+		t.Fatalf("leaked trailing bytes not removed: len = %d, want %d", len(fixed), len(broken)-4)
+	}
+	if string(fixed[8:12]) != "WEBP" {
+		t.Fatal("WEBP tag lost")
+	}
+
+	// well-formed file must pass through unchanged
+	good := make([]byte, 20)
+	copy(good, "RIFF")
+	copy(good[8:], "WEBP")
+	binary.LittleEndian.PutUint32(good[4:8], uint32(len(good)-8))
+	copy(good[12:], "VP8 \x00\x01")
+	if got := fixWebPRiffHeader(good); &got[0] != &good[0] || len(got) != len(good) {
+		t.Fatal("well-formed input was modified")
+	}
+
+	// garbage input passes through unchanged
+	garbage := []byte("not a webp at all")
+	if got := fixWebPRiffHeader(garbage); string(got) != string(garbage) {
+		t.Fatal("non-WebP input was modified")
 	}
 }

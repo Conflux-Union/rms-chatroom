@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"database/sql"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -320,7 +321,28 @@ func encodeWebP(parent context.Context, content []byte) ([]byte, error) {
 	if output.Len() == 0 || http.DetectContentType(output.Bytes()) != "image/webp" {
 		return nil, errors.New("ffmpeg produced an invalid WebP image")
 	}
-	return output.Bytes(), nil
+	return fixWebPRiffHeader(output.Bytes()), nil
+}
+
+// fixWebPRiffHeader repairs WebP files emitted to a non-seekable pipe.
+// ffmpeg's webp muxer cannot rewrite the RIFF size field once the header has
+// been flushed, so outputs over 32KB carry size 0 and leak the intended value
+// as 4 trailing bytes. Strict decoders (Chrome's WebP) reject such files.
+// The repair: drop the leaked trailing 4 bytes and write size = len-8 back
+// into the header. Well-formed inputs pass through untouched.
+func fixWebPRiffHeader(data []byte) []byte {
+	if len(data) < 12 || string(data[:4]) != "RIFF" || string(data[8:12]) != "WEBP" {
+		return data
+	}
+	size := binary.LittleEndian.Uint32(data[4:8])
+	if size == uint32(len(data)-8) {
+		return data
+	}
+	if size == 0 && len(data) >= 20 && binary.LittleEndian.Uint32(data[len(data)-4:]) == uint32(len(data)-12) {
+		data = data[:len(data)-4]
+	}
+	binary.LittleEndian.PutUint32(data[4:8], uint32(len(data)-8))
+	return data
 }
 
 func saveAttachment(db *sql.DB, uploadDir string, channelID, userID int64, upload preparedUpload) (int64, string, error) {
