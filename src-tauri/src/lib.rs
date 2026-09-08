@@ -1,6 +1,8 @@
 mod oauth;
+mod tray;
 
 use std::collections::HashMap;
+use std::sync::atomic::Ordering;
 use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState as HotKeyState};
@@ -191,16 +193,38 @@ fn register_default_shortcuts(app: &AppHandle) {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_process::init())
+        .on_window_event(|window, event| match event {
+            // Close button hides to tray; quitting goes through the tray menu.
+            tauri::WindowEvent::CloseRequested { api, .. } => {
+                api.prevent_close();
+                let _ = window.hide();
+            }
+            // Focusing the window counts as having seen the notifications.
+            tauri::WindowEvent::Focused(true) => {
+                window
+                    .app_handle()
+                    .state::<tray::FlashState>()
+                    .0
+                    .store(false, Ordering::Relaxed);
+            }
+            _ => {}
+        })
         .setup(|app| {
             let callback_state = Mutex::new(oauth::CallbackServerState::default());
             oauth::start_callback_server(app.handle().clone(), &callback_state)?;
             app.manage(callback_state);
             app.manage(Mutex::new(ShortcutManager::default()));
             register_default_shortcuts(app.handle());
+
+            let flash_state = tray::FlashState::new();
+            tray::setup_tray(app)?;
+            tray::spawn_flash_loop(app.handle().clone(), flash_state.clone());
+            app.manage(flash_state);
 
             Ok(())
         })
@@ -210,6 +234,7 @@ pub fn run() {
             get_shortcuts,
             set_shortcut,
             quit_app,
+            tray::set_attention,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
