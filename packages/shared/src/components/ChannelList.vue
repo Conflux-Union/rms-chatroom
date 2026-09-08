@@ -1023,7 +1023,7 @@ async function deleteChannel() {
 .channel-list {
   /* replaced browser resize with custom resizer */
   position: relative;
-  overflow: auto;
+  overflow: hidden; /* scroll lives inside .channels so the user panel stays pinned */
   min-width: 272px;
   max-width: 360px;
   border-right: 1px solid var(--zhimo-border-strong);
@@ -1034,8 +1034,7 @@ async function deleteChannel() {
   width: 100%;
   display: flex;
   flex-direction: column;
-  align-content: space-around;
-  justify-content: space-between
+  min-height: 0; /* allow the scrolling .channels child to shrink inside */
 }
 
 /* vertical resizer on right edge */
@@ -1180,6 +1179,9 @@ async function deleteChannel() {
 }
 
 .channels {
+  flex: 1;
+  min-height: 0; /* required for a flex child to scroll instead of growing */
+  overflow-y: auto;
   transition: all 0.5s linear;
 }
 
@@ -1588,6 +1590,7 @@ async function deleteChannel() {
 /* Draggable styles */
 .draggable-list {
   min-height: 20px;
+  overflow: visible; /* scrolling is owned by .channels; keep drag items unclipped */
 }
 
 .drag-ghost {
