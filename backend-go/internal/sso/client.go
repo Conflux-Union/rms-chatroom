@@ -15,12 +15,23 @@ type avatarEntry struct {
 	fetchedAt time.Time
 }
 
+// lookupEntry caches an account_info lookup result. A miss (user == nil) is
+// cached too, so unbound QQ senders don't hammer SSO on every forwarded
+// message.
+type lookupEntry struct {
+	user      *permission.UserInfo
+	fetchedAt time.Time
+}
+
 // Client fetches user info and avatars from RMSSSO.
 type Client struct {
 	baseURL     string
 	httpClient  *http.Client
 	avatarCache sync.Map // map[int]*avatarEntry
+	// lookupCache is keyed by the account_info query string ("email=x", "username=y").
+	lookupCache sync.Map // map[string]*lookupEntry
 	avatarTTL   time.Duration
+	lookupTTL   time.Duration
 }
 
 // NewClient creates an SSO client with the given base URL.
@@ -29,6 +40,7 @@ func NewClient(baseURL string) *Client {
 		baseURL:    baseURL,
 		httpClient: &http.Client{Timeout: 10 * time.Second},
 		avatarTTL:  5 * time.Minute,
+		lookupTTL:  10 * time.Minute,
 	}
 }
 
@@ -84,6 +96,92 @@ func (c *Client) GetUserByID(userID int) (*permission.UserInfo, error) {
 	// Cache avatar URL
 	if u.AvatarURL != "" {
 		c.avatarCache.Store(userID, &avatarEntry{
+			url:       u.AvatarURL,
+			fetchedAt: time.Now(),
+		})
+	}
+
+	return u, nil
+}
+
+// GetUserByIDCached fetches user info from SSO by user ID with lookupTTL
+// caching (positive and negative). Used for the forward bot's proxy account,
+// which is looked up on every unmatched forwarded message.
+func (c *Client) GetUserByIDCached(userID int) (*permission.UserInfo, error) {
+	return c.lookupCached(fmt.Sprintf("uid=%d", userID))
+}
+
+// GetUserByEmail fetches user info from SSO by email, with caching (including
+// negative results). Requires the SSO account_info endpoint to support ?email=.
+func (c *Client) GetUserByEmail(email string) (*permission.UserInfo, error) {
+	return c.lookupCached("email=" + email)
+}
+
+// GetUserByUsername fetches user info from SSO by username, with caching
+// (including negative results). Requires the SSO account_info endpoint to
+// support ?username=.
+func (c *Client) GetUserByUsername(username string) (*permission.UserInfo, error) {
+	return c.lookupCached("username=" + username)
+}
+
+// lookupCached returns a cached account_info result or fetches it. Negative
+// results are cached for lookupTTL as well: unbound senders would otherwise
+// trigger one SSO request per forwarded message.
+func (c *Client) lookupCached(query string) (*permission.UserInfo, error) {
+	if v, ok := c.lookupCache.Load(query); ok {
+		entry := v.(*lookupEntry)
+		if time.Since(entry.fetchedAt) < c.lookupTTL {
+			if entry.user == nil {
+				return nil, fmt.Errorf("user not found (%s)", query)
+			}
+			return entry.user, nil
+		}
+	}
+
+	user, err := c.fetchAccountInfo(query)
+	if err != nil {
+		c.lookupCache.Store(query, &lookupEntry{user: nil, fetchedAt: time.Now()})
+		return nil, err
+	}
+	c.lookupCache.Store(query, &lookupEntry{user: user, fetchedAt: time.Now()})
+	return user, nil
+}
+
+// fetchAccountInfo calls the account_info endpoint with a raw query string
+// (e.g. "email=a@b.com") and decodes the response.
+func (c *Client) fetchAccountInfo(query string) (*permission.UserInfo, error) {
+	url := fmt.Sprintf("%s/api/account_info?%s", c.baseURL, query)
+	resp, err := c.httpClient.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("account_info returned status %d", resp.StatusCode)
+	}
+
+	var result ssoAccountInfoResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, err
+	}
+	if !result.Success || result.User.ID == 0 {
+		return nil, fmt.Errorf("user not found (%s)", query)
+	}
+
+	u := &permission.UserInfo{
+		ID:              result.User.ID,
+		Username:        result.User.Username,
+		Nickname:        result.User.Nickname,
+		Email:           result.User.Email,
+		PermissionLevel: result.User.PermissionLevel,
+		GroupLevel:      result.User.Group.Level,
+		AvatarURL:       result.User.AvatarURL,
+	}
+
+	// Warm the avatar cache so message broadcasts don't refetch.
+	if u.AvatarURL != "" {
+		c.avatarCache.Store(u.ID, &avatarEntry{
 			url:       u.AvatarURL,
 			fetchedAt: time.Now(),
 		})

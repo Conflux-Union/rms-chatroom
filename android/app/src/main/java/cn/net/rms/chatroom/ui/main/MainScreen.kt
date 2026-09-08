@@ -225,7 +225,8 @@ fun MainScreen(
                         )
                     }
 
-                    mainState.currentChannel?.type == ChannelType.TEXT -> {
+                    mainState.currentChannel?.type == ChannelType.TEXT ||
+                        mainState.currentChannel?.type == ChannelType.FORWARD -> {
                         val connectionState by mainViewModel.connectionState.collectAsState()
                         val messages = mainViewModel.messages.collectAsState().value
 
@@ -247,6 +248,7 @@ fun MainScreen(
                             messages = messages,
                             isLoading = mainState.isMessagesLoading,
                             connectionState = connectionState,
+                            readOnly = mainState.currentChannel?.type == ChannelType.FORWARD,
                             authToken = authState.token,
                             currentUserId = authState.user?.id,
                             currentUserPermission = authState.user?.permissionLevel,

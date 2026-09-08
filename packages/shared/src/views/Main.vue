@@ -47,6 +47,8 @@ chatWs.onMessage((data) => {
         reply_to_id: data.reply_to_id,
         reply_to: data.reply_to,
         mentions: data.mentions || [],
+        source_platform: data.source_platform,
+        forward_meta: data.forward_meta,
       }
       chat.addMessage(newMessage)
     }
@@ -253,7 +255,7 @@ watch(
     </div>
 
     <div class="main-content">
-      <ChatArea v-if="chat.currentChannel?.type === 'TEXT'" />
+      <ChatArea v-if="chat.currentChannel?.type === 'TEXT' || chat.currentChannel?.type === 'FORWARD'" />
       <VoicePanel v-else-if="chat.currentChannel?.type === 'VOICE'" />
       <div v-else class="no-channel">
         <p>选择一个频道开始聊天</p>

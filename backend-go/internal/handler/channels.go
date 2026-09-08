@@ -36,6 +36,7 @@ type channelCreateReq struct {
 
 type channelUpdateReq struct {
 	Name               *string `json:"name"`
+	Type               *string `json:"type"`
 	GroupID            *int64  `json:"group_id"`
 	MinLevel           *int    `json:"min_level"`
 	SpeakMinLevel      *int    `json:"speak_min_level"`
@@ -157,6 +158,8 @@ func (h *ChannelHandler) CreateChannel(c echo.Context) error {
 	channelType := "TEXT"
 	if req.Type == "voice" {
 		channelType = "VOICE"
+	} else if req.Type == "forward" {
+		channelType = "FORWARD"
 	}
 
 	var position, topPosition int
@@ -248,6 +251,14 @@ func (h *ChannelHandler) UpdateChannel(c echo.Context) error {
 	if req.Name != nil {
 		ch.Name = *req.Name
 	}
+	if req.Type != nil {
+		switch *req.Type {
+		case "TEXT", "VOICE", "FORWARD":
+			ch.Type = *req.Type
+		default:
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "type must be TEXT, VOICE or FORWARD"})
+		}
+	}
 	if req.MinLevel != nil {
 		if *req.MinLevel < 0 {
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": "min_level must be >= 0"})
@@ -327,11 +338,11 @@ func (h *ChannelHandler) UpdateChannel(c echo.Context) error {
 	}
 
 	_, err = h.db.Exec(
-		`UPDATE channels SET name = ?, group_id = ?, position = ?, top_position = ?,
+		`UPDATE channels SET name = ?, type = ?, group_id = ?, position = ?, top_position = ?,
 		    min_level = ?, speak_min_level = ?,
 		    perm_min_level = ?, logic_operator = ?, speak_perm_min_level = ?, speak_logic_operator = ?
 		 WHERE id = ?`,
-		ch.Name, ch.GroupID, ch.Position, ch.TopPosition,
+		ch.Name, ch.Type, ch.GroupID, ch.Position, ch.TopPosition,
 		ch.MinLevel, ch.SpeakMinLevel,
 		ch.PermMinLevel, ch.LogicOperator, ch.SpeakPermMinLevel, ch.SpeakLogicOperator, chID,
 	)
