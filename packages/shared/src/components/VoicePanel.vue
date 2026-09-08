@@ -133,13 +133,16 @@ function handleScreenShareVolumeChange(event: Event) {
   }
 }
 
-// Watch for remote screen share changes and attach video
+// Watch for remote screen share changes and attach video. immediate: the
+// panel unmounts while browsing other channels, so re-mounting must attach
+// the (still-subscribed, unchanged) share again — the computed value alone
+// would not fire the watcher.
 watch(activeRemoteScreenShare, async (newShare) => {
   await nextTick()
   if (newShare && screenShareContainer.value) {
     voice.attachScreenShare(newShare.participantId, screenShareContainer.value)
   }
-})
+}, { immediate: true })
 
 // Watch for local screen share changes
 watch(() => voice.isScreenSharing, async (sharing) => {
@@ -147,7 +150,7 @@ watch(() => voice.isScreenSharing, async (sharing) => {
   if (sharing && localScreenShareContainer.value) {
     voice.attachLocalScreenShare(localScreenShareContainer.value)
   }
-})
+}, { immediate: true })
 
 // Toggle receiving remote screen share streams
 function toggleScreenShareWatch() {
