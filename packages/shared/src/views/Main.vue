@@ -7,6 +7,7 @@ import { useAuthStore } from '../stores/auth'
 import { useSwipe } from '../composables/useSwipe'
 import { useChatWebSocket } from '../composables/useChatWebSocket'
 import { useMentionNotification } from '../composables/useMentionNotification'
+import { printConsoleEasterEgg } from '../utils/consoleArt'
 import ServerList from '../components/ServerList.vue'
 import ChannelList from '../components/ChannelList.vue'
 import ChatArea from '../components/ChatArea.vue'
@@ -152,6 +153,8 @@ onMounted(async () => {
   if (firstServer) {
     await chat.fetchServer(firstServer.id)
   }
+
+  printConsoleEasterEgg()
 })
 
 watch(
