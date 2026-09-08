@@ -1074,6 +1074,9 @@ function closeInviteDialog() {
 
 .volume-slider {
   flex: 1;
+  /* flex items default to min-width:auto (the range input's intrinsic ~129px),
+     which pushes the percentage label out of the row on narrow containers */
+  min-width: 0;
   height: 4px;
   -webkit-appearance: none;
   appearance: none;
@@ -1110,6 +1113,8 @@ function closeInviteDialog() {
   font-size: 12px;
   color: var(--color-text-muted);
   min-width: 40px;
+  flex-shrink: 0;
+  white-space: nowrap;
   text-align: right;
 }
 
