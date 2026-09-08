@@ -267,9 +267,8 @@ export const useVoiceStore = defineStore('voice', () => {
     if (ctx.state === 'suspended') {
       try {
         await ctx.resume()
-        console.log(`AudioContext resumed: ${ctx.state}`)
       } catch (e) {
-        console.log('Failed to resume AudioContext: ' + e)
+        console.error('Failed to resume AudioContext: ' + e)
         return false
       }
     }
@@ -285,16 +284,14 @@ export const useVoiceStore = defineStore('voice', () => {
       ;(el as HTMLAudioElement).volume = 0.0
     })
     const ctx = ensureAudioContext()
-    console.log(`AudioContext state before activation: ${ctx.state}`)
-    
+
     // Must resume synchronously in user gesture handler
     if (ctx.state === 'suspended') {
       try {
         // This MUST be called in the same call stack as user gesture
         await ctx.resume()
-        console.log(`AudioContext state after resume: ${ctx.state}`)
       } catch (e) {
-        console.log('Failed to activate AudioContext: ' + e)
+        console.error('Failed to activate AudioContext: ' + e)
         return false
       }
     }
@@ -320,18 +317,15 @@ export const useVoiceStore = defineStore('voice', () => {
     const ctx = ensureAudioContext()
 
     if (ctx.state !== 'running') {
-      console.log(`AudioContext not running (${ctx.state}), cannot connect audio nodes for ${participantId}`)
       return false
     }
 
     const mediaStream = audioElement.srcObject as MediaStream | null
     if (!mediaStream) {
-      console.log(`Audio element for ${participantId} has no srcObject, cannot create MediaStreamSource`)
       return false
     }
 
     if (connectedAudioElements.has(audioElement)) {
-      console.log(`MediaStream for ${participantId} already connected (via its audioElement), skipping`)
       return true
     }
 
@@ -360,12 +354,9 @@ export const useVoiceStore = defineStore('voice', () => {
       audioElement.volume = 0.0
       audioElement.muted = true
 
-      console.log(
-        `Connected MediaStream audio nodes for ${participantId} with volume ${volume}% (gain: ${gain})`
-      )
       return true
     } catch (e) {
-      console.log(`Failed to connect MediaStream audio nodes for ${participantId}: ${e}`)
+      console.error(`Failed to connect MediaStream audio nodes for ${participantId}: ${e}`)
       participantAudioMap.set(participantId, {
         audioElement,
         volume,
@@ -535,7 +526,7 @@ export const useVoiceStore = defineStore('voice', () => {
         localStorage.removeItem(STORAGE_KEY_OUTPUT)
       }
     } catch (e) {
-      console.log('Failed to enumerate devices:' + e)
+      console.error('Failed to enumerate devices:' + e)
     }
   }
 
@@ -553,7 +544,7 @@ export const useVoiceStore = defineStore('voice', () => {
         await room.value.switchActiveDevice('audioinput', deviceId || 'default')
         return true
       } catch (e) {
-        console.log('Failed to switch audio input device:' + e)
+        console.error('Failed to switch audio input device:' + e)
         return false
       }
     }
@@ -578,7 +569,7 @@ export const useVoiceStore = defineStore('voice', () => {
         try {
           await audioEl.setSinkId(targetId)
         } catch (e) {
-          console.log('Failed to set audio output device:' + e)
+          console.error('Failed to set audio output device:' + e)
           return false
         }
       }
@@ -621,7 +612,7 @@ export const useVoiceStore = defineStore('voice', () => {
       const playPromise = el.play()
       if (playPromise && typeof (playPromise as any).catch === 'function') {
         playPromise.catch((e) => {
-          console.log('bgAudio play failed:', e)
+          console.error('bgAudio play failed:', e)
         })
       }
     } else {
@@ -631,7 +622,7 @@ export const useVoiceStore = defineStore('voice', () => {
     // Waiting for async operations
     const audioActivated = await audioActivatedPromise
     if (isIOS() && !audioActivated) {
-      console.log('Warning: AudioContext activation failed, volume control may not work')
+      console.warn('AudioContext activation failed, volume control may not work')
     }
     
     const audioElements = document.querySelectorAll('audio[data-livekit-audio="true"]')
@@ -730,8 +721,6 @@ export const useVoiceStore = defineStore('voice', () => {
 
             const savedVolume = userVolumes.value.get(participant.identity) ?? 100
 
-            console.log(`Subscribing to audio track of ${participant.identity}, saved volume: ${savedVolume}%`)
-            
             if (isIOS()) {
               // iOS: Use Web Audio API for volume control
               connectAudioNodes(participant.identity, audioElement, savedVolume)
@@ -944,7 +933,7 @@ export const useVoiceStore = defineStore('voice', () => {
       return true
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Failed to connect'
-      console.log('Voice connect error:' + e)
+      console.error('Voice connect error:' + e)
       reportTelemetryEvent('voice_join_failure', msg, {
         stack: e instanceof Error ? e.stack : undefined,
         meta: { channel_id: channel.id },
@@ -1025,7 +1014,6 @@ export const useVoiceStore = defineStore('voice', () => {
     if (typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
       import('@tauri-apps/api/event').then(({ listen }) => {
         listen('mic-toggle', () => {
-          console.log('[hotkey] mic:toggle -> voice.toggleMute()')
           toggleMute()
         })
       })
@@ -1075,7 +1063,6 @@ export const useVoiceStore = defineStore('voice', () => {
   ): { success: boolean; showWarning: boolean } {
     const clampedVolume = Math.max(0, Math.min(300, volume))
     const currentVolume = userVolumes.value.get(participantId) ?? 100
-    console.log(`[setUserVolume] called id=${participantId}, target=${clampedVolume}, hasMap=${participantAudioMap.has(participantId)}`)
 
     // Safety check: crossing 100% threshold requires warning acknowledgement
     if (currentVolume <= 100 && clampedVolume > 100 && !bypassWarning) {
@@ -1092,12 +1079,6 @@ export const useVoiceStore = defineStore('voice', () => {
     // Apply volume
     const participantAudio = participantAudioMap.get(participantId)
     if (participantAudio) {
-      console.log(`[setUserVolume] Participant: ${participantId}`)
-      console.log(`  - Target volume: ${clampedVolume}%`)
-      console.log(`  - Is iOS: ${isIOS()}`)
-      console.log(`  - Has audioElement: ${!!participantAudio.audioElement}`)
-      console.log(`  - Has gainNode: ${!!participantAudio.gainNode}`)
-      console.log(`  - Has sourceNode: ${!!participantAudio.sourceNode}`)
       if (isIOS() && participantAudio.gainNode) {
         // iOS: Use Web Audio API gain control
         let gain = 0;
@@ -1115,43 +1096,10 @@ export const useVoiceStore = defineStore('voice', () => {
           ;(el as HTMLAudioElement).muted = true
         })
 
-        console.log(`  - Current gain value: ${participantAudio.gainNode.gain.value}`)
-        console.log(`  - Setting gain to: ${gain}`)
-
         participantAudio.gainNode.gain.value = gain
-        
-        // console.log output new gain value
-        console.log(`  - New gain value: ${participantAudio.gainNode.gain.value}`)
-        
-        // check GainNode properties
-        console.log(`  - GainNode numberOfInputs: ${participantAudio.gainNode.numberOfInputs}`)
-        console.log(`  - GainNode numberOfOutputs: ${participantAudio.gainNode.numberOfOutputs}`)
-
-        // check AudioContext status
-        if (audioContext.value) {
-          console.log(`  - AudioContext state: ${audioContext.value.state}`)
-          console.log(`  - AudioContext sampleRate: ${audioContext.value.sampleRate}`)
-        }
-
-        // check audioElement status
-        if (participantAudio.audioElement) {
-          console.log(`  - Audio element paused: ${participantAudio.audioElement.paused}`)
-          console.log(`  - Audio element muted: ${participantAudio.audioElement.muted}`)
-          console.log(`  - Audio element volume: ${participantAudio.audioElement.volume}`)
-          console.log(`  - Audio element readyState: ${participantAudio.audioElement.readyState}`)
-        }
-        
-        diagnoseAudioRouting(participantId)
-
       } else if (!isIOS() && participantAudio.audioElement) {
         // Non-iOS: use native volume (max 100%)
         participantAudio.audioElement.volume = Math.pow(Math.max(0, Math.min(clampedVolume, 100)) / 100, 2.6);
-
-        console.log(`  - Website using Audio element volume control`)
-        console.log(`  - Setting audioElement.volume to: ${participantAudio.audioElement.volume}`)
-        console.log(`  - Audio element paused: ${participantAudio.audioElement.paused}`)
-        console.log(`  - Audio element muted: ${participantAudio.audioElement.muted}`)
-        console.log(`  - Audio element readyState: ${participantAudio.audioElement.readyState}`)
       }
       
       // Update stored volume
@@ -1189,7 +1137,7 @@ export const useVoiceStore = defineStore('voice', () => {
       )
       return response.ok
     } catch (e) {
-      console.log('Failed to mute participant:' + e)
+      console.error('Failed to mute participant:' + e)
       return false
     }
   }
@@ -1207,7 +1155,7 @@ export const useVoiceStore = defineStore('voice', () => {
       )
       return response.ok
     } catch (e) {
-      console.log('Failed to kick participant:' + e)
+      console.error('Failed to kick participant:' + e)
       return false
     }
   }
@@ -1229,7 +1177,7 @@ export const useVoiceStore = defineStore('voice', () => {
         hostModeHostName.value = data.host_name
       }
     } catch (e) {
-      console.log('Failed to fetch host mode status:' + e)
+      console.error('Failed to fetch host mode status:' + e)
     }
   }
 
@@ -1279,7 +1227,7 @@ export const useVoiceStore = defineStore('voice', () => {
         screenSharerName.value = data.sharer_name
       }
     } catch (e) {
-      console.log('Failed to fetch screen share status:' + e)
+      console.error('Failed to fetch screen share status:' + e)
     }
   }
 
@@ -1304,7 +1252,7 @@ export const useVoiceStore = defineStore('voice', () => {
       }
       return { success: false, sharerName: null }
     } catch (e) {
-      console.log('Failed to lock screen share:' + e)
+      console.error('Failed to lock screen share:' + e)
       return { success: false, sharerName: null }
     }
   }
@@ -1324,7 +1272,7 @@ export const useVoiceStore = defineStore('voice', () => {
       screenSharerId.value = null
       screenSharerName.value = null
     } catch (e) {
-      console.log('Failed to unlock screen share:' + e)
+      console.error('Failed to unlock screen share:' + e)
     }
   }
 
@@ -1340,14 +1288,12 @@ export const useVoiceStore = defineStore('voice', () => {
         await room.value.localParticipant.setScreenShareEnabled(false)
         isScreenSharing.value = false
         localScreenShareTrack.value = null
-        console.log("Screen share stopped by user")
         await unlockScreenShare()
       } else {
         // Start screen sharing: first acquire lock, then start
         const lockResult = await lockScreenShare()
         if (!lockResult.success) {
           error.value = `${lockResult.sharerName || '其他用户'} 正在共享屏幕`
-          console.log("Failed to start screen share: " + error.value)
           return false
         }
         // Browser/Tauri: use native getDisplayMedia via LiveKit.
@@ -1378,18 +1324,16 @@ export const useVoiceStore = defineStore('voice', () => {
           degradationPreference: 'maintain-framerate',
         })
         isScreenSharing.value = true
-        console.log("Screen share started by user")
 
         // Find the screen share track publication
         const screenTrack = room.value.localParticipant.getTrackPublication(Track.Source.ScreenShare)
         if (screenTrack) {
           localScreenShareTrack.value = screenTrack
         }
-        console.log("Screen share track obtained")
       }
       return true
     } catch (e) {
-      console.log('Failed to toggle screen share:' + e)
+      console.error('Failed to toggle screen share:' + e)
       // User may have cancelled the screen share picker, release lock
       if (!isScreenSharing.value) {
         await unlockScreenShare()
@@ -1407,13 +1351,11 @@ export const useVoiceStore = defineStore('voice', () => {
     const screenShare = remoteScreenShares.value.get(participantId)
     if (screenShare?.track?.videoTrack) {
       const videoElement = screenShare.track.videoTrack.attach()
-      console.log(`Attaching screen share for ${participantId}`)
       videoElement.style.width = '100%'
       videoElement.style.height = '100%'
       videoElement.style.objectFit = 'contain'
       container.innerHTML = ''
       container.appendChild(videoElement)
-      console.log(`Screen share attached for ${participantId}\n video readyState: ${videoElement.readyState}\n video paused: ${videoElement.paused}\n video volume: ${videoElement.volume}\n video muted: ${videoElement.muted}`)
     }
   }
 
@@ -1436,40 +1378,6 @@ export const useVoiceStore = defineStore('voice', () => {
    */
   function detachScreenShare(container: HTMLElement): void {
     container.innerHTML = ''
-  }
-
-  function diagnoseAudioRouting(participantId: string): void {
-    const audio = participantAudioMap.get(participantId)
-    if (!audio) {
-      console.log(`No audio info for ${participantId}`)
-      return
-    }
-    
-    console.log(`=== Audio Routing Diagnosis for ${participantId} ===`)
-    console.log(`AudioElement:`)
-    console.log(`  - volume: ${audio.audioElement?.volume}`)
-    console.log(`  - muted: ${audio.audioElement?.muted}`)
-    console.log(`  - paused: ${audio.audioElement?.paused}`)
-    console.log(`  - currentTime: ${audio.audioElement?.currentTime}`)
-    console.log(`  - readyState: ${audio.audioElement?.readyState}`)
-    
-    if (isIOS()) {
-      console.log(`Web Audio (iOS):`)
-      console.log(`  - Has sourceNode: ${!!audio.sourceNode}`)
-      console.log(`  - Has gainNode: ${!!audio.gainNode}`)
-      console.log(`  - Gain value: ${audio.gainNode?.gain?.value}`)
-      console.log(`  - GainNode inputs: ${audio.gainNode?.numberOfInputs}`)
-      console.log(`  - GainNode outputs: ${audio.gainNode?.numberOfOutputs}`)
-      
-      if (audioContext.value) {
-        console.log(`AudioContext:`)
-        console.log(`  - state: ${audioContext.value.state}`)
-        console.log(`  - sampleRate: ${audioContext.value.sampleRate}`)
-        console.log(`  - currentTime: ${audioContext.value.currentTime}`)
-      }
-    }
-    
-    console.log(`=== End Diagnosis ===`)
   }
 
   let bgAudioEl: HTMLAudioElement | null = null
@@ -1538,7 +1446,6 @@ export const useVoiceStore = defineStore('voice', () => {
     attachScreenShare,
     attachLocalScreenShare,
     detachScreenShare,
-    diagnoseAudioRouting,
     voiceAnnounceEnabled,
     setVoiceAnnounceEnabled,
   }

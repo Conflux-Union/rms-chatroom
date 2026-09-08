@@ -32,16 +32,6 @@ export default defineConfig({
         target: 'https://chatroom.rms.net.cn',
         changeOrigin: true,
         secure: false,
-        configure: (proxy, options) => {
-          proxy.on('proxyReq', (proxyReq, req, res) => {
-            const target = options.target || '';
-            const url = req.url || '';
-            console.log('[Proxy]', req.method, url, '->', target + url);
-          });
-          proxy.on('proxyRes', (proxyRes, req, res) => {
-            console.log('[Proxy Response]', proxyRes.statusCode, req.url || '');
-          });
-        },
       },
       '/ws': {
         target: 'wss://chatroom.rms.net.cn',
