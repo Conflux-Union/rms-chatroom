@@ -71,10 +71,20 @@ const selectedChannelForPermission = ref<Channel | null>(null)
 // Dropdown options - computed to include dynamic group options
 const channelDropdownOptions = computed((): ZmDropdownOption[] => {
   const options: ZmDropdownOption[] = [
-    { label: '权限设置', key: 'permissions' },
+    { label: '权限设置', key: 'permissions' }
+  ]
+  // Type conversion is only offered between TEXT and FORWARD
+  const channel = chat.currentServer?.channels?.find(c => c.id === channelDropdown.value.channelId)
+  if (channel?.type === 'TEXT' || channel?.type === 'FORWARD') {
+    options.push({
+      label: channel.type === 'TEXT' ? '转为同步频道' : '转为文字频道',
+      key: 'toggleType'
+    })
+  }
+  options.push(
     { label: '移动到频道组', key: 'move' },
     { label: '删除频道', key: 'delete', danger: true }
-  ]
+  )
   return options
 })
 
@@ -367,12 +377,32 @@ async function handleChannelDropdownSelect(key: string | number) {
   console.log('[ChannelList] handleChannelDropdownSelect called with key:', key)
   if (key === 'permissions') {
     showChannelPermissionSettings()
+  } else if (key === 'toggleType') {
+    await toggleChannelType()
   } else if (key === 'delete') {
     await deleteChannel()
   } else if (key === 'move') {
     openMoveChannelDialog()
   }
   channelDropdown.value.show = false
+}
+
+// Convert a channel in place between TEXT and FORWARD. The channel keeps its
+// id, so the bot's configured channel stays valid.
+async function toggleChannelType() {
+  const channelId = channelDropdown.value.channelId
+  if (!channelId || !chat.currentServer) return
+  const channel = chat.currentServer.channels?.find(c => c.id === channelId)
+  if (!channel || (channel.type !== 'TEXT' && channel.type !== 'FORWARD')) return
+
+  const newType = channel.type === 'TEXT' ? 'FORWARD' : 'TEXT'
+  const updated = await chat.updateChannel(chat.currentServer.id, channelId, { type: newType })
+
+  // Keep the current channel view in sync with the new type (composer ↔ read-only).
+  if (chat.currentChannel?.id === channelId) {
+    const refreshed = chat.currentServer.channels?.find(c => c.id === channelId) ?? updated
+    if (refreshed) chat.setCurrentChannel(refreshed)
+  }
 }
 
 function showChannelPermissionSettings() {
