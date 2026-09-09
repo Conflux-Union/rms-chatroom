@@ -21,8 +21,6 @@ export default defineConfig({
   resolve: {
     alias: {
       '@rms-discord/shared': resolve(__dirname, '../shared/src'),
-      // Override shared version.ts with local version.ts
-      '../version': resolve(__dirname, 'src/version.ts'),
     },
   },
   server: {

@@ -1,6 +1,10 @@
 {
   "compilerOptions": {
     "composite": true,
+    // Emit declarations only: a compiled vite.config.js next to the source
+    // would shadow vite.config.ts at config-load time (Vite resolves .js
+    // first) and go stale until the next vue-tsc run.
+    "emitDeclarationOnly": true,
     "skipLibCheck": true,
     "module": "ESNext",
     "moduleResolution": "bundler",
