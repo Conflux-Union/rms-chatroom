@@ -37,7 +37,12 @@ data class MessageEntity(
     @ColumnInfo(name = "reply_to_username")
     val replyToUsername: String? = null,
     @ColumnInfo(name = "reply_to_content")
-    val replyToContent: String? = null
+    val replyToContent: String? = null,
+    // Forwarded message fields (FORWARD channels)
+    @ColumnInfo(name = "source_platform")
+    val sourcePlatform: String? = null,
+    @ColumnInfo(name = "forward_meta")
+    val forwardMeta: String? = null
 ) {
     fun toMessage(): Message = Message(
         id = id,
@@ -54,7 +59,15 @@ data class MessageEntity(
                 username = replyToUsername,
                 content = replyToContent ?: ""
             )
-        } else null
+        } else null,
+        sourcePlatform = sourcePlatform,
+        forwardMeta = forwardMeta?.let {
+            try {
+                com.google.gson.Gson().fromJson(it, cn.net.rms.chatroom.data.model.ForwardMeta::class.java)
+            } catch (_: Exception) {
+                null
+            }
+        }
         // Note: reactions, mentions, attachments are not cached
     )
 
@@ -68,7 +81,9 @@ data class MessageEntity(
             createdAt = message.createdAt,
             replyToId = message.replyToId,
             replyToUsername = message.replyTo?.username,
-            replyToContent = message.replyTo?.content
+            replyToContent = message.replyTo?.content,
+            sourcePlatform = message.sourcePlatform,
+            forwardMeta = message.forwardMeta?.let { com.google.gson.Gson().toJson(it) }
         )
     }
 }

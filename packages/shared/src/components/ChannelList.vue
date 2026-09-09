@@ -5,7 +5,8 @@ import { useAuthStore } from '../stores/auth'
 import { useVoiceStore } from '../stores/voice'
 import { useMentionNotification } from '../composables/useMentionNotification'
 import { useGlobalWebSocket } from '../composables/useGlobalWebSocket'
-import { Volume2, MicOff, Crown, ChevronDown, ChevronRight } from 'lucide-vue-next'
+import { reportAvatarImgError, reportAvatarMissing } from '../utils/avatarTelemetry'
+import { Volume2, MicOff, Crown, ChevronDown, ChevronRight, Radio } from 'lucide-vue-next'
 import { ZmDropdown, ZmModal, ZmInput, ZmButton, ZmSpace, ZmSelect } from './ui'
 import type { ZmDropdownOption, ZmSelectOption } from './ui'
 import type { Channel, ChannelGroup } from '../types'
@@ -21,11 +22,6 @@ const mentionNotification = useMentionNotification()
 const channelMentions = mentionNotification.channelMentions
 const unreadCounts = mentionNotification.unreadCounts
 const globalWs = useGlobalWebSocket()
-
-// Debug: Watch channelMentions changes
-watch(channelMentions, (newVal) => {
-  console.log('[ChannelList] channelMentions changed:', newVal)
-}, { deep: true })
 
 const showCreate = ref(false)
 const newItemName = ref('')
@@ -70,10 +66,20 @@ const selectedChannelForPermission = ref<Channel | null>(null)
 // Dropdown options - computed to include dynamic group options
 const channelDropdownOptions = computed((): ZmDropdownOption[] => {
   const options: ZmDropdownOption[] = [
-    { label: '权限设置', key: 'permissions' },
+    { label: '权限设置', key: 'permissions' }
+  ]
+  // Type conversion is only offered between TEXT and FORWARD
+  const channel = chat.currentServer?.channels?.find(c => c.id === channelDropdown.value.channelId)
+  if (channel?.type === 'TEXT' || channel?.type === 'FORWARD') {
+    options.push({
+      label: channel.type === 'TEXT' ? '转为同步频道' : '转为文字频道',
+      key: 'toggleType'
+    })
+  }
+  options.push(
     { label: '移动到频道组', key: 'move' },
     { label: '删除频道', key: 'delete', danger: true }
-  ]
+  )
   return options
 })
 
@@ -95,6 +101,20 @@ globalWs.onMessage((data) => {
   }
 })
 
+// Avatar diagnostics: sidebar renders the first-letter fallback whenever the
+// current data for a voice channel lacks avatar_url. Covers both the REST
+// initial fetch and push rounds (the push-side report in the store carries
+// the channel breakdown; this one adds the per-user view identity).
+watch(() => chat.voiceChannelUsers, (newVal) => {
+  for (const [channelId, userList] of newVal) {
+    for (const user of userList) {
+      if (!user.avatar_url && !user.id.startsWith('guest_')) {
+        reportAvatarMissing('channel-list', user.id, { channel_id: channelId })
+      }
+    }
+  }
+}, { deep: true })
+
 watch(() => chat.currentServer, (server) => {
   if (server) {
     // Initial fetch
@@ -111,10 +131,6 @@ watch(() => chat.currentServer, (server) => {
 onMounted(() => {
   // Load mention notifications on mount
   mentionNotification.loadChannelMentions()
-  console.log('[ChannelList] Component mounted')
-  console.log('[ChannelList] auth.isAdmin:', auth.isAdmin)
-  console.log('[ChannelList] currentServer:', chat.currentServer)
-  console.log('[ChannelList] channelGroups:', channelGroups.value)
 })
 
 // Channel groups
@@ -184,6 +200,7 @@ const groupSelectOptions = computed((): ZmSelectOption[] => {
 const createTypeOptions: ZmSelectOption[] = [
   { label: '文字频道', value: 'text' },
   { label: '语音频道', value: 'voice' },
+  { label: '同步频道', value: 'forward' },
   { label: '频道组', value: 'group' }
 ]
 
@@ -219,19 +236,13 @@ async function createItem() {
 }
 
 function showGroupContextMenu(event: MouseEvent, groupId: number) {
-  console.log('[ChannelList] showGroupContextMenu called for groupId:', groupId)
-  console.log('[ChannelList] auth.isAdmin:', auth.isAdmin)
   event.preventDefault()
   event.stopPropagation()
   groupDropdown.value = { show: true, x: event.clientX, y: event.clientY, groupId }
-  console.log('[ChannelList] Group dropdown shown at position:', { x: event.clientX, y: event.clientY })
-  console.log('[ChannelList] groupDropdown.value.show:', groupDropdown.value.show)
 }
 
 async function handleGroupDropdownSelect(key: string | number) {
-  console.log('[ChannelList] handleGroupDropdownSelect called with key:', key)
   if (key === 'permissions') {
-    console.log('[ChannelList] User selected permissions option')
     showGroupPermissionSettings()
   } else if (key === 'delete') {
     await deleteChannelGroup()
@@ -241,18 +252,12 @@ async function handleGroupDropdownSelect(key: string | number) {
 
 function showGroupPermissionSettings() {
   if (!groupDropdown.value.groupId || !chat.currentServer) {
-    console.log('[ChannelList] showGroupPermissionSettings: missing groupId or currentServer', {
-      groupId: groupDropdown.value.groupId,
-      currentServer: chat.currentServer
-    })
     return
   }
   const group = chat.currentServer.channelGroups?.find(g => g.id === groupDropdown.value.groupId)
-  console.log('[ChannelList] showGroupPermissionSettings: found group', group)
   if (group) {
     selectedGroupForPermission.value = group
     showGroupPermissionModal.value = true
-    console.log('[ChannelList] Modal opened for group:', group.name)
   }
 }
 
@@ -348,9 +353,10 @@ function showUserContextMenu(event: MouseEvent, channelId: number, userId: strin
 }
 
 async function handleChannelDropdownSelect(key: string | number) {
-  console.log('[ChannelList] handleChannelDropdownSelect called with key:', key)
   if (key === 'permissions') {
     showChannelPermissionSettings()
+  } else if (key === 'toggleType') {
+    await toggleChannelType()
   } else if (key === 'delete') {
     await deleteChannel()
   } else if (key === 'move') {
@@ -359,17 +365,32 @@ async function handleChannelDropdownSelect(key: string | number) {
   channelDropdown.value.show = false
 }
 
+// Convert a channel in place between TEXT and FORWARD. The channel keeps its
+// id, so the bot's configured channel stays valid.
+async function toggleChannelType() {
+  const channelId = channelDropdown.value.channelId
+  if (!channelId || !chat.currentServer) return
+  const channel = chat.currentServer.channels?.find(c => c.id === channelId)
+  if (!channel || (channel.type !== 'TEXT' && channel.type !== 'FORWARD')) return
+
+  const newType = channel.type === 'TEXT' ? 'FORWARD' : 'TEXT'
+  const updated = await chat.updateChannel(chat.currentServer.id, channelId, { type: newType })
+
+  // Keep the current channel view in sync with the new type (composer ↔ read-only).
+  if (chat.currentChannel?.id === channelId) {
+    const refreshed = chat.currentServer.channels?.find(c => c.id === channelId) ?? updated
+    if (refreshed) chat.setCurrentChannel(refreshed)
+  }
+}
+
 function showChannelPermissionSettings() {
   if (!channelDropdown.value.channelId || !chat.currentServer) {
-    console.log('[ChannelList] showChannelPermissionSettings: missing channelId or currentServer')
     return
   }
   const channel = chat.currentServer.channels?.find(c => c.id === channelDropdown.value.channelId)
-  console.log('[ChannelList] showChannelPermissionSettings: found channel', channel)
   if (channel) {
     selectedChannelForPermission.value = channel
     showChannelPermissionModal.value = true
-    console.log('[ChannelList] Channel permission modal opened for:', channel.name)
   }
 }
 
@@ -635,15 +656,16 @@ async function deleteChannel() {
                 class="group-channels"
               >
                 <template v-for="channel in getDraggableGroupChannels(item.data.id)" :key="channel.id">
-                <!-- Text channel in group -->
+                <!-- Text / sync channel in group -->
                 <div
-                  v-if="channel.type === 'TEXT'"
+                  v-if="channel.type === 'TEXT' || channel.type === 'FORWARD'"
                   class="channel "
                   :class="{ active: chat.currentChannel?.id === channel.id }"
                   @click="selectChannel(channel)"
                   @contextmenu="auth.isAdmin && editMode ? showChannelContextMenu($event, channel.id) : undefined"
                 >
-                  <svg class="channel-icon" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 24 24"><g fill="none"><path d="M12 3a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2h-7a2 2 0 0 1-2-2V3zm2.5 1a.5.5 0 0 0 0 1h6a.5.5 0 0 0 0-1h-6zm0 3a.5.5 0 0 0 0 1h6a.5.5 0 0 0 0-1h-6z" fill="currentColor"></path><path d="M5.25 3H11v1.5H5.25A1.75 1.75 0 0 0 3.5 6.25v8.5c0 .966.784 1.75 1.75 1.75h2.249v3.75l5.015-3.75h6.236a1.75 1.75 0 0 0 1.75-1.75V12h.5c.35 0 .687-.06 1-.17v2.92A3.25 3.25 0 0 1 18.75 18h-5.738L8 21.75a1.25 1.25 0 0 1-1.999-1V18h-.75A3.25 3.25 0 0 1 2 14.75v-8.5A3.25 3.25 0 0 1 5.25 3z" fill="currentColor"></path></g></svg>
+                  <Radio v-if="channel.type === 'FORWARD'" class="channel-icon" :size="18" />
+                  <svg v-else class="channel-icon" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 24 24"><g fill="none"><path d="M12 3a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2h-7a2 2 0 0 1-2-2V3zm2.5 1a.5.5 0 0 0 0 1h6a.5.5 0 0 0 0-1h-6zm0 3a.5.5 0 0 0 0 1h6a.5.5 0 0 0 0-1h-6z" fill="currentColor"></path><path d="M5.25 3H11v1.5H5.25A1.75 1.75 0 0 0 3.5 6.25v8.5c0 .966.784 1.75 1.75 1.75h2.249v3.75l5.015-3.75h6.236a1.75 1.75 0 0 0 1.75-1.75V12h.5c.35 0 .687-.06 1-.17v2.92A3.25 3.25 0 0 1 18.75 18h-5.738L8 21.75a1.25 1.25 0 0 1-1.999-1V18h-.75A3.25 3.25 0 0 1 2 14.75v-8.5A3.25 3.25 0 0 1 5.25 3z" fill="currentColor"></path></g></svg>
                   <template v-if="editingChannelId === channel.id">
                     <input
                       class="inline-edit custom-input"
@@ -717,7 +739,7 @@ async function deleteChannel() {
                           :src="user.avatar_url"
                           :alt="user.name"
                           class="voice-user-avatar-img"
-                          @error="(e: Event) => (e.target as HTMLImageElement).style.display = 'none'"
+                          @error="reportAvatarImgError('channel-list', user.avatar_url, user.id)"
                         />
                         <span v-else class="voice-user-avatar">{{ user.name.charAt(0).toUpperCase() }}</span>
                         <Crown v-if="user.is_host" class="voice-user-host-badge" :size="10" />
@@ -732,15 +754,16 @@ async function deleteChannel() {
             </Transition>
           </div>
 
-          <!-- Ungrouped Text Channel -->
+          <!-- Ungrouped Text / Sync Channel -->
           <div
-            v-else-if="item.type === 'channel' && item.data.type === 'TEXT'"
+            v-else-if="item.type === 'channel' && (item.data.type === 'TEXT' || item.data.type === 'FORWARD')"
             class="channel "
             :class="{ active: chat.currentChannel?.id === item.data.id }"
             @click="selectChannel(item.data)"
             @contextmenu="auth.isAdmin && editMode ? showChannelContextMenu($event, item.data.id) : undefined"
           >
-            <svg class="channel-icon" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 24 24"><g fill="none"><path d="M12 3a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2h-7a2 2 0 0 1-2-2V3zm2.5 1a.5.5 0 0 0 0 1h6a.5.5 0 0 0 0-1h-6zm0 3a.5.5 0 0 0 0 1h6a.5.5 0 0 0 0-1h-6z" fill="currentColor"></path><path d="M5.25 3H11v1.5H5.25A1.75 1.75 0 0 0 3.5 6.25v8.5c0 .966.784 1.75 1.75 1.75h2.249v3.75l5.015-3.75h6.236a1.75 1.75 0 0 0 1.75-1.75V12h.5c.35 0 .687-.06 1-.17v2.92A3.25 3.25 0 0 1 18.75 18h-5.738L8 21.75a1.25 1.25 0 0 1-1.999-1V18h-.75A3.25 3.25 0 0 1 2 14.75v-8.5A3.25 3.25 0 0 1 5.25 3z" fill="currentColor"></path></g></svg>
+            <Radio v-if="item.data.type === 'FORWARD'" class="channel-icon" :size="18" />
+            <svg v-else class="channel-icon" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 24 24"><g fill="none"><path d="M12 3a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2h-7a2 2 0 0 1-2-2V3zm2.5 1a.5.5 0 0 0 0 1h6a.5.5 0 0 0 0-1h-6zm0 3a.5.5 0 0 0 0 1h6a.5.5 0 0 0 0-1h-6z" fill="currentColor"></path><path d="M5.25 3H11v1.5H5.25A1.75 1.75 0 0 0 3.5 6.25v8.5c0 .966.784 1.75 1.75 1.75h2.249v3.75l5.015-3.75h6.236a1.75 1.75 0 0 0 1.75-1.75V12h.5c.35 0 .687-.06 1-.17v2.92A3.25 3.25 0 0 1 18.75 18h-5.738L8 21.75a1.25 1.25 0 0 1-1.999-1V18h-.75A3.25 3.25 0 0 1 2 14.75v-8.5A3.25 3.25 0 0 1 5.25 3z" fill="currentColor"></path></g></svg>
             <template v-if="editingChannelId === item.data.id">
               <input
                 class="inline-edit custom-input"
@@ -813,7 +836,7 @@ async function deleteChannel() {
                     :src="user.avatar_url"
                     :alt="user.name"
                     class="voice-user-avatar-img"
-                    @error="(e: Event) => (e.target as HTMLImageElement).style.display = 'none'"
+                    @error="reportAvatarImgError('channel-list', user.avatar_url, user.id)"
                   />
                   <span v-else class="voice-user-avatar">{{ user.name.charAt(0).toUpperCase() }}</span>
                   <Crown v-if="user.is_host" class="voice-user-host-badge" :size="10" />
@@ -1000,7 +1023,7 @@ async function deleteChannel() {
 .channel-list {
   /* replaced browser resize with custom resizer */
   position: relative;
-  overflow: auto;
+  overflow: hidden; /* scroll lives inside .channels so the user panel stays pinned */
   min-width: 272px;
   max-width: 360px;
   border-right: 1px solid var(--zhimo-border-strong);
@@ -1011,8 +1034,7 @@ async function deleteChannel() {
   width: 100%;
   display: flex;
   flex-direction: column;
-  align-content: space-around;
-  justify-content: space-between
+  min-height: 0; /* allow the scrolling .channels child to shrink inside */
 }
 
 /* vertical resizer on right edge */
@@ -1157,6 +1179,9 @@ async function deleteChannel() {
 }
 
 .channels {
+  flex: 1;
+  min-height: 0; /* required for a flex child to scroll instead of growing */
+  overflow-y: auto;
   transition: all 0.5s linear;
 }
 
@@ -1565,6 +1590,7 @@ async function deleteChannel() {
 /* Draggable styles */
 .draggable-list {
   min-height: 20px;
+  overflow: visible; /* scrolling is owned by .channels; keep drag items unclipped */
 }
 
 .drag-ghost {

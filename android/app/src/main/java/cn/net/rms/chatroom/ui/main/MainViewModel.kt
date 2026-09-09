@@ -237,8 +237,8 @@ class MainViewModel @Inject constructor(
             showContinueReading = false
         )
 
-        // Load messages for text channels
-        if (channel.type == ChannelType.TEXT) {
+        // Load messages for text and forward (sync) channels
+        if (channel.type == ChannelType.TEXT || channel.type == ChannelType.FORWARD) {
             loadMessages(channel.id)
             // Load last read position
             loadLastReadPosition(channel.id)
@@ -276,10 +276,10 @@ class MainViewModel @Inject constructor(
         loadMessages(channelId)
     }
 
-    // Prepend one older page of history for the current text channel.
+    // Prepend one older page of history for the current text/forward channel.
     fun loadOlderMessages() {
         val channel = _state.value.currentChannel ?: return
-        if (channel.type != ChannelType.TEXT) return
+        if (channel.type != ChannelType.TEXT && channel.type != ChannelType.FORWARD) return
         viewModelScope.launch {
             chatRepository.fetchOlderMessages(channel.id)
         }

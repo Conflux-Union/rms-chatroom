@@ -30,6 +30,10 @@ const HEARTBEAT_INTERVAL = 5000
 const HEARTBEAT_TIMEOUT = 3000
 // One RTT report every N pongs (~5 min at the 5s heartbeat interval).
 const RTT_REPORT_EVERY = 60
+// Only report RTT when the average over the reporting window is degraded, or a
+// single sample spikes far above it (transient route flap without sustained lag).
+const RTT_REPORT_THRESHOLD_MS = 500
+const RTT_ALERT_MAX_MS = 2000
 
 export function createReconnectingWebSocket(
   options: ReconnectingWebSocketOptions
@@ -105,14 +109,19 @@ export function createReconnectingWebSocket(
       rttMax = Math.max(rttMax, rtt)
       rttSamples++
       if (rttSamples >= RTT_REPORT_EVERY) {
-        reportTelemetryEvent('ws_heartbeat_rtt', name, {
-          meta: {
-            ws: name,
-            rtt_avg_ms: Math.round(rttSum / rttSamples),
-            rtt_max_ms: rttMax,
-            samples: rttSamples,
-          },
-        })
+        const rttAvg = Math.round(rttSum / rttSamples)
+        // Healthy RTT is high-frequency noise (96% of the telemetry table was
+        // these rows); only report when the connection is actually degraded.
+        if (rttAvg >= RTT_REPORT_THRESHOLD_MS || rttMax >= RTT_ALERT_MAX_MS) {
+          reportTelemetryEvent('ws_heartbeat_rtt', name, {
+            meta: {
+              ws: name,
+              rtt_avg_ms: rttAvg,
+              rtt_max_ms: rttMax,
+              samples: rttSamples,
+            },
+          })
+        }
         rttSum = 0
         rttMax = 0
         rttSamples = 0
@@ -139,7 +148,6 @@ export function createReconnectingWebSocket(
     }
 
     const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000)
-    console.log(`[${name}] Reconnecting in ${delay}ms (attempt ${reconnectAttempts + 1}/${MAX_RECONNECT_ATTEMPTS})`)
 
     state.value = 'reconnecting'
     reconnectTimer = window.setTimeout(() => {
@@ -173,12 +181,10 @@ export function createReconnectingWebSocket(
         return
       }
 
-      console.log(`[${name}] Connecting to ${url} (gen=${gen})`)
       ws = new WebSocket(url)
 
       ws.onopen = () => {
         if (gen !== generation) return
-        console.log(`[${name}] Connected`)
         state.value = 'connected'
         isConnected.value = true
         reconnectAttempts = 0
@@ -190,7 +196,6 @@ export function createReconnectingWebSocket(
         if (gen !== generation) return
         lastCloseCode = e.code
         lastCloseReason = e.reason
-        console.log(`[${name}] Disconnected`)
         state.value = 'disconnected'
         isConnected.value = false
         clearAllTimers()

@@ -25,6 +25,7 @@ import io.livekit.android.room.participant.VideoTrackPublishDefaults
 import io.livekit.android.room.track.LocalAudioTrackOptions
 import io.livekit.android.room.track.LocalVideoTrackOptions
 import io.livekit.android.room.track.RemoteAudioTrack
+import io.livekit.android.room.track.RemoteTrackPublication
 import io.livekit.android.room.track.RemoteVideoTrack
 import io.livekit.android.room.track.Track
 import io.livekit.android.room.track.ScreenSharePresets
@@ -78,12 +79,13 @@ enum class AudioDeviceType {
 }
 
 /**
- * Represents a remote screen share for UI display
+ * Represents a remote screen share for UI display.
+ * videoTrack is null while the share is not subscribed (ignore preference).
  */
 data class ScreenShareInfo(
     val participantId: String,
     val participantName: String,
-    val videoTrack: RemoteVideoTrack
+    val videoTrack: RemoteVideoTrack?
 )
 
 @Singleton
@@ -92,8 +94,11 @@ class LiveKitManager @Inject constructor(
 ) {
     companion object {
         private const val TAG = "LiveKitManager"
+        private const val PREFS_NAME = "rms_voice_prefs"
+        private const val KEY_SCREEN_SHARE_IGNORED = "screen_share_ignored"
     }
 
+    private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     private var room: Room? = null
     private var scope: CoroutineScope? = null
 
@@ -132,6 +137,49 @@ class LiveKitManager @Inject constructor(
 
     private val _remoteScreenShares = MutableStateFlow<Map<String, ScreenShareInfo>>(emptyMap())
     val remoteScreenShares: StateFlow<Map<String, ScreenShareInfo>> = _remoteScreenShares.asStateFlow()
+
+    // Whether this client declines remote screen share streams (video + share
+    // audio). Ignored clients still see who is sharing, they just never
+    // receive the media.
+    private val _screenShareIgnored = MutableStateFlow(prefs.getBoolean(KEY_SCREEN_SHARE_IGNORED, false))
+    val screenShareIgnored: StateFlow<Boolean> = _screenShareIgnored.asStateFlow()
+
+    private fun setScreenShareEntry(identity: String, name: String, videoTrack: RemoteVideoTrack?) {
+        val newMap = _remoteScreenShares.value.toMutableMap()
+        newMap[identity] = ScreenShareInfo(identity, name, videoTrack)
+        _remoteScreenShares.value = newMap
+    }
+
+    private fun removeScreenShareEntry(identity: String) {
+        if (!_remoteScreenShares.value.containsKey(identity)) return
+        val newMap = _remoteScreenShares.value.toMutableMap()
+        newMap.remove(identity)
+        _remoteScreenShares.value = newMap
+    }
+
+    /**
+     * Align every remote screen share publication (video and share audio)
+     * with the ignore preference. Unsubscribed tracks stop flowing from the SFU.
+     */
+    private fun applyScreenShareSubscription() {
+        val desired = !screenShareIgnored.value
+        room?.remoteParticipants?.values?.forEach { participant ->
+            participant.trackPublications.values.forEach { publication ->
+                if (publication is RemoteTrackPublication &&
+                    (publication.source == Track.Source.SCREEN_SHARE || publication.source == Track.Source.SCREEN_SHARE_AUDIO) &&
+                    publication.subscribed != desired
+                ) {
+                    publication.setSubscribed(desired)
+                }
+            }
+        }
+    }
+
+    fun setScreenShareIgnored(ignored: Boolean) {
+        _screenShareIgnored.value = ignored
+        prefs.edit().putBoolean(KEY_SCREEN_SHARE_IGNORED, ignored).apply()
+        applyScreenShareSubscription()
+    }
 
     // MediaProjection permission data (stored after user grants permission)
     private var mediaProjectionPermissionData: Intent? = null
@@ -180,14 +228,20 @@ class LiveKitManager @Inject constructor(
                 red = true    // Enable redundant audio data for reliability
             )
 
-            // High quality screen share with AV1 codec (high compression, 1080p @ 30fps, 2Mbps)
+            // Screen share codec ladder matching the web client: VP9 base with
+            // temporal SVC (L1T3) so the SFU degrades 30->15->7.5 fps per
+            // subscriber instead of hard layer switching. AV1 is not used
+            // here: most Android SoCs lack AV1 hardware encoding, and the
+            // software encoder cannot keep up with 1080p30 screen capture.
+            // simulcast stays on (unlike the old AV1 config) so weak-network
+            // viewers keep a lower spatial layer to fall back to.
             val screenShareCaptureDefaults = LocalVideoTrackOptions(
                 captureParams = ScreenSharePresets.H1080_FPS30.capture
             )
             val screenSharePublishDefaults = VideoTrackPublishDefaults(
                 videoEncoding = VideoEncoding(maxBitrate = 2_000_000, maxFps = 30),
-                videoCodec = "av1",
-                simulcast = false,
+                videoCodec = "vp9",
+                simulcast = true,
                 degradationPreference = DegradationPreference.MAINTAIN_FRAMERATE  // Prioritize framerate
             )
 
@@ -419,6 +473,10 @@ class LiveKitManager @Inject constructor(
                     updateParticipants()
                     // Check existing remote screen shares (for late joiners)
                     checkExistingScreenShares()
+                    // Enforce the stored ignore preference on existing shares
+                    if (screenShareIgnored.value) {
+                        applyScreenShareSubscription()
+                    }
                 }
                 is RoomEvent.Disconnected -> {
                     _connectionState.value = ConnectionState.DISCONNECTED
@@ -434,38 +492,69 @@ class LiveKitManager @Inject constructor(
                 }
                 is RoomEvent.ParticipantDisconnected -> {
                     updateParticipants()
+                    // Drop their screen share entry; no TrackUnpublished is guaranteed
+                    event.participant.identity?.value?.let { removeScreenShareEntry(it) }
                 }
                 is RoomEvent.TrackPublished -> {
                     updateParticipants()
+                    val publication = event.publication
+                    val participant = event.participant
+                    if (publication.source == Track.Source.SCREEN_SHARE) {
+                        // Register the share even while not subscribed, so the
+                        // UI can show who is sharing and offer to watch
+                        val identity = participant.identity?.value
+                        if (identity != null) {
+                            setScreenShareEntry(identity, participant.name ?: identity, publication.track as? RemoteVideoTrack)
+                            Log.d(TAG, "Remote screen share published: ${participant.name ?: identity}")
+                        }
+                    }
+                    // A new share starts while the user ignores shares: decline
+                    // it right away so its media never flows to this client
+                    if (screenShareIgnored.value &&
+                        (publication.source == Track.Source.SCREEN_SHARE || publication.source == Track.Source.SCREEN_SHARE_AUDIO) &&
+                        publication is RemoteTrackPublication &&
+                        publication.subscribed
+                    ) {
+                        publication.setSubscribed(false)
+                    }
                 }
                 is RoomEvent.TrackSubscribed -> {
                     updateParticipants()
                     // Check for remote screen share
                     val track = event.track
                     val participant = event.participant
-                    if (track is RemoteVideoTrack && 
+                    if (track is RemoteVideoTrack &&
                         event.publication.source == Track.Source.SCREEN_SHARE) {
                         val identity = participant.identity?.value ?: return@collect
                         val name = participant.name ?: identity
-                        val newMap = _remoteScreenShares.value.toMutableMap()
-                        newMap[identity] = ScreenShareInfo(identity, name, track)
-                        _remoteScreenShares.value = newMap
+                        setScreenShareEntry(identity, name, track)
                         Log.d(TAG, "Remote screen share started: $name")
                     }
                 }
                 is RoomEvent.TrackUnsubscribed -> {
-                    // Check for remote screen share removal by matching track reference
                     val track = event.track
-                    if (track is RemoteVideoTrack) {
-                        val entryToRemove = _remoteScreenShares.value.entries.find { 
-                            it.value.videoTrack == track 
+                    val publication = event.publications
+                    val participant = event.participant
+                    if (track is RemoteVideoTrack &&
+                        publication.source == Track.Source.SCREEN_SHARE) {
+                        val identity = participant.identity?.value
+                        if (identity != null) {
+                            if (participant.trackPublications.containsKey(publication.sid)) {
+                                // Locally unsubscribed (ignore preference): keep
+                                // the entry so the UI can still offer watching
+                                _remoteScreenShares.value[identity]?.let {
+                                    setScreenShareEntry(identity, it.participantName, null)
+                                }
+                            } else {
+                                // Publication itself is gone (sharer stopped or left)
+                                removeScreenShareEntry(identity)
+                            }
                         }
-                        if (entryToRemove != null) {
-                            val newMap = _remoteScreenShares.value.toMutableMap()
-                            newMap.remove(entryToRemove.key)
-                            _remoteScreenShares.value = newMap
-                            Log.d(TAG, "Remote screen share stopped: ${entryToRemove.value.participantName}")
-                        }
+                    }
+                }
+                is RoomEvent.TrackUnpublished -> {
+                    if (event.publication.source == Track.Source.SCREEN_SHARE) {
+                        event.participant.identity?.value?.let { removeScreenShareEntry(it) }
                     }
                 }
                 is RoomEvent.TrackMuted -> {
@@ -488,20 +577,17 @@ class LiveKitManager @Inject constructor(
      */
     private fun checkExistingScreenShares() {
         val currentRoom = room ?: return
-        val newMap = _remoteScreenShares.value.toMutableMap()
-        
+
         currentRoom.remoteParticipants.values.forEach { participant ->
-            participant.videoTrackPublications.forEach { (publication, track) ->
-                if (publication.source == Track.Source.SCREEN_SHARE && track is RemoteVideoTrack) {
+            participant.trackPublications.values.forEach { publication ->
+                if (publication.source == Track.Source.SCREEN_SHARE) {
                     val identity = participant.identity?.value ?: return@forEach
                     val name = participant.name ?: identity
-                    newMap[identity] = ScreenShareInfo(identity, name, track)
+                    setScreenShareEntry(identity, name, publication.track as? RemoteVideoTrack)
                     Log.d(TAG, "Found existing screen share from: $name")
                 }
             }
         }
-        
-        _remoteScreenShares.value = newMap
     }
 
     private fun updateParticipants() {

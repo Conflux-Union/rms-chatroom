@@ -73,7 +73,6 @@ async function handlePlayPause() {
 
   // Prevent rapid clicks
   if (isProcessingPlayback.value) {
-    console.log('Playback action already in progress, ignoring')
     return
   }
 
@@ -81,15 +80,12 @@ async function handlePlayPause() {
 
   try {
     if (music.isPlaying) {
-      console.log('Pausing playback')
       await music.pause(currentRoomName.value)
     } else if (music.playbackState === 'paused') {
       // Resume from paused state
-      console.log('Resuming playback')
       await music.resume(currentRoomName.value)
     } else if (currentRoomName.value) {
       // Start new playback
-      console.log('Starting new playback')
       await music.play(currentRoomName.value)
     }
   } finally {

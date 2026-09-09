@@ -101,13 +101,11 @@ jobs:
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
-        with:
-          version: 9
 
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'pnpm'
 
       - name: Setup Go
@@ -209,13 +207,11 @@ jobs:
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
-        with:
-          version: 9
 
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'pnpm'
 
       - name: Install Rust stable
@@ -252,16 +248,15 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
-          TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+          # Tauri v2 expects TAURI_SIGNING_PRIVATE_KEY / _PASSWORD (v1 used
+          # TAURI_PRIVATE_KEY); wrong names silently skip updater signing.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
         with:
-          tagName: ${{ needs.extract-version.outputs.tag_name }}
-          releaseName: 'Release ${{ needs.extract-version.outputs.version_name }}'
-          releaseBody: 'Desktop app builds for Windows'
-          releaseDraft: false
-          prerelease: ${{ contains(needs.extract-version.outputs.version_name, '-dev') }}
+          # Build only; the create-release job owns release creation and
+          # asset upload. Without tagName/releaseId the action never enters
+          # its release-upload path.
           args: ${{ matrix.args }}
-          updaterJsonPreferNsis: true
 
       - name: Upload Windows artifacts
         if: matrix.os == 'windows-latest'
@@ -270,6 +265,8 @@ jobs:
           name: desktop-windows
           path: |
             src-tauri/target/*/release/bundle/nsis/*.exe
+            src-tauri/target/*/release/bundle/nsis/*-setup.nsis.zip
+            src-tauri/target/*/release/bundle/nsis/*-setup.nsis.zip.sig
             src-tauri/target/*/release/bundle/msi/*.msi
           retention-days: 7
 
@@ -431,7 +428,6 @@ jobs:
             cp artifacts/desktop-windows/*.exe release-assets/ 2>/dev/null || true
             cp artifacts/desktop-windows/*.msi release-assets/ 2>/dev/null || true
           fi
-
           # Server bundle (Go binary + web dist) and its update manifest
           if [ -d artifacts/server-bundle ]; then
             cp artifacts/server-bundle/* release-assets/
@@ -483,34 +479,49 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Route updater download URL through China mirror
+      - name: Generate and upload updater latest.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG_NAME: ${{ needs.extract-version.outputs.tag_name }}
+          VERSION_NAME: ${{ needs.extract-version.outputs.version_name }}
+          RELEASE_NAME: ${{ steps.release_type.outputs.release_type }} ${{ needs.extract-version.outputs.version_name }}
         run: |
-          # tauri-action uploads latest.json pointing at the official GitHub
-          # asset URL, which is unreachable from mainland China. Rewrite the
-          # platform download URLs through gh-proxy; signature/version/pub_date
-          # are left exactly as tauri-action produced them.
-          if ! gh release download "$TAG_NAME" -R Conflux-Union/rms-chatroom -p latest.json -D /tmp --clobber 2>/dev/null; then
-            echo "latest.json not found in release; skipping URL rewrite"
+          # Build the Tauri updater manifest here (tauri-action is build-only
+          # in this workflow). The platform URL is routed through gh-proxy so
+          # mainland-China clients can download the update; tauri.conf.json
+          # lists the gh-proxy endpoint first for the same reason.
+          UPDATER_ZIP=$(ls artifacts/desktop-windows/*-setup.nsis.zip 2>/dev/null | head -n1)
+          if [ -z "$UPDATER_ZIP" ]; then
+            echo "no updater bundle found; skipping latest.json"
             exit 0
           fi
-          python3 << 'PYEOF'
-          import json
-          path = '/tmp/latest.json'
-          with open(path) as f:
-              data = json.load(f)
-          mirror = 'https://gh-proxy.com/'
-          for info in data.get('platforms', {}).values():
-              url = info.get('url', '')
-              if url.startswith('https://github.com/') and not url.startswith(mirror):
-                  info['url'] = mirror + url
-          with open(path, 'w') as f:
+          UPDATER_SIG=$(ls "${UPDATER_ZIP}.sig" 2>/dev/null | head -n1)
+          if [ -z "$UPDATER_SIG" ]; then
+            echo "ERROR: found $UPDATER_ZIP but no .sig next to it" >&2
+            exit 1
+          fi
+
+          ASSET_URL="https://github.com/Conflux-Union/rms-chatroom/releases/download/${TAG_NAME}/$(basename "$UPDATER_ZIP")"
+          RELEASE_NAME_ESC=$(printf '%s' "$RELEASE_NAME" | sed 's/"/\\"/g')
+          python3 << PYEOF
+          import json, datetime
+          signature = open("$UPDATER_ZIP.sig").read().strip()
+          data = {
+              "version": "$VERSION_NAME",
+              "notes": "$RELEASE_NAME_ESC",
+              "pub_date": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+              "platforms": {
+                  "windows-x86_64": {
+                      "signature": signature,
+                      "url": "https://gh-proxy.com/$ASSET_URL",
+                  }
+              },
+          }
+          with open("release-assets/latest.json", "w") as f:
               json.dump(data, f, indent=2)
           print(json.dumps(data, indent=2))
           PYEOF
-          gh release upload "$TAG_NAME" /tmp/latest.json -R Conflux-Union/rms-chatroom --clobber
+          gh release upload "$TAG_NAME" release-assets/latest.json -R Conflux-Union/rms-chatroom --clobber
 
   deploy-server:
     name: Deploy Server (trigger self-update)

@@ -73,7 +73,9 @@ enum class ChannelType {
     @SerializedName("TEXT")
     TEXT,
     @SerializedName("VOICE")
-    VOICE
+    VOICE,
+    @SerializedName("FORWARD")
+    FORWARD
 }
 
 data class Attachment(
@@ -98,6 +100,18 @@ data class ReplyTo(
 data class Mention(
     val id: Long,
     val username: String
+)
+
+// Forwarded message display metadata (FORWARD channels)
+data class ForwardQuote(
+    val nickname: String,
+    val content: String
+)
+
+data class ForwardMeta(
+    @SerializedName("sender_nickname")
+    val senderNickname: String? = null,
+    val quote: ForwardQuote? = null
 )
 
 // Reaction feature models
@@ -143,7 +157,12 @@ data class Message(
     // Mention feature
     val mentions: List<Mention>? = null,
     // Reaction feature
-    val reactions: List<ReactionGroup>? = null
+    val reactions: List<ReactionGroup>? = null,
+    // Forwarded message fields (FORWARD channels)
+    @SerializedName("source_platform")
+    val sourcePlatform: String? = null,
+    @SerializedName("forward_meta")
+    val forwardMeta: ForwardMeta? = null
 )
 
 data class VoiceUser(

@@ -1,10 +1,13 @@
-name: PR Checks
+name: Check
 
 on:
   pull_request:
     branches:
       - main
     types: [opened, synchronize, reopened]
+  push:
+    branches:
+      - main
 
 jobs:
   detect-changes:
@@ -29,13 +32,13 @@ jobs:
               - 'package.json'
               - 'pnpm-lock.yaml'
               - 'pnpm-workspace.yaml'
-              - '.github/workflows/pr-checks.yml'
+              - '.github/workflows/check.yml'
             backend:
               - 'backend-go/**'
-              - '.github/workflows/pr-checks.yml'
+              - '.github/workflows/check.yml'
             android:
               - 'android/**'
-              - '.github/workflows/pr-checks.yml'
+              - '.github/workflows/check.yml'
 
   frontend-build:
     name: Frontend Build Check
@@ -49,13 +52,11 @@ jobs:
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
-        with:
-          version: 9
 
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'pnpm'
 
       - name: Install dependencies
@@ -80,9 +81,8 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v6
         with:
-          go-version: '1.24'
-        env:
-          GOTOOLCHAIN: auto
+          go-version-file: backend-go/go.mod
+          cache-dependency-path: backend-go/go.sum
 
       - name: Build
         run: |

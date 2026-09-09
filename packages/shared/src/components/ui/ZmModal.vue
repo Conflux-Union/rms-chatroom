@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, useSlots } from 'vue'
+import { computed, ref, useSlots } from 'vue'
 
 const props = defineProps<{
   show?: boolean
@@ -11,6 +11,16 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{ (e: 'update:show', value: boolean): void }>()
+
+const host = ref<HTMLElement>()
+
+// zhimo-select/zhimo-dropdown dispatch their own `close` events (bubbles,
+// composed) when an option is picked; those bubble up through the modal.
+// Only the modal's own close should hide it — compare the event target.
+function onClose(e: Event) {
+  if (e.target !== host.value) return
+  emit('update:show', false)
+}
 
 const slots = useSlots()
 const hasFooter = computed(() => Boolean(slots.footer || slots.action))
@@ -29,10 +39,11 @@ const hostStyle = computed(() =>
        the sidebar instead of the viewport. -->
   <Teleport to="body">
     <zhimo-modal
+      ref="host"
       :open="show ? true : undefined"
       :heading="title"
       :style="hostStyle"
-      @close="emit('update:show', false)"
+      @close="onClose"
     >
       <slot />
       <div v-if="hasFooter" slot="footer" class="zm-modal-footer">

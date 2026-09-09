@@ -2,6 +2,7 @@
 import { onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
+import { ZmSpin } from '../components/ui'
 
 const router = useRouter()
 const route = useRoute()
@@ -45,42 +46,34 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="callback-container">
+  <div class="callback-shell">
     <div class="loading">
-      <div class="spinner"></div>
-      <p>Processing login...</p>
+      <ZmSpin size="large" />
+      <p class="hint">正在登录，请稍候...</p>
     </div>
   </div>
 </template>
 
 <style scoped>
-.callback-container {
+/* Same shape as Login.vue: transparent shell centered on the global
+   <zhimo-ink-paper> background painted in App.vue. */
+.callback-shell {
+  min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   justify-content: center;
   align-items: center;
-  min-height: 100vh;
-  min-height: 100dvh;
-  background-color: #36393f;
+  padding: var(--spacing-xl);
 }
 
 .loading {
-  text-align: center;
-  color: #fff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-lg);
 }
 
-.spinner {
-  width: 48px;
-  height: 48px;
-  border: 4px solid #5865f2;
-  border-top-color: transparent;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-  margin: 0 auto 16px;
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
+.hint {
+  color: var(--zhimo-fg-muted);
 }
 </style>

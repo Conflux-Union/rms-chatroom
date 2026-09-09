@@ -7,6 +7,8 @@ import { useAuthStore } from '../stores/auth'
 import { useSwipe } from '../composables/useSwipe'
 import { useChatWebSocket } from '../composables/useChatWebSocket'
 import { useMentionNotification } from '../composables/useMentionNotification'
+import { useDesktopNotifications } from '../composables/useDesktopNotifications'
+import { printConsoleEasterEgg } from '../utils/consoleArt'
 import ServerList from '../components/ServerList.vue'
 import ChannelList from '../components/ChannelList.vue'
 import ChatArea from '../components/ChatArea.vue'
@@ -22,7 +24,22 @@ useMusicStore()
 
 // Initialize global chat WebSocket (persists across channel switches)
 const chatWs = useChatWebSocket()
-const { playMentionSound, markChannelAsMentioned } = useMentionNotification()
+const { playMentionSound, markChannelAsMentioned, setUnreadCount, getUnreadCount } = useMentionNotification()
+const { showMessageNotification, setUnreadAttention } = useDesktopNotifications()
+
+// Resolve a channel display name across all loaded servers (for toasts).
+function findChannelName(channelId: number): string {
+  for (const server of chat.servers) {
+    const channel = server.channels?.find(c => c.id === channelId)
+    if (channel) return channel.name
+  }
+  return '新消息'
+}
+
+// The window counts as "attended" only when it is both visible and focused.
+function isWindowActive(): boolean {
+  return document.hasFocus() && document.visibilityState === 'visible'
+}
 
 // Handle incoming chat WebSocket messages
 chatWs.onMessage((data) => {
@@ -47,18 +64,36 @@ chatWs.onMessage((data) => {
         reply_to_id: data.reply_to_id,
         reply_to: data.reply_to,
         mentions: data.mentions || [],
+        source_platform: data.source_platform,
+        forward_meta: data.forward_meta,
       }
       chat.addMessage(newMessage)
     }
 
+    const currentUserId = auth.user?.id
+    const isOwnMessage = data.user_id === currentUserId
+    const isCurrentChannel = messageChannelId === chat.currentChannel?.id
+
+    // Unread tracking for channels the user is not currently viewing.
+    // Feeds the channel badges, tray flashing and system toast.
+    if (!isOwnMessage && !isCurrentChannel) {
+      setUnreadCount(messageChannelId, getUnreadCount(messageChannelId) + 1)
+      setUnreadAttention(true)
+
+      if (!isWindowActive()) {
+        const channelName = findChannelName(messageChannelId)
+        const preview = data.content
+          ? `${data.username}: ${data.content}`
+          : `${data.username} 发送了附件`
+        showMessageNotification(channelName, preview)
+      }
+    }
+
     // Check if current user is mentioned (for any channel)
     if (data.mentions && data.mentions.length > 0) {
-      const currentUserId = auth.user?.id
       const isMentioned = data.mentions.some(
         (mention: { id: number; username: string }) => mention.id === currentUserId
       )
-      const isOwnMessage = data.user_id === currentUserId
-      const isCurrentChannel = messageChannelId === chat.currentChannel?.id
 
       if (isMentioned && !isOwnMessage) {
         // Play sound for mentions (even in current channel)
@@ -150,6 +185,8 @@ onMounted(async () => {
   if (firstServer) {
     await chat.fetchServer(firstServer.id)
   }
+
+  printConsoleEasterEgg()
 })
 
 watch(
@@ -253,7 +290,7 @@ watch(
     </div>
 
     <div class="main-content">
-      <ChatArea v-if="chat.currentChannel?.type === 'TEXT'" />
+      <ChatArea v-if="chat.currentChannel?.type === 'TEXT' || chat.currentChannel?.type === 'FORWARD'" />
       <VoicePanel v-else-if="chat.currentChannel?.type === 'VOICE'" />
       <div v-else class="no-channel">
         <p>选择一个频道开始聊天</p>

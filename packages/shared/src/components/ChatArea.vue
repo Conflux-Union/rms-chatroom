@@ -21,7 +21,7 @@ import {
   dialog,
 } from './ui'
 import type { ZmDropdownOption, ZmSelectOption } from './ui'
-import { Paperclip, Send, Upload, X, Image, Video, Music, FileText, File, MoreVertical, ArrowUp, Reply, CornerUpLeft, SmilePlus } from 'lucide-vue-next'
+import { Paperclip, Send, Upload, X, Image, Video, Music, FileText, File, MoreVertical, ArrowUp, Reply, CornerUpLeft, SmilePlus, Radio } from 'lucide-vue-next'
 import FilePreview from './FilePreview.vue'
 import type { Attachment, Message, ReactionGroup } from '../types'
 import axios from 'axios'
@@ -34,6 +34,10 @@ const chatWs = useChatWebSocket()
 const messageInput = ref('')
 const messagesContainer = ref<HTMLElement | null>(null)
 const fileInput = ref<HTMLInputElement | null>(null)
+
+// FORWARD (message sync) channels are read-only for regular users: only the
+// bot API may post. Hides the composer while keeping scroll/reactions/replies.
+const isReadOnly = computed(() => chat.currentChannel?.type === 'FORWARD')
 
 // True while prepending older messages. Suppresses the length-watch auto-scroll
 // (which would yank the user back to the bottom) and guards re-entrancy.
@@ -65,7 +69,8 @@ const contextMenuOptions = computed(() => {
   if (!msg) return []
   const opts: Array<{ label: string; key: string }> = []
   opts.push({ label: '添加表情', key: 'reaction' })
-  opts.push({ label: '回复', key: 'reply' })
+  // FORWARD channels have no composer, so replying is impossible.
+  if (!isReadOnly.value) opts.push({ label: '回复', key: 'reply' })
   if (canEdit(msg)) opts.push({ label: '编辑', key: 'edit' })
   if (canDelete(msg)) opts.push({ label: '删除', key: 'delete' })
   if (canMute(msg)) opts.push({ label: '禁言用户', key: 'mute' })
@@ -207,7 +212,7 @@ watch(
   () => chat.currentChannel?.id,
   async () => {
     const channel = chat.currentChannel
-    if (channel && channel.type === 'TEXT') {
+    if (channel && (channel.type === 'TEXT' || channel.type === 'FORWARD')) {
       // Clear any in-flight "load older" lock from the previous channel so the
       // new channel can paginate immediately.
       isFetchingOlder.value = false
@@ -324,7 +329,6 @@ function handleMessagesScroll() {
       // Update read timestamp and clear mention notification when user scrolls
       markChannelAsRead(chat.currentChannel.id)
       clearChannelMention(chat.currentChannel.id)
-      console.log('[ChatArea] Updated read timestamp on scroll')
     }
   }, 120)
 }
@@ -425,10 +429,12 @@ function scrollToMessage(messageId: number) {
 
 // File handling
 function triggerFileSelect() {
+  if (isReadOnly.value) return
   fileInput.value?.click()
 }
 
 function handleFileSelect(event: Event) {
+  if (isReadOnly.value) return
   const target = event.target as HTMLInputElement
   if (target.files) {
     pendingFiles.value = [...pendingFiles.value, ...Array.from(target.files)]
@@ -449,7 +455,8 @@ function handleDragLeave(event: DragEvent) {
 function handleDrop(event: DragEvent) {
   event.preventDefault()
   isDragging.value = false
-  
+
+  if (isReadOnly.value) return
   if (event.dataTransfer?.files) {
     pendingFiles.value = [...pendingFiles.value, ...Array.from(event.dataTransfer.files)]
   }
@@ -484,7 +491,8 @@ async function uploadFiles() {
 }
 
 const canSend = computed(() => {
-  return (messageInput.value.trim() || uploadedAttachments.value.length > 0) && !isUploading.value
+  // pendingFiles count too: attachments upload only when send is clicked
+  return (messageInput.value.trim() || uploadedAttachments.value.length > 0 || pendingFiles.value.length > 0) && !isUploading.value
 })
 
 async function sendMessage() {
@@ -1129,7 +1137,8 @@ onUnmounted(() => {
     </div>
 
     <div class="chat-header">
-      <span class="channel-hash">#</span>
+      <span v-if="!isReadOnly" class="channel-hash">#</span>
+      <Radio v-else class="channel-hash channel-hash-icon" :size="16" />
       <span class="channel-name">{{ chat.currentChannel?.name }}</span>
 
       <!-- Continue reading button -->
@@ -1183,6 +1192,7 @@ onUnmounted(() => {
           <!-- Header: hidden for grouped messages -->
           <div v-if="!shouldGroupWithPrevious(index)" class="message-header">
             <span class="message-author">{{ msg.username }}</span>
+            <span v-if="msg.source_platform" class="source-badge">{{ msg.source_platform === 'qq' ? 'QQ' : '服务器' }}</span>
             <span class="message-time">
               {{ formatDateTime(msg.created_at) }}
               <span v-if="getGroupLatestEditedAt(index)" class="edited-indicator">(已编辑于 {{ formatDateTime(getGroupLatestEditedAt(index)!) }})</span>
@@ -1256,6 +1266,16 @@ onUnmounted(() => {
                 </template>
                 <span v-else class="reply-content">[附件]</span>
               </template>
+            </div>
+            <!-- Degraded quote: the quoted source message was never forwarded
+                 to this channel, so only the bot-provided preview is shown. -->
+            <div
+              v-else-if="msg.forward_meta?.quote"
+              class="message-reply-ref message-reply-static"
+            >
+              <CornerUpLeft :size="14" class="reply-icon" />
+              <span class="reply-author">{{ msg.forward_meta.quote.nickname }}</span>
+              <span v-if="msg.forward_meta.quote.content" class="reply-content">{{ msg.forward_meta.quote.content }}</span>
             </div>
             <div v-if="msg.content" class="message-text" v-html="renderMessageContent(msg.content)"></div>
             <!-- Attachments -->
@@ -1334,7 +1354,7 @@ onUnmounted(() => {
     </div>
 
     <!-- Reply preview bar -->
-    <div v-if="replyingTo" class="reply-preview-bar">
+    <div v-if="!isReadOnly && replyingTo" class="reply-preview-bar">
       <div class="reply-preview-content">
         <Reply :size="16" class="reply-preview-icon" />
         <span class="reply-preview-label">回复</span>
@@ -1352,7 +1372,7 @@ onUnmounted(() => {
       </button>
     </div>
 
-    <div class="chat-input">
+    <div v-if="!isReadOnly" class="chat-input">
       <input type="file" ref="fileInput" @change="handleFileSelect" multiple hidden />
       <button class="attach-btn" @click="triggerFileSelect" title="添加附件" :disabled="isMuted">
         <Paperclip :size="20" />
@@ -2008,6 +2028,33 @@ onUnmounted(() => {
   object-fit: cover;
   border-radius: var(--radius-sm);
   flex-shrink: 0;
+}
+
+/* Degraded forward quote: same layout as reply-ref but not clickable */
+.message-reply-static {
+  cursor: default;
+}
+
+.message-reply-static:hover {
+  background: var(--surface-glass);
+}
+
+/* Source badge next to forwarded message authors (FORWARD channels) */
+.source-badge {
+  flex-shrink: 0;
+  padding: 1px 5px;
+  font-size: 10px;
+  line-height: 14px;
+  color: var(--color-text-muted);
+  background: var(--zhimo-surface-bg);
+  border: 1px solid var(--zhimo-seal-hover);
+  border-radius: var(--zhimo-radius);
+}
+
+/* Sync channel header icon (replaces the # hash in FORWARD channels) */
+.channel-hash-icon {
+  display: flex;
+  align-items: center;
 }
 
 /* Reply Preview Bar */
