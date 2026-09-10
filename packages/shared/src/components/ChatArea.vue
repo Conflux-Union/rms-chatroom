@@ -1547,7 +1547,6 @@ onUnmounted(() => {
   /* Frosted band so the channel name reads over the vivid ink canvas. */
   background: var(--zhimo-surface-bg);
   backdrop-filter: var(--zhimo-surface-blur);
-  -webkit-backdrop-filter: var(--zhimo-surface-blur);
 }
 
 .channel-hash {
@@ -1635,7 +1634,6 @@ onUnmounted(() => {
   border-radius: var(--zhimo-radius);
   background: var(--zhimo-surface-bg);
   backdrop-filter: var(--zhimo-surface-blur);
-  -webkit-backdrop-filter: var(--zhimo-surface-blur);
 }
 
 .message-header {

@@ -40,6 +40,12 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
+    // lightningcss dedupes paired backdrop-filter/-webkit-backdrop-filter
+    // declarations down to one (issue #537), and Chrome 150 dropped the
+    // -webkit- alias, so whichever survives breaks one browser. Declare
+    // Safari in cssTarget so lightningcss emits both prefixes from the
+    // standard property alone.
+    cssTarget: ['chrome100', 'safari15.6'],
   },
   base: './',
   publicDir: resolve(__dirname, '../shared/public'),

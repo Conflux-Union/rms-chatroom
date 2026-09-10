@@ -674,7 +674,6 @@ function closeInviteDialog() {
   /* Frosted surface so participant text stays readable over the ink-wash. */
   background: var(--zhimo-surface-bg);
   backdrop-filter: var(--zhimo-surface-blur);
-  -webkit-backdrop-filter: var(--zhimo-surface-blur);
 }
 
 .voice-header {
@@ -765,7 +764,6 @@ function closeInviteDialog() {
   cursor: pointer;
   transition: all var(--transition-fast);
   backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
   appearance: none;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23666' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
@@ -877,7 +875,6 @@ function closeInviteDialog() {
   border-radius: 999px;
   background: var(--zhimo-surface-bg);
   backdrop-filter: var(--zhimo-surface-blur);
-  -webkit-backdrop-filter: var(--zhimo-surface-blur);
   border: 1px solid rgba(255, 255, 255, 0.15);
   z-index: 10;
 }
@@ -915,7 +912,6 @@ function closeInviteDialog() {
   margin-bottom: 8px;
   background: var(--surface-glass);
   backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
   border-radius: var(--radius-lg);
   border: 1px solid rgba(255, 255, 255, 0.15);
 }
@@ -930,7 +926,6 @@ function closeInviteDialog() {
 .voice-users {
   background: var(--surface-glass);
   backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
   border-radius: var(--radius-lg);
   padding: 12px 8px;
   margin-bottom: 16px;
@@ -1270,7 +1265,6 @@ function closeInviteDialog() {
   flex-direction: column;
   background: var(--surface-glass);
   backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
   border-radius: var(--radius-lg);
   border: 1px solid rgba(255, 255, 255, 0.15);
   overflow: hidden;
@@ -1517,7 +1511,6 @@ margin-left:auto when this control is absent. */
     padding: 0;
     background: none;
     backdrop-filter: none;
-    -webkit-backdrop-filter: none;
     border: none;
     border-radius: 0;
   }

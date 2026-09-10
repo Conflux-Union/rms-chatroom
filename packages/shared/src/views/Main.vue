@@ -382,7 +382,6 @@ watch(
      sit on one frosted sheet (ink ghosts through, stays readable). */
   background: var(--zhimo-surface-bg);
   backdrop-filter: var(--zhimo-surface-blur);
-  -webkit-backdrop-filter: var(--zhimo-surface-blur);
 }
 
 .main-content {
@@ -406,7 +405,6 @@ watch(
   border-radius: var(--zhimo-radius);
   background: var(--zhimo-surface-bg);
   backdrop-filter: var(--zhimo-surface-blur);
-  -webkit-backdrop-filter: var(--zhimo-surface-blur);
 }
 
 /* .user-panel {
@@ -485,7 +483,6 @@ watch(
   height: 100dvh;
   background: var(--zhimo-surface-bg);
   backdrop-filter: var(--zhimo-surface-blur);
-  -webkit-backdrop-filter: var(--zhimo-surface-blur);
   border-left: 1px solid var(--zhimo-border-strong);
   z-index: 99;
   display: flex;

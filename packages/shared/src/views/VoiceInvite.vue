@@ -419,7 +419,6 @@ function disconnect() {
   padding: var(--spacing-xxl) var(--spacing-xl);
   background: var(--surface-glass);
   backdrop-filter: blur(var(--blur-strength));
-  -webkit-backdrop-filter: blur(var(--blur-strength));
   border-radius: var(--radius-lg);
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
 }
