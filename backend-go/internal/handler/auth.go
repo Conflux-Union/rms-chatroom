@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -139,6 +140,14 @@ func (h *AuthHandler) issueLocalSession(user *permission.UserInfo, issueRefreshT
 	return tokens, nil
 }
 
+// remoteAddrHost strips the port from an addr like "1.2.3.4:5678".
+func remoteAddrHost(addr string) string {
+	if host, _, err := net.SplitHostPort(addr); err == nil {
+		return host
+	}
+	return addr
+}
+
 func (h *AuthHandler) fetchSilentSession(c echo.Context) (*silentSessionResponse, error) {
 	cookie, err := c.Cookie(ssoSessionCookieName)
 	if err != nil || cookie.Value == "" {
@@ -152,6 +161,25 @@ func (h *AuthHandler) fetchSilentSession(c echo.Context) (*silentSessionResponse
 	req.Header.Set("X-System-Code", h.config.OAuthClientID)
 	req.Header.Set("X-System-Secret", h.config.OAuthClientSecret)
 	req.AddCookie(&http.Cookie{Name: cookie.Name, Value: cookie.Value})
+	// Forward the browser's environment so the SSO session risk check
+	// (IP subnet + User-Agent scoring) sees the same client that logged in.
+	// Without this the proxy call scores ip_subnet+1 and ua_hash+1, hits the
+	// revoke threshold, and kills the session on every silent login.
+	if ua := c.Request().Header.Get("User-Agent"); ua != "" {
+		req.Header.Set("User-Agent", ua)
+	}
+	clientIP := c.Request().Header.Get("X-Forwarded-For")
+	if clientIP != "" {
+		clientIP = strings.TrimSpace(strings.Split(clientIP, ",")[0])
+	} else if c.Request().RemoteAddr != "" {
+		clientIP = remoteAddrHost(c.Request().RemoteAddr)
+	}
+	if clientIP != "" {
+		// Dedicated header, not X-Forwarded-For: the SSO ignores XFF on
+		// system-authenticated calls because its own reverse proxy always
+		// injects the direct peer address there, making it unreliable.
+		req.Header.Set("X-SSO-Client-IP", clientIP)
+	}
 
 	resp, err := h.http.Do(req)
 	if err != nil {
