@@ -111,13 +111,20 @@ class MainActivity : ComponentActivity() {
                 if (authState.isLoading) {
                     SplashContent()
                 } else {
+                    // Entry destination is decided once from the settled startup
+                    // state: stored credentials land in main directly (validity
+                    // is verified in the background); login is the no-token entry.
+                    val authenticatedAtEntry = authState.isAuthenticated
+                    val startDestination = remember {
+                        if (authenticatedAtEntry) Screen.Main.route else Screen.Login.route
+                    }
                     Surface(
                         modifier = Modifier.fillMaxSize(),
                         color = SurfaceDarker
                     ) {
                         NavGraph(
                             navController = navController,
-                            startDestination = Screen.Login.route,
+                            startDestination = startDestination,
                             onSsoLogin = { launchSsoLogin() }
                         )
                     }

@@ -54,6 +54,13 @@ class AuthViewModel @Inject constructor(
         }
     }
 
+    /**
+     * The startup decision must not wait on the network: any stored credential,
+     * even an expired one, goes straight to main. Validity is re-checked in the
+     * background by [validateStoredToken]; when a credential turns out to be
+     * invalid, tokens are cleared and [observeTokenCleared] routes the user to
+     * the login screen.
+     */
     private fun checkAuth() {
         viewModelScope.launch {
             Log.d(TAG, "checkAuth start")
@@ -63,40 +70,35 @@ class AuthViewModel @Inject constructor(
             authRepository.migrateLegacyToken()
 
             val token = authRepository.getAccessToken()
-            if (token != null) {
-                Log.d(TAG, "checkAuth token found length=${token.length}")
-                authRepository.verifyToken(token)
-                    .onSuccess { user ->
-                        Log.d(TAG, "checkAuth verify success user=${user.username}")
-                        _state.value = AuthState(
-                            isLoading = false,
-                            isAuthenticated = true,
-                            user = user,
-                            token = token
-                        )
-                    }
-                    .onFailure { e ->
-                        Log.e(TAG, "checkAuth verify failed", e)
-                        val isUnauthorized = (e as? AuthException)?.isUnauthorized == true
-                        if (isUnauthorized) {
-                            // Access token expired — try refresh
-                            tryRefreshOrLogout()
-                        } else {
-                            // Network/server error: proceed to main with error
-                            _state.value = AuthState(
-                                isLoading = false,
-                                isAuthenticated = true,
-                                user = null,
-                                token = token,
-                                error = e.message
-                            )
-                        }
-                    }
-            } else {
+            if (token == null) {
                 Log.d(TAG, "checkAuth no token")
                 _state.value = AuthState(isLoading = false, isAuthenticated = false)
+                return@launch
             }
+
+            Log.d(TAG, "checkAuth token found length=${token.length}")
+            _state.value = AuthState(isLoading = false, isAuthenticated = true, token = token)
+            validateStoredToken(token)
         }
+    }
+
+    private suspend fun validateStoredToken(token: String) {
+        authRepository.verifyToken(token)
+            .onSuccess { user ->
+                Log.d(TAG, "checkAuth verify success user=${user.username}")
+                _state.value = _state.value.copy(user = user)
+            }
+            .onFailure { e ->
+                Log.e(TAG, "checkAuth verify failed", e)
+                val isUnauthorized = (e as? AuthException)?.isUnauthorized == true
+                if (isUnauthorized) {
+                    // Access token expired — try refresh
+                    tryRefreshOrLogout()
+                } else {
+                    // Network/server error: stay in main, surface via toast
+                    _state.value = _state.value.copy(error = e.message)
+                }
+            }
     }
 
     /**
