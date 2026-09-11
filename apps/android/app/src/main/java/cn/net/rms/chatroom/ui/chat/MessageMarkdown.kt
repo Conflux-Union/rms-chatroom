@@ -299,49 +299,46 @@ private fun MarkdownTable(table: TableBlock) {
             val columnCap = MaxTableColumnWidth.roundToPx()
             val columnWidths = IntArray(columnCount)
 
-            // Pass 1: natural (wrap-capped) width of every cell -> column widths
+            // measure() may run only once per child, so probe sizes with
+            // intrinsics: column width = widest cell (wrap-capped), row height
+            // = tallest cell at the final column width.
             measurables.forEachIndexed { index, measurable ->
-                val natural = measurable.measure(Constraints(maxWidth = columnCap))
+                val natural = minOf(measurable.maxIntrinsicWidth(0), columnCap)
                 val column = index % columnCount
-                if (natural.width > columnWidths[column]) columnWidths[column] = natural.width
+                if (natural > columnWidths[column]) columnWidths[column] = natural
             }
 
-            // Pass 2: row heights at the final column widths
             val rowCount = measurables.size / columnCount
             val rowHeights = IntArray(rowCount)
             measurables.forEachIndexed { index, measurable ->
-                val width = columnWidths[index % columnCount]
-                val placed = measurable.measure(Constraints(minWidth = width, maxWidth = width))
+                val height = measurable.minIntrinsicHeight(columnWidths[index % columnCount])
                 val row = index / columnCount
-                if (placed.height > rowHeights[row]) rowHeights[row] = placed.height
+                if (height > rowHeights[row]) rowHeights[row] = height
             }
 
-            // Pass 3: stretch every cell to its row height so borders and the
-            // header band connect into a grid
+            // Stretch every cell to its row height so borders and the header
+            // band connect into a grid
             val rowOffsets = IntArray(rowCount)
             for (r in 1 until rowCount) rowOffsets[r] = rowOffsets[r - 1] + rowHeights[r - 1]
             val columnOffsets = IntArray(columnCount)
             for (c in 1 until columnCount) columnOffsets[c] = columnOffsets[c - 1] + columnWidths[c - 1]
 
-            val placedCells = measurables.mapIndexed { index, measurable ->
-                val column = index % columnCount
-                val row = index / columnCount
-                val placeable = measurable.measure(
-                    Constraints(
-                        minWidth = columnWidths[column],
-                        maxWidth = columnWidths[column],
-                        minHeight = rowHeights[row],
-                        maxHeight = rowHeights[row]
-                    )
-                )
-                Triple(placeable, columnOffsets[column], rowOffsets[row])
-            }
-
             layout(
                 width = columnOffsets.last() + columnWidths.last(),
                 height = rowOffsets.last() + rowHeights.last()
             ) {
-                placedCells.forEach { (placeable, x, y) -> placeable.place(x, y) }
+                measurables.forEachIndexed { index, measurable ->
+                    val column = index % columnCount
+                    val row = index / columnCount
+                    measurable.measure(
+                        Constraints(
+                            minWidth = columnWidths[column],
+                            maxWidth = columnWidths[column],
+                            minHeight = rowHeights[row],
+                            maxHeight = rowHeights[row]
+                        )
+                    ).place(columnOffsets[column], rowOffsets[row])
+                }
             }
         }
     }
