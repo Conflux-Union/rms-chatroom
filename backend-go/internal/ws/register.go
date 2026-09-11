@@ -33,7 +33,7 @@ func registerConnectionGauges() {
 
 // Register registers all WebSocket routes and voice HTTP routes.
 func Register(e *echo.Echo, cfg *config.Config, ssoClient *sso.Client, db *sql.DB) {
-	e.GET("/ws/chat", HandleChatWS(cfg.JWTSecret, db))
+	e.GET("/ws/chat", HandleChatWS(cfg.JWTSecret, ssoClient, db))
 	e.GET("/ws/global", HandleGlobalWS(cfg.JWTSecret, db))
 	e.GET("/ws/voice", HandleVoiceWS(cfg.JWTSecret))
 	e.GET("/ws/music", HandleMusicWS(cfg.JWTSecret))

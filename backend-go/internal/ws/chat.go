@@ -16,6 +16,7 @@ import (
 	"github.com/RMS-Server/rms-discord-go/internal/chatbridge"
 	"github.com/RMS-Server/rms-discord-go/internal/jwtutil"
 	"github.com/RMS-Server/rms-discord-go/internal/permission"
+	"github.com/RMS-Server/rms-discord-go/internal/sso"
 )
 
 var mentionRe = regexp.MustCompile(`@(\w+)`)
@@ -43,6 +44,7 @@ type chatBroadcast struct {
 	ChannelID   int64               `json:"channel_id"`
 	UserID      int                 `json:"user_id"`
 	Username    string              `json:"username"`
+	AvatarURL   string              `json:"avatar_url,omitempty"`
 	Content     string              `json:"content"`
 	CreatedAt   string              `json:"created_at"`
 	Attachments []attachmentPayload `json:"attachments"`
@@ -66,7 +68,7 @@ type replyPayload struct {
 }
 
 // HandleChatWS handles the /ws/chat WebSocket endpoint.
-func HandleChatWS(jwtSecret string, db *sql.DB) echo.HandlerFunc {
+func HandleChatWS(jwtSecret string, ssoClient *sso.Client, db *sql.DB) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		token := c.QueryParam("token")
 		if token == "" {
@@ -110,14 +112,14 @@ func HandleChatWS(jwtSecret string, db *sql.DB) echo.HandlerFunc {
 				return
 			}
 
-			handleChatMessage(db, conn, &msg)
+			handleChatMessage(db, ssoClient, conn, &msg)
 		})
 
 		return nil
 	}
 }
 
-func handleChatMessage(db *sql.DB, conn *Conn, msg *chatMessage) {
+func handleChatMessage(db *sql.DB, ssoClient *sso.Client, conn *Conn, msg *chatMessage) {
 	hasContent := strings.TrimSpace(msg.Content) != ""
 	hasAttachments := len(msg.AttachmentIDs) > 0
 	if msg.ChannelID == 0 || (!hasContent && !hasAttachments) {
@@ -241,12 +243,19 @@ func handleChatMessage(db *sql.DB, conn *Conn, msg *chatMessage) {
 		}
 	}
 
+	// Sender avatar for the broadcast. History responses batch-fetch avatars
+	// separately; live WS pushes must carry it themselves or every new message
+	// renders the first-letter fallback. Best-effort: on SSO failure the field
+	// is omitted and clients fall back.
+	avatarURL, _ := ssoClient.GetAvatarURL(conn.user.ID)
+
 	broadcast := chatBroadcast{
 		Type:        "message",
 		ID:          messageID,
 		ChannelID:   msg.ChannelID,
 		UserID:      conn.user.ID,
 		Username:    conn.user.Username,
+		AvatarURL:   avatarURL,
 		Content:     msg.Content,
 		CreatedAt:   now,
 		Attachments: attachments,
