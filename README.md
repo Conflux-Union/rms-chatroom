@@ -19,13 +19,14 @@ A modern communication platform with real-time chat, voice calls, and music shar
 
 ```
 rms-discord/
-├── packages/                # pnpm monorepo
-│   ├── shared/             # Shared components, stores, composables
+├── apps/                    # client applications
 │   ├── web/                # Web entry point
-│   └── desktop/            # Desktop (Tauri) renderer entry point
-├── src-tauri/              # Tauri v2 Rust backend
-├── backend-go/             # Go backend (Echo framework)
-├── android/                # Kotlin + Jetpack Compose
+│   ├── desktop/            # Desktop (Tauri) renderer + src-tauri Rust shell
+│   ├── android/            # Kotlin + Jetpack Compose
+│   └── minecraft/          # Minecraft 1.17.1 Fabric mod (in-game voice)
+├── packages/                # pnpm monorepo
+│   └── shared/             # Shared components, stores, composables
+├── server/                  # Go backend (Echo framework)
 └── pnpm-workspace.yaml
 ```
 
@@ -33,7 +34,7 @@ rms-discord/
 
 **Backend (Go):**
 - Echo framework
-- MySQL + golang-migrate + sqlc
+- MySQL + embedded auto-migrations (golang-migrate library)
 - gorilla/websocket for real-time messaging
 - LiveKit for voice infrastructure
 - JSON config with environment variable overrides
@@ -62,7 +63,7 @@ rms-discord/
 ### Backend Setup
 
 ```bash
-cd backend-go
+cd server
 cp config.example.json config.json  # Edit with your settings
 go run ./cmd/server/main.go
 ```
@@ -81,14 +82,14 @@ Frontend runs on `http://localhost:5173`
 ### Android Setup
 
 ```bash
-cd android
+cd apps/android
 ./gradlew assembleDebug
 ./gradlew installDebug
 ```
 
 ## Configuration
 
-### Backend (`backend-go/config.json`)
+### Backend (`server/config.json`)
 
 ```json
 {
@@ -111,7 +112,7 @@ VITE_API_BASE=http://localhost:8000
 VITE_WS_BASE=ws://localhost:8000
 ```
 
-### Android (`android/app/build.gradle.kts`)
+### Android (`apps/android/app/build.gradle.kts`)
 
 Build variants automatically configure API endpoints:
 - **Debug**: Points to localhost/development server
@@ -145,19 +146,16 @@ Backward compatible: defaults (`perm_min_level=0`, `logic_operator=AND`) reduce 
 ```bash
 pnpm build:web                # Web frontend
 pnpm build:desktop            # Desktop (Tauri) frontend
-cd backend-go && go build ./cmd/server/main.go  # Go binary
-cd android && ./gradlew assembleRelease          # Android APK
+cd server && go build ./cmd/server  # Go binary
+cd apps/android && ./gradlew assembleRelease     # Android APK
 ```
 
 ## Deployment
 
-```bash
-python deploy.py --release   # Tag + CI/CD (Android, Tauri Desktop, Server)
-python deploy.py --hot-fix   # Hot-fix version
-python deploy.py --debug     # Debug deploy (no tag)
-```
-
-GitHub Actions builds Android APK, Tauri Desktop app (Windows), deploys server binary, and creates GitHub Release.
+Push a tag `v<version>(<code>)` (e.g. `v1.0.7-fix-2(33)`) and GitHub Actions
+builds the Android APK, the Tauri Windows installer, and the server bundle,
+publishes the GitHub Release, and triggers the server self-update.
+Suffix `-fix-` marks a hot-fix, `-dev` a prerelease.
 
 ## Platform Support
 

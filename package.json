@@ -6,11 +6,10 @@
   "packageManager": "pnpm@11.1.1",
   "scripts": {
     "dev:web": "pnpm --filter @rms-discord/web dev",
-    "dev:desktop": "tauri dev",
     "build:web": "pnpm --filter @rms-discord/web build",
     "build:desktop": "pnpm --filter @rms-discord/desktop build",
-    "desktop:dev": "tauri dev",
-    "desktop:build": "tauri build",
+    "desktop:dev": "pnpm -C apps/desktop exec tauri dev",
+    "desktop:build": "pnpm -C apps/desktop exec tauri build",
     "test:ui-style": "node scripts/check-zhimo-theme.mjs"
   },
   "devDependencies": {

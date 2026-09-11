@@ -29,13 +29,13 @@ for (const file of files) {
   }
 }
 
-const webApp = readFileSync('packages/web/src/App.vue', 'utf8');
-const electronApp = readFileSync('packages/electron-renderer/src/App.vue', 'utf8');
+const webApp = readFileSync('apps/web/src/App.vue', 'utf8');
+const electronApp = readFileSync('apps/desktop/src/App.vue', 'utf8');
 if (!/<zhimo-ink-paper\b[^>]*\bimage=/.test(webApp)) {
-  failures.push('packages/web/src/App.vue: ink paper must reveal a background image');
+  failures.push('apps/web/src/App.vue: ink paper must reveal a background image');
 }
 if (!/<zhimo-ink-paper\b[^>]*\bimage=/.test(electronApp)) {
-  failures.push('packages/electron-renderer/src/App.vue: ink paper must reveal a background image');
+  failures.push('apps/desktop/src/App.vue: ink paper must reveal a background image');
 }
 
 if (failures.length > 0) {

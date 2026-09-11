@@ -32,8 +32,6 @@ env/
 # Node
 node_modules/
 dist/
-pnpm-lock.yaml
-package-lock.json
 yarn.lock
 *.tsbuildinfo
 
@@ -58,7 +56,7 @@ logs/
 build/
 
 # Android
-android/app/release.keystore
+apps/android/app/release.keystore
 *.jks
 *.keystore
 
@@ -87,15 +85,18 @@ Thumbs.db
 uploads/
 
 # Tauri build artifacts
-src-tauri/target/
-src-tauri/gen/
+apps/desktop/src-tauri/target/
+apps/desktop/src-tauri/gen/
 
 # Playwright MCP artifacts
 .playwright-mcp/
 
 # Go build artifacts
-backend-go/rms-discord-server
+server/rms-discord-server
 
 # Agent instruction files (local, not shared)
 AGENTS.md
 CLAUDE.md
+
+# Runtime data
+qimei.json
