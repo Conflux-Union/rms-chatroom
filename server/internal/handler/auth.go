@@ -537,6 +537,35 @@ func (h *AuthHandler) isValidRedirect(redirectURL string) bool {
 }
 
 // Refresh exchanges a refresh token for new access + refresh tokens.
+// mergeUserInfo overlays a fresh SSO profile onto stored refresh-token
+// metadata. SSO wins, but a partial response (SSO deployments have dropped
+// optional fields like nickname/email/group before) must not erase stored
+// data with empty strings. An empty nickname falls back to the username,
+// matching the login path. Permission levels have legitimate zero values, so
+// a missing field is indistinguishable from an explicit 0 and SSO wins.
+func mergeUserInfo(stored, fresh *permission.UserInfo) *permission.UserInfo {
+	if fresh == nil {
+		return stored
+	}
+	merged := *stored
+	if fresh.Username != "" {
+		merged.Username = fresh.Username
+	}
+	if fresh.Nickname != "" {
+		merged.Nickname = fresh.Nickname
+	}
+	if fresh.Email != "" {
+		merged.Email = fresh.Email
+	}
+	merged.PermissionLevel = fresh.PermissionLevel
+	merged.GroupLevel = fresh.GroupLevel
+	merged.AvatarURL = fresh.AvatarURL
+	if merged.Nickname == "" {
+		merged.Nickname = merged.Username
+	}
+	return &merged
+}
+
 // POST /api/auth/refresh
 func (h *AuthHandler) Refresh(c echo.Context) error {
 	// Accept JSON body or query param
@@ -590,11 +619,18 @@ func (h *AuthHandler) Refresh(c echo.Context) error {
 	avatarURL := ""
 
 	if user, err := h.sso.GetUserByID(int(userID)); err == nil {
-		username = user.Username
-		nickname = user.Nickname
-		email = user.Email
-		permLevel = user.PermissionLevel
-		groupLevel = user.GroupLevel
+		merged := mergeUserInfo(&permission.UserInfo{
+			Username:        storedUsername,
+			Nickname:        storedNickname,
+			Email:           storedEmail,
+			PermissionLevel: storedPermLevel,
+			GroupLevel:      storedGroupLevel,
+		}, user)
+		username = merged.Username
+		nickname = merged.Nickname
+		email = merged.Email
+		permLevel = merged.PermissionLevel
+		groupLevel = merged.GroupLevel
 		avatarURL = user.AvatarURL
 	}
 

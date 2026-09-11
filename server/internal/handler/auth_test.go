@@ -10,6 +10,7 @@ import (
 	"github.com/labstack/echo/v4"
 
 	"github.com/RMS-Server/rms-discord-go/internal/config"
+	"github.com/RMS-Server/rms-discord-go/internal/permission"
 )
 
 func TestFetchSilentSessionForwardsBrowserEnvironment(t *testing.T) {
@@ -84,9 +85,127 @@ func TestFetchSilentSessionFallsBackToRemoteIP(t *testing.T) {
 
 func testConfigWithSSOURL(baseURL string) *config.Config {
 	return &config.Config{
-		SSOBaseURL:      baseURL,
-		OAuthBaseURL:    baseURL,
-		OAuthClientID:   "test-client",
+		SSOBaseURL:        baseURL,
+		OAuthBaseURL:      baseURL,
+		OAuthClientID:     "test-client",
 		OAuthClientSecret: "test-secret",
+	}
+}
+
+func TestMergeUserInfo(t *testing.T) {
+	storedFull := &permission.UserInfo{
+		ID:              1,
+		Username:        "Trirrin",
+		Nickname:        "缇Rain",
+		Email:           "a@b.c",
+		PermissionLevel: 4,
+		GroupLevel:      5,
+	}
+
+	tests := []struct {
+		name   string
+		stored *permission.UserInfo
+		fresh  *permission.UserInfo
+		want   permission.UserInfo
+	}{
+		{
+			name:   "partial SSO response keeps stored strings",
+			stored: storedFull,
+			fresh: &permission.UserInfo{
+				Username:        "Trirrin",
+				PermissionLevel: 4,
+				AvatarURL:       "https://sso/avatar",
+			},
+			want: permission.UserInfo{
+				ID:              1,
+				Username:        "Trirrin",
+				Nickname:        "缇Rain",
+				Email:           "a@b.c",
+				PermissionLevel: 4,
+				// A missing group object yields 0, indistinguishable from
+				// an explicit 0; SSO wins for numeric levels.
+				GroupLevel: 0,
+				AvatarURL:  "https://sso/avatar",
+			},
+		},
+		{
+			name:   "complete SSO response wins",
+			stored: storedFull,
+			fresh: &permission.UserInfo{
+				Username:        "Trirrin",
+				Nickname:        "NewName",
+				Email:           "new@b.c",
+				PermissionLevel: 3,
+				GroupLevel:      2,
+				AvatarURL:       "https://sso/new",
+			},
+			want: permission.UserInfo{
+				ID:              1,
+				Username:        "Trirrin",
+				Nickname:        "NewName",
+				Email:           "new@b.c",
+				PermissionLevel: 3,
+				GroupLevel:      2,
+				AvatarURL:       "https://sso/new",
+			},
+		},
+		{
+			name: "empty nickname everywhere falls back to username",
+			stored: &permission.UserInfo{
+				ID:              1,
+				Username:        "Trirrin",
+				Email:           "a@b.c",
+				PermissionLevel: 4,
+				GroupLevel:      5,
+			},
+			fresh: &permission.UserInfo{
+				Username:        "Trirrin",
+				PermissionLevel: 4,
+			},
+			want: permission.UserInfo{
+				ID:              1,
+				Username:        "Trirrin",
+				Nickname:        "Trirrin",
+				Email:           "a@b.c",
+				PermissionLevel: 4,
+				GroupLevel:      0,
+			},
+		},
+		{
+			name:   "nil fresh keeps stored",
+			stored: storedFull,
+			fresh:  nil,
+			want:   *storedFull,
+		},
+		{
+			name:   "empty fresh username keeps stored username",
+			stored: storedFull,
+			fresh: &permission.UserInfo{
+				Nickname:        "SomeName",
+				PermissionLevel: 4,
+			},
+			want: permission.UserInfo{
+				ID:              1,
+				Username:        "Trirrin",
+				Nickname:        "SomeName",
+				Email:           "a@b.c",
+				PermissionLevel: 4,
+				GroupLevel:      0,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			storedCopy := *tt.stored
+			got := mergeUserInfo(&storedCopy, tt.fresh)
+			if *got != tt.want {
+				t.Fatalf("mergeUserInfo() = %+v, want %+v", *got, tt.want)
+			}
+			// stored must never be mutated in place
+			if storedCopy != *tt.stored {
+				t.Fatalf("stored was mutated: %+v", storedCopy)
+			}
+		})
 	}
 }
