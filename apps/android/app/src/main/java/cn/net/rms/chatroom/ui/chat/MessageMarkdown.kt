@@ -21,6 +21,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.LinkAnnotation
@@ -32,6 +33,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import cn.net.rms.chatroom.ui.theme.SurfaceLighter
@@ -226,38 +229,120 @@ private fun MarkdownCodeBlock(code: String) {
     }
 }
 
+// Per-column width cap: narrow tables keep their natural size, long cell text
+// wraps, and tables wider than the message column scroll horizontally (web
+// renders the same via `table { display: block; overflow-x: auto }`).
+private val MaxTableColumnWidth = 220.dp
+
+internal class MarkdownTableRow(val cells: List<Node>, val isHeader: Boolean)
+
+internal fun tableRows(table: TableBlock): List<MarkdownTableRow> {
+    val rows = mutableListOf<MarkdownTableRow>()
+    var section = table.firstChild
+    while (section != null) {
+        val isHeader = section is TableHead
+        var row = section.firstChild
+        while (row != null) {
+            val cells = buildList {
+                var cell = row.firstChild
+                while (cell != null) {
+                    add(cell)
+                    cell = cell.next
+                }
+            }
+            rows.add(MarkdownTableRow(cells, isHeader))
+            row = row.next
+        }
+        section = section.next
+    }
+    return rows
+}
+
 @Composable
 private fun MarkdownTable(table: TableBlock) {
-    Column(modifier = Modifier.horizontalScroll(rememberScrollState())) {
-        var section = table.firstChild
-        while (section != null) {
-            val isHeader = section is TableHead
-            var row = section.firstChild
-            while (row != null) {
-                Row(modifier = if (isHeader) Modifier.background(SurfaceLighter) else Modifier) {
-                    var cell = row.firstChild
-                    while (cell != null) {
+    val rows = remember(table) { tableRows(table) }
+    if (rows.isEmpty()) return
+    val columnCount = rows.maxOf { it.cells.size }
+    if (columnCount == 0) return
+
+    Box(modifier = Modifier.horizontalScroll(rememberScrollState())) {
+        Layout(
+            content = {
+                // Cells are emitted row-major; ragged rows are padded so the
+                // measure block can index (row, column) arithmetically.
+                rows.forEach { row ->
+                    repeat(columnCount) { column ->
+                        val cell = row.cells.getOrNull(column)
                         Box(
                             modifier = Modifier
+                                .then(if (row.isHeader) Modifier.background(SurfaceLighter) else Modifier)
                                 .border(0.5.dp, MarkdownBorder)
-                                .padding(horizontal = 8.dp, vertical = 3.dp)
+                                .padding(horizontal = 8.dp, vertical = 3.dp),
+                            contentAlignment = Alignment.CenterStart
                         ) {
-                            Text(
-                                text = renderMarkdownInlines(cell),
-                                style = if (isHeader) {
-                                    MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold)
-                                } else {
-                                    MaterialTheme.typography.bodyMedium
-                                },
-                                color = TextSecondary
-                            )
+                            if (cell != null) {
+                                Text(
+                                    text = renderMarkdownInlines(cell),
+                                    style = if (row.isHeader) {
+                                        MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold)
+                                    } else {
+                                        MaterialTheme.typography.bodyMedium
+                                    },
+                                    color = TextSecondary
+                                )
+                            }
                         }
-                        cell = cell.next
                     }
                 }
-                row = row.next
             }
-            section = section.next
+        ) { measurables, _ ->
+            val columnCap = MaxTableColumnWidth.roundToPx()
+            val columnWidths = IntArray(columnCount)
+
+            // Pass 1: natural (wrap-capped) width of every cell -> column widths
+            measurables.forEachIndexed { index, measurable ->
+                val natural = measurable.measure(Constraints(maxWidth = columnCap))
+                val column = index % columnCount
+                if (natural.width > columnWidths[column]) columnWidths[column] = natural.width
+            }
+
+            // Pass 2: row heights at the final column widths
+            val rowCount = measurables.size / columnCount
+            val rowHeights = IntArray(rowCount)
+            measurables.forEachIndexed { index, measurable ->
+                val width = columnWidths[index % columnCount]
+                val placed = measurable.measure(Constraints(minWidth = width, maxWidth = width))
+                val row = index / columnCount
+                if (placed.height > rowHeights[row]) rowHeights[row] = placed.height
+            }
+
+            // Pass 3: stretch every cell to its row height so borders and the
+            // header band connect into a grid
+            val rowOffsets = IntArray(rowCount)
+            for (r in 1 until rowCount) rowOffsets[r] = rowOffsets[r - 1] + rowHeights[r - 1]
+            val columnOffsets = IntArray(columnCount)
+            for (c in 1 until columnCount) columnOffsets[c] = columnOffsets[c - 1] + columnWidths[c - 1]
+
+            val placedCells = measurables.mapIndexed { index, measurable ->
+                val column = index % columnCount
+                val row = index / columnCount
+                val placeable = measurable.measure(
+                    Constraints(
+                        minWidth = columnWidths[column],
+                        maxWidth = columnWidths[column],
+                        minHeight = rowHeights[row],
+                        maxHeight = rowHeights[row]
+                    )
+                )
+                Triple(placeable, columnOffsets[column], rowOffsets[row])
+            }
+
+            layout(
+                width = columnOffsets.last() + columnWidths.last(),
+                height = rowOffsets.last() + rowHeights.last()
+            ) {
+                placedCells.forEach { (placeable, x, y) -> placeable.place(x, y) }
+            }
         }
     }
 }

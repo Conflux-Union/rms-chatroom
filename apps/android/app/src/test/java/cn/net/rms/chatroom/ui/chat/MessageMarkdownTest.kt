@@ -147,6 +147,17 @@ class MessageMarkdownTest {
     }
 
     @Test
+    fun `table rows are collected with header flag`() {
+        val table = parseMessageMarkdown("| a | b |\n|---|---|\n| 1 | 2 |").firstChild as TableBlock
+        val rows = tableRows(table)
+        assertEquals(2, rows.size)
+        assertTrue(rows[0].isHeader)
+        assertFalse(rows[1].isHeader)
+        assertEquals(2, rows[0].cells.size)
+        assertEquals(2, rows[1].cells.size)
+    }
+
+    @Test
     fun `empty content renders empty`() {
         assertEquals("", render("").text)
         assertEquals("", renderMarkdownInlines(null).text)
