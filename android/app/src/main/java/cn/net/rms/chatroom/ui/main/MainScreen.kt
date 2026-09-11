@@ -248,7 +248,6 @@ fun MainScreen(
                             messages = messages,
                             isLoading = mainState.isMessagesLoading,
                             connectionState = connectionState,
-                            readOnly = mainState.currentChannel?.type == ChannelType.FORWARD,
                             authToken = authState.token,
                             currentUserId = authState.user?.id,
                             currentUserPermission = authState.user?.permissionLevel,

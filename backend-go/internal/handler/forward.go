@@ -3,6 +3,7 @@ package handler
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -19,9 +20,9 @@ import (
 	"github.com/RMS-Server/rms-discord-go/internal/sso"
 )
 
-// ForwardHandler serves the bot-only message-sync API for FORWARD channels.
-// The bot authenticates with a static Bearer token (config forward_bot_token)
-// instead of a user JWT.
+// ForwardHandler serves the message-sync API for FORWARD channels: the QQ
+// bot's HTTP routes (static Bearer token, config forward_bot_token) and the
+// ChatBridge game-network inbound path.
 type ForwardHandler struct {
 	db        *sql.DB
 	sso       *sso.Client
@@ -46,7 +47,7 @@ type forwardQuoteReq struct {
 }
 
 type forwardMessageReq struct {
-	Source          string           `json:"source"` // "qq" or "game"
+	Source          string           `json:"source"` // "qq" (game arrives via ChatBridge)
 	Sender          forwardSenderReq `json:"sender"`
 	Content         string           `json:"content"`
 	SourceMessageID string           `json:"source_message_id"`
@@ -62,14 +63,29 @@ type forwardQuoteMeta struct {
 }
 
 type forwardMeta struct {
-	SenderNickname string            `json:"sender_nickname,omitempty"`
-	Quote          *forwardQuoteMeta `json:"quote,omitempty"`
+	SenderNickname string `json:"sender_nickname,omitempty"`
+	// Server is the ChatBridge origin server for game-sourced messages.
+	Server string            `json:"server,omitempty"`
+	Quote  *forwardQuoteMeta `json:"quote,omitempty"`
+}
+
+// forwardedMessage is one message entering the platform from an external
+// chat source: the QQ sync bot (HTTP API) or the ChatBridge game network.
+type forwardedMessage struct {
+	Source          string // "qq" or "game"
+	Sender          forwardSenderReq
+	Content         string
+	SourceMessageID string
+	Reply           *forwardQuoteReq
+	AttachmentIDs   []int64
+	Server          string // ChatBridge origin server name (game only)
 }
 
 // resolveAuthor maps the external sender to a platform account. QQ senders are
 // matched by the SSO account email (<qq>@qq.com), game events by username.
 // Unmatched senders fall back to the bot proxy account with
-// "昵称(未知用户)" as the display name.
+// "昵称(未知用户)" as the display name; game system events (no author, e.g.
+// "Steve joined smp") post under the plain server name instead.
 func (h *ForwardHandler) resolveAuthor(source string, sender forwardSenderReq) (userID int64, username string, avatarURL string) {
 	nickname := sender.Nickname
 	if nickname == "" {
@@ -91,14 +107,38 @@ func (h *ForwardHandler) resolveAuthor(source string, sender forwardSenderReq) (
 		return int64(user.ID), name, user.AvatarURL
 	}
 
+	// System events have no player to resolve; keep the server name clean.
+	if source == "game" && sender.Username == "" {
+		return h.botUserID, nickname, ""
+	}
+
 	// Fallback: post as the bot account under the original nickname. The
 	// messages.username column carries "昵称(未知用户)" so the original
 	// sender stays visible even though user_id is the bot.
 	return h.botUserID, nickname + "(未知用户)", ""
 }
 
-// PostMessage inserts a forwarded message into a FORWARD channel.
+var errNotForwardChannel = errors.New("not a forward channel")
+
+// verifyForwardChannel checks that channelID exists and is a FORWARD channel.
+// Returns sql.ErrNoRows when the channel does not exist.
+func verifyForwardChannel(db *sql.DB, channelID int64) error {
+	var chType string
+	err := db.QueryRow("SELECT type FROM channels WHERE id = ?", channelID).Scan(&chType)
+	if err != nil {
+		return err
+	}
+	if chType != "FORWARD" {
+		return errNotForwardChannel
+	}
+	return nil
+}
+
+// PostMessage inserts a forwarded QQ message into a FORWARD channel.
 // POST /api/forward/channels/:channel_id/messages
+//
+// Game-sourced messages used to arrive here too; they now come in over
+// ChatBridge (see PostGameMessage).
 func (h *ForwardHandler) PostMessage(c echo.Context) error {
 	channelID, err := strconv.ParseInt(c.Param("channel_id"), 10, 64)
 	if err != nil {
@@ -109,68 +149,104 @@ func (h *ForwardHandler) PostMessage(c echo.Context) error {
 	if err := c.Bind(&req); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 	}
-	if req.Source != "qq" && req.Source != "game" {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "source must be qq or game"})
+	if req.Source != "qq" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "source must be qq"})
 	}
 	if strings.TrimSpace(req.Content) == "" && len(req.AttachmentIDs) == 0 {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "message must have content or attachments"})
 	}
 
-	// Verify channel exists and is a FORWARD channel
-	var chType string
-	err = h.db.QueryRow("SELECT type FROM channels WHERE id = ?", channelID).Scan(&chType)
-	if err == sql.ErrNoRows {
+	resp, err := h.postForwarded(channelID, forwardedMessage{
+		Source:          req.Source,
+		Sender:          req.Sender,
+		Content:         req.Content,
+		SourceMessageID: req.SourceMessageID,
+		Reply:           req.Reply,
+		AttachmentIDs:   req.AttachmentIDs,
+	})
+	if errors.Is(err, sql.ErrNoRows) {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "channel not found"})
+	}
+	if errors.Is(err, errNotForwardChannel) {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
-	if chType != "FORWARD" {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "not a forward channel"})
+	return c.JSON(http.StatusCreated, resp)
+}
+
+// PostGameMessage inserts one chat line received over ChatBridge into a
+// FORWARD channel. author is the in-game player name; an empty author marks
+// a system event (player joined/left, server start/stop), which posts under
+// the originating server's name. The message is broadcast live like any
+// other forwarded message.
+func (h *ForwardHandler) PostGameMessage(channelID int64, server, author, message string) error {
+	sender := forwardSenderReq{Username: author, Nickname: author}
+	if author == "" {
+		sender = forwardSenderReq{Nickname: server}
+	}
+	_, err := h.postForwarded(channelID, forwardedMessage{
+		Source:  "game",
+		Sender:  sender,
+		Content: message,
+		Server:  server,
+	})
+	if err != nil && !errors.Is(err, sql.ErrNoRows) && !errors.Is(err, errNotForwardChannel) {
+		return err
+	}
+	return nil
+}
+
+// postForwarded persists a forwarded message and broadcasts it live. It is
+// the single insertion path shared by the QQ bot API and ChatBridge.
+func (h *ForwardHandler) postForwarded(channelID int64, m forwardedMessage) (*messageResp, error) {
+	if err := verifyForwardChannel(h.db, channelID); err != nil {
+		return nil, err
 	}
 
-	authorID, username, avatarURL := h.resolveAuthor(req.Source, req.Sender)
-	nickname := req.Sender.Nickname
+	authorID, username, avatarURL := h.resolveAuthor(m.Source, m.Sender)
+	nickname := m.Sender.Nickname
 	if nickname == "" {
-		nickname = req.Sender.Username
+		nickname = m.Sender.Username
 	}
 
-	meta := forwardMeta{SenderNickname: nickname}
+	meta := forwardMeta{SenderNickname: nickname, Server: m.Server}
 
 	// Resolve the quote: a matching already-forwarded message becomes a real
 	// reply; anything else degrades to a quote block in forward_meta.
 	var replyToID sql.NullInt64
-	if req.Reply != nil && req.Reply.SourceMessageID != "" {
+	if m.Reply != nil && m.Reply.SourceMessageID != "" {
 		var targetID int64
 		err := h.db.QueryRow(
 			"SELECT id FROM messages WHERE channel_id = ? AND source_platform = ? AND source_message_id = ? AND is_deleted = FALSE",
-			channelID, req.Source, req.Reply.SourceMessageID,
+			channelID, m.Source, m.Reply.SourceMessageID,
 		).Scan(&targetID)
 		if err == nil {
 			replyToID = sql.NullInt64{Int64: targetID, Valid: true}
 		} else {
-			meta.Quote = &forwardQuoteMeta{Nickname: req.Reply.Nickname, Content: req.Reply.Content}
+			meta.Quote = &forwardQuoteMeta{Nickname: m.Reply.Nickname, Content: m.Reply.Content}
 		}
 	}
 
 	var metaJSON []byte
-	if meta.SenderNickname != "" || meta.Quote != nil {
+	if meta.SenderNickname != "" || meta.Quote != nil || meta.Server != "" {
 		metaJSON, _ = json.Marshal(meta)
 	}
 
 	res, err := h.db.Exec(
 		`INSERT INTO messages (channel_id, user_id, username, content, reply_to_id, source_platform, source_message_id, forward_meta)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		channelID, authorID, username, req.Content, replyToID, req.Source, req.SourceMessageID, metaJSON,
+		channelID, authorID, username, m.Content, replyToID, m.Source, m.SourceMessageID, metaJSON,
 	)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return nil, err
 	}
 	msgID, _ := res.LastInsertId()
 
 	// Attachments were uploaded through the bot route, so they belong to the
 	// bot account regardless of which user the message is posted as.
-	for _, attID := range req.AttachmentIDs {
+	for _, attID := range m.AttachmentIDs {
 		h.db.Exec(
 			"UPDATE attachments SET message_id = ? WHERE id = ? AND channel_id = ? AND user_id = ? AND message_id IS NULL",
 			msgID, attID, channelID, h.botUserID,
@@ -193,14 +269,14 @@ func (h *ForwardHandler) PostMessage(c echo.Context) error {
 		UserID:         authorID,
 		Username:       username,
 		AvatarURL:      nil,
-		Content:        req.Content,
+		Content:        m.Content,
 		CreatedAt:      createdAt.UTC().Format("2006-01-02T15:04:05Z"),
 		Attachments:    msgH.loadAttachments(msgID),
 		ReplyToID:      replyToPtr,
 		ReplyTo:        msgH.loadReplyTo(replyToPtr),
 		Mentions:       []mentionResp{},
 		Reactions:      []reactionGroupResp{},
-		SourcePlatform: req.Source,
+		SourcePlatform: m.Source,
 	}
 	if avatarURL != "" {
 		resp.AvatarURL = &avatarURL
@@ -210,20 +286,20 @@ func (h *ForwardHandler) PostMessage(c echo.Context) error {
 	}
 
 	// REST CreateMessage doesn't broadcast, but forwarded messages must appear
-	// live: the bot has no WS connection. Payload matches the ws chatBroadcast
-	// shape plus the forward-specific fields.
+	// live: neither the QQ bot nor ChatBridge holds a WS connection. Payload
+	// matches the ws chatBroadcast shape plus the forward-specific fields.
 	if BroadcastFunc != nil {
 		payload := map[string]interface{}{
-			"type":           "message",
-			"id":             msgID,
-			"channel_id":     channelID,
-			"user_id":        authorID,
-			"username":       username,
-			"content":        req.Content,
-			"created_at":     resp.CreatedAt,
-			"attachments":    resp.Attachments,
-			"mentions":       []string{},
-			"source_platform": req.Source,
+			"type":            "message",
+			"id":              msgID,
+			"channel_id":      channelID,
+			"user_id":         authorID,
+			"username":        username,
+			"content":         m.Content,
+			"created_at":      resp.CreatedAt,
+			"attachments":     resp.Attachments,
+			"mentions":        []string{},
+			"source_platform": m.Source,
 		}
 		if resp.ReplyTo != nil {
 			payload["reply_to_id"] = *resp.ReplyToID
@@ -239,7 +315,7 @@ func (h *ForwardHandler) PostMessage(c echo.Context) error {
 	}
 
 	metrics.MessagesCreated.Inc()
-	return c.JSON(http.StatusCreated, resp)
+	return &resp, nil
 }
 
 // Upload stores a media file for a forwarded message. The attachment is owned
@@ -251,16 +327,14 @@ func (h *ForwardHandler) Upload(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid channel_id"})
 	}
 
-	var chType string
-	err = h.db.QueryRow("SELECT type FROM channels WHERE id = ?", channelID).Scan(&chType)
-	if err == sql.ErrNoRows {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": "channel not found"})
-	}
-	if err != nil {
+	if err := verifyForwardChannel(h.db, channelID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return c.JSON(http.StatusNotFound, map[string]string{"error": "channel not found"})
+		}
+		if errors.Is(err, errNotForwardChannel) {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		}
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
-	}
-	if chType != "FORWARD" {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "not a forward channel"})
 	}
 
 	fh, err := c.FormFile("file")

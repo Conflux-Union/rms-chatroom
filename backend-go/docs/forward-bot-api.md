@@ -4,6 +4,15 @@ Message-sync bot API for FORWARD channels (e.g. channel 36 「消息同步」).
 The bot posts structured messages that are attributed to the real platform
 account when it can be matched, and to the bot proxy account otherwise.
 
+Game-sourced messages no longer arrive through this API: they come in over
+ChatBridge (the backend is itself a ChatBridge v2 client, see the `chatbridge`
+section of config.json) and land in the same FORWARD channel via the same
+insertion path. The HTTP API below is QQ-only.
+
+FORWARD channels are bidirectional for platform users: messages sent over
+WS/REST are relayed to the ChatBridge network (game servers), but never back
+to QQ.
+
 ## Authentication
 
 All `/api/forward/*` routes require a static token configured on the server
@@ -67,11 +76,9 @@ Content-Type: application/json
 
 Fields:
 
-- `source` — `"qq"` or `"game"`.
+- `source` — must be `"qq"`.
 - `sender.qq` — QQ number. Matched to a platform account via the SSO email
   `<qq>@qq.com`. Requires the SSO `/api/account_info?email=` lookup.
-- `sender.username` — for `source: "game"`: matched to a platform account by
-  username (`/api/account_info?username=`).
 - `sender.nickname` — original nickname, kept for display.
 - `content` — required unless `attachment_ids` is non-empty.
 - `source_message_id` — the ID on the origin platform. Used for later quote
@@ -105,7 +112,8 @@ Errors: `400` (bad body, not a FORWARD channel), `401` (bad token),
 
 ## Channel setup
 
-FORWARD channels are read-only for normal users (no composer in web/Android;
-WS/REST sends are rejected). An admin converts a channel via
+FORWARD channels accept user chat: composer is available in web/Android and
+WS/REST sends are allowed; user messages are relayed to ChatBridge when the
+channel matches `chatbridge.channel_id`. An admin converts a channel via
 `PATCH /api/servers/{server_id}/channels/{id}` with `{"type": "FORWARD"}`
 or creates one with `type: "forward"`.

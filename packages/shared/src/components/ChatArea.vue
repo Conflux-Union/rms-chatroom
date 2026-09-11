@@ -35,9 +35,9 @@ const messageInput = ref('')
 const messagesContainer = ref<HTMLElement | null>(null)
 const fileInput = ref<HTMLInputElement | null>(null)
 
-// FORWARD (message sync) channels are read-only for regular users: only the
-// bot API may post. Hides the composer while keeping scroll/reactions/replies.
-const isReadOnly = computed(() => chat.currentChannel?.type === 'FORWARD')
+// FORWARD channels are bridged to the game network via ChatBridge: users can
+// chat both ways, the type only swaps the header hash for a sync icon.
+const isForwardChannel = computed(() => chat.currentChannel?.type === 'FORWARD')
 
 // True while prepending older messages. Suppresses the length-watch auto-scroll
 // (which would yank the user back to the bottom) and guards re-entrancy.
@@ -69,8 +69,7 @@ const contextMenuOptions = computed(() => {
   if (!msg) return []
   const opts: Array<{ label: string; key: string }> = []
   opts.push({ label: '添加表情', key: 'reaction' })
-  // FORWARD channels have no composer, so replying is impossible.
-  if (!isReadOnly.value) opts.push({ label: '回复', key: 'reply' })
+  opts.push({ label: '回复', key: 'reply' })
   if (canEdit(msg)) opts.push({ label: '编辑', key: 'edit' })
   if (canDelete(msg)) opts.push({ label: '删除', key: 'delete' })
   if (canMute(msg)) opts.push({ label: '禁言用户', key: 'mute' })
@@ -429,12 +428,10 @@ function scrollToMessage(messageId: number) {
 
 // File handling
 function triggerFileSelect() {
-  if (isReadOnly.value) return
   fileInput.value?.click()
 }
 
 function handleFileSelect(event: Event) {
-  if (isReadOnly.value) return
   const target = event.target as HTMLInputElement
   if (target.files) {
     pendingFiles.value = [...pendingFiles.value, ...Array.from(target.files)]
@@ -456,7 +453,6 @@ function handleDrop(event: DragEvent) {
   event.preventDefault()
   isDragging.value = false
 
-  if (isReadOnly.value) return
   if (event.dataTransfer?.files) {
     pendingFiles.value = [...pendingFiles.value, ...Array.from(event.dataTransfer.files)]
   }
@@ -587,6 +583,13 @@ function canMute(message: Message) {
 // Message grouping: Discord-style consecutive message merging
 const MESSAGE_GROUP_ADJACENT_THRESHOLD_MINUTES = 1
 const MESSAGE_GROUP_TOTAL_THRESHOLD_MINUTES = 7
+
+// Source badge label for forwarded messages: QQ stays QQ, game messages show
+// the ChatBridge origin server name when the backend provided one.
+function sourceBadgeLabel(msg: Message): string {
+  if (msg.source_platform === 'qq') return 'QQ'
+  return msg.forward_meta?.server || '服务器'
+}
 
 function shouldGroupWithPrevious(index: number): boolean {
   if (index === 0) return false
@@ -1137,7 +1140,7 @@ onUnmounted(() => {
     </div>
 
     <div class="chat-header">
-      <span v-if="!isReadOnly" class="channel-hash">#</span>
+      <span v-if="!isForwardChannel" class="channel-hash">#</span>
       <Radio v-else class="channel-hash channel-hash-icon" :size="16" />
       <span class="channel-name">{{ chat.currentChannel?.name }}</span>
 
@@ -1192,7 +1195,7 @@ onUnmounted(() => {
           <!-- Header: hidden for grouped messages -->
           <div v-if="!shouldGroupWithPrevious(index)" class="message-header">
             <span class="message-author">{{ msg.username }}</span>
-            <span v-if="msg.source_platform" class="source-badge">{{ msg.source_platform === 'qq' ? 'QQ' : '服务器' }}</span>
+            <span v-if="msg.source_platform" class="source-badge">{{ sourceBadgeLabel(msg) }}</span>
             <span class="message-time">
               {{ formatDateTime(msg.created_at) }}
               <span v-if="getGroupLatestEditedAt(index)" class="edited-indicator">(已编辑于 {{ formatDateTime(getGroupLatestEditedAt(index)!) }})</span>
@@ -1354,7 +1357,7 @@ onUnmounted(() => {
     </div>
 
     <!-- Reply preview bar -->
-    <div v-if="!isReadOnly && replyingTo" class="reply-preview-bar">
+    <div v-if="replyingTo" class="reply-preview-bar">
       <div class="reply-preview-content">
         <Reply :size="16" class="reply-preview-icon" />
         <span class="reply-preview-label">回复</span>
@@ -1372,7 +1375,7 @@ onUnmounted(() => {
       </button>
     </div>
 
-    <div v-if="!isReadOnly" class="chat-input">
+    <div class="chat-input">
       <input type="file" ref="fileInput" @change="handleFileSelect" multiple hidden />
       <button class="attach-btn" @click="triggerFileSelect" title="添加附件" :disabled="isMuted">
         <Paperclip :size="20" />

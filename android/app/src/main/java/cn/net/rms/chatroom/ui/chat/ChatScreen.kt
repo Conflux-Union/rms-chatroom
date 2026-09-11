@@ -167,9 +167,6 @@ fun ChatScreen(
     messages: List<Message>,
     isLoading: Boolean = false,
     connectionState: ConnectionState = ConnectionState.CONNECTED,
-    // FORWARD (sync) channels are bot-posted only: hides the composer while
-    // keeping scroll, reactions and reply jumps usable.
-    readOnly: Boolean = false,
     authToken: String? = null,
     currentUserId: Long? = null,
     currentUserPermission: Int? = null,
@@ -464,7 +461,7 @@ fun ChatScreen(
             }
 
             // Reply preview bar
-            if (!readOnly && replyingTo != null) {
+            if (replyingTo != null) {
                 ReplyPreviewBar(
                     replyingTo = replyingTo!!,
                     onDismiss = { replyingTo = null }
@@ -472,7 +469,7 @@ fun ChatScreen(
             }
 
             // Mention autocomplete dropdown
-            if (!readOnly && showMentionDropdown && channelMembers.isNotEmpty()) {
+            if (showMentionDropdown && channelMembers.isNotEmpty()) {
                 MentionAutocomplete(
                     query = mentionQuery,
                     members = channelMembers,
@@ -496,7 +493,7 @@ fun ChatScreen(
             }
 
             // Pending files preview
-            if (!readOnly && (pendingFiles.isNotEmpty() || uploadedAttachments.isNotEmpty())) {
+            if (pendingFiles.isNotEmpty() || uploadedAttachments.isNotEmpty()) {
                 PendingFilesPreview(
                     context = context,
                     pendingFiles = pendingFiles,
@@ -512,10 +509,9 @@ fun ChatScreen(
                 )
             }
 
-            // Message input (hidden in read-only forward channels)
-            if (!readOnly) {
-                MessageInput(
-                    value = messageText,
+            // Message input
+            MessageInput(
+                value = messageText,
                 onValueChange = { newValue ->
                     messageText = newValue
                     // Check for @mention trigger
@@ -581,8 +577,7 @@ fun ChatScreen(
                         }
                     }
                 }
-                )
-            }
+            )
         }
 
         AttachmentPreviewDialog(
@@ -890,7 +885,8 @@ private fun MessageItem(
                     // Source badge for forwarded messages (FORWARD channels)
                     if (message.sourcePlatform != null) {
                         Text(
-                            text = if (message.sourcePlatform == "qq") "QQ" else "服务器",
+                            text = if (message.sourcePlatform == "qq") "QQ"
+                                   else message.forwardMeta?.server ?: "服务器",
                             style = MaterialTheme.typography.labelSmall,
                             color = TextMuted,
                             modifier = Modifier

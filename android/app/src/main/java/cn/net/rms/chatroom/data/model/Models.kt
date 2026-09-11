@@ -111,6 +111,8 @@ data class ForwardQuote(
 data class ForwardMeta(
     @SerializedName("sender_nickname")
     val senderNickname: String? = null,
+    // ChatBridge origin server for game-sourced messages
+    val server: String? = null,
     val quote: ForwardQuote? = null
 )
 

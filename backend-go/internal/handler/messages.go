@@ -12,6 +12,7 @@ import (
 
 	"github.com/labstack/echo/v4"
 
+	"github.com/RMS-Server/rms-discord-go/internal/chatbridge"
 	"github.com/RMS-Server/rms-discord-go/internal/metrics"
 	"github.com/RMS-Server/rms-discord-go/internal/middleware"
 	"github.com/RMS-Server/rms-discord-go/internal/permission"
@@ -504,7 +505,7 @@ func (h *MessageHandler) CreateMessage(c echo.Context) error {
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
-	if chType != "TEXT" {
+	if chType != "TEXT" && chType != "FORWARD" {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "not a text channel"})
 	}
 	speakRule := permission.PermRule{PermMinLevel: speakPermMinLevel, GroupMinLevel: speakMinLevel, LogicOperator: speakLogicOperator}
@@ -571,6 +572,21 @@ func (h *MessageHandler) CreateMessage(c echo.Context) error {
 	}
 
 	metrics.MessagesCreated.Inc()
+
+	// FORWARD channels are bridged to the game network via ChatBridge. The
+	// SSO username is the in-game account name, so it doubles as the chat
+	// author; attachment-only messages degrade to a placeholder the game can
+	// actually render.
+	if chType == "FORWARD" {
+		text := req.Content
+		if strings.TrimSpace(text) == "" && len(req.AttachmentIDs) > 0 {
+			text = "[附件]"
+		}
+		if text != "" {
+			chatbridge.SendChat(channelID, user.Username, text)
+		}
+	}
+
 	return c.JSON(http.StatusCreated, resp)
 }
 

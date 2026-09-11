@@ -24,12 +24,16 @@ type Config struct {
 	// external sender cannot be matched to a platform account.
 	ForwardBotUserID int64 `json:"forward_bot_user_id"`
 	// MetricsToken gates GET /metrics (Prometheus scrape). Empty disables the endpoint.
-	MetricsToken        string `json:"metrics_token"`
-	LivekitHost         string `json:"livekit_host"`
-	LivekitInternalHost string `json:"livekit_internal_host"`
-	LivekitAPIKey       string `json:"livekit_api_key"`
-	LivekitAPISecret    string `json:"livekit_api_secret"`
-	JWTSecret           string `json:"jwt_secret"`
+	MetricsToken string `json:"metrics_token"`
+
+	// ChatBridge connects the backend to a ChatBridge v2 (TISUnion/ChatBridge)
+	// cross-server chat network as a client. Disabled when Enabled is false.
+	ChatBridge          ChatBridgeConfig `json:"chatbridge"`
+	LivekitHost         string           `json:"livekit_host"`
+	LivekitInternalHost string           `json:"livekit_internal_host"`
+	LivekitAPIKey       string           `json:"livekit_api_key"`
+	LivekitAPISecret    string           `json:"livekit_api_secret"`
+	JWTSecret           string           `json:"jwt_secret"`
 
 	// OAuth 2.0 configuration
 	OAuthBaseURL           string `json:"oauth_base_url"`
@@ -57,6 +61,20 @@ type Config struct {
 	// UpdateCheckIntervalMinutes enables periodic self-update checks when
 	// > 0; 0 (default) means updates only run when CI triggers them.
 	UpdateCheckIntervalMinutes int `json:"update_check_interval_minutes"`
+}
+
+// ChatBridgeConfig mirrors ChatBridge v2's ClientConfig: the backend acts as
+// one named client of a shared ChatBridge server, relaying chat between the
+// configured FORWARD channel and the game servers on the network.
+type ChatBridgeConfig struct {
+	Enabled    bool   `json:"enabled"`
+	ServerHost string `json:"server_host"`
+	ServerPort int    `json:"server_port"`
+	AESKey     string `json:"aes_key"`
+	ClientName string `json:"client_name"`
+	Password   string `json:"password"`
+	// ChannelID is the FORWARD channel bridged to the ChatBridge network.
+	ChannelID int64 `json:"channel_id"`
 }
 
 func defaults() Config {

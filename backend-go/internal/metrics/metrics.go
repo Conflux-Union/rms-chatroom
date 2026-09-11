@@ -50,6 +50,11 @@ var (
 		Help: "Chat messages successfully persisted.",
 	})
 
+	ChatBridgeOnline = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "rms_chatbridge_online",
+		Help: "1 when the ChatBridge client is logged in, 0 otherwise.",
+	})
+
 	AuthLogins = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "rms_auth_logins_total",
 		Help: "Successful logins by method (oauth/silent/dev).",

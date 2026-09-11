@@ -143,13 +143,13 @@ func uploadFile(jwtSecret string, db *sql.DB, uploadDir string) echo.HandlerFunc
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid channel_id"})
 		}
 
-		// Verify channel exists and is TEXT
+		// Verify channel exists and is a chat channel
 		var chType string
 		err = db.QueryRow("SELECT type FROM channels WHERE id = ?", channelID).Scan(&chType)
 		if err != nil {
 			return c.JSON(http.StatusNotFound, map[string]string{"error": "channel not found"})
 		}
-		if chType != "TEXT" {
+		if chType != "TEXT" && chType != "FORWARD" {
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": "not a text channel"})
 		}
 

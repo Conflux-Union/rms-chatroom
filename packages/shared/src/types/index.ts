@@ -75,6 +75,8 @@ export interface ForwardQuoteMeta {
 
 export interface ForwardMeta {
   sender_nickname?: string
+  // ChatBridge origin server for game-sourced messages
+  server?: string
   quote?: ForwardQuoteMeta
 }
 

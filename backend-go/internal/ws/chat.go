@@ -13,6 +13,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/labstack/echo/v4"
 
+	"github.com/RMS-Server/rms-discord-go/internal/chatbridge"
 	"github.com/RMS-Server/rms-discord-go/internal/jwtutil"
 	"github.com/RMS-Server/rms-discord-go/internal/permission"
 )
@@ -135,7 +136,7 @@ func handleChatMessage(db *sql.DB, conn *Conn, msg *chatMessage) {
 		 FROM channels WHERE id = ?`, msg.ChannelID,
 	).Scan(&channelType, &minLevel, &permMinLevel, &logicOperator,
 		&speakMinLevel, &speakPermMinLevel, &speakLogicOperator)
-	if err != nil || channelType != "TEXT" {
+	if err != nil || (channelType != "TEXT" && channelType != "FORWARD") {
 		return
 	}
 
@@ -256,4 +257,18 @@ func handleChatMessage(db *sql.DB, conn *Conn, msg *chatMessage) {
 	ChatManager.BroadcastFiltered(broadcast, func(user *permission.UserInfo) bool {
 		return permission.CanAccess(user, accessRule)
 	})
+
+	// FORWARD channels are bridged to the game network via ChatBridge. The
+	// SSO username is the in-game account name, so it doubles as the chat
+	// author; attachment-only messages degrade to a placeholder the game can
+	// actually render.
+	if channelType == "FORWARD" {
+		text := msg.Content
+		if strings.TrimSpace(text) == "" && len(msg.AttachmentIDs) > 0 {
+			text = "[附件]"
+		}
+		if text != "" {
+			chatbridge.SendChat(msg.ChannelID, conn.user.Username, text)
+		}
+	}
 }

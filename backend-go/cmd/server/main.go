@@ -17,6 +17,7 @@ import (
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 
+	"github.com/RMS-Server/rms-discord-go/internal/chatbridge"
 	"github.com/RMS-Server/rms-discord-go/internal/config"
 	dbm "github.com/RMS-Server/rms-discord-go/internal/db"
 	"github.com/RMS-Server/rms-discord-go/internal/handler"
@@ -144,6 +145,28 @@ func main() {
 
 	handler.Register(e, cfg, db, ssoClient, updater)
 	ws.Register(e, cfg, ssoClient, db)
+
+	// ChatBridge client: relays game chat in and platform-user chat out for
+	// the configured FORWARD channel. Runs until shutdown; a disabled or
+	// missing config leaves chatbridge.Default nil, so all send paths no-op.
+	if cb := cfg.ChatBridge; cb.Enabled {
+		fw := handler.NewForwardHandler(db, ssoClient, cfg.ForwardBotUserID, "uploads")
+		chatbridge.Default = chatbridge.NewClient(chatbridge.Config{
+			ServerHost: cb.ServerHost,
+			ServerPort: cb.ServerPort,
+			AESKey:     cb.AESKey,
+			Name:       cb.ClientName,
+			Password:   cb.Password,
+			ChannelID:  cb.ChannelID,
+		}, func(sender, author, message string) {
+			if err := fw.PostGameMessage(cb.ChannelID, sender, author, message); err != nil {
+				log.Printf("chatbridge: failed to store message from %s: %v", sender, err)
+			}
+		})
+		cbCtx, cbCancel := context.WithCancel(context.Background())
+		defer cbCancel()
+		go chatbridge.Default.Run(cbCtx)
+	}
 
 	// Prometheus scrape endpoint, enabled only when a scrape token is set.
 	metrics.MustRegister(collectors.NewDBStatsCollector(db, "main"))

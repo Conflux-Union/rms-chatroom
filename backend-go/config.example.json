@@ -30,6 +30,16 @@
   "forward_bot_token": "",
   "forward_bot_user_id": 0,
 
+  "chatbridge": {
+    "enabled": false,
+    "server_host": "127.0.0.1",
+    "server_port": 30001,
+    "aes_key": "",
+    "client_name": "RMS",
+    "password": "chatbridge-client-password",
+    "channel_id": 0
+  },
+
   "auto_migrate": true,
   "service_name": "rms-discord",
   "update_repo": "Conflux-Union/rms-chatroom",
