@@ -117,7 +117,8 @@ fun MainScreen(
                             mainViewModel.selectChannel(channel)
                             scope.launch { drawerState.close() }
                         },
-                        username = authState.user?.nickname ?: authState.user?.username ?: "",
+                        username = authState.user?.nickname?.takeIf { it.isNotBlank() }
+                            ?: authState.user?.username ?: "",
                         onLogout = { authViewModel.logout() },
                         onSettings = {
                             scope.launch { drawerState.close() }
