@@ -158,6 +158,13 @@ dependencies {
     implementation(libs.media3.exoplayer)
     implementation(libs.media3.ui)
 
+    // Markdown (chat message rendering, GFM parity with the web client)
+    implementation(libs.commonmark)
+    implementation(libs.commonmark.ext.autolink)
+    implementation(libs.commonmark.ext.gfm.strikethrough)
+    implementation(libs.commonmark.ext.gfm.tables)
+    implementation(libs.commonmark.ext.task.list.items)
+
     // Testing - Unit tests
     testImplementation(libs.junit)
     testImplementation(libs.coroutines.test)

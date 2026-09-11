@@ -55,8 +55,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.AttachFile
@@ -110,13 +108,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
@@ -141,7 +134,6 @@ import cn.net.rms.chatroom.ui.theme.SurfaceDarker
 import cn.net.rms.chatroom.ui.theme.SurfaceLighter
 import cn.net.rms.chatroom.ui.theme.TextMuted
 import cn.net.rms.chatroom.ui.theme.TextPrimary
-import cn.net.rms.chatroom.ui.theme.TextSecondary
 import cn.net.rms.chatroom.ui.theme.TiColor
 import java.io.File
 import java.time.Instant
@@ -991,11 +983,8 @@ private fun MessageItem(
                 )
             } else {
                 if (message.content.isNotBlank()) {
-                    // Render content with mention highlighting
-                    Text(
-                        text = renderMessageContent(message.content, message.mentions),
-                        style = MaterialTheme.typography.bodyMedium
-                    )
+                    // Markdown body (GFM subset) with @mention highlighting
+                    MarkdownMessage(content = message.content)
                 }
 
                 // Attachments
@@ -1751,8 +1740,8 @@ private fun MessageInput(
                     disabledTextColor = TextMuted
                 ),
                 shape = RoundedCornerShape(8.dp),
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                keyboardActions = KeyboardActions(onSend = { onSend() }),
+                // Multiline input: Enter inserts a newline (markdown-capable
+                // messages, Discord/Telegram mobile convention), send via button
                 singleLine = false,
                 maxLines = 4
             )
@@ -2176,58 +2165,6 @@ private fun RadioOption(
             style = MaterialTheme.typography.bodyMedium,
             color = TextPrimary
         )
-    }
-}
-
-// Helper function to render message content with mention highlighting
-@Composable
-private fun renderMessageContent(
-    content: String,
-    mentions: List<cn.net.rms.chatroom.data.model.Mention>?
-): AnnotatedString {
-    if (mentions.isNullOrEmpty()) {
-        return buildAnnotatedString {
-            withStyle(SpanStyle(color = TextSecondary)) {
-                append(content)
-            }
-        }
-    }
-
-    return buildAnnotatedString {
-        var currentIndex = 0
-        val mentionPattern = Regex("@(\\w+)")
-        val mentionUsernames = mentions.map { it.username }.toSet()
-
-        mentionPattern.findAll(content).forEach { match ->
-            val username = match.groupValues[1]
-            
-            // Add text before the mention
-            if (match.range.first > currentIndex) {
-                withStyle(SpanStyle(color = TextSecondary)) {
-                    append(content.substring(currentIndex, match.range.first))
-                }
-            }
-
-            // Add the mention with highlighting if it's a valid mention
-            if (mentionUsernames.contains(username)) {
-                withStyle(SpanStyle(color = TiColor, fontWeight = FontWeight.Medium)) {
-                    append(match.value)
-                }
-            } else {
-                withStyle(SpanStyle(color = TextSecondary)) {
-                    append(match.value)
-                }
-            }
-
-            currentIndex = match.range.last + 1
-        }
-
-        // Add remaining text
-        if (currentIndex < content.length) {
-            withStyle(SpanStyle(color = TextSecondary)) {
-                append(content.substring(currentIndex))
-            }
-        }
     }
 }
 
