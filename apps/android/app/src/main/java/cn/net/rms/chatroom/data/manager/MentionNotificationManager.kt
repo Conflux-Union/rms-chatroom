@@ -11,7 +11,6 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import cn.net.rms.chatroom.R
-import cn.net.rms.chatroom.data.model.Message
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -41,50 +40,6 @@ class MentionNotificationManager(private val context: Context) {
 
     // MediaPlayer for mention sound
     private var mediaPlayer: MediaPlayer? = null
-
-    /**
-     * Check if a message mentions the current user by user ID
-     * (More reliable than username matching since backend stores nickname in username field)
-     */
-    fun isMentioned(message: Message, currentUserId: Long): Boolean {
-        return message.mentions?.any { it.id == currentUserId } == true
-    }
-
-    /**
-     * Check messages for mentions and return mention info
-     */
-    suspend fun checkMessagesForMentions(
-        messages: List<Message>,
-        currentUserId: Long,
-        channelId: Long
-    ): MentionInfo {
-        val lastReadMessageId = getLastReadMessageId(channelId)
-
-        var hasMention = false
-        var lastMentionMessageId: Long? = null
-        var unreadCount = 0
-
-        for (message in messages) {
-            // Skip messages before last read position
-            if (lastReadMessageId != null && message.id <= lastReadMessageId) {
-                continue
-            }
-
-            unreadCount++
-
-            // Check if this message mentions the current user
-            if (isMentioned(message, currentUserId)) {
-                hasMention = true
-                lastMentionMessageId = message.id
-            }
-        }
-
-        return MentionInfo(
-            hasMention = hasMention,
-            lastMentionMessageId = lastMentionMessageId,
-            unreadCount = unreadCount
-        )
-    }
 
     /**
      * Play mention notification sound with cooldown
@@ -158,19 +113,13 @@ class MentionNotificationManager(private val context: Context) {
     }
 
     /**
-     * Set unread count for a channel
+     * Atomically bump the unread count for a channel.
      */
-    suspend fun setUnreadCount(channelId: Long, count: Int) {
+    suspend fun incrementUnreadCount(channelId: Long) {
         dataStore.edit { prefs ->
-            prefs[getUnreadCountKey(channelId)] = count
+            val key = getUnreadCountKey(channelId)
+            prefs[key] = (prefs[key] ?: 0) + 1
         }
-    }
-
-    /**
-     * Get unread count for a channel
-     */
-    suspend fun getUnreadCount(channelId: Long): Int {
-        return dataStore.data.first()[getUnreadCountKey(channelId)] ?: 0
     }
 
     /**
@@ -218,22 +167,6 @@ class MentionNotificationManager(private val context: Context) {
     }
 
     /**
-     * Save last read message ID for a channel
-     */
-    suspend fun saveLastReadMessageId(channelId: Long, messageId: Long) {
-        dataStore.edit { prefs ->
-            prefs[getLastReadMessageIdKey(channelId)] = messageId
-        }
-    }
-
-    /**
-     * Get last read message ID for a channel
-     */
-    private suspend fun getLastReadMessageId(channelId: Long): Long? {
-        return dataStore.data.first()[getLastReadMessageIdKey(channelId)]
-    }
-
-    /**
      * Release resources
      */
     fun release() {
@@ -246,11 +179,4 @@ class MentionNotificationManager(private val context: Context) {
     private fun getLastMentionMessageIdKey(channelId: Long) = longPreferencesKey("last_mention_msg_$channelId")
     private fun getMentionTimestampKey(channelId: Long) = longPreferencesKey("mention_timestamp_$channelId")
     private fun getUnreadCountKey(channelId: Long) = intPreferencesKey("unread_count_$channelId")
-    private fun getLastReadMessageIdKey(channelId: Long) = longPreferencesKey("last_read_msg_$channelId")
 }
-
-data class MentionInfo(
-    val hasMention: Boolean,
-    val lastMentionMessageId: Long?,
-    val unreadCount: Int
-)

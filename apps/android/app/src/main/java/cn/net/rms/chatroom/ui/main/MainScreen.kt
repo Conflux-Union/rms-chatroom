@@ -232,13 +232,6 @@ fun MainScreen(
                         val connectionState by mainViewModel.connectionState.collectAsState()
                         val messages = mainViewModel.messages.collectAsState().value
 
-                        // Check for mentions when messages change
-                        LaunchedEffect(messages, mainState.currentChannel?.id) {
-                            if (messages.isNotEmpty()) {
-                                mainViewModel.checkAndUpdateMentions(authState.user?.id)
-                            }
-                        }
-
                         // Clear mention state when entering this channel
                         LaunchedEffect(mainState.currentChannel?.id) {
                             mainState.currentChannel?.id?.let { channelId ->

@@ -261,8 +261,15 @@ class MainViewModel @Inject constructor(
         viewModelScope.launch {
             _state.value = _state.value.copy(isMessagesLoading = true)
             chatRepository.fetchMessages(channelId)
-                .onSuccess {
+                .onSuccess { fetched ->
                     _state.value = _state.value.copy(isMessagesLoading = false)
+                    // Entering a channel shows the newest page (ChatScreen scrolls to
+                    // the tail on first load), so everything fetched counts as read.
+                    // Mark read here, not on channel entry, to avoid using another
+                    // channel's still-cached messages for the read position.
+                    if (fetched.isNotEmpty() && _state.value.currentChannel?.id == channelId) {
+                        readPositionRepository.markChannelAsRead(channelId, fetched.last().id)
+                    }
                 }
                 .onFailure { e ->
                     _state.value = _state.value.copy(isMessagesLoading = false)
@@ -301,26 +308,27 @@ class MainViewModel @Inject constructor(
                             "currentUserId=$userId, messageUserId=${message.userId}, isOwnMessage=$isOwnMessage, " +
                             "hasMentions=$hasMentions, mentionIds=$mentionIds, isMentioned=$isMentioned")
 
-                        // Check if this message mentions the current user
-                        if (userId != null && !isOwnMessage && isMentioned) {
-                            // This message mentions the current user
+                        if (userId != null && !isOwnMessage) {
                             val channelId = message.channelId
                             val currentChannelId = _state.value.currentChannel?.id
                             val isCurrentChannel = channelId == currentChannelId
 
-                            Log.d(TAG, "Mention detected in channel $channelId (current: $currentChannelId)")
-                            viewModelScope.launch {
-                                // Always play sound for mentions
+                            if (isMentioned) {
+                                Log.d(TAG, "Mention detected in channel $channelId (current: $currentChannelId)")
+                                // Play sound for mentions even in the current channel
                                 mentionNotificationManager.playMentionSound(channelId, message.id)
-                                
-                                // Only mark channel badge if not in current channel
-                                if (!isCurrentChannel) {
-                                    mentionNotificationManager.markChannelAsMentioned(channelId, message.id)
-                                    // Update unread count
-                                    val currentCount = mentionNotificationManager.getUnreadCount(channelId)
-                                    mentionNotificationManager.setUnreadCount(channelId, currentCount + 1)
-                                    // Sync mention to server
-                                    readPositionRepository.markChannelAsMentioned(channelId, message.id, message.id)
+                            }
+
+                            // Only badge channels the user is not currently viewing;
+                            // unread counts all non-own messages, mentions add the @ badge
+                            if (!isCurrentChannel) {
+                                viewModelScope.launch {
+                                    mentionNotificationManager.incrementUnreadCount(channelId)
+                                    if (isMentioned) {
+                                        mentionNotificationManager.markChannelAsMentioned(channelId, message.id)
+                                        // Sync mention to server
+                                        readPositionRepository.markChannelAsMentioned(channelId, message.id, message.id)
+                                    }
                                 }
                             }
                         }
@@ -709,43 +717,9 @@ class MainViewModel @Inject constructor(
         }
     }
 
-    fun checkAndUpdateMentions(currentUserId: Long?) {
-        if (currentUserId == null) return
-        val channelId = _state.value.currentChannel?.id ?: return
-        val currentMessages = messages.value
-
-        viewModelScope.launch {
-            val mentionInfo = mentionNotificationManager.checkMessagesForMentions(
-                messages = currentMessages,
-                currentUserId = currentUserId,
-                channelId = channelId
-            )
-
-            // Update unread count
-            mentionNotificationManager.setUnreadCount(channelId, mentionInfo.unreadCount)
-
-            // If there's a mention, mark it and play sound
-            if (mentionInfo.hasMention && mentionInfo.lastMentionMessageId != null) {
-                mentionNotificationManager.markChannelAsMentioned(
-                    channelId,
-                    mentionInfo.lastMentionMessageId
-                )
-                mentionNotificationManager.playMentionSound(
-                    channelId,
-                    mentionInfo.lastMentionMessageId
-                )
-            }
-        }
-    }
-
     fun clearChannelMention(channelId: Long) {
         viewModelScope.launch {
             mentionNotificationManager.clearChannelMention(channelId)
-            // Also mark as read on server
-            val latestMessageId = messages.value.lastOrNull()?.id
-            if (latestMessageId != null) {
-                readPositionRepository.markChannelAsRead(channelId, latestMessageId)
-            }
         }
     }
 }
