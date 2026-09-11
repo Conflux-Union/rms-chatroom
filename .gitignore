@@ -100,3 +100,6 @@ CLAUDE.md
 
 # Runtime data
 qimei.json
+
+# Real credentials, local only (see server/config.example.json)
+server/config.json
