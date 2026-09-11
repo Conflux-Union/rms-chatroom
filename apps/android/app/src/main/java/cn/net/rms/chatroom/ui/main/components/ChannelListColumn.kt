@@ -61,6 +61,7 @@ fun ChannelListColumn(
     currentChannelId: Long?,
     onChannelClick: (Channel) -> Unit,
     username: String,
+    avatarUrl: String? = null,
     onLogout: () -> Unit,
     onSettings: () -> Unit = {},
     voiceChannelUsers: Map<Long, List<VoiceUser>> = emptyMap(),
@@ -349,6 +350,7 @@ fun ChannelListColumn(
         // User panel at bottom
         UserPanel(
             username = username,
+            avatarUrl = avatarUrl,
             onLogout = onLogout,
             onSettings = onSettings
         )
@@ -1149,6 +1151,7 @@ private fun VoiceUserItem(user: VoiceUser) {
 @Composable
 private fun UserPanel(
     username: String,
+    avatarUrl: String?,
     onLogout: () -> Unit,
     onSettings: () -> Unit = {}
 ) {
@@ -1162,7 +1165,7 @@ private fun UserPanel(
                 .padding(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // User avatar placeholder
+            // User avatar
             Box(
                 modifier = Modifier
                     .size(32.dp)
@@ -1170,11 +1173,25 @@ private fun UserPanel(
                     .background(TiColor),
                 contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = username.take(1).uppercase(),
-                    style = MaterialTheme.typography.labelLarge,
-                    color = Color.White
-                )
+                if (!avatarUrl.isNullOrBlank()) {
+                    AsyncImage(
+                        model = ImageRequest.Builder(LocalContext.current)
+                            .data(avatarUrl)
+                            .crossfade(true)
+                            .build(),
+                        contentDescription = username,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clip(RoundedCornerShape(16.dp)),
+                        contentScale = ContentScale.Crop
+                    )
+                } else {
+                    Text(
+                        text = username.take(1).uppercase(),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = Color.White
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.width(8.dp))

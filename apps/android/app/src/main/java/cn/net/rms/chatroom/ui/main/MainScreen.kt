@@ -119,6 +119,7 @@ fun MainScreen(
                         },
                         username = authState.user?.nickname?.takeIf { it.isNotBlank() }
                             ?: authState.user?.username ?: "",
+                        avatarUrl = authState.user?.avatarUrl,
                         onLogout = { authViewModel.logout() },
                         onSettings = {
                             scope.launch { drawerState.close() }
