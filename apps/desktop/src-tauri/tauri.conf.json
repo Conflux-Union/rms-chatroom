@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "identifier": "cn.net.rms.chatroom",
   "build": {
-    "frontendDist": "../packages/desktop/dist",
+    "frontendDist": "../dist",
     "devUrl": "http://localhost:5173",
     "beforeDevCommand": "pnpm --filter @rms-discord/desktop dev",
     "beforeBuildCommand": "pnpm --filter @rms-discord/desktop build"

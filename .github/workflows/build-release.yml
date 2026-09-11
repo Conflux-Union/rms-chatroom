@@ -42,11 +42,11 @@ jobs:
           VERSION_NAME="${{ needs.extract-version.outputs.version_name }}"
           VERSION_CODE="${{ needs.extract-version.outputs.version_code }}"
 
-          sed -i "s/val appVersionCode = [0-9]*/val appVersionCode = $VERSION_CODE/" android/app/build.gradle.kts
-          sed -i "s/val appVersionName = \"[^\"]*\"/val appVersionName = \"$VERSION_NAME\"/" android/app/build.gradle.kts
+          sed -i "s/val appVersionCode = [0-9]*/val appVersionCode = $VERSION_CODE/" apps/android/app/build.gradle.kts
+          sed -i "s/val appVersionName = \"[^\"]*\"/val appVersionName = \"$VERSION_NAME\"/" apps/android/app/build.gradle.kts
 
           echo "Updated Android version to: $VERSION_NAME ($VERSION_CODE)"
-          grep -A 2 "appVersionCode\|appVersionName" android/app/build.gradle.kts
+          grep -A 2 "appVersionCode\|appVersionName" apps/android/app/build.gradle.kts
 
       - name: Set up JDK 17
         uses: actions/setup-java@v5
@@ -68,11 +68,11 @@ jobs:
             ${{ runner.os }}-gradle-
 
       - name: Grant execute permission for gradlew
-        run: chmod +x android/gradlew
+        run: chmod +x apps/android/gradlew
 
       - name: Decode and setup keystore
         run: |
-          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > android/app/release.keystore
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > apps/android/app/release.keystore
 
       - name: Build Release APK
         env:
@@ -80,14 +80,14 @@ jobs:
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
-          cd android
+          cd apps/android
           ./gradlew assembleRelease --no-daemon
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v7
         with:
           name: android-apk
-          path: android/app/build/outputs/apk/release/app-release.apk
+          path: apps/android/app/build/outputs/apk/release/app-release.apk
           retention-days: 7
 
   build-server:
@@ -111,8 +111,8 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v6
         with:
-          go-version-file: backend-go/go.mod
-          cache-dependency-path: backend-go/go.sum
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
 
       - name: Install dependencies
         run: pnpm install
@@ -143,7 +143,7 @@ jobs:
           VERSION_PKG=github.com/RMS-Server/rms-discord-go/internal/version
 
           mkdir -p server-bundle
-          cd backend-go
+          cd server
           CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath \
             -ldflags "-s -w -X $VERSION_PKG.Name=$VERSION_NAME -X $VERSION_PKG.Code=$VERSION_CODE -X $VERSION_PKG.Commit=$COMMIT_HASH" \
             -o ../server-bundle/rms-discord-server ./cmd/server
@@ -154,10 +154,12 @@ jobs:
           VERSION_CODE: ${{ needs.extract-version.outputs.version_code }}
           TAG_NAME: ${{ needs.extract-version.outputs.tag_name }}
         run: |
-          # Bundle layout matches what the server's self-updater extracts
-          # next to its binary: the binary itself plus packages/web/dist.
+          # Bundle layout is the deploy contract: the server's
+          # frontend_dist_path points at packages/web/dist next to the
+          # binary, so the tar keeps that name even though the repo path
+          # is now apps/web/dist.
           mkdir -p server-bundle/packages/web
-          cp -r packages/web/dist server-bundle/packages/web/dist
+          cp -r apps/web/dist server-bundle/packages/web/dist
 
           mkdir -p server-assets
           ASSET_NAME="rms-chatroom-server-${VERSION_NAME}-linux-amd64.tar.gz"
@@ -220,7 +222,7 @@ jobs:
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: src-tauri
+          workspaces: apps/desktop/src-tauri
 
       - name: Install dependencies
         run: pnpm install
@@ -240,7 +242,7 @@ jobs:
           EOF
 
           # Update tauri.conf.json version from tag
-          node -e "const fs=require('fs');const f='src-tauri/tauri.conf.json';const c=JSON.parse(fs.readFileSync(f,'utf8'));c.version='$VERSION_NAME';fs.writeFileSync(f,JSON.stringify(c,null,2)+'\n')"
+          node -e "const fs=require('fs');const f='apps/desktop/src-tauri/tauri.conf.json';const c=JSON.parse(fs.readFileSync(f,'utf8'));c.version='$VERSION_NAME';fs.writeFileSync(f,JSON.stringify(c,null,2)+'\n')"
 
           echo "Generated shared version.ts and set tauri version to $VERSION_NAME($VERSION_CODE)"
 
@@ -253,6 +255,8 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
         with:
+          # Monorepo: the Rust shell lives under apps/desktop/src-tauri.
+          projectPath: apps/desktop
           # Build only; the create-release job owns release creation and
           # asset upload. Without tagName/releaseId the action never enters
           # its release-upload path.
@@ -264,10 +268,10 @@ jobs:
         with:
           name: desktop-windows
           path: |
-            src-tauri/target/*/release/bundle/nsis/*.exe
-            src-tauri/target/*/release/bundle/nsis/*-setup.nsis.zip
-            src-tauri/target/*/release/bundle/nsis/*-setup.nsis.zip.sig
-            src-tauri/target/*/release/bundle/msi/*.msi
+            apps/desktop/src-tauri/target/*/release/bundle/nsis/*.exe
+            apps/desktop/src-tauri/target/*/release/bundle/nsis/*-setup.nsis.zip
+            apps/desktop/src-tauri/target/*/release/bundle/nsis/*-setup.nsis.zip.sig
+            apps/desktop/src-tauri/target/*/release/bundle/msi/*.msi
           retention-days: 7
 
   create-release:

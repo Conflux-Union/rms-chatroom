@@ -28,16 +28,17 @@ jobs:
           filters: |
             frontend:
               - 'packages/**'
-              - 'src-tauri/**'
+              - 'apps/web/**'
+              - 'apps/desktop/**'
               - 'package.json'
               - 'pnpm-lock.yaml'
               - 'pnpm-workspace.yaml'
               - '.github/workflows/check.yml'
             backend:
-              - 'backend-go/**'
+              - 'server/**'
               - '.github/workflows/check.yml'
             android:
-              - 'android/**'
+              - 'apps/android/**'
               - '.github/workflows/check.yml'
 
   frontend-build:
@@ -81,17 +82,17 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v6
         with:
-          go-version-file: backend-go/go.mod
-          cache-dependency-path: backend-go/go.sum
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
 
       - name: Build
         run: |
-          cd backend-go
+          cd server
           go build ./...
 
       - name: Vet
         run: |
-          cd backend-go
+          cd server
           go vet ./...
 
   android-build:
@@ -124,11 +125,11 @@ jobs:
             ${{ runner.os }}-gradle-
 
       - name: Grant execute permission for gradlew
-        run: chmod +x android/gradlew
+        run: chmod +x apps/android/gradlew
 
       - name: Build debug APK
         run: |
-          cd android
+          cd apps/android
           ./gradlew assembleDebug --no-daemon
 
   all-checks-passed:

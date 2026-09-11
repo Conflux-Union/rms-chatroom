@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { RouterView } from 'vue-router'
-import inkWashBg from '../../shared/public/bg.webp?url'
+import inkWashBg from '../../../packages/shared/public/bg.webp?url'
 </script>
 
 <template>

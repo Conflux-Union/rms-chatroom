@@ -26,7 +26,7 @@ updates:
 
   # Go backend
   - package-ecosystem: "gomod"
-    directory: "/backend-go"
+    directory: "/server"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
@@ -42,7 +42,7 @@ updates:
 
   # Android
   - package-ecosystem: "gradle"
-    directory: "/android"
+    directory: "/apps/android"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5

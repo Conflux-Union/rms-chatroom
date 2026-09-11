@@ -19,13 +19,14 @@
 
 ```
 rms-discord/
-├── packages/                # pnpm monorepo
-│   ├── shared/             # 共享组件、状态管理、composables
+├── apps/                    # 客户端应用
 │   ├── web/                # Web 入口
-│   └── desktop/            # 桌面端 (Tauri) 渲染入口
-├── src-tauri/              # Tauri v2 Rust 后端
-├── backend-go/             # Go 后端 (Echo 框架)
-├── android/                # Kotlin + Jetpack Compose
+│   ├── desktop/            # 桌面端 (Tauri) 渲染入口 + src-tauri Rust 壳
+│   ├── android/            # Kotlin + Jetpack Compose
+│   └── minecraft/          # Minecraft 1.17.1 Fabric mod（游戏内语音）
+├── packages/                # pnpm monorepo
+│   └── shared/             # 共享组件、状态管理、composables
+├── server/                  # Go 后端 (Echo 框架)
 └── pnpm-workspace.yaml
 ```
 
@@ -33,7 +34,7 @@ rms-discord/
 
 **后端 (Go)：**
 - Echo 框架
-- MySQL + golang-migrate + sqlc
+- MySQL + 内嵌自动迁移（golang-migrate 库）
 - gorilla/websocket 实时消息
 - LiveKit 语音基础设施
 - JSON 配置 + 环境变量覆盖
@@ -62,7 +63,7 @@ rms-discord/
 ### 后端设置
 
 ```bash
-cd backend-go
+cd server
 cp config.example.json config.json  # 编辑配置
 go run ./cmd/server/main.go
 ```
@@ -81,14 +82,14 @@ pnpm dev:web
 ### Android 设置
 
 ```bash
-cd android
+cd apps/android
 ./gradlew assembleDebug
 ./gradlew installDebug
 ```
 
 ## 配置
 
-### 后端 (`backend-go/config.json`)
+### 后端 (`server/config.json`)
 
 ```json
 {
@@ -111,7 +112,7 @@ VITE_API_BASE=http://localhost:8000
 VITE_WS_BASE=ws://localhost:8000
 ```
 
-### Android (`android/app/build.gradle.kts`)
+### Android (`apps/android/app/build.gradle.kts`)
 
 构建变体自动配置 API 端点：
 - **Debug**：指向 localhost/开发服务器
@@ -145,19 +146,15 @@ Redirect URL 验证防止开放重定向：仅允许 `cors_origins` 下的 `/cal
 ```bash
 pnpm build:web                # Web 前端
 pnpm build:desktop            # 桌面端 (Tauri) 前端
-cd backend-go && go build ./cmd/server/main.go  # Go 二进制
-cd android && ./gradlew assembleRelease          # Android APK
+cd server && go build ./cmd/server  # Go 二进制
+cd apps/android && ./gradlew assembleRelease     # Android APK
 ```
 
 ## 部署
 
-```bash
-python deploy.py --release   # 打标签 + CI/CD（Android、Tauri 桌面端、服务器）
-python deploy.py --hot-fix   # 热修复版本
-python deploy.py --debug     # 调试部署（不打标签）
-```
-
-GitHub Actions 构建 Android APK、Tauri 桌面端应用 (Windows)，部署服务器二进制，创建 GitHub Release。
+推送标签 `v<version>(<code>)`（如 `v1.0.7-fix-2(33)`）后，GitHub Actions 会
+构建 Android APK、Tauri Windows 安装包和服务器 bundle，发布 GitHub Release，
+并触发服务器自更新。`-fix-` 后缀为热修复，`-dev` 为预发布。
 
 ## 平台支持
 

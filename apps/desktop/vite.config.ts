@@ -20,7 +20,7 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      '@rms-discord/shared': resolve(__dirname, '../shared/src'),
+      '@rms-discord/shared': resolve(__dirname, '../../packages/shared/src'),
     },
   },
   server: {
@@ -48,5 +48,5 @@ export default defineConfig({
     cssTarget: ['chrome100', 'safari15.6'],
   },
   base: './',
-  publicDir: resolve(__dirname, '../shared/public'),
+  publicDir: resolve(__dirname, '../../packages/shared/public'),
 })

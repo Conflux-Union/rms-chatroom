@@ -85,7 +85,7 @@ func defaults() Config {
 		Host:                     "0.0.0.0",
 		Port:                     8000,
 		Debug:                    true,
-		FrontendDistPath:         "../packages/web/dist",
+		FrontendDistPath:         "../apps/web/dist",
 		CORSOrigins:              []string{"http://localhost:5173", "http://127.0.0.1:5173"},
 		JWTSecret:                "dev-secret-change-in-production",
 		OAuthBaseURL:             "https://sso.rms.net.cn",

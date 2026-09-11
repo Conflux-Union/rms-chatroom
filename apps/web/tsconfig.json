@@ -17,10 +17,10 @@
     "noFallthroughCasesInSwitch": true,
     "types": ["vite/client"],
     "paths": {
-      "@rms-discord/shared": ["../shared/src"],
-      "@rms-discord/shared/*": ["../shared/src/*"]
+      "@rms-discord/shared": ["../../packages/shared/src"],
+      "@rms-discord/shared/*": ["../../packages/shared/src/*"]
     }
   },
-  "include": ["src/**/*.ts", "src/**/*.d.ts", "src/**/*.tsx", "src/**/*.vue", "../shared/src/**/*.ts", "../shared/src/**/*.d.ts", "../shared/src/**/*.vue"],
+  "include": ["src/**/*.ts", "src/**/*.d.ts", "src/**/*.tsx", "src/**/*.vue", "../../packages/shared/src/**/*.ts", "../../packages/shared/src/**/*.d.ts", "../../packages/shared/src/**/*.vue"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }
