@@ -1,5 +1,8 @@
 package cn.net.rms.chatroom.ui.settings
 
+import android.net.Uri
+import android.widget.Toast
+import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -11,11 +14,17 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.unit.dp
 import cn.net.rms.chatroom.BuildConfig
+import cn.net.rms.chatroom.R
 import cn.net.rms.chatroom.ui.theme.SurfaceDark
 import cn.net.rms.chatroom.ui.theme.TextMuted
 import cn.net.rms.chatroom.ui.theme.TextPrimary
+
+private const val GITHUB_REPO_URL = "https://github.com/Conflux-Union/rms-chatroom"
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -23,6 +32,7 @@ fun AboutScreen(
     onNavigateBack: () -> Unit,
     onNavigateToLicenses: () -> Unit
 ) {
+    val context = LocalContext.current
     Scaffold(
         topBar = {
             TopAppBar(
@@ -58,6 +68,23 @@ fun AboutScreen(
                 icon = Icons.Default.Copyright,
                 title = "版权信息",
                 subtitle = "RMS Server 版权所有"
+            )
+
+            // GitHub repository
+            AboutItem(
+                icon = ImageVector.vectorResource(R.drawable.ic_github),
+                title = "GitHub 仓库",
+                subtitle = "Conflux-Union/rms-chatroom",
+                onClick = {
+                    runCatching {
+                        CustomTabsIntent.Builder()
+                            .setShowTitle(true)
+                            .build()
+                            .launchUrl(context, Uri.parse(GITHUB_REPO_URL))
+                    }.onFailure {
+                        Toast.makeText(context, "未找到可打开链接的浏览器", Toast.LENGTH_SHORT).show()
+                    }
+                }
             )
 
             // Open source licenses
