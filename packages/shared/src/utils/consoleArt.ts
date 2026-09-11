@@ -83,6 +83,11 @@ export function printConsoleEasterEgg(): void {
     },
     { text: '\n', style: '' },
     {
+      text: 'GitHub: https://github.com/Conflux-Union/rms-chatroom',
+      style: 'color:#4dabf7;',
+    },
+    { text: '\n', style: '' },
+    {
       text: 'XR好想谈一段甜甜的恋爱呀👩‍❤️‍👨',
       style: 'color:#ff6b9d;font-style:italic;',
     },

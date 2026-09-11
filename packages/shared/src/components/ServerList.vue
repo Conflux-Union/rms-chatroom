@@ -1,11 +1,15 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+import { Github } from 'lucide-vue-next'
 import { useChatStore } from '../stores/chat'
 import { useAuthStore } from '../stores/auth'
+import { isTauri } from '../index'
 import { ZmModal, ZmInput, ZmButton, ZmSpace, ZmDropdown } from './ui'
 import type { ZmDropdownOption } from './ui'
 import Settings from './Setting.vue'
 import ServerPermissionModal from './ServerPermissionModal.vue'
+
+const GITHUB_REPO_URL = 'https://github.com/Conflux-Union/rms-chatroom'
 
 const chat = useChatStore()
 const auth = useAuthStore()
@@ -40,6 +44,20 @@ function canShowContextMenu(): boolean {
 
 async function selectServer(serverId: number) {
   await chat.fetchServer(serverId)
+}
+
+// The desktop webview blocks window.open, so route through the shell opener.
+async function openGitHub() {
+  if (!isTauri) {
+    window.open(GITHUB_REPO_URL, '_blank', 'noopener')
+    return
+  }
+  try {
+    const { invoke } = await import('@tauri-apps/api/core')
+    await invoke('open_external', { url: GITHUB_REPO_URL })
+  } catch (error) {
+    console.error('failed to open github repo', error)
+  }
 }
 
 async function createServer() {
@@ -144,6 +162,13 @@ function onServerPermissionSaved(val: { minLevel: number; permMinLevel: number; 
     </div>
 
     <div class="bottom-area">
+      <div
+        class="server-icon github-btn"
+        title="GitHub 仓库"
+        @click.stop="openGitHub"
+      >
+        <Github :size="20" />
+      </div>
       <div
         class="server-icon  settings-btn"
         title="设置"
