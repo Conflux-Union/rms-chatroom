@@ -7,6 +7,7 @@ import { useChatWebSocket } from '../composables/useChatWebSocket'
 import { useReadPosition } from '../composables/useReadPosition'
 import { useMentionNotification } from '../composables/useMentionNotification'
 import { formatDateTime, parseUTCDateTime, isWithinMinutes } from '../utils/datetime'
+import { renderMessageHtml } from '../utils/markdown'
 import {
   ZmDropdown,
   ZmModal,
@@ -25,6 +26,7 @@ import { Paperclip, Send, Upload, X, Image, Video, Music, FileText, File, MoreVe
 import FilePreview from './FilePreview.vue'
 import type { Attachment, Message, ReactionGroup } from '../types'
 import axios from 'axios'
+import { isTauri } from '../index'
 
 const API_BASE = import.meta.env.VITE_API_BASE || ''
 
@@ -126,7 +128,7 @@ const mentionStartIndex = ref(-1)
 const showMentionDropdown = ref(false)
 const mentionDropdownPosition = ref({ x: 0, y: 0 })
 const selectedMentionIndex = ref(0)
-const messageInputRef = ref<HTMLInputElement | null>(null)
+const messageInputRef = ref<HTMLTextAreaElement | null>(null)
 
 // Extract unique users from messages for mention autocomplete
 const channelUsers = computed(() => {
@@ -718,6 +720,9 @@ function handleInputChange(event: Event) {
 }
 
 function handleInputKeydown(event: KeyboardEvent) {
+  // IME composition (e.g. Chinese input): Enter and arrow keys belong to the
+  // candidate window, not to sending or mention navigation
+  if (event.isComposing || event.keyCode === 229) return
   if (showMentionDropdown.value && filteredMentionUsers.value.length > 0) {
     if (event.key === 'ArrowDown') {
       event.preventDefault()
@@ -743,6 +748,17 @@ function handleInputKeydown(event: KeyboardEvent) {
     sendMessage()
   }
 }
+
+// Auto-grow the multiline input with its content; the 160px cap matches the
+// CSS max-height, past which the box scrolls
+function autosizeMessageInput() {
+  const el = messageInputRef.value
+  if (!el) return
+  el.style.height = 'auto'
+  el.style.height = `${Math.min(el.scrollHeight, 160)}px`
+}
+
+watch(messageInput, () => nextTick(autosizeMessageInput))
 
 function selectMention(user: { id: number; username: string }) {
   if (mentionStartIndex.value === -1) return
@@ -772,25 +788,20 @@ function selectMention(user: { id: number; username: string }) {
   })
 }
 
-// Render message content with @mention highlighting
-function renderMessageContent(content: string): string {
-  // Escape HTML to prevent XSS
-  const escapeHtml = (text: string) => {
-    const div = document.createElement('div')
-    div.textContent = text
-    return div.innerHTML
+// Markdown links open in a new tab on the web; the desktop webview blocks
+// target=_blank, so route clicks through the shell opener instead.
+async function handleMessageLinkClick(event: MouseEvent) {
+  const anchor = (event.target as HTMLElement | null)?.closest?.('a')
+  if (!anchor || !isTauri) return
+  const href = anchor.getAttribute('href')
+  if (!href || href.startsWith('#')) return
+  event.preventDefault()
+  try {
+    const { invoke } = await import('@tauri-apps/api/core')
+    await invoke('open_external', { url: href })
+  } catch {
+    dialog.error({ title: '错误', content: '打开链接失败' })
   }
-
-  // First escape the content
-  const escaped = escapeHtml(content)
-
-  // Then highlight @mentions
-  // Match @username (word characters only)
-  // IMPORTANT: Also escape the captured username to prevent XSS via escaped entities
-  const mentionRegex = /@(\w+)/g
-  return escaped.replace(mentionRegex, (_match, username) => {
-    return `<span class="mention-highlight">@${escapeHtml(username)}</span>`
-  })
 }
 
 async function saveEdit() {
@@ -1280,7 +1291,7 @@ onUnmounted(() => {
               <span class="reply-author">{{ msg.forward_meta.quote.nickname }}</span>
               <span v-if="msg.forward_meta.quote.content" class="reply-content">{{ msg.forward_meta.quote.content }}</span>
             </div>
-            <div v-if="msg.content" class="message-text" v-html="renderMessageContent(msg.content)"></div>
+            <div v-if="msg.content" class="message-text" @click="handleMessageLinkClick" v-html="renderMessageHtml(msg.content)"></div>
             <!-- Attachments -->
             <div v-if="msg.attachments?.length" class="message-attachments">
               <FilePreview
@@ -1381,15 +1392,16 @@ onUnmounted(() => {
         <Paperclip :size="20" />
       </button>
       <div class="input-wrapper">
-        <input
+        <textarea
           ref="messageInputRef"
           v-model="messageInput"
+          rows="1"
           :placeholder="isMuted ? muteReason : `发送消息到 #${chat.currentChannel?.name || ''}`"
           @keydown="handleInputKeydown"
           @input="handleInputChange"
           class="message-input"
           :disabled="isMuted"
-        />
+        ></textarea>
         <!-- Mention autocomplete dropdown -->
         <div
           v-if="showMentionDropdown && filteredMentionUsers.length > 0"
@@ -1720,6 +1732,128 @@ onUnmounted(() => {
   overflow-wrap: anywhere;
 }
 
+/* Markdown-rendered body: keep blocks compact for chat density */
+.message-text :deep(p) {
+  margin: 0 0 4px;
+}
+
+.message-text :deep(p:last-child) {
+  margin-bottom: 0;
+}
+
+.message-text :deep(a) {
+  color: var(--color-accent);
+  text-decoration: underline;
+}
+
+.message-text :deep(code) {
+  padding: 1px 5px;
+  background: var(--surface-glass-hover);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.9em;
+}
+
+.message-text :deep(pre) {
+  margin: 4px 0;
+  padding: 10px 12px;
+  background: var(--surface-glass-hover);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  overflow-x: auto;
+}
+
+.message-text :deep(pre code) {
+  padding: 0;
+  background: none;
+  border: none;
+}
+
+.message-text :deep(blockquote) {
+  margin: 4px 0;
+  padding: 2px 0 2px 12px;
+  border-left: 3px solid var(--color-border-strong);
+  color: var(--color-text-muted);
+}
+
+.message-text :deep(blockquote p:last-child) {
+  margin-bottom: 0;
+}
+
+.message-text :deep(ul),
+.message-text :deep(ol) {
+  margin: 4px 0;
+  padding-left: 22px;
+}
+
+.message-text :deep(h1),
+.message-text :deep(h2),
+.message-text :deep(h3),
+.message-text :deep(h4),
+.message-text :deep(h5),
+.message-text :deep(h6) {
+  margin: 8px 0 4px;
+  line-height: 1.3;
+}
+
+/* Headings stay chat-sized, only the top level stands out */
+.message-text :deep(h1) {
+  font-size: 1.2em;
+}
+
+.message-text :deep(h2) {
+  font-size: 1.1em;
+}
+
+.message-text :deep(h3),
+.message-text :deep(h4),
+.message-text :deep(h5),
+.message-text :deep(h6) {
+  font-size: 1em;
+}
+
+.message-text :deep(h1:first-child),
+.message-text :deep(h2:first-child),
+.message-text :deep(h3:first-child),
+.message-text :deep(h4:first-child),
+.message-text :deep(h5:first-child),
+.message-text :deep(h6:first-child) {
+  margin-top: 0;
+}
+
+.message-text :deep(hr) {
+  margin: 8px 0;
+  border: none;
+  border-top: 1px solid var(--color-border);
+}
+
+.message-text :deep(table) {
+  /* Block keeps wide tables inside the message column and scrollable */
+  display: block;
+  overflow-x: auto;
+  margin: 4px 0;
+  border-collapse: collapse;
+  font-size: 0.95em;
+}
+
+.message-text :deep(th),
+.message-text :deep(td) {
+  padding: 3px 8px;
+  border: 1px solid var(--color-border);
+  text-align: left;
+}
+
+.message-text :deep(th) {
+  background: var(--surface-glass-hover);
+}
+
+.message-text :deep(input[type='checkbox']) {
+  margin-right: 4px;
+  vertical-align: middle;
+  accent-color: var(--color-accent);
+}
+
 .message-attachments {
   display: flex;
   flex-direction: column;
@@ -1800,7 +1934,8 @@ onUnmounted(() => {
   padding: 0 16px 24px;
   display: flex;
   gap: 8px;
-  align-items: center;
+  /* Bottom-align so attach/send stay put while the textarea grows */
+  align-items: flex-end;
 }
 
 .attach-btn,
@@ -1843,8 +1978,14 @@ onUnmounted(() => {
   background: var(--surface-glass-input);
   color: var(--color-text-main);
   font-size: 14px;
+  font-family: inherit;
+  line-height: 1.4;
   box-sizing: border-box;
-  transition: all var(--transition-fast);
+  /* Multiline input: grows with content via autosizeMessageInput, then scrolls */
+  resize: none;
+  max-height: 160px;
+  overflow-y: auto;
+  transition: background var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast);
 }
 
 .message-input::placeholder {
@@ -1900,7 +2041,7 @@ onUnmounted(() => {
     padding: 0 12px 16px;
   }
 
-  .chat-input input {
+  .chat-input textarea {
     padding: 10px 14px;
     font-size: 15px;
   }
