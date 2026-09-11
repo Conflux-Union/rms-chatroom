@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Traced 1:1 from mipmap ic_launcher_foreground (432px canvas) so the
+     in-app splash logo matches the system splash icon exactly. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="288dp"
+    android:height="288dp"
+    android:viewportWidth="432"
+    android:viewportHeight="432">
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M135,201 a9,9 0 0 1 18,0 v30 a9,9 0 0 1 -18,0 z M163,165 a9,9 0 0 1 18,0 v100 a9,9 0 0 1 -18,0 z M192,135 a9,9 0 0 1 18,0 v160 a9,9 0 0 1 -18,0 z M220,177 a9,9 0 0 1 18,0 v76 a9,9 0 0 1 -18,0 z M249,153 a9,9 0 0 1 18,0 v124 a9,9 0 0 1 -18,0 z M277,193 a9,9 0 0 1 18,0 v44 a9,9 0 0 1 -18,0 z"/>
+</vector>

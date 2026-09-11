@@ -27,6 +27,7 @@ import cn.net.rms.chatroom.data.local.SettingsPreferences
 import cn.net.rms.chatroom.data.repository.ChatRepository
 import cn.net.rms.chatroom.service.MessageConnectionService
 import cn.net.rms.chatroom.ui.auth.AuthViewModel
+import cn.net.rms.chatroom.ui.common.SplashContent
 import cn.net.rms.chatroom.ui.navigation.NavGraph
 import cn.net.rms.chatroom.ui.navigation.Screen
 import cn.net.rms.chatroom.ui.theme.RMSDiscordTheme
@@ -55,11 +56,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        installSplashScreen().apply {
-            setKeepOnScreenCondition {
-                authViewModel.state.value.isLoading
-            }
-        }
+        installSplashScreen()
 
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -111,15 +108,19 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = SurfaceDarker
-                ) {
-                    NavGraph(
-                        navController = navController,
-                        startDestination = Screen.Login.route,
-                        onSsoLogin = { launchSsoLogin() }
-                    )
+                if (authState.isLoading) {
+                    SplashContent()
+                } else {
+                    Surface(
+                        modifier = Modifier.fillMaxSize(),
+                        color = SurfaceDarker
+                    ) {
+                        NavGraph(
+                            navController = navController,
+                            startDestination = Screen.Login.route,
+                            onSsoLogin = { launchSsoLogin() }
+                        )
+                    }
                 }
             }
         }
