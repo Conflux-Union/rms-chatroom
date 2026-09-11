@@ -93,8 +93,9 @@ Author resolution:
 
 - Matched platform account → message is posted as that user with their
   avatar/nickname, plus a small `QQ` / `服务器` source badge.
-- No match → posted as the bot proxy account (`forward_bot_user_id`),
-  display name `昵称(未知用户)`.
+- No match → posted under the ghost user (`user_id` 0, no real account;
+  avatars fall back to the username's first letter), display name
+  `昵称(未知用户)`.
 
 Response `201` returns the full message object (same shape as
 `GET /api/channels/:id/messages`), including `source_platform` and

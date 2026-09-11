@@ -441,8 +441,10 @@ func (h *MessageHandler) GetMessages(c echo.Context) error {
 		}
 		msgs[i].Mentions = parseMentions(msgs[i].Content)
 
+		// Ghost user 0 marks forwarded messages with no platform account;
+		// SSO has no avatar for it, so don't ask.
 		uid := int(msgs[i].UserID)
-		if !userIDSet[uid] {
+		if uid > 0 && !userIDSet[uid] {
 			userIDSet[uid] = true
 			userIDs = append(userIDs, uid)
 		}

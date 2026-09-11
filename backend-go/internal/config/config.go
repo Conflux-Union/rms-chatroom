@@ -20,9 +20,6 @@ type Config struct {
 	// ForwardBotToken gates the /api/forward/* bot routes (message sync bot).
 	// Empty disables those routes entirely.
 	ForwardBotToken string `json:"forward_bot_token"`
-	// ForwardBotUserID is the account that posts forwarded messages when the
-	// external sender cannot be matched to a platform account.
-	ForwardBotUserID int64 `json:"forward_bot_user_id"`
 	// MetricsToken gates GET /metrics (Prometheus scrape). Empty disables the endpoint.
 	MetricsToken string `json:"metrics_token"`
 

@@ -26,12 +26,11 @@ import (
 type ForwardHandler struct {
 	db        *sql.DB
 	sso       *sso.Client
-	botUserID int64
 	uploadDir string
 }
 
-func NewForwardHandler(db *sql.DB, ssoClient *sso.Client, botUserID int64, uploadDir string) *ForwardHandler {
-	return &ForwardHandler{db: db, sso: ssoClient, botUserID: botUserID, uploadDir: uploadDir}
+func NewForwardHandler(db *sql.DB, ssoClient *sso.Client, uploadDir string) *ForwardHandler {
+	return &ForwardHandler{db: db, sso: ssoClient, uploadDir: uploadDir}
 }
 
 type forwardSenderReq struct {
@@ -81,11 +80,18 @@ type forwardedMessage struct {
 	Server          string // ChatBridge origin server name (game only)
 }
 
+// ghostUserID marks forwarded messages whose sender has no platform account
+// (unmatched QQ/game sender, or a game system event). There is no FK on
+// messages.user_id — accounts live in SSO, not this database — so 0 can never
+// collide with a real account and clients render the username with a
+// first-letter avatar fallback.
+const ghostUserID int64 = 0
+
 // resolveAuthor maps the external sender to a platform account. QQ senders are
 // matched by the SSO account email (<qq>@qq.com), game events by username.
-// Unmatched senders fall back to the bot proxy account with
-// "昵称(未知用户)" as the display name; game system events (no author, e.g.
-// "Steve joined smp") post under the plain server name instead.
+// Unmatched senders post under the ghost user with "昵称(未知用户)" as the
+// display name; game system events (no author, e.g. "Steve joined smp") post
+// under the plain server name instead.
 func (h *ForwardHandler) resolveAuthor(source string, sender forwardSenderReq) (userID int64, username string, avatarURL string) {
 	nickname := sender.Nickname
 	if nickname == "" {
@@ -109,13 +115,13 @@ func (h *ForwardHandler) resolveAuthor(source string, sender forwardSenderReq) (
 
 	// System events have no player to resolve; keep the server name clean.
 	if source == "game" && sender.Username == "" {
-		return h.botUserID, nickname, ""
+		return ghostUserID, nickname, ""
 	}
 
-	// Fallback: post as the bot account under the original nickname. The
+	// Fallback: post under the ghost user with the original nickname. The
 	// messages.username column carries "昵称(未知用户)" so the original
-	// sender stays visible even though user_id is the bot.
-	return h.botUserID, nickname + "(未知用户)", ""
+	// sender stays visible even though the message belongs to no account.
+	return ghostUserID, nickname + "(未知用户)", ""
 }
 
 var errNotForwardChannel = errors.New("not a forward channel")
@@ -245,11 +251,11 @@ func (h *ForwardHandler) postForwarded(channelID int64, m forwardedMessage) (*me
 	msgID, _ := res.LastInsertId()
 
 	// Attachments were uploaded through the bot route, so they belong to the
-	// bot account regardless of which user the message is posted as.
+	// ghost user regardless of which user the message is posted as.
 	for _, attID := range m.AttachmentIDs {
 		h.db.Exec(
 			"UPDATE attachments SET message_id = ? WHERE id = ? AND channel_id = ? AND user_id = ? AND message_id IS NULL",
-			msgID, attID, channelID, h.botUserID,
+			msgID, attID, channelID, ghostUserID,
 		)
 	}
 
@@ -319,7 +325,7 @@ func (h *ForwardHandler) postForwarded(channelID int64, m forwardedMessage) (*me
 }
 
 // Upload stores a media file for a forwarded message. The attachment is owned
-// by the bot account and linked to the message afterwards via attachment_ids.
+// by the ghost user and linked to the message afterwards via attachment_ids.
 // POST /api/forward/channels/:channel_id/upload
 func (h *ForwardHandler) Upload(c echo.Context) error {
 	channelID, err := strconv.ParseInt(c.Param("channel_id"), 10, 64)
@@ -370,7 +376,7 @@ func (h *ForwardHandler) Upload(c echo.Context) error {
 	}
 
 	prepared := prepareUpload(c.Request().Context(), safeName, fh.Header.Get("Content-Type"), content)
-	id, _, err := saveAttachment(h.db, h.uploadDir, channelID, h.botUserID, prepared)
+	id, _, err := saveAttachment(h.db, h.uploadDir, channelID, ghostUserID, prepared)
 	if err != nil {
 		log.Printf("handler/forward: failed to save attachment: %v", err)
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to create record"})

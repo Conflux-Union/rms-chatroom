@@ -150,7 +150,7 @@ func main() {
 	// the configured FORWARD channel. Runs until shutdown; a disabled or
 	// missing config leaves chatbridge.Default nil, so all send paths no-op.
 	if cb := cfg.ChatBridge; cb.Enabled {
-		fw := handler.NewForwardHandler(db, ssoClient, cfg.ForwardBotUserID, "uploads")
+		fw := handler.NewForwardHandler(db, ssoClient, "uploads")
 		chatbridge.Default = chatbridge.NewClient(chatbridge.Config{
 			ServerHost: cb.ServerHost,
 			ServerPort: cb.ServerPort,

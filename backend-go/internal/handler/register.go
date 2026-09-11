@@ -98,7 +98,7 @@ func Register(e *echo.Echo, cfg *config.Config, db *sql.DB, ssoClient *sso.Clien
 	// Forward bot routes (message sync bot). Registered only when the bot
 	// token is configured, so the endpoints don't exist at all otherwise.
 	if cfg.ForwardBotToken != "" {
-		forwardH := NewForwardHandler(db, ssoClient, cfg.ForwardBotUserID, "uploads")
+		forwardH := NewForwardHandler(db, ssoClient, "uploads")
 		botAuth := mw.BotAuth(cfg.ForwardBotToken)
 		forward := e.Group("/api/forward", botAuth)
 		forward.POST("/channels/:channel_id/messages", forwardH.PostMessage)

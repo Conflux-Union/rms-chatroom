@@ -28,7 +28,6 @@
   "deploy_token": "",
   "metrics_token": "",
   "forward_bot_token": "",
-  "forward_bot_user_id": 0,
 
   "chatbridge": {
     "enabled": false,
