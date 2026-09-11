@@ -20,13 +20,23 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextLinkStyles
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -92,7 +102,9 @@ private val MENTION_REGEX = Regex("@(\\w+)")
 private val MarkdownBorder = TextMuted.copy(alpha = 0.4f)
 private val MarkdownLinkStyle = SpanStyle(color = TiColor, textDecoration = TextDecoration.Underline)
 private val MarkdownMentionStyle = SpanStyle(color = TiColor, fontWeight = FontWeight.Medium)
-private val MarkdownInlineCodeStyle = SpanStyle(fontFamily = FontFamily.Monospace, background = SurfaceLighter)
+// Monospace marks inline code spans; the highlight is drawn by MarkdownInlineText
+private val MarkdownInlineCodeStyle = SpanStyle(fontFamily = FontFamily.Monospace)
+private val MarkdownCodeRadius = 4.dp
 
 fun parseMessageMarkdown(content: String): Node = MESSAGE_PARSER.parse(content)
 
@@ -153,10 +165,55 @@ private fun MarkdownBodyText(text: AnnotatedString, inBlockQuote: Boolean, headi
         2 -> base.copy(fontSize = 17.sp, lineHeight = 24.sp, fontWeight = FontWeight.Bold)
         else -> base.copy(fontWeight = FontWeight.Bold)
     }
-    Text(
+    MarkdownInlineText(
         text = text,
         style = style,
         color = if (inBlockQuote) TextMuted else TextSecondary
+    )
+}
+
+// SpanStyle backgrounds are square; inline code keeps a rounded highlight by
+// redrawing each code span as a rounded rect behind the text (per line, since
+// a span can wrap), matching the fenced code block's corners.
+@Composable
+private fun MarkdownInlineText(text: AnnotatedString, style: TextStyle, color: Color) {
+    val codeRanges = remember(text) {
+        text.spanStyles
+            .filter { it.item.fontFamily == FontFamily.Monospace }
+            .map { IntRange(it.start, it.end - 1) }
+    }
+    var layoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
+    Text(
+        text = text,
+        style = style,
+        color = color,
+        onTextLayout = { layoutResult = it },
+        modifier = Modifier.drawBehind {
+            val layout = layoutResult ?: return@drawBehind
+            codeRanges.forEach { range ->
+                if (range.isEmpty()) return@forEach
+                val firstLine = layout.getLineForOffset(range.first)
+                val lastLine = layout.getLineForOffset(range.last)
+                for (line in firstLine..lastLine) {
+                    val left = if (line == firstLine) {
+                        layout.getHorizontalPosition(range.first, true)
+                    } else {
+                        layout.getLineLeft(line)
+                    }
+                    val right = when {
+                        line != lastLine -> layout.getLineRight(line)
+                        range.last + 1 >= text.length -> layout.getLineRight(line)
+                        else -> layout.getHorizontalPosition(range.last + 1, true)
+                    }
+                    drawRoundRect(
+                        color = SurfaceLighter,
+                        topLeft = Offset(left, layout.getLineTop(line)),
+                        size = Size(right - left, layout.getLineBottom(line) - layout.getLineTop(line)),
+                        cornerRadius = CornerRadius(MarkdownCodeRadius.toPx())
+                    )
+                }
+            }
+        }
     )
 }
 
@@ -214,7 +271,7 @@ private fun MarkdownCodeBlock(code: String) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
         color = SurfaceLighter,
-        shape = RoundedCornerShape(4.dp)
+        shape = RoundedCornerShape(MarkdownCodeRadius)
     ) {
         Text(
             text = code.trimEnd('\n'),
@@ -281,7 +338,7 @@ private fun MarkdownTable(table: TableBlock) {
                             contentAlignment = Alignment.CenterStart
                         ) {
                             if (cell != null) {
-                                Text(
+                                MarkdownInlineText(
                                     text = renderMarkdownInlines(cell),
                                     style = if (row.isHeader) {
                                         MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold)
