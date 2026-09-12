@@ -63,11 +63,27 @@ android {
         }
     }
 
+    // Compress native libs inside the APK (~5 MB smaller download at the
+    // cost of an extra extracted copy on device at install time).
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+        }
+        resources {
+            // protobuf-javalite ships schema sources it never reads at runtime
+            excludes += setOf(
+                "google/protobuf/*.proto",
+                "kotlin-tooling-metadata.json",
+            )
+        }
+    }
+
     buildTypes {
         debug {
             buildConfigField("String", "API_BASE_URL", "\"https://chatroom.rms.net.cn\"")
             buildConfigField("String", "WS_BASE_URL", "\"wss://chatroom.rms.net.cn\"")
         }
+
         release {
             isMinifyEnabled = true
             isShrinkResources = true
@@ -148,7 +164,12 @@ dependencies {
     implementation(libs.room.ktx)
     ksp(libs.room.compiler)
 
-    // LiveKit
+    // LiveKit. NOTE: jain-sip (android.gov.nist.*) and klaxon (com.beust.*)
+    // look like dead weight kept by LiveKit's consumer rules, but they are NOT
+    // removable: Participant.updateFromInfo() unconditionally parses
+    // AgentAttributes via klaxon, and the peer-connection SDP munging path
+    // (PeerConnectionTransport.createAndSendOffer) requires the jain-sdp
+    // stack. Both are on the mandatory voice-call path.
     implementation(libs.livekit.android)
 
     // Image loading

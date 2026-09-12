@@ -61,15 +61,15 @@
 # ================================
 # LiveKit / WebRTC
 # ================================
-# LiveKit's AAR ships a consumer proguard.txt that keeps protobuf messages
-# (`* extends GeneratedMessageLite`) and the WebRTC JNI surface
-# (`livekit.org.webrtc.**`). We only need to keep the app-facing SDK classes and
-# silence JNI warnings; the former blanket `-keep class io.livekit.** { *; }`
-# was over-broad.
+# LiveKit's AAR consumer rules keep the WebRTC JNI surface
+# (`livekit.org.webrtc.**`), its kotlinx-serialization serializers and
+# protobuf messages. App-facing SDK classes are reachable from app code and
+# survive shrinking without a blanket keep; dropping the former
+# `-keep class io.livekit.android.** { *; }` lets R8 strip the unused SDK
+# surface (SIP, egress, cloud, recordings, ...).
 -dontwarn org.webrtc.**
 -dontwarn livekit.org.webrtc.**
 -dontwarn io.livekit.**
--keep class io.livekit.android.** { *; }
 
 # ================================
 # Room Database
