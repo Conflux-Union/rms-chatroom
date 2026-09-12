@@ -710,6 +710,7 @@ async function fetchForwardQuote(link: MessagePermalink, key: string, quote: For
       quote.note = '原消息已被删除'
     } else {
       quote.status = 'ready'
+      quote.note = undefined
       quote.author = source.username
       quote.body = source.content || ((source.attachments?.length ?? 0) > 0 ? '[附件]' : '')
     }
@@ -1615,7 +1616,7 @@ onUnmounted(() => {
               @keydown.enter="openForwardedMessage(msg)"
             >
               <span class="forward-quote-label">转发的消息</span>
-              <span v-if="forwardQuoteFor(msg)!.note" class="forward-quote-note">{{ forwardQuoteFor(msg)!.note }}</span>
+              <span v-if="forwardQuoteFor(msg)!.status !== 'ready'" class="forward-quote-note">{{ forwardQuoteFor(msg)!.note }}</span>
               <template v-else>
                 <span class="forward-quote-author">{{ forwardQuoteFor(msg)!.author }}</span>
                 <span class="forward-quote-body">{{ forwardQuoteFor(msg)!.body }}</span>
