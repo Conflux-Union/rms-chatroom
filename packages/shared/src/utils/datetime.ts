@@ -20,8 +20,10 @@ export function parseUTCDateTime(dateStr: string): Date {
 }
 
 /**
- * Format a UTC datetime string for display.
- * Converts to local timezone (Beijing time) and formats as "YYYY-MM-DD HH:mm".
+ * Format a UTC datetime string for display in message headers.
+ * Converts to local timezone and picks the compact form:
+ * today "HH:mm", yesterday "昨天 HH:mm", 2 days ago "前天 HH:mm",
+ * earlier this year "M月D日 HH:mm", other years "YYYY年M月D日 HH:mm".
  *
  * @param dateStr - UTC datetime string from backend
  * @returns Formatted string in local timezone
@@ -29,12 +31,19 @@ export function parseUTCDateTime(dateStr: string): Date {
 export function formatDateTime(dateStr: string): string {
   const date = parseUTCDateTime(dateStr)
   const pad = (n: number) => String(n).padStart(2, '0')
-  const y = date.getFullYear()
-  const m = pad(date.getMonth() + 1)
-  const d = pad(date.getDate())
-  const hh = pad(date.getHours())
-  const mm = pad(date.getMinutes())
-  return `${y}-${m}-${d} ${hh}:${mm}`
+  const time = `${pad(date.getHours())}:${pad(date.getMinutes())}`
+
+  const now = new Date()
+  const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
+  const daysApart = Math.round((startOfDay(now) - startOfDay(date)) / 86400000)
+
+  if (daysApart === 0) return time
+  if (daysApart === 1) return `昨天 ${time}`
+  if (daysApart === 2) return `前天 ${time}`
+  if (date.getFullYear() === now.getFullYear()) {
+    return `${date.getMonth() + 1}月${date.getDate()}日 ${time}`
+  }
+  return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日 ${time}`
 }
 
 /**

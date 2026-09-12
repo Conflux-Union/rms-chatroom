@@ -36,6 +36,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.exclude
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.ime
@@ -137,8 +138,10 @@ import cn.net.rms.chatroom.ui.theme.InkDark
 import cn.net.rms.chatroom.ui.theme.SealDark
 import java.io.File
 import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.time.temporal.ChronoUnit
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
@@ -840,11 +843,14 @@ private fun MessageItem(
         }
 
         Column(modifier = Modifier.weight(1f)) {
-            // Username and timestamp: hidden for grouped messages
+            // Username and timestamp: hidden for grouped messages.
+            // FlowRow drops the timestamp to the next line when a long
+            // username + badge leave no room, instead of squeezing it
+            // into a one-character-per-line strip.
             if (!isGrouped) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
                     Text(
                         text = message.username,
@@ -861,6 +867,7 @@ private fun MessageItem(
                             style = MaterialTheme.typography.labelSmall,
                             color = InkDarkFaint,
                             modifier = Modifier
+                                .align(Alignment.CenterVertically)
                                 .clip(RoundedCornerShape(4.dp))
                                 .background(PaperDarkSubtle)
                                 .padding(horizontal = 4.dp, vertical = 1.dp)
@@ -870,7 +877,8 @@ private fun MessageItem(
                     Text(
                         text = formatTimestamp(message.createdAt),
                         style = MaterialTheme.typography.labelSmall,
-                        color = InkDarkFaint
+                        color = InkDarkFaint,
+                        modifier = Modifier.align(Alignment.CenterVertically)
                     )
                 }
 
@@ -1770,9 +1778,18 @@ private fun formatTimestamp(timestamp: String): String {
         val normalizedTimestamp = if (timestamp.endsWith("Z")) timestamp else "${timestamp}Z"
         val instant = Instant.parse(normalizedTimestamp)
         // Format in device's local timezone
-        val formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
-            .withZone(ZoneId.systemDefault())
-        formatter.format(instant)
+        val zone = ZoneId.systemDefault()
+        val dateTime = instant.atZone(zone)
+        val time = DateTimeFormatter.ofPattern("HH:mm").format(dateTime)
+        val today = LocalDate.now(zone)
+        when (ChronoUnit.DAYS.between(dateTime.toLocalDate(), today)) {
+            0L -> time
+            1L -> "昨天 $time"
+            2L -> "前天 $time"
+            else ->
+                if (dateTime.year == today.year) "${dateTime.monthValue}月${dateTime.dayOfMonth}日 $time"
+                else "${dateTime.year}年${dateTime.monthValue}月${dateTime.dayOfMonth}日 $time"
+        }
     } catch (e: Exception) {
         timestamp
     }

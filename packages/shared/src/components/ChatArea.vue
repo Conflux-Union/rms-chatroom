@@ -1729,8 +1729,10 @@ onUnmounted(() => {
 
 .message-header {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
-  gap: 8px;
+  /* row gap keeps the timestamp readable when it wraps below the author */
+  gap: 2px 8px;
   margin-bottom: 4px;
   position: relative;
 }
@@ -1786,11 +1788,15 @@ onUnmounted(() => {
 .message-author {
   font-weight: 500;
   color: var(--color-text-main);
+  /* very long usernames wrap instead of overflowing horizontally */
+  overflow-wrap: anywhere;
 }
 
 .message-time {
   font-size: 12px;
   color: var(--color-text-muted);
+  /* never shrink into a vertical strip; wrap to the next line instead */
+  flex-shrink: 0;
 }
 
 .edited-indicator {
