@@ -74,7 +74,7 @@ Backend runs on `http://localhost:8000`
 
 ```bash
 pnpm install
-pnpm dev:web
+pnpm web:dev
 ```
 
 Frontend runs on `http://localhost:5173`
@@ -82,6 +82,9 @@ Frontend runs on `http://localhost:5173`
 ### Android Setup
 
 ```bash
+pnpm android:assemble-debug   # from repo root
+
+# or from apps/android/:
 cd apps/android
 ./gradlew assembleDebug
 ./gradlew installDebug
@@ -144,10 +147,10 @@ Backward compatible: defaults (`perm_min_level=0`, `logic_operator=AND`) reduce 
 ## Building for Production
 
 ```bash
-pnpm build:web                # Web frontend
-pnpm build:desktop            # Desktop (Tauri) frontend
+pnpm web:build                # Web frontend
+pnpm desktop:build-frontend   # Desktop (Tauri) frontend
+pnpm android:assemble-release # Android APK
 cd server && go build ./cmd/server  # Go binary
-cd apps/android && ./gradlew assembleRelease     # Android APK
 ```
 
 ## Deployment
