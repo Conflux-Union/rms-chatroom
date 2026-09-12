@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -25,6 +27,13 @@ val appVersionName = "1.0.15"
 val commitHash = "git rev-parse --short=8 HEAD".runCommand().ifEmpty { "unknown" }
 val fullVersionName = "v${appVersionName}(${appVersionCode})(commit:${commitHash})"
 
+// Release signing credentials: CI injects env vars; local builds read the
+// gitignored keystore.properties next to the keystore. No plaintext fallback —
+// the old fallback password is permanently public in this repo's history.
+val keystoreProps = Properties().apply {
+    file("keystore.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
+}
+
 android {
     namespace = "cn.net.rms.chatroom"
     compileSdk = 35
@@ -32,9 +41,9 @@ android {
     signingConfigs {
         create("release") {
             storeFile = file("release.keystore")
-            storePassword = System.getenv("KEYSTORE_PASSWORD") ?: "rmsdiscord123"
-            keyAlias = System.getenv("KEY_ALIAS") ?: "rms-discord"
-            keyPassword = System.getenv("KEY_PASSWORD") ?: "rmsdiscord123"
+            storePassword = System.getenv("KEYSTORE_PASSWORD") ?: keystoreProps.getProperty("storePassword")
+            keyAlias = System.getenv("KEY_ALIAS") ?: keystoreProps.getProperty("keyAlias")
+            keyPassword = System.getenv("KEY_PASSWORD") ?: keystoreProps.getProperty("keyPassword")
         }
     }
 

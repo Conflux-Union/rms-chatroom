@@ -35,6 +35,7 @@ lint-baseline.xml
 *.jks
 !debug.keystore
 release.keystore
+keystore.properties
 
 # Kotlin
 .kotlin/
