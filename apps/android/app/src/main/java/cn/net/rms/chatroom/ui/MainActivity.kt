@@ -31,7 +31,7 @@ import cn.net.rms.chatroom.ui.common.SplashContent
 import cn.net.rms.chatroom.ui.navigation.NavGraph
 import cn.net.rms.chatroom.ui.navigation.Screen
 import cn.net.rms.chatroom.ui.theme.RMSDiscordTheme
-import cn.net.rms.chatroom.ui.theme.SurfaceDarker
+import cn.net.rms.chatroom.ui.theme.PaperDark
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
@@ -120,7 +120,7 @@ class MainActivity : ComponentActivity() {
                     }
                     Surface(
                         modifier = Modifier.fillMaxSize(),
-                        color = SurfaceDarker
+                        color = PaperDark
                     ) {
                         NavGraph(
                             navController = navController,

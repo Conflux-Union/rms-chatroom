@@ -21,8 +21,8 @@ fun PlatformSelectDialog(
 ) {
     Dialog(onDismissRequest = onDismiss) {
         Surface(
-            shape = RoundedCornerShape(16.dp),
-            color = SurfaceDark
+            shape = RoundedCornerShape(8.dp),
+            color = PaperDarkSubtle
         ) {
             Column(
                 modifier = Modifier
@@ -34,7 +34,7 @@ fun PlatformSelectDialog(
                     text = "选择登录平台",
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
-                    color = TextPrimary
+                    color = InkDark
                 )
 
                 Spacer(modifier = Modifier.height(24.dp))
@@ -47,7 +47,7 @@ fun PlatformSelectDialog(
                         colors = ButtonDefaults.buttonColors(
                             containerColor = Color(0xFF10B981)
                         ),
-                        shape = RoundedCornerShape(12.dp)
+                        shape = RoundedCornerShape(8.dp)
                     ) {
                         Text(
                             text = "QQ 音乐",
@@ -68,7 +68,7 @@ fun PlatformSelectDialog(
                         colors = ButtonDefaults.buttonColors(
                             containerColor = Color(0xFFE60026)
                         ),
-                        shape = RoundedCornerShape(12.dp)
+                        shape = RoundedCornerShape(8.dp)
                     ) {
                         Text(
                             text = "网易云音乐",
@@ -83,7 +83,7 @@ fun PlatformSelectDialog(
 
                 // Close button
                 TextButton(onClick = onDismiss) {
-                    Text("取消", color = TextMuted)
+                    Text("取消", color = InkDarkFaint)
                 }
             }
         }

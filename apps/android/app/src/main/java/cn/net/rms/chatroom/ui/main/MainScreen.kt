@@ -25,9 +25,9 @@ import cn.net.rms.chatroom.ui.chat.ChatScreen
 import cn.net.rms.chatroom.ui.main.components.ChannelListColumn
 import cn.net.rms.chatroom.ui.main.components.ServerListColumn
 import cn.net.rms.chatroom.ui.common.BatteryOptimizationDialog
-import cn.net.rms.chatroom.ui.theme.TiColor
-import cn.net.rms.chatroom.ui.theme.SurfaceDark
-import cn.net.rms.chatroom.ui.theme.SurfaceDarker
+import cn.net.rms.chatroom.ui.theme.SealDark
+import cn.net.rms.chatroom.ui.theme.PaperDarkSubtle
+import cn.net.rms.chatroom.ui.theme.PaperDark
 import cn.net.rms.chatroom.ui.voice.VoiceScreen
 import cn.net.rms.chatroom.util.BatteryOptimizationHelper
 import kotlinx.coroutines.launch
@@ -89,7 +89,7 @@ fun MainScreen(
         drawerContent = {
             ModalDrawerSheet(
                 modifier = Modifier.width(312.dp),
-                drawerContainerColor = SurfaceDarker
+                drawerContainerColor = PaperDark
             ) {
                 Row(modifier = Modifier.fillMaxHeight()) {
                     // Server List
@@ -185,7 +185,7 @@ fun MainScreen(
                                 CircularProgressIndicator(
                                     modifier = Modifier.size(24.dp),
                                     strokeWidth = 2.dp,
-                                    color = TiColor
+                                    color = SealDark
                                 )
                             } else {
                                 Icon(
@@ -196,7 +196,7 @@ fun MainScreen(
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = SurfaceDark
+                        containerColor = PaperDarkSubtle
                     )
                 )
             },
@@ -204,7 +204,7 @@ fun MainScreen(
                 // Music button - only show when connected to voice (Phase 3)
                 // TODO: Check voice connection state
             },
-            containerColor = SurfaceDark
+            containerColor = PaperDarkSubtle
         ) { paddingValues ->
             Box(
                 modifier = Modifier
@@ -215,7 +215,7 @@ fun MainScreen(
                     mainState.isLoading -> {
                         CircularProgressIndicator(
                             modifier = Modifier.align(Alignment.Center),
-                            color = TiColor
+                            color = SealDark
                         )
                     }
 

@@ -59,8 +59,8 @@ fun MusicSearchDialog(
             modifier = Modifier
                 .fillMaxWidth(0.95f)
                 .fillMaxHeight(0.8f),
-            shape = RoundedCornerShape(16.dp),
-            color = SurfaceDark
+            shape = RoundedCornerShape(8.dp),
+            color = PaperDarkSubtle
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
                 // Search header
@@ -77,7 +77,7 @@ fun MusicSearchDialog(
                             .weight(1f)
                             .focusRequester(focusRequester),
                         placeholder = {
-                            Text("搜索歌曲...", color = TextMuted)
+                            Text("搜索歌曲...", color = InkDarkFaint)
                         },
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(
@@ -87,13 +87,13 @@ fun MusicSearchDialog(
                             onSearch = { onSearch(searchQuery) }
                         ),
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = TiColor,
-                            unfocusedBorderColor = SurfaceLight,
-                            focusedContainerColor = SurfaceLight,
-                            unfocusedContainerColor = SurfaceLight,
-                            cursorColor = TiColor,
-                            focusedTextColor = TextPrimary,
-                            unfocusedTextColor = TextPrimary
+                            focusedBorderColor = SealDark,
+                            unfocusedBorderColor = PaperDarkHover,
+                            focusedContainerColor = PaperDarkHover,
+                            unfocusedContainerColor = PaperDarkHover,
+                            cursorColor = SealDark,
+                            focusedTextColor = InkDark,
+                            unfocusedTextColor = InkDark
                         ),
                         shape = RoundedCornerShape(8.dp)
                     )
@@ -106,19 +106,19 @@ fun MusicSearchDialog(
                         modifier = Modifier
                             .size(48.dp)
                             .clip(RoundedCornerShape(8.dp))
-                            .background(TiColor)
+                            .background(SealDark)
                     ) {
                         if (isSearching) {
                             CircularProgressIndicator(
                                 modifier = Modifier.size(20.dp),
-                                color = Color.White,
+                                color = PaperDark,
                                 strokeWidth = 2.dp
                             )
                         } else {
                             Icon(
                                 imageVector = Icons.Default.Search,
                                 contentDescription = "搜索",
-                                tint = Color.White
+                                tint = PaperDark
                             )
                         }
                     }
@@ -137,16 +137,16 @@ fun MusicSearchDialog(
                             onClick = { onSearchPlatformChange(value) },
                             label = { Text(label, style = MaterialTheme.typography.labelSmall) },
                             colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = TiColor,
-                                selectedLabelColor = Color.White,
-                                containerColor = SurfaceLight,
-                                labelColor = TextMuted
+                                selectedContainerColor = SealDark,
+                                selectedLabelColor = PaperDark,
+                                containerColor = PaperDarkHover,
+                                labelColor = InkDarkFaint
                             )
                         )
                     }
                 }
 
-                HorizontalDivider(color = SurfaceLight)
+                HorizontalDivider(color = PaperDarkHover)
 
                 // Search results
                 if (searchResults.isEmpty()) {
@@ -159,7 +159,7 @@ fun MusicSearchDialog(
                         Text(
                             text = if (isSearching) "搜索中..." else if (searchQuery.isNotEmpty()) "未找到结果" else "输入关键词搜索歌曲",
                             style = MaterialTheme.typography.bodyMedium,
-                            color = TextMuted
+                            color = InkDarkFaint
                         )
                     }
                 } else {
@@ -186,11 +186,11 @@ fun MusicSearchDialog(
                         .fillMaxWidth()
                         .padding(16.dp),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = SurfaceLight
+                        containerColor = PaperDarkHover
                     ),
                     shape = RoundedCornerShape(8.dp)
                 ) {
-                    Text("关闭", color = TextPrimary)
+                    Text("关闭", color = InkDark)
                 }
             }
         }
@@ -230,7 +230,7 @@ private fun SearchResultItem(
                 Text(
                     text = song.name,
                     style = MaterialTheme.typography.bodyMedium,
-                    color = TextPrimary,
+                    color = InkDark,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f, fill = false)
@@ -252,7 +252,7 @@ private fun SearchResultItem(
             Text(
                 text = "${song.artist} · ${song.album}",
                 style = MaterialTheme.typography.bodySmall,
-                color = TextMuted,
+                color = InkDarkFaint,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -262,7 +262,7 @@ private fun SearchResultItem(
         Text(
             text = formatDuration(song.duration),
             style = MaterialTheme.typography.labelSmall,
-            color = TextMuted
+            color = InkDarkFaint
         )
     }
 }

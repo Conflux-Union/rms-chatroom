@@ -127,14 +127,14 @@ import cn.net.rms.chatroom.data.model.Attachment
 import cn.net.rms.chatroom.data.model.Message
 import cn.net.rms.chatroom.data.model.ReactionGroup
 import cn.net.rms.chatroom.data.websocket.ConnectionState
-import cn.net.rms.chatroom.ui.theme.DiscordRed
-import cn.net.rms.chatroom.ui.theme.DiscordYellow
-import cn.net.rms.chatroom.ui.theme.SurfaceDark
-import cn.net.rms.chatroom.ui.theme.SurfaceDarker
-import cn.net.rms.chatroom.ui.theme.SurfaceLighter
-import cn.net.rms.chatroom.ui.theme.TextMuted
-import cn.net.rms.chatroom.ui.theme.TextPrimary
-import cn.net.rms.chatroom.ui.theme.TiColor
+import cn.net.rms.chatroom.ui.theme.DangerDark
+import cn.net.rms.chatroom.ui.theme.WarningDark
+import cn.net.rms.chatroom.ui.theme.PaperDarkSubtle
+import cn.net.rms.chatroom.ui.theme.PaperDark
+import cn.net.rms.chatroom.ui.theme.PaperDarkRaised
+import cn.net.rms.chatroom.ui.theme.InkDarkFaint
+import cn.net.rms.chatroom.ui.theme.InkDark
+import cn.net.rms.chatroom.ui.theme.SealDark
 import java.io.File
 import java.time.Instant
 import java.time.ZoneId
@@ -361,7 +361,7 @@ fun ChatScreen(
                             modifier = Modifier.fillMaxSize(),
                             contentAlignment = Alignment.Center
                         ) {
-                            CircularProgressIndicator(color = TiColor)
+                            CircularProgressIndicator(color = SealDark)
                         }
                     }
                     messages.isEmpty() -> {
@@ -371,7 +371,7 @@ fun ChatScreen(
                         ) {
                             Text(
                                 text = "暂无消息\n发送第一条消息吧！",
-                                color = TextMuted,
+                                color = InkDarkFaint,
                                 textAlign = TextAlign.Center
                             )
                         }
@@ -443,7 +443,7 @@ fun ChatScreen(
                                 CircularProgressIndicator(
                                     modifier = Modifier.size(20.dp),
                                     strokeWidth = 2.dp,
-                                    color = TiColor
+                                    color = SealDark
                                 )
                             }
                         }
@@ -597,8 +597,8 @@ fun ChatScreen(
                     }
                     onDismissContinueReading()
                 },
-                shape = RoundedCornerShape(20.dp),
-                color = TiColor,
+                shape = RoundedCornerShape(8.dp),
+                color = SealDark,
                 shadowElevation = 4.dp
             ) {
                 Row(
@@ -608,7 +608,7 @@ fun ChatScreen(
                 ) {
                     Text(
                         text = "继续阅读",
-                        color = Color.White,
+                        color = PaperDark,
                         style = MaterialTheme.typography.labelMedium
                     )
                     IconButton(
@@ -618,7 +618,7 @@ fun ChatScreen(
                         Icon(
                             imageVector = Icons.Default.Close,
                             contentDescription = "关闭",
-                            tint = Color.White,
+                            tint = PaperDark,
                             modifier = Modifier.size(12.dp)
                         )
                     }
@@ -722,17 +722,17 @@ private fun ConnectionBanner(
     ) {
         val (backgroundColor, text, showReconnect) = when (connectionState) {
             ConnectionState.CONNECTING -> Triple(
-                DiscordYellow.copy(alpha = 0.9f),
+                WarningDark.copy(alpha = 0.9f),
                 "正在连接...",
                 false
             )
             ConnectionState.RECONNECTING -> Triple(
-                DiscordYellow.copy(alpha = 0.9f),
+                WarningDark.copy(alpha = 0.9f),
                 "正在重新连接...",
                 false
             )
             ConnectionState.DISCONNECTED -> Triple(
-                DiscordRed.copy(alpha = 0.9f),
+                DangerDark.copy(alpha = 0.9f),
                 "连接已断开",
                 true
             )
@@ -758,19 +758,19 @@ private fun ConnectionBanner(
                         Icon(
                             imageVector = Icons.Default.CloudOff,
                             contentDescription = null,
-                            tint = Color.White,
+                            tint = PaperDark,
                             modifier = Modifier.size(16.dp)
                         )
                     } else {
                         CircularProgressIndicator(
                             modifier = Modifier.size(16.dp),
                             strokeWidth = 2.dp,
-                            color = Color.White
+                            color = PaperDark
                         )
                     }
                     Text(
                         text = text,
-                        color = Color.White,
+                        color = PaperDark,
                         style = MaterialTheme.typography.bodySmall,
                         fontWeight = FontWeight.Medium
                     )
@@ -780,7 +780,7 @@ private fun ConnectionBanner(
                     TextButton(
                         onClick = onReconnect,
                         colors = ButtonDefaults.textButtonColors(
-                            contentColor = Color.White
+                            contentColor = PaperDark
                         )
                     ) {
                         Icon(
@@ -834,7 +834,7 @@ private fun MessageItem(
                 modifier = Modifier
                     .size(40.dp)
                     .clip(CircleShape)
-                    .background(TiColor),
+                    .background(SealDark),
                 contentAlignment = Alignment.Center
             ) {
                 if (!message.avatarUrl.isNullOrBlank()) {
@@ -854,7 +854,7 @@ private fun MessageItem(
                         text = message.username.take(1).uppercase(),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
-                        color = Color.White
+                        color = PaperDark
                     )
                 }
             }
@@ -871,7 +871,7 @@ private fun MessageItem(
                         text = message.username,
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.SemiBold,
-                        color = TextPrimary
+                        color = InkDark
                     )
 
                     // Source badge for forwarded messages (FORWARD channels)
@@ -880,10 +880,10 @@ private fun MessageItem(
                             text = if (message.sourcePlatform == "qq") "QQ"
                                    else message.forwardMeta?.server ?: "服务器",
                             style = MaterialTheme.typography.labelSmall,
-                            color = TextMuted,
+                            color = InkDarkFaint,
                             modifier = Modifier
                                 .clip(RoundedCornerShape(4.dp))
-                                .background(SurfaceDark)
+                                .background(PaperDarkSubtle)
                                 .padding(horizontal = 4.dp, vertical = 1.dp)
                         )
                     }
@@ -891,7 +891,7 @@ private fun MessageItem(
                     Text(
                         text = formatTimestamp(message.createdAt),
                         style = MaterialTheme.typography.labelSmall,
-                        color = TextMuted
+                        color = InkDarkFaint
                     )
                 }
 
@@ -900,7 +900,7 @@ private fun MessageItem(
                     Text(
                         text = "(已编辑于 ${formatTimestamp(groupLatestEditedAt)})",
                         style = MaterialTheme.typography.labelSmall,
-                        color = TextMuted
+                        color = InkDarkFaint
                     )
                 }
 
@@ -919,19 +919,19 @@ private fun MessageItem(
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.Reply,
                         contentDescription = null,
-                        tint = TextMuted,
+                        tint = InkDarkFaint,
                         modifier = Modifier.size(12.dp)
                     )
                     Text(
                         text = "@${message.replyTo.username}",
                         style = MaterialTheme.typography.labelSmall,
-                        color = TiColor,
+                        color = SealDark,
                         fontWeight = FontWeight.Medium
                     )
                     Text(
                         text = message.replyTo.content.take(40) + if (message.replyTo.content.length > 40) "..." else "",
                         style = MaterialTheme.typography.labelSmall,
-                        color = TextMuted,
+                        color = InkDarkFaint,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -947,13 +947,13 @@ private fun MessageItem(
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.Reply,
                         contentDescription = null,
-                        tint = TextMuted,
+                        tint = InkDarkFaint,
                         modifier = Modifier.size(12.dp)
                     )
                     Text(
                         text = message.forwardMeta.quote.nickname,
                         style = MaterialTheme.typography.labelSmall,
-                        color = TiColor,
+                        color = SealDark,
                         fontWeight = FontWeight.Medium
                     )
                     if (message.forwardMeta.quote.content.isNotBlank()) {
@@ -961,7 +961,7 @@ private fun MessageItem(
                             text = message.forwardMeta.quote.content.take(40) +
                                 if (message.forwardMeta.quote.content.length > 40) "..." else "",
                             style = MaterialTheme.typography.labelSmall,
-                            color = TextMuted,
+                            color = InkDarkFaint,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
@@ -978,7 +978,7 @@ private fun MessageItem(
                         else -> "管理员撤回了一条消息"
                     },
                     style = MaterialTheme.typography.bodyMedium,
-                    color = TextMuted,
+                    color = InkDarkFaint,
                     fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
                 )
             } else {
@@ -1060,7 +1060,7 @@ private fun AttachmentItem(
                 .fillMaxWidth()
                 .clickable { onAttachmentClick(attachment) },
             shape = RoundedCornerShape(8.dp),
-            color = SurfaceLighter
+            color = PaperDarkRaised
         ) {
             Row(
                 modifier = Modifier
@@ -1072,7 +1072,7 @@ private fun AttachmentItem(
                 Icon(
                     imageVector = icon,
                     contentDescription = null,
-                    tint = TiColor,
+                    tint = SealDark,
                     modifier = Modifier.size(24.dp)
                 )
 
@@ -1080,20 +1080,20 @@ private fun AttachmentItem(
                     Text(
                         text = attachment.filename,
                         style = MaterialTheme.typography.bodyMedium,
-                        color = TextPrimary,
+                        color = InkDark,
                         maxLines = 1
                     )
                     Text(
                         text = formatFileSize(attachment.size),
                         style = MaterialTheme.typography.labelSmall,
-                        color = TextMuted
+                        color = InkDarkFaint
                     )
                 }
 
                 Icon(
                     imageVector = Icons.Default.Download,
                     contentDescription = "下载",
-                    tint = TextMuted,
+                    tint = InkDarkFaint,
                     modifier = Modifier.size(20.dp)
                 )
             }
@@ -1473,7 +1473,7 @@ private fun TextPreview(
                     is TextContentState.Error -> {
                         Text(
                             text = current.message,
-                            color = DiscordRed,
+                            color = DangerDark,
                             modifier = Modifier.align(Alignment.Center)
                         )
                     }
@@ -1510,7 +1510,7 @@ private fun PendingFilesPreview(
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        color = SurfaceDarker
+        color = PaperDark
     ) {
         LazyRow(
             modifier = Modifier
@@ -1566,7 +1566,7 @@ private fun PendingFileItem(
     Surface(
         modifier = Modifier.width(120.dp),
         shape = RoundedCornerShape(8.dp),
-        color = SurfaceLighter
+        color = PaperDarkRaised
     ) {
         Column(
             modifier = Modifier.padding(8.dp),
@@ -1576,7 +1576,7 @@ private fun PendingFileItem(
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.InsertDriveFile,
                     contentDescription = null,
-                    tint = TiColor,
+                    tint = SealDark,
                     modifier = Modifier
                         .size(32.dp)
                         .align(Alignment.Center)
@@ -1602,7 +1602,7 @@ private fun PendingFileItem(
             Text(
                 text = fileName,
                 style = MaterialTheme.typography.labelSmall,
-                color = TextPrimary,
+                color = InkDark,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -1611,7 +1611,7 @@ private fun PendingFileItem(
                 LinearProgressIndicator(
                     progress = { progress },
                     modifier = Modifier.fillMaxWidth(),
-                    color = TiColor
+                    color = SealDark
                 )
             }
         }
@@ -1634,7 +1634,7 @@ private fun UploadedAttachmentItem(
     Surface(
         modifier = Modifier.width(120.dp),
         shape = RoundedCornerShape(8.dp),
-        color = SurfaceLighter
+        color = PaperDarkRaised
     ) {
         Column(
             modifier = Modifier.padding(8.dp),
@@ -1644,7 +1644,7 @@ private fun UploadedAttachmentItem(
                 Icon(
                     imageVector = icon,
                     contentDescription = null,
-                    tint = TiColor,
+                    tint = SealDark,
                     modifier = Modifier
                         .size(32.dp)
                         .align(Alignment.Center)
@@ -1668,14 +1668,14 @@ private fun UploadedAttachmentItem(
             Text(
                 text = attachment.filename,
                 style = MaterialTheme.typography.labelSmall,
-                color = TextPrimary,
+                color = InkDark,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
             Text(
                 text = formatFileSize(attachment.size),
                 style = MaterialTheme.typography.labelSmall,
-                color = TextMuted
+                color = InkDarkFaint
             )
         }
     }
@@ -1694,7 +1694,7 @@ private fun MessageInput(
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        color = SurfaceDarker
+        color = PaperDark
     ) {
         Row(
             modifier = Modifier
@@ -1712,7 +1712,7 @@ private fun MessageInput(
                 Icon(
                     imageVector = Icons.Default.AttachFile,
                     contentDescription = "添加附件",
-                    tint = if (isConnected && !isUploading) TiColor else TextMuted
+                    tint = if (isConnected && !isUploading) SealDark else InkDarkFaint
                 )
             }
 
@@ -1724,20 +1724,20 @@ private fun MessageInput(
                 placeholder = {
                     Text(
                         text = if (isConnected) stringResource(R.string.send_message) else "连接断开，无法发送",
-                        color = TextMuted
+                        color = InkDarkFaint
                     )
                 },
                 colors = TextFieldDefaults.colors(
-                    focusedContainerColor = SurfaceLighter,
-                    unfocusedContainerColor = SurfaceLighter,
-                    disabledContainerColor = SurfaceLighter.copy(alpha = 0.5f),
+                    focusedContainerColor = PaperDarkRaised,
+                    unfocusedContainerColor = PaperDarkRaised,
+                    disabledContainerColor = PaperDarkRaised.copy(alpha = 0.5f),
                     focusedIndicatorColor = Color.Transparent,
                     unfocusedIndicatorColor = Color.Transparent,
                     disabledIndicatorColor = Color.Transparent,
-                    cursorColor = TiColor,
-                    focusedTextColor = TextPrimary,
-                    unfocusedTextColor = TextPrimary,
-                    disabledTextColor = TextMuted
+                    cursorColor = SealDark,
+                    focusedTextColor = InkDark,
+                    unfocusedTextColor = InkDark,
+                    disabledTextColor = InkDarkFaint
                 ),
                 shape = RoundedCornerShape(8.dp),
                 // Multiline input: Enter inserts a newline (markdown-capable
@@ -1758,7 +1758,7 @@ private fun MessageInput(
                     modifier = Modifier
                         .size(40.dp)
                         .background(
-                            if (isConnected && !isUploading) TiColor else TiColor.copy(alpha = 0.5f),
+                            if (isConnected && !isUploading) SealDark else SealDark.copy(alpha = 0.5f),
                             CircleShape
                         )
                 ) {
@@ -1767,14 +1767,14 @@ private fun MessageInput(
                             CircularProgressIndicator(
                                 modifier = Modifier.size(20.dp),
                                 strokeWidth = 2.dp,
-                                color = Color.White
+                                color = PaperDark
                             )
                         }
                         else -> {
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.Send,
                                 contentDescription = "发送",
-                                tint = Color.White,
+                                tint = PaperDark,
                                 modifier = Modifier.size(20.dp)
                             )
                         }
@@ -1920,7 +1920,7 @@ private fun MessageContextMenu(
 
     androidx.compose.material3.ModalBottomSheet(
         onDismissRequest = onDismiss,
-        containerColor = SurfaceDarker
+        containerColor = PaperDark
     ) {
         Column(
             modifier = Modifier
@@ -1973,7 +1973,7 @@ private fun MessageContextMenu(
                 Text(
                     text = "无可用操作",
                     modifier = Modifier.padding(16.dp),
-                    color = TextMuted,
+                    color = InkDarkFaint,
                     style = MaterialTheme.typography.bodyMedium
                 )
             }
@@ -1999,13 +1999,13 @@ private fun MenuOption(
         Icon(
             imageVector = icon,
             contentDescription = null,
-            tint = if (isDestructive) DiscordRed else TextPrimary,
+            tint = if (isDestructive) DangerDark else InkDark,
             modifier = Modifier.size(24.dp)
         )
         Text(
             text = text,
             style = MaterialTheme.typography.bodyLarge,
-            color = if (isDestructive) DiscordRed else TextPrimary
+            color = if (isDestructive) DangerDark else InkDark
         )
     }
 }
@@ -2028,11 +2028,11 @@ private fun EditMessageDialog(
                 modifier = Modifier.fillMaxWidth(),
                 placeholder = { Text("输入消息内容") },
                 colors = TextFieldDefaults.colors(
-                    focusedContainerColor = SurfaceLighter,
-                    unfocusedContainerColor = SurfaceLighter,
+                    focusedContainerColor = PaperDarkRaised,
+                    unfocusedContainerColor = PaperDarkRaised,
                     focusedIndicatorColor = Color.Transparent,
                     unfocusedIndicatorColor = Color.Transparent,
-                    cursorColor = TiColor
+                    cursorColor = SealDark
                 ),
                 shape = RoundedCornerShape(8.dp),
                 minLines = 3,
@@ -2044,15 +2044,15 @@ private fun EditMessageDialog(
                 onClick = { if (editedContent.isNotBlank()) onConfirm(editedContent.trim()) },
                 enabled = editedContent.isNotBlank() && editedContent.trim() != message.content
             ) {
-                Text("保存", color = TiColor)
+                Text("保存", color = SealDark)
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("取消", color = TextMuted)
+                Text("取消", color = InkDarkFaint)
             }
         },
-        containerColor = SurfaceDarker
+        containerColor = PaperDark
     )
 }
 
@@ -2078,7 +2078,7 @@ private fun MuteUserDialog(
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 // Scope selection
-                Text("禁言范围", style = MaterialTheme.typography.labelLarge, color = TextPrimary)
+                Text("禁言范围", style = MaterialTheme.typography.labelLarge, color = InkDark)
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     RadioOption("当前频道", "channel", selectedScope) { selectedScope = it }
                     RadioOption("当前服务器", "server", selectedScope) { selectedScope = it }
@@ -2086,7 +2086,7 @@ private fun MuteUserDialog(
                 }
 
                 // Duration selection
-                Text("禁言时长", style = MaterialTheme.typography.labelLarge, color = TextPrimary)
+                Text("禁言时长", style = MaterialTheme.typography.labelLarge, color = InkDark)
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     RadioOption("10分钟", "10m", selectedDuration) { selectedDuration = it }
                     RadioOption("1小时", "1h", selectedDuration) { selectedDuration = it }
@@ -2095,18 +2095,18 @@ private fun MuteUserDialog(
                 }
 
                 // Reason input
-                Text("原因（可选）", style = MaterialTheme.typography.labelLarge, color = TextPrimary)
+                Text("原因（可选）", style = MaterialTheme.typography.labelLarge, color = InkDark)
                 TextField(
                     value = reason,
                     onValueChange = { reason = it },
                     modifier = Modifier.fillMaxWidth(),
                     placeholder = { Text("输入禁言原因") },
                     colors = TextFieldDefaults.colors(
-                        focusedContainerColor = SurfaceLighter,
-                        unfocusedContainerColor = SurfaceLighter,
+                        focusedContainerColor = PaperDarkRaised,
+                        unfocusedContainerColor = PaperDarkRaised,
                         focusedIndicatorColor = Color.Transparent,
                         unfocusedIndicatorColor = Color.Transparent,
-                        cursorColor = TiColor
+                        cursorColor = SealDark
                     ),
                     shape = RoundedCornerShape(8.dp),
                     maxLines = 3
@@ -2125,15 +2125,15 @@ private fun MuteUserDialog(
                     onConfirm(selectedScope, durationMinutes, null, null, reason.ifBlank { null })
                 }
             ) {
-                Text("确认", color = DiscordRed)
+                Text("确认", color = DangerDark)
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("取消", color = TextMuted)
+                Text("取消", color = InkDarkFaint)
             }
         },
-        containerColor = SurfaceDarker
+        containerColor = PaperDark
     )
 }
 
@@ -2156,14 +2156,14 @@ private fun RadioOption(
             selected = selectedValue == value,
             onClick = { onSelect(value) },
             colors = androidx.compose.material3.RadioButtonDefaults.colors(
-                selectedColor = TiColor,
-                unselectedColor = TextMuted
+                selectedColor = SealDark,
+                unselectedColor = InkDarkFaint
             )
         )
         Text(
             text = label,
             style = MaterialTheme.typography.bodyMedium,
-            color = TextPrimary
+            color = InkDark
         )
     }
 }
@@ -2176,7 +2176,7 @@ private fun ReplyPreviewBar(
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        color = SurfaceLighter
+        color = PaperDarkRaised
     ) {
         Row(
             modifier = Modifier
@@ -2188,20 +2188,20 @@ private fun ReplyPreviewBar(
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.Reply,
                 contentDescription = null,
-                tint = TiColor,
+                tint = SealDark,
                 modifier = Modifier.size(16.dp)
             )
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = "回复 ${replyingTo.username}",
                     style = MaterialTheme.typography.labelSmall,
-                    color = TiColor,
+                    color = SealDark,
                     fontWeight = FontWeight.Medium
                 )
                 Text(
                     text = replyingTo.content.take(50) + if (replyingTo.content.length > 50) "..." else "",
                     style = MaterialTheme.typography.labelSmall,
-                    color = TextMuted,
+                    color = InkDarkFaint,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -2213,7 +2213,7 @@ private fun ReplyPreviewBar(
                 Icon(
                     imageVector = Icons.Default.Close,
                     contentDescription = "取消回复",
-                    tint = TextMuted,
+                    tint = InkDarkFaint,
                     modifier = Modifier.size(16.dp)
                 )
             }
@@ -2236,10 +2236,10 @@ private fun ReactionsBar(
             val hasReacted = reaction.users.any { it.id == currentUserId }
             Surface(
                 onClick = { onReactionClick(reaction.emoji, hasReacted) },
-                shape = RoundedCornerShape(12.dp),
-                color = if (hasReacted) TiColor.copy(alpha = 0.2f) else SurfaceLighter,
+                shape = RoundedCornerShape(8.dp),
+                color = if (hasReacted) SealDark.copy(alpha = 0.2f) else PaperDarkRaised,
                 border = if (hasReacted) {
-                    androidx.compose.foundation.BorderStroke(1.dp, TiColor)
+                    androidx.compose.foundation.BorderStroke(1.dp, SealDark)
                 } else null
             ) {
                 Row(
@@ -2254,7 +2254,7 @@ private fun ReactionsBar(
                     Text(
                         text = reaction.count.toString(),
                         style = MaterialTheme.typography.labelSmall,
-                        color = if (hasReacted) TiColor else TextMuted
+                        color = if (hasReacted) SealDark else InkDarkFaint
                     )
                 }
             }
@@ -2264,13 +2264,13 @@ private fun ReactionsBar(
         item {
             Surface(
                 onClick = onAddReactionClick,
-                shape = RoundedCornerShape(12.dp),
-                color = SurfaceLighter
+                shape = RoundedCornerShape(8.dp),
+                color = PaperDarkRaised
             ) {
                 Icon(
                     imageVector = Icons.Default.EmojiEmotions,
                     contentDescription = "添加表情",
-                    tint = TextMuted,
+                    tint = InkDarkFaint,
                     modifier = Modifier
                         .padding(horizontal = 8.dp, vertical = 4.dp)
                         .size(16.dp)
@@ -2290,8 +2290,8 @@ private fun EmojiPickerDialog(
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(
-            shape = RoundedCornerShape(16.dp),
-            color = SurfaceDarker
+            shape = RoundedCornerShape(8.dp),
+            color = PaperDark
         ) {
             Column(
                 modifier = Modifier.padding(16.dp)
@@ -2299,7 +2299,7 @@ private fun EmojiPickerDialog(
                 Text(
                     text = "选择表情",
                     style = MaterialTheme.typography.titleMedium,
-                    color = TextPrimary,
+                    color = InkDark,
                     modifier = Modifier.padding(bottom = 12.dp)
                 )
                 
@@ -2360,7 +2360,7 @@ private fun MentionAutocomplete(
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(max = 200.dp),
-        color = SurfaceDarker,
+        color = PaperDark,
         shadowElevation = 4.dp
     ) {
         LazyColumn {
@@ -2378,20 +2378,20 @@ private fun MentionAutocomplete(
                         modifier = Modifier
                             .size(32.dp)
                             .clip(CircleShape)
-                            .background(TiColor),
+                            .background(SealDark),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
                             text = member.username.take(1).uppercase(),
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.Bold,
-                            color = Color.White
+                            color = PaperDark
                         )
                     }
                     Text(
                         text = member.username,
                         style = MaterialTheme.typography.bodyMedium,
-                        color = TextPrimary
+                        color = InkDark
                     )
                 }
             }

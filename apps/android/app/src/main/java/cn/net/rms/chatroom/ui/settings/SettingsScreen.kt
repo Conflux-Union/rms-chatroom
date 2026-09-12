@@ -21,10 +21,10 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import cn.net.rms.chatroom.ui.theme.SurfaceDark
-import cn.net.rms.chatroom.ui.theme.TextMuted
-import cn.net.rms.chatroom.ui.theme.TextPrimary
-import cn.net.rms.chatroom.ui.theme.TiColor
+import cn.net.rms.chatroom.ui.theme.PaperDarkSubtle
+import cn.net.rms.chatroom.ui.theme.InkDarkFaint
+import cn.net.rms.chatroom.ui.theme.InkDark
+import cn.net.rms.chatroom.ui.theme.SealDark
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -66,10 +66,10 @@ fun SettingsScreen(
                         )
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = SurfaceDark)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = PaperDarkSubtle)
             )
         },
-        containerColor = SurfaceDark
+        containerColor = PaperDarkSubtle
     ) { paddingValues ->
         Column(
             modifier = Modifier
@@ -104,7 +104,7 @@ fun SettingsScreen(
                                 viewModel.setFloatingWindowEnabled(enabled)
                             }
                         },
-                        colors = SwitchDefaults.colors(checkedTrackColor = TiColor)
+                        colors = SwitchDefaults.colors(checkedTrackColor = SealDark)
                     )
                 }
             )
@@ -127,7 +127,7 @@ fun SettingsScreen(
                         onCheckedChange = { enabled ->
                             viewModel.setBackgroundMessageServiceEnabled(enabled)
                         },
-                        colors = SwitchDefaults.colors(checkedTrackColor = TiColor)
+                        colors = SwitchDefaults.colors(checkedTrackColor = SealDark)
                     )
                 }
             )
@@ -159,7 +159,7 @@ fun SettingsScreen(
                         onCheckedChange = { enabled ->
                             viewModel.setTelemetryEnabled(enabled)
                         },
-                        colors = SwitchDefaults.colors(checkedTrackColor = TiColor)
+                        colors = SwitchDefaults.colors(checkedTrackColor = SealDark)
                     )
                 }
             )
@@ -188,7 +188,7 @@ private fun SettingsSectionHeader(title: String) {
         text = title,
         style = MaterialTheme.typography.labelLarge,
         fontWeight = FontWeight.SemiBold,
-        color = TiColor,
+        color = SealDark,
         modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
     )
 }
@@ -211,7 +211,7 @@ private fun SettingsItem(
         Icon(
             imageVector = icon,
             contentDescription = null,
-            tint = TextMuted,
+            tint = InkDarkFaint,
             modifier = Modifier.size(24.dp)
         )
 
@@ -221,13 +221,13 @@ private fun SettingsItem(
             Text(
                 text = title,
                 style = MaterialTheme.typography.bodyLarge,
-                color = TextPrimary
+                color = InkDark
             )
             if (subtitle != null) {
                 Text(
                     text = subtitle,
                     style = MaterialTheme.typography.bodySmall,
-                    color = TextMuted
+                    color = InkDarkFaint
                 )
             }
         }
@@ -238,7 +238,7 @@ private fun SettingsItem(
             Icon(
                 imageVector = Icons.Default.ChevronRight,
                 contentDescription = null,
-                tint = TextMuted
+                tint = InkDarkFaint
             )
         }
     }

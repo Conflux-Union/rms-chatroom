@@ -18,10 +18,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import cn.net.rms.chatroom.ui.theme.DiscordYellow
-import cn.net.rms.chatroom.ui.theme.TiColor
-import cn.net.rms.chatroom.ui.theme.TextMuted
-import cn.net.rms.chatroom.ui.theme.TextSecondary
+import cn.net.rms.chatroom.ui.theme.WarningDark
+import cn.net.rms.chatroom.ui.theme.SealDark
+import cn.net.rms.chatroom.ui.theme.InkDarkFaint
+import cn.net.rms.chatroom.ui.theme.InkDarkMuted
 
 /**
  * Animated loading indicator with pulsing effect
@@ -54,13 +54,13 @@ fun LoadingContent(
                 modifier = Modifier
                     .size(48.dp)
                     .scale(scale),
-                color = TiColor,
+                color = SealDark,
                 strokeWidth = 4.dp
             )
             Text(
                 text = message,
                 style = MaterialTheme.typography.bodyMedium,
-                color = TextMuted
+                color = InkDarkFaint
             )
         }
     }
@@ -91,19 +91,19 @@ fun EmptyContent(
                 imageVector = icon,
                 contentDescription = null,
                 modifier = Modifier.size(64.dp),
-                tint = TextMuted
+                tint = InkDarkFaint
             )
             Text(
                 text = title,
                 style = MaterialTheme.typography.titleMedium,
-                color = TextSecondary,
+                color = InkDarkMuted,
                 textAlign = TextAlign.Center
             )
             if (description != null) {
                 Text(
                     text = description,
                     style = MaterialTheme.typography.bodyMedium,
-                    color = TextMuted,
+                    color = InkDarkFaint,
                     textAlign = TextAlign.Center
                 )
             }
@@ -112,7 +112,7 @@ fun EmptyContent(
                 OutlinedButton(
                     onClick = onAction,
                     colors = ButtonDefaults.outlinedButtonColors(
-                        contentColor = TiColor
+                        contentColor = SealDark
                     )
                 ) {
                     Text(actionText)
@@ -149,12 +149,12 @@ fun ErrorContent(
             Text(
                 text = "出错了",
                 style = MaterialTheme.typography.titleMedium,
-                color = TextSecondary
+                color = InkDarkMuted
             )
             Text(
                 text = message,
                 style = MaterialTheme.typography.bodyMedium,
-                color = TextMuted,
+                color = InkDarkFaint,
                 textAlign = TextAlign.Center
             )
             if (onRetry != null) {
@@ -162,7 +162,7 @@ fun ErrorContent(
                 Button(
                     onClick = onRetry,
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = TiColor
+                        containerColor = SealDark
                     )
                 ) {
                     Icon(
@@ -199,17 +199,17 @@ fun NetworkErrorContent(
                 imageVector = Icons.Default.WifiOff,
                 contentDescription = null,
                 modifier = Modifier.size(64.dp),
-                tint = TextMuted
+                tint = InkDarkFaint
             )
             Text(
                 text = "网络连接失败",
                 style = MaterialTheme.typography.titleMedium,
-                color = TextSecondary
+                color = InkDarkMuted
             )
             Text(
                 text = "请检查网络连接后重试",
                 style = MaterialTheme.typography.bodyMedium,
-                color = TextMuted,
+                color = InkDarkFaint,
                 textAlign = TextAlign.Center
             )
             if (onRetry != null) {
@@ -217,7 +217,7 @@ fun NetworkErrorContent(
                 Button(
                     onClick = onRetry,
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = TiColor
+                        containerColor = SealDark
                     )
                 ) {
                     Icon(
@@ -239,8 +239,8 @@ fun NetworkErrorContent(
 @Composable
 fun ShimmerBox(
     modifier: Modifier = Modifier,
-    baseColor: Color = TextMuted.copy(alpha = 0.1f),
-    highlightColor: Color = TextMuted.copy(alpha = 0.2f)
+    baseColor: Color = InkDarkFaint.copy(alpha = 0.1f),
+    highlightColor: Color = InkDarkFaint.copy(alpha = 0.2f)
 ) {
     val infiniteTransition = rememberInfiniteTransition(label = "shimmer")
     val alpha by infiniteTransition.animateFloat(
@@ -275,7 +275,7 @@ fun BatteryOptimizationDialog(
             Icon(
                 imageVector = Icons.Default.Warning,
                 contentDescription = null,
-                tint = DiscordYellow
+                tint = WarningDark
             )
         },
         title = {
@@ -290,14 +290,14 @@ fun BatteryOptimizationDialog(
                 Text(
                     text = "请在弹出的页面中找到「电池优化」或「省电策略」，设为「不优化」或「无限制」",
                     style = MaterialTheme.typography.bodySmall,
-                    color = TextSecondary
+                    color = InkDarkMuted
                 )
             }
         },
         confirmButton = {
             Button(
                 onClick = onOpenSettings,
-                colors = ButtonDefaults.buttonColors(containerColor = TiColor)
+                colors = ButtonDefaults.buttonColors(containerColor = SealDark)
             ) {
                 Text("前往设置")
             }
@@ -305,7 +305,7 @@ fun BatteryOptimizationDialog(
         dismissButton = {
             Row {
                 TextButton(onClick = onNeverShowAgain) {
-                    Text("不再提示", color = TextMuted)
+                    Text("不再提示", color = InkDarkFaint)
                 }
                 TextButton(onClick = onDismiss) {
                     Text("稍后")

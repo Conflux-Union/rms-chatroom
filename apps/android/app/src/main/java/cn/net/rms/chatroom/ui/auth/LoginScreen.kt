@@ -18,8 +18,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import cn.net.rms.chatroom.R
-import cn.net.rms.chatroom.ui.theme.TiColor
-import cn.net.rms.chatroom.ui.theme.SurfaceDarker
+import cn.net.rms.chatroom.ui.theme.SealDark
+import cn.net.rms.chatroom.ui.theme.PaperDark
 
 @Composable
 fun LoginScreen(
@@ -41,9 +41,9 @@ fun LoginScreen(
             .background(
                 brush = Brush.verticalGradient(
                     colors = listOf(
-                        SurfaceDarker,
-                        TiColor.copy(alpha = 0.2f),
-                        SurfaceDarker
+                        PaperDark,
+                        SealDark.copy(alpha = 0.2f),
+                        PaperDark
                     )
                 )
             ),
@@ -87,7 +87,7 @@ fun LoginScreen(
                         .fillMaxWidth()
                         .height(56.dp),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = TiColor
+                        containerColor = SealDark
                     ),
                     shape = MaterialTheme.shapes.medium
                 ) {
@@ -112,7 +112,7 @@ fun LoginScreen(
             ) {
                 CircularProgressIndicator(
                     modifier = Modifier.size(48.dp),
-                    color = TiColor
+                    color = SealDark
                 )
             }
 

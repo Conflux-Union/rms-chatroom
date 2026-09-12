@@ -112,12 +112,12 @@ fun VoiceInviteScreen(
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = SurfaceDark
+                        containerColor = PaperDarkSubtle
                     )
                 )
             }
         },
-        containerColor = SurfaceDark
+        containerColor = PaperDarkSubtle
     ) { padding ->
         Column(
             modifier = Modifier
@@ -133,7 +133,7 @@ fun VoiceInviteScreen(
                         modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.Center
                     ) {
-                        CircularProgressIndicator(color = TiColor)
+                        CircularProgressIndicator(color = SealDark)
                     }
                 }
                 !state.isValidInvite && state.inviteInfo != null -> {
@@ -181,25 +181,25 @@ private fun InvalidInviteContent(
                 imageVector = Icons.Default.LinkOff,
                 contentDescription = null,
                 modifier = Modifier.size(64.dp),
-                tint = DiscordRed
+                tint = DangerDark
             )
             Spacer(modifier = Modifier.height(16.dp))
             Text(
                 text = "邀请链接无效",
                 style = MaterialTheme.typography.titleLarge,
-                color = TextPrimary
+                color = InkDark
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
                 text = "该邀请链接可能已过期或已被使用",
                 style = MaterialTheme.typography.bodyMedium,
-                color = TextMuted,
+                color = InkDarkFaint,
                 textAlign = TextAlign.Center
             )
             Spacer(modifier = Modifier.height(24.dp))
             Button(
                 onClick = onNavigateBack,
-                colors = ButtonDefaults.buttonColors(containerColor = TiColor)
+                colors = ButtonDefaults.buttonColors(containerColor = SealDark)
             ) {
                 Text("返回")
             }
@@ -224,8 +224,8 @@ private fun JoinFormContent(
         state.inviteInfo?.let { info ->
             Surface(
                 modifier = Modifier.fillMaxWidth(),
-                color = SurfaceLight,
-                shape = RoundedCornerShape(12.dp)
+                color = PaperDarkHover,
+                shape = RoundedCornerShape(8.dp)
             ) {
                 Column(
                     modifier = Modifier.padding(20.dp),
@@ -235,20 +235,20 @@ private fun JoinFormContent(
                         imageVector = Icons.AutoMirrored.Filled.VolumeUp,
                         contentDescription = null,
                         modifier = Modifier.size(48.dp),
-                        tint = VoiceConnected
+                        tint = SuccessDark
                     )
                     Spacer(modifier = Modifier.height(12.dp))
                     Text(
                         text = "语音邀请",
                         style = MaterialTheme.typography.titleMedium,
-                        color = TextPrimary
+                        color = InkDark
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     info.serverName?.let { serverName ->
                         Text(
                             text = serverName,
                             style = MaterialTheme.typography.bodyLarge,
-                            color = TextPrimary,
+                            color = InkDark,
                             fontWeight = FontWeight.Bold
                         )
                     }
@@ -256,7 +256,7 @@ private fun JoinFormContent(
                         Text(
                             text = "# $channelName",
                             style = MaterialTheme.typography.bodyMedium,
-                            color = TextSecondary
+                            color = InkDarkMuted
                         )
                     }
                 }
@@ -269,7 +269,7 @@ private fun JoinFormContent(
         state.error?.let { error ->
             Surface(
                 modifier = Modifier.fillMaxWidth(),
-                color = DiscordRed.copy(alpha = 0.2f),
+                color = DangerDark.copy(alpha = 0.2f),
                 shape = RoundedCornerShape(8.dp)
             ) {
                 Row(
@@ -279,21 +279,21 @@ private fun JoinFormContent(
                     Icon(
                         imageVector = Icons.Default.Error,
                         contentDescription = null,
-                        tint = DiscordRed,
+                        tint = DangerDark,
                         modifier = Modifier.size(20.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         text = error,
                         style = MaterialTheme.typography.bodySmall,
-                        color = DiscordRed,
+                        color = DangerDark,
                         modifier = Modifier.weight(1f)
                     )
                     IconButton(onClick = onClearError, modifier = Modifier.size(24.dp)) {
                         Icon(
                             imageVector = Icons.Default.Close,
                             contentDescription = "关闭",
-                            tint = DiscordRed,
+                            tint = DangerDark,
                             modifier = Modifier.size(16.dp)
                         )
                     }
@@ -310,10 +310,10 @@ private fun JoinFormContent(
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
             colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = TiColor,
-                unfocusedBorderColor = TextMuted,
-                focusedLabelColor = TiColor,
-                cursorColor = TiColor
+                focusedBorderColor = SealDark,
+                unfocusedBorderColor = InkDarkFaint,
+                focusedLabelColor = SealDark,
+                cursorColor = SealDark
             ),
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
             keyboardActions = KeyboardActions(onDone = { onJoin() })
@@ -326,13 +326,13 @@ private fun JoinFormContent(
             onClick = onJoin,
             enabled = !state.isJoining && state.username.isNotBlank(),
             modifier = Modifier.fillMaxWidth(),
-            colors = ButtonDefaults.buttonColors(containerColor = VoiceConnected),
+            colors = ButtonDefaults.buttonColors(containerColor = SuccessDark),
             shape = RoundedCornerShape(8.dp)
         ) {
             if (state.isJoining) {
                 CircularProgressIndicator(
                     modifier = Modifier.size(24.dp),
-                    color = Color.White,
+                    color = PaperDark,
                     strokeWidth = 2.dp
                 )
             } else {
@@ -363,7 +363,7 @@ private fun VoiceRoomContent(
         Text(
             text = state.inviteInfo?.channelName?.let { "# $it" } ?: "语音通话",
             style = MaterialTheme.typography.titleLarge,
-            color = TextPrimary
+            color = InkDark
         )
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -391,13 +391,13 @@ private fun VoiceRoomContent(
                         imageVector = Icons.AutoMirrored.Filled.VolumeUp,
                         contentDescription = null,
                         modifier = Modifier.size(64.dp),
-                        tint = TextMuted
+                        tint = InkDarkFaint
                     )
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(
                         text = "等待其他人加入...",
                         style = MaterialTheme.typography.bodyLarge,
-                        color = TextMuted
+                        color = InkDarkFaint
                     )
                 }
             }
@@ -406,8 +406,8 @@ private fun VoiceRoomContent(
         // Controls
         Surface(
             modifier = Modifier.fillMaxWidth(),
-            color = SurfaceDarker,
-            shape = RoundedCornerShape(16.dp)
+            color = PaperDark,
+            shape = RoundedCornerShape(8.dp)
         ) {
             Row(
                 modifier = Modifier
@@ -421,7 +421,7 @@ private fun VoiceRoomContent(
                     icon = if (state.isMuted) Icons.Default.MicOff else Icons.Default.Mic,
                     label = if (state.isMuted) stringResource(R.string.unmute) else stringResource(R.string.mute),
                     isActive = state.isMuted,
-                    activeColor = VoiceMuted,
+                    activeColor = DangerDark,
                     onClick = onToggleMute
                 )
 
@@ -430,7 +430,7 @@ private fun VoiceRoomContent(
                     icon = if (state.isDeafened) Icons.AutoMirrored.Filled.VolumeOff else Icons.AutoMirrored.Filled.VolumeUp,
                     label = if (state.isDeafened) stringResource(R.string.undeafen) else stringResource(R.string.deafen),
                     isActive = state.isDeafened,
-                    activeColor = VoiceMuted,
+                    activeColor = DangerDark,
                     onClick = onToggleDeafen
                 )
 
@@ -439,7 +439,7 @@ private fun VoiceRoomContent(
                     icon = Icons.Default.CallEnd,
                     label = stringResource(R.string.leave_voice),
                     isActive = true,
-                    activeColor = DiscordRed,
+                    activeColor = DangerDark,
                     onClick = onLeave
                 )
             }
@@ -462,9 +462,9 @@ private fun GuestVoiceUserItem(participant: ParticipantInfo) {
 
     val borderColor by animateColorAsState(
         targetValue = when {
-            participant.isSpeaking -> VoiceSpeaking
-            participant.isMuted -> TextMuted
-            else -> VoiceConnected
+            participant.isSpeaking -> SuccessDark
+            participant.isMuted -> InkDarkFaint
+            else -> SuccessDark
         },
         animationSpec = tween(200),
         label = "borderColor"
@@ -476,7 +476,7 @@ private fun GuestVoiceUserItem(participant: ParticipantInfo) {
         modifier = Modifier
             .width(100.dp)
             .clip(RoundedCornerShape(8.dp))
-            .background(SurfaceLight)
+            .background(PaperDarkHover)
             .padding(12.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
@@ -488,7 +488,7 @@ private fun GuestVoiceUserItem(participant: ParticipantInfo) {
                 .background(borderColor.copy(alpha = 0.3f))
                 .then(
                     if (participant.isSpeaking) {
-                        Modifier.border(2.dp, VoiceSpeaking, CircleShape)
+                        Modifier.border(2.dp, SuccessDark, CircleShape)
                     } else {
                         Modifier
                     }
@@ -499,14 +499,14 @@ private fun GuestVoiceUserItem(participant: ParticipantInfo) {
                 modifier = Modifier
                     .size(48.dp)
                     .clip(CircleShape)
-                    .background(TiColor),
+                    .background(SealDark),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
                     text = participant.name.take(1).uppercase(),
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
-                    color = Color.White
+                    color = PaperDark
                 )
             }
         }
@@ -516,7 +516,7 @@ private fun GuestVoiceUserItem(participant: ParticipantInfo) {
         Text(
             text = participant.name,
             style = MaterialTheme.typography.labelMedium,
-            color = TextPrimary,
+            color = InkDark,
             maxLines = 1,
             textAlign = TextAlign.Center
         )
@@ -527,7 +527,7 @@ private fun GuestVoiceUserItem(participant: ParticipantInfo) {
                 imageVector = Icons.Default.MicOff,
                 contentDescription = "静音",
                 modifier = Modifier.size(14.dp),
-                tint = VoiceMuted
+                tint = DangerDark
             )
         }
     }
@@ -542,7 +542,7 @@ private fun GuestVoiceControlButton(
     onClick: () -> Unit
 ) {
     val backgroundColor by animateColorAsState(
-        targetValue = if (isActive) activeColor else SurfaceLight,
+        targetValue = if (isActive) activeColor else PaperDarkHover,
         animationSpec = tween(200),
         label = "controlBg"
     )
@@ -566,7 +566,7 @@ private fun GuestVoiceControlButton(
                 imageVector = icon,
                 contentDescription = label,
                 modifier = Modifier.size(24.dp),
-                tint = Color.White
+                tint = InkDark
             )
         }
 
@@ -575,7 +575,7 @@ private fun GuestVoiceControlButton(
         Text(
             text = label,
             style = MaterialTheme.typography.labelSmall,
-            color = TextMuted
+            color = InkDarkFaint
         )
     }
 }

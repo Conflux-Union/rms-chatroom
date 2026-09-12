@@ -13,8 +13,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import cn.net.rms.chatroom.R
-import cn.net.rms.chatroom.ui.theme.SurfaceDark
-import cn.net.rms.chatroom.ui.theme.TiColor
+import cn.net.rms.chatroom.ui.theme.PaperDarkSubtle
+import cn.net.rms.chatroom.ui.theme.SealDark
 
 /**
  * In-app splash shown while the auth session is being restored.
@@ -26,7 +26,7 @@ fun SplashContent(modifier: Modifier = Modifier) {
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(SurfaceDark)
+            .background(PaperDarkSubtle)
     ) {
         Image(
             painter = painterResource(R.drawable.ic_splash_logo),
@@ -40,7 +40,7 @@ fun SplashContent(modifier: Modifier = Modifier) {
                 .align(Alignment.Center)
                 .offset(y = 192.dp)
                 .size(36.dp),
-            color = TiColor
+            color = SealDark
         )
     }
 }

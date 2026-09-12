@@ -27,9 +27,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import cn.net.rms.chatroom.data.model.Server
-import cn.net.rms.chatroom.ui.theme.TiColor
-import cn.net.rms.chatroom.ui.theme.SurfaceDarker
-import cn.net.rms.chatroom.ui.theme.SurfaceLight
+import cn.net.rms.chatroom.ui.theme.SealDark
+import cn.net.rms.chatroom.ui.theme.PaperDark
+import cn.net.rms.chatroom.ui.theme.PaperDarkHover
+import cn.net.rms.chatroom.ui.theme.BorderStrongDark
+import cn.net.rms.chatroom.ui.theme.DangerDark
+import cn.net.rms.chatroom.ui.theme.InkDark
 
 @Composable
 fun ServerListColumn(
@@ -48,7 +51,7 @@ fun ServerListColumn(
         modifier = Modifier
             .width(72.dp)
             .fillMaxHeight()
-            .background(SurfaceDarker)
+            .background(PaperDark)
             .padding(vertical = 12.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
@@ -81,7 +84,7 @@ fun ServerListColumn(
                 modifier = Modifier
                     .width(32.dp)
                     .padding(vertical = 4.dp),
-                color = Color.Gray.copy(alpha = 0.3f)
+                color = BorderStrongDark
             )
             Spacer(modifier = Modifier.height(4.dp))
             AddServerButton(onClick = { showCreateDialog = true })
@@ -115,7 +118,7 @@ fun ServerListColumn(
                         showDeleteDialog = false
                         serverToDelete = null
                     },
-                    colors = ButtonDefaults.textButtonColors(contentColor = Color(0xFFED4245))
+                    colors = ButtonDefaults.textButtonColors(contentColor = DangerDark)
                 ) {
                     Text("删除")
                 }
@@ -173,14 +176,14 @@ private fun AddServerButton(onClick: () -> Unit) {
         modifier = Modifier
             .size(48.dp)
             .clip(CircleShape)
-            .background(SurfaceLight)
+            .background(PaperDarkHover)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
         Icon(
             imageVector = Icons.Default.Add,
             contentDescription = "添加服务器",
-            tint = TiColor,
+            tint = SealDark,
             modifier = Modifier.size(24.dp)
         )
     }
@@ -201,7 +204,7 @@ private fun ServerItem(
     )
 
     val backgroundColor by animateColorAsState(
-        targetValue = if (isSelected) TiColor else SurfaceLight,
+        targetValue = if (isSelected) SealDark else PaperDarkHover,
         animationSpec = tween(200),
         label = "backgroundColor"
     )
@@ -222,7 +225,7 @@ private fun ServerItem(
                 .width(4.dp)
                 .height(indicatorHeight)
                 .clip(RoundedCornerShape(topEnd = 4.dp, bottomEnd = 4.dp))
-                .background(if (isSelected) Color.White else Color.Transparent)
+                .background(if (isSelected) InkDark else Color.Transparent)
         )
 
         Spacer(modifier = Modifier.width(8.dp))
@@ -251,7 +254,7 @@ private fun ServerItem(
                     text = server.name.take(2).uppercase(),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
-                    color = Color.White,
+                    color = InkDark,
                     textAlign = TextAlign.Center
                 )
             }

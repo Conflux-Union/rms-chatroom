@@ -60,7 +60,7 @@ fun MusicBottomSheet(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .background(SurfaceDark)
+            .background(PaperDarkSubtle)
     ) {
         // Header
         MusicHeader(
@@ -124,7 +124,7 @@ private fun MusicHeader(
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        color = SurfaceDarker
+        color = PaperDark
     ) {
         Row(
             modifier = Modifier
@@ -135,7 +135,7 @@ private fun MusicHeader(
             Icon(
                 imageVector = Icons.Default.MusicNote,
                 contentDescription = null,
-                tint = TextPrimary,
+                tint = InkDark,
                 modifier = Modifier.size(20.dp)
             )
             Spacer(modifier = Modifier.width(8.dp))
@@ -143,7 +143,7 @@ private fun MusicHeader(
                 text = "音乐播放器",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
-                color = TextPrimary
+                color = InkDark
             )
 
             Spacer(modifier = Modifier.weight(1f))
@@ -152,9 +152,9 @@ private fun MusicHeader(
             if (playbackActive) {
                 Surface(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(12.dp))
+                        .clip(RoundedCornerShape(8.dp))
                         .clickable { onStopPlayback() },
-                    color = TiColor.copy(alpha = 0.2f)
+                    color = SealDark.copy(alpha = 0.2f)
                 ) {
                     Row(
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
@@ -163,14 +163,14 @@ private fun MusicHeader(
                         Icon(
                             imageVector = Icons.Default.GraphicEq,
                             contentDescription = null,
-                            tint = TiColor,
+                            tint = SealDark,
                             modifier = Modifier.size(14.dp)
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
                             text = "播放中",
                             style = MaterialTheme.typography.labelSmall,
-                            color = TiColor
+                            color = SealDark
                         )
                     }
                 }
@@ -181,14 +181,14 @@ private fun MusicHeader(
             if (qqLoggedIn) {
                 Surface(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(12.dp))
+                        .clip(RoundedCornerShape(8.dp))
                         .clickable { onQQLogoutClick() },
-                    color = VoiceConnected.copy(alpha = 0.2f)
+                    color = SuccessDark.copy(alpha = 0.2f)
                 ) {
                     Text(
                         text = "QQ",
                         style = MaterialTheme.typography.labelSmall,
-                        color = VoiceConnected,
+                        color = SuccessDark,
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
                     )
                 }
@@ -199,7 +199,7 @@ private fun MusicHeader(
             if (neteaseLoggedIn) {
                 Surface(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(12.dp))
+                        .clip(RoundedCornerShape(8.dp))
                         .clickable { onNeteaseLogoutClick() },
                     color = Color(0xFFE60026).copy(alpha = 0.2f)
                 ) {
@@ -217,14 +217,14 @@ private fun MusicHeader(
             if (!qqLoggedIn || !neteaseLoggedIn) {
                 Surface(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(12.dp))
+                        .clip(RoundedCornerShape(8.dp))
                         .clickable { onLoginClick() },
-                    color = SurfaceLight
+                    color = PaperDarkHover
                 ) {
                     Text(
                         text = "登录",
                         style = MaterialTheme.typography.labelSmall,
-                        color = TextMuted,
+                        color = InkDarkFaint,
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
                     )
                 }
@@ -249,8 +249,8 @@ private fun NowPlayingSection(
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        color = SurfaceLight,
-        shape = RoundedCornerShape(16.dp)
+        color = PaperDarkHover,
+        shape = RoundedCornerShape(8.dp)
     ) {
         Column(
             modifier = Modifier
@@ -282,14 +282,14 @@ private fun NowPlayingSection(
                         text = song.name,
                         style = MaterialTheme.typography.bodyLarge,
                         fontWeight = FontWeight.SemiBold,
-                        color = TextPrimary,
+                        color = InkDark,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
                         text = song.artist,
                         style = MaterialTheme.typography.bodySmall,
-                        color = TextMuted,
+                        color = InkDarkFaint,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -315,7 +315,7 @@ private fun NowPlayingSection(
                         modifier = Modifier
                             .size(48.dp)
                             .clip(CircleShape)
-                            .background(TiColor)
+                            .background(SealDark)
                     ) {
                         when (playbackState) {
                             "loading" -> CircularProgressIndicator(
@@ -338,12 +338,12 @@ private fun NowPlayingSection(
                         modifier = Modifier
                             .size(40.dp)
                             .clip(CircleShape)
-                            .background(SurfaceDark)
+                            .background(PaperDarkSubtle)
                     ) {
                         Icon(
                             imageVector = Icons.Default.SkipNext,
                             contentDescription = "下一首",
-                            tint = TextPrimary,
+                            tint = InkDark,
                             modifier = Modifier.size(20.dp)
                         )
                     }
@@ -382,12 +382,12 @@ private fun ProgressBar(
             Text(
                 text = formatTime(if (isDragging) (sliderPosition * durationMs).toLong() else positionMs),
                 style = MaterialTheme.typography.labelSmall,
-                color = TextMuted
+                color = InkDarkFaint
             )
             Text(
                 text = formatTime(durationMs),
                 style = MaterialTheme.typography.labelSmall,
-                color = TextMuted
+                color = InkDarkFaint
             )
         }
 
@@ -406,9 +406,9 @@ private fun ProgressBar(
             trackHeight = 6.dp,
             coerceThumbInTrack = true,
             colors = MaterialSliderDefaults.materialColors(
-                thumbColor = SliderBrushColor(color = TiColor),
-                activeTrackColor = SliderBrushColor(color = TiColor),
-                inactiveTrackColor = SliderBrushColor(color = SurfaceDark)
+                thumbColor = SliderBrushColor(color = SealDark),
+                activeTrackColor = SliderBrushColor(color = SealDark),
+                inactiveTrackColor = SliderBrushColor(color = PaperDarkSubtle)
             )
         )
     }
@@ -425,20 +425,20 @@ private fun EmptyPlayingState(onShowSearch: () -> Unit) {
         Icon(
             imageVector = Icons.Default.MusicNote,
             contentDescription = null,
-            tint = TextMuted,
+            tint = InkDarkFaint,
             modifier = Modifier.size(48.dp)
         )
         Spacer(modifier = Modifier.height(12.dp))
         Text(
             text = "暂无播放",
             style = MaterialTheme.typography.bodyLarge,
-            color = TextMuted
+            color = InkDarkFaint
         )
         Spacer(modifier = Modifier.height(16.dp))
         Button(
             onClick = onShowSearch,
             colors = ButtonDefaults.buttonColors(
-                containerColor = TiColor
+                containerColor = SealDark
             ),
             shape = RoundedCornerShape(8.dp)
         ) {
@@ -457,8 +457,8 @@ private fun QueueSection(
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        color = SurfaceLight,
-        shape = RoundedCornerShape(16.dp)
+        color = PaperDarkHover,
+        shape = RoundedCornerShape(8.dp)
     ) {
         Column {
             // Header
@@ -472,7 +472,7 @@ private fun QueueSection(
                     text = "播放队列 (${queue.size})",
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold,
-                    color = TextPrimary
+                    color = InkDark
                 )
 
                 Spacer(modifier = Modifier.weight(1f))
@@ -484,7 +484,7 @@ private fun QueueSection(
                     Icon(
                         imageVector = Icons.Default.Add,
                         contentDescription = "添加",
-                        tint = TextMuted,
+                        tint = InkDarkFaint,
                         modifier = Modifier.size(18.dp)
                     )
                 }
@@ -497,14 +497,14 @@ private fun QueueSection(
                         Icon(
                             imageVector = Icons.Default.Delete,
                             contentDescription = "清空",
-                            tint = TextMuted,
+                            tint = InkDarkFaint,
                             modifier = Modifier.size(18.dp)
                         )
                     }
                 }
             }
 
-            HorizontalDivider(color = SurfaceDark)
+            HorizontalDivider(color = PaperDarkSubtle)
 
             // Queue list
             if (queue.isEmpty()) {
@@ -517,7 +517,7 @@ private fun QueueSection(
                     Text(
                         text = "队列为空",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = TextMuted
+                        color = InkDarkFaint
                     )
                 }
             } else {
@@ -546,7 +546,7 @@ private fun QueueItemRow(
     onRemove: () -> Unit
 ) {
     val backgroundColor by animateColorAsState(
-        targetValue = if (isCurrent) TiColor.copy(alpha = 0.15f) else Color.Transparent,
+        targetValue = if (isCurrent) SealDark.copy(alpha = 0.15f) else Color.Transparent,
         animationSpec = tween(200),
         label = "queueItemBg"
     )
@@ -578,14 +578,14 @@ private fun QueueItemRow(
             Text(
                 text = item.song.name,
                 style = MaterialTheme.typography.bodyMedium,
-                color = TextPrimary,
+                color = InkDark,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
             Text(
                 text = item.song.artist,
                 style = MaterialTheme.typography.bodySmall,
-                color = TextMuted,
+                color = InkDarkFaint,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -595,7 +595,7 @@ private fun QueueItemRow(
         Text(
             text = formatDuration(item.song.duration),
             style = MaterialTheme.typography.labelSmall,
-            color = TextMuted
+            color = InkDarkFaint
         )
 
         // Remove button
@@ -606,7 +606,7 @@ private fun QueueItemRow(
             Icon(
                 imageVector = Icons.Default.Close,
                 contentDescription = "删除",
-                tint = TextMuted,
+                tint = InkDarkFaint,
                 modifier = Modifier.size(16.dp)
             )
         }
@@ -634,8 +634,8 @@ private fun VolumeControl(
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        color = SurfaceDark.copy(alpha = 0.5f),
-        shape = RoundedCornerShape(20.dp)
+        color = PaperDarkSubtle.copy(alpha = 0.5f),
+        shape = RoundedCornerShape(8.dp)
     ) {
         Row(
             modifier = Modifier
@@ -647,7 +647,7 @@ private fun VolumeControl(
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.VolumeUp,
                 contentDescription = "音量",
-                tint = TextMuted,
+                tint = InkDarkFaint,
                 modifier = Modifier.size(16.dp)
             )
 
@@ -659,16 +659,16 @@ private fun VolumeControl(
                 trackHeight = 4.dp,
                 coerceThumbInTrack = true,
                 colors = MaterialSliderDefaults.materialColors(
-                    thumbColor = SliderBrushColor(color = TiColor),
-                    activeTrackColor = SliderBrushColor(color = TiColor),
-                    inactiveTrackColor = SliderBrushColor(color = SurfaceDarker)
+                    thumbColor = SliderBrushColor(color = SealDark),
+                    activeTrackColor = SliderBrushColor(color = SealDark),
+                    inactiveTrackColor = SliderBrushColor(color = PaperDark)
                 )
             )
 
             Text(
                 text = "${(volume * 100).toInt()}%",
                 style = MaterialTheme.typography.labelSmall,
-                color = TextMuted,
+                color = InkDarkFaint,
                 modifier = Modifier.width(32.dp),
                 textAlign = TextAlign.End
             )

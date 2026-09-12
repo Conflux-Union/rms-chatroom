@@ -207,7 +207,7 @@ fun VoiceScreen(
         ModalBottomSheet(
             onDismissRequest = { showAudioDeviceSelector = false },
             sheetState = deviceSheetState,
-            containerColor = SurfaceDark,
+            containerColor = PaperDarkSubtle,
             dragHandle = { BottomSheetDefaults.DragHandle() }
         ) {
             AudioDeviceSelectorSheet(
@@ -229,7 +229,7 @@ fun VoiceScreen(
         ModalBottomSheet(
             onDismissRequest = { showMusicPanel = false },
             sheetState = sheetState,
-            containerColor = SurfaceDark,
+            containerColor = PaperDarkSubtle,
             dragHandle = { BottomSheetDefaults.DragHandle() }
         ) {
             MusicBottomSheet(
@@ -281,7 +281,7 @@ fun VoiceScreen(
         ModalBottomSheet(
             onDismissRequest = { selectedParticipant = null },
             sheetState = participantSheetState,
-            containerColor = SurfaceDark,
+            containerColor = PaperDarkSubtle,
             dragHandle = { BottomSheetDefaults.DragHandle() }
         ) {
             ParticipantSettingsSheet(
@@ -322,12 +322,12 @@ fun VoiceScreen(
             if (state.isConnected) {
                 FloatingActionButton(
                     onClick = { showMusicPanel = true },
-                    containerColor = TiColor
+                    containerColor = SealDark
                 ) {
                     Icon(
                         imageVector = Icons.Default.MusicNote,
                         contentDescription = "音乐",
-                        tint = Color.White
+                        tint = PaperDark
                     )
                 }
             }
@@ -399,13 +399,13 @@ fun VoiceScreen(
                             imageVector = Icons.AutoMirrored.Filled.VolumeUp,
                             contentDescription = null,
                             modifier = Modifier.size(64.dp),
-                            tint = TextMuted
+                            tint = InkDarkFaint
                         )
                         Spacer(modifier = Modifier.height(16.dp))
                         Text(
                             text = if (state.isConnected) "等待其他人加入..." else "点击下方按钮加入语音",
                             style = MaterialTheme.typography.bodyLarge,
-                            color = TextMuted,
+                            color = InkDarkFaint,
                             textAlign = TextAlign.Center
                         )
                     }
@@ -467,7 +467,7 @@ private fun ConnectionStatusBanner(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(bottom = 8.dp),
-            color = DiscordRed.copy(alpha = 0.2f),
+            color = DangerDark.copy(alpha = 0.2f),
             shape = RoundedCornerShape(8.dp)
         ) {
             Row(
@@ -477,21 +477,21 @@ private fun ConnectionStatusBanner(
                 Icon(
                     imageVector = Icons.Default.Error,
                     contentDescription = null,
-                    tint = DiscordRed,
+                    tint = DangerDark,
                     modifier = Modifier.size(20.dp)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
                     text = it,
                     style = MaterialTheme.typography.bodySmall,
-                    color = DiscordRed,
+                    color = DangerDark,
                     modifier = Modifier.weight(1f)
                 )
                 IconButton(onClick = onDismissError, modifier = Modifier.size(24.dp)) {
                     Icon(
                         imageVector = Icons.Default.Close,
                         contentDescription = "关闭",
-                        tint = DiscordRed,
+                        tint = DangerDark,
                         modifier = Modifier.size(16.dp)
                     )
                 }
@@ -505,7 +505,7 @@ private fun ConnectionStatusBanner(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(bottom = 8.dp),
-            color = DiscordYellow.copy(alpha = 0.2f),
+            color = WarningDark.copy(alpha = 0.2f),
             shape = RoundedCornerShape(8.dp)
         ) {
             Row(
@@ -514,14 +514,14 @@ private fun ConnectionStatusBanner(
             ) {
                 CircularProgressIndicator(
                     modifier = Modifier.size(16.dp),
-                    color = DiscordYellow,
+                    color = WarningDark,
                     strokeWidth = 2.dp
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
                     text = "正在重新连接...",
                     style = MaterialTheme.typography.bodySmall,
-                    color = DiscordYellow
+                    color = WarningDark
                 )
             }
         }
@@ -547,9 +547,9 @@ private fun VoiceUserItem(
 
     val borderColor by animateColorAsState(
         targetValue = when {
-            participant.isSpeaking -> VoiceSpeaking
-            participant.isMuted -> TextMuted
-            else -> VoiceConnected
+            participant.isSpeaking -> SuccessDark
+            participant.isMuted -> InkDarkFaint
+            else -> SuccessDark
         },
         animationSpec = tween(200),
         label = "borderColor"
@@ -561,7 +561,7 @@ private fun VoiceUserItem(
         modifier = Modifier
             .width(100.dp)
             .clip(RoundedCornerShape(8.dp))
-            .background(SurfaceLight)
+            .background(PaperDarkHover)
             .clickable(enabled = !participant.isLocal, onClick = onClick)
             .padding(12.dp),
         horizontalAlignment = Alignment.CenterHorizontally
@@ -575,7 +575,7 @@ private fun VoiceUserItem(
                 .background(borderColor.copy(alpha = 0.3f))
                 .then(
                     if (participant.isSpeaking) {
-                        Modifier.border(2.dp, VoiceSpeaking, CircleShape)
+                        Modifier.border(2.dp, SuccessDark, CircleShape)
                     } else {
                         Modifier
                     }
@@ -586,7 +586,7 @@ private fun VoiceUserItem(
                 modifier = Modifier
                     .size(48.dp)
                     .clip(CircleShape)
-                    .background(TiColor),
+                    .background(SealDark),
                 contentAlignment = Alignment.Center
             ) {
                 if (!participant.avatarUrl.isNullOrBlank()) {
@@ -606,7 +606,7 @@ private fun VoiceUserItem(
                         text = participant.name.take(1).uppercase(),
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold,
-                        color = Color.White
+                        color = PaperDark
                     )
                 }
             }
@@ -618,7 +618,7 @@ private fun VoiceUserItem(
         Text(
             text = participant.name,
             style = MaterialTheme.typography.labelMedium,
-            color = TextPrimary,
+            color = InkDark,
             maxLines = 1,
             textAlign = TextAlign.Center
         )
@@ -633,7 +633,7 @@ private fun VoiceUserItem(
                     imageVector = Icons.Default.MicOff,
                     contentDescription = "静音",
                     modifier = Modifier.size(14.dp),
-                    tint = VoiceMuted
+                    tint = DangerDark
                 )
             }
             // Show volume indicator if not default
@@ -641,7 +641,7 @@ private fun VoiceUserItem(
                 Text(
                     text = "${(participant.volume * 100).toInt()}%",
                     style = MaterialTheme.typography.labelSmall,
-                    color = if (participant.volume > 1.0f) DiscordYellow else TextMuted,
+                    color = if (participant.volume > 1.0f) WarningDark else InkDarkFaint,
                     fontSize = 10.sp
                 )
             }
@@ -655,7 +655,7 @@ private fun HostModeBanner(hostName: String) {
         modifier = Modifier
             .fillMaxWidth()
             .padding(bottom = 8.dp),
-        color = DiscordYellow.copy(alpha = 0.2f),
+        color = WarningDark.copy(alpha = 0.2f),
         shape = RoundedCornerShape(8.dp)
     ) {
         Row(
@@ -667,13 +667,13 @@ private fun HostModeBanner(hostName: String) {
                 imageVector = Icons.Default.Star,
                 contentDescription = null,
                 modifier = Modifier.size(16.dp),
-                tint = DiscordYellow
+                tint = WarningDark
             )
             Spacer(modifier = Modifier.width(8.dp))
             Text(
                 text = "$hostName 正在主持",
                 style = MaterialTheme.typography.bodySmall,
-                color = DiscordYellow,
+                color = WarningDark,
                 fontWeight = FontWeight.Medium
             )
         }
@@ -692,20 +692,20 @@ private fun InviteDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = SurfaceDark,
+        containerColor = PaperDarkSubtle,
         icon = {
             Icon(
                 imageVector = Icons.Default.Link,
                 contentDescription = null,
                 modifier = Modifier.size(48.dp),
-                tint = VoiceConnected
+                tint = SuccessDark
             )
         },
         title = {
             Text(
                 text = "邀请访客",
                 fontWeight = FontWeight.Bold,
-                color = TextPrimary
+                color = InkDark
             )
         },
         text = {
@@ -717,25 +717,25 @@ private fun InviteDialog(
                     isLoading -> {
                         CircularProgressIndicator(
                             modifier = Modifier.size(32.dp),
-                            color = VoiceConnected
+                            color = SuccessDark
                         )
                         Spacer(modifier = Modifier.height(8.dp))
-                        Text("正在生成链接...", color = TextMuted)
+                        Text("正在生成链接...", color = InkDarkFaint)
                     }
                     error != null -> {
-                        Text(error, color = DiscordRed)
+                        Text(error, color = DangerDark)
                     }
                     inviteUrl != null -> {
                         Text(
                             text = "此链接仅可使用一次，访客离开后无法再次加入。",
                             style = MaterialTheme.typography.bodySmall,
-                            color = TextMuted,
+                            color = InkDarkFaint,
                             textAlign = TextAlign.Center
                         )
                         Spacer(modifier = Modifier.height(12.dp))
                         Surface(
                             modifier = Modifier.fillMaxWidth(),
-                            color = SurfaceLight,
+                            color = PaperDarkHover,
                             shape = RoundedCornerShape(8.dp)
                         ) {
                             Column(
@@ -750,7 +750,7 @@ private fun InviteDialog(
                                     Text(
                                         text = inviteUrl,
                                         style = MaterialTheme.typography.bodySmall,
-                                        color = TextPrimary,
+                                        color = InkDark,
                                         maxLines = 1
                                     )
                                 }
@@ -764,7 +764,7 @@ private fun InviteDialog(
                                     },
                                     modifier = Modifier.fillMaxWidth(),
                                     colors = ButtonDefaults.buttonColors(
-                                        containerColor = if (copied) VoiceConnected else TiColor
+                                        containerColor = if (copied) SuccessDark else SealDark
                                     ),
                                     shape = RoundedCornerShape(8.dp)
                                 ) {
@@ -784,7 +784,7 @@ private fun InviteDialog(
         },
         confirmButton = {
             TextButton(onClick = onDismiss) {
-                Text("关闭", color = TextPrimary)
+                Text("关闭", color = InkDark)
             }
         }
     )
@@ -819,7 +819,7 @@ private fun ParticipantSettingsSheet(
                 modifier = Modifier
                     .size(48.dp)
                     .clip(CircleShape)
-                    .background(TiColor),
+                    .background(SealDark),
                 contentAlignment = Alignment.Center
             ) {
                 if (!participant.avatarUrl.isNullOrBlank()) {
@@ -839,7 +839,7 @@ private fun ParticipantSettingsSheet(
                         text = participant.name.take(1).uppercase(),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
-                        color = Color.White
+                        color = PaperDark
                     )
                 }
             }
@@ -848,7 +848,7 @@ private fun ParticipantSettingsSheet(
                     text = participant.name,
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
-                    color = TextPrimary
+                    color = InkDark
                 )
                 if (participant.isMuted) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -856,13 +856,13 @@ private fun ParticipantSettingsSheet(
                             imageVector = Icons.Default.MicOff,
                             contentDescription = null,
                             modifier = Modifier.size(14.dp),
-                            tint = VoiceMuted
+                            tint = DangerDark
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
                             text = "已静音",
                             style = MaterialTheme.typography.bodySmall,
-                            color = VoiceMuted
+                            color = DangerDark
                         )
                     }
                 }
@@ -877,7 +877,7 @@ private fun ParticipantSettingsSheet(
                 onClick = onMuteParticipant,
                 modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = DiscordRed
+                    containerColor = DangerDark
                 ),
                 shape = RoundedCornerShape(8.dp)
             ) {
@@ -894,7 +894,7 @@ private fun ParticipantSettingsSheet(
                 onClick = onKickParticipant,
                 modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = DiscordRed.copy(alpha = 0.8f)
+                    containerColor = DangerDark.copy(alpha = 0.8f)
                 ),
                 shape = RoundedCornerShape(8.dp)
             ) {
@@ -914,7 +914,7 @@ private fun ParticipantSettingsSheet(
             text = "用户音量",
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Medium,
-            color = TextPrimary
+            color = InkDark
         )
 
         Spacer(modifier = Modifier.height(12.dp))
@@ -930,13 +930,13 @@ private fun ParticipantSettingsSheet(
                               else Icons.AutoMirrored.Filled.VolumeUp,
                 contentDescription = null,
                 modifier = Modifier.size(24.dp),
-                tint = if (isBoost) DiscordYellow else TextMuted
+                tint = if (isBoost) WarningDark else InkDarkFaint
             )
             Text(
                 text = "$volumePercent%",
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
-                color = if (isBoost) DiscordYellow else TextPrimary
+                color = if (isBoost) WarningDark else InkDark
             )
         }
 
@@ -955,9 +955,9 @@ private fun ParticipantSettingsSheet(
             trackHeight = 8.dp,
             coerceThumbInTrack = true,
             colors = MaterialSliderDefaults.materialColors(
-                thumbColor = SliderBrushColor(color = if (isBoost) DiscordYellow else VoiceConnected),
-                activeTrackColor = SliderBrushColor(color = if (isBoost) DiscordYellow else VoiceConnected),
-                inactiveTrackColor = SliderBrushColor(color = SurfaceDarker)
+                thumbColor = SliderBrushColor(color = if (isBoost) WarningDark else SuccessDark),
+                activeTrackColor = SliderBrushColor(color = if (isBoost) WarningDark else SuccessDark),
+                inactiveTrackColor = SliderBrushColor(color = PaperDark)
             )
         )
 
@@ -969,17 +969,17 @@ private fun ParticipantSettingsSheet(
             Text(
                 text = "0%",
                 style = MaterialTheme.typography.labelSmall,
-                color = TextMuted
+                color = InkDarkFaint
             )
             Text(
                 text = "100%",
                 style = MaterialTheme.typography.labelSmall,
-                color = TextMuted
+                color = InkDarkFaint
             )
             Text(
                 text = "200%",
                 style = MaterialTheme.typography.labelSmall,
-                color = DiscordYellow
+                color = WarningDark
             )
         }
 
@@ -988,7 +988,7 @@ private fun ParticipantSettingsSheet(
             Spacer(modifier = Modifier.height(12.dp))
             Surface(
                 modifier = Modifier.fillMaxWidth(),
-                color = DiscordYellow.copy(alpha = 0.15f),
+                color = WarningDark.copy(alpha = 0.15f),
                 shape = RoundedCornerShape(8.dp)
             ) {
                 Row(
@@ -1000,12 +1000,12 @@ private fun ParticipantSettingsSheet(
                         imageVector = Icons.Default.Warning,
                         contentDescription = null,
                         modifier = Modifier.size(18.dp),
-                        tint = DiscordYellow
+                        tint = WarningDark
                     )
                     Text(
                         text = "音量增益可能导致音频失真",
                         style = MaterialTheme.typography.bodySmall,
-                        color = DiscordYellow
+                        color = WarningDark
                     )
                 }
             }
@@ -1022,7 +1022,7 @@ private fun ParticipantSettingsSheet(
                 },
                 modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.outlinedButtonColors(
-                    contentColor = TextPrimary
+                    contentColor = InkDark
                 )
             ) {
                 Text("重置为 100%")
@@ -1056,8 +1056,8 @@ private fun VoiceControls(
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        color = SurfaceDarker,
-        shape = RoundedCornerShape(16.dp)
+        color = PaperDark,
+        shape = RoundedCornerShape(8.dp)
     ) {
         if (isConnected) {
             Row(
@@ -1073,7 +1073,7 @@ private fun VoiceControls(
                     icon = if (isMuted) Icons.Default.MicOff else Icons.Default.Mic,
                     label = if (isMuted) stringResource(R.string.unmute) else stringResource(R.string.mute),
                     isActive = isMuted,
-                    activeColor = VoiceMuted,
+                    activeColor = DangerDark,
                     onClick = onToggleMute
                 )
 
@@ -1082,7 +1082,7 @@ private fun VoiceControls(
                     icon = if (isDeafened) Icons.AutoMirrored.Filled.VolumeOff else Icons.AutoMirrored.Filled.VolumeUp,
                     label = if (isDeafened) stringResource(R.string.undeafen) else stringResource(R.string.deafen),
                     isActive = isDeafened,
-                    activeColor = VoiceMuted,
+                    activeColor = DangerDark,
                     onClick = onToggleDeafen
                 )
 
@@ -1097,7 +1097,7 @@ private fun VoiceControls(
                     },
                     label = selectedDevice?.name?.take(6) ?: "音频",
                     isActive = true,
-                    activeColor = VoiceConnected,
+                    activeColor = SuccessDark,
                     onClick = onOpenDeviceSelector
                 )
 
@@ -1109,7 +1109,7 @@ private fun VoiceControls(
                                 else if (hostButtonDisabled) "主持中" 
                                 else "主持模式",
                         isActive = hostModeEnabled && isCurrentUserHost,
-                        activeColor = DiscordYellow,
+                        activeColor = WarningDark,
                         enabled = !hostButtonDisabled,
                         onClick = onToggleHostMode
                     )
@@ -1119,7 +1119,7 @@ private fun VoiceControls(
                         icon = Icons.Default.Link,
                         label = "邀请访客",
                         isActive = true,
-                        activeColor = VoiceConnected,
+                        activeColor = SuccessDark,
                         onClick = onCreateInvite
                     )
                 }
@@ -1131,7 +1131,7 @@ private fun VoiceControls(
                             else if (screenShareButtonDisabled) "${screenSharerName ?: "其他用户"}共享中"
                             else "共享屏幕",
                     isActive = isScreenSharing,
-                    activeColor = VoiceConnected,
+                    activeColor = SuccessDark,
                     enabled = !screenShareButtonDisabled,
                     onClick = onToggleScreenShare
                 )
@@ -1141,7 +1141,7 @@ private fun VoiceControls(
                     icon = Icons.Default.CallEnd,
                     label = stringResource(R.string.leave_voice),
                     isActive = true,
-                    activeColor = DiscordRed,
+                    activeColor = DangerDark,
                     onClick = onLeave
                 )
             }
@@ -1159,14 +1159,14 @@ private fun VoiceControls(
                     enabled = !isLoading,
                     modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = VoiceConnected
+                        containerColor = SuccessDark
                     ),
                     shape = RoundedCornerShape(8.dp)
                 ) {
                     if (isLoading) {
                         CircularProgressIndicator(
                             modifier = Modifier.size(24.dp),
-                            color = Color.White,
+                            color = PaperDark,
                             strokeWidth = 2.dp
                         )
                     } else {
@@ -1195,9 +1195,9 @@ private fun VoiceControlButton(
 ) {
     val backgroundColor by animateColorAsState(
         targetValue = when {
-            !enabled -> SurfaceLight.copy(alpha = 0.5f)
+            !enabled -> PaperDarkHover.copy(alpha = 0.5f)
             isActive -> activeColor
-            else -> SurfaceLight
+            else -> PaperDarkHover
         },
         animationSpec = tween(200),
         label = "controlBg"
@@ -1225,7 +1225,7 @@ private fun VoiceControlButton(
                 imageVector = icon,
                 contentDescription = label,
                 modifier = Modifier.size(24.dp),
-                tint = if (enabled) Color.White else Color.White.copy(alpha = 0.5f)
+                tint = if (enabled) InkDark else InkDark.copy(alpha = 0.5f)
             )
         }
 
@@ -1234,7 +1234,7 @@ private fun VoiceControlButton(
         Text(
             text = label,
             style = MaterialTheme.typography.labelSmall,
-            color = if (enabled) TextMuted else TextMuted.copy(alpha = 0.5f)
+            color = if (enabled) InkDarkFaint else InkDarkFaint.copy(alpha = 0.5f)
         )
     }
 }
@@ -1256,7 +1256,7 @@ private fun AudioDeviceSelectorSheet(
             text = "选择音频设备",
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.Bold,
-            color = TextPrimary,
+            color = InkDark,
             modifier = Modifier.padding(bottom = 16.dp)
         )
 
@@ -1264,7 +1264,7 @@ private fun AudioDeviceSelectorSheet(
             Text(
                 text = "没有可用的音频设备",
                 style = MaterialTheme.typography.bodyMedium,
-                color = TextMuted,
+                color = InkDarkFaint,
                 modifier = Modifier.padding(vertical = 24.dp)
             )
         } else {
@@ -1291,7 +1291,7 @@ private fun AudioDeviceItem(
     onClick: () -> Unit
 ) {
     val backgroundColor by animateColorAsState(
-        targetValue = if (isSelected) TiColor.copy(alpha = 0.2f) else SurfaceLight,
+        targetValue = if (isSelected) SealDark.copy(alpha = 0.2f) else PaperDarkHover,
         animationSpec = tween(200),
         label = "deviceItemBg"
     )
@@ -1299,7 +1299,7 @@ private fun AudioDeviceItem(
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp)),
+            .clip(RoundedCornerShape(8.dp)),
         color = backgroundColor,
         onClick = onClick
     ) {
@@ -1320,14 +1320,14 @@ private fun AudioDeviceItem(
                 },
                 contentDescription = null,
                 modifier = Modifier.size(24.dp),
-                tint = if (isSelected) TiColor else TextMuted
+                tint = if (isSelected) SealDark else InkDarkFaint
             )
 
             // Device name
             Text(
                 text = device.name,
                 style = MaterialTheme.typography.bodyLarge,
-                color = if (isSelected) TiColor else TextPrimary,
+                color = if (isSelected) SealDark else InkDark,
                 modifier = Modifier.weight(1f)
             )
 
@@ -1337,7 +1337,7 @@ private fun AudioDeviceItem(
                     imageVector = Icons.Default.Check,
                     contentDescription = "已选择",
                     modifier = Modifier.size(24.dp),
-                    tint = TiColor
+                    tint = SealDark
                 )
             }
         }
@@ -1365,8 +1365,8 @@ private fun RemoteScreenShareView(
     // lightweight placeholder instead of a renderer
     if (videoTrack == null) {
         Surface(
-            modifier = modifier.clip(RoundedCornerShape(12.dp)),
-            color = SurfaceDarker
+            modifier = modifier.clip(RoundedCornerShape(8.dp)),
+            color = PaperDark
         ) {
             Column(
                 modifier = Modifier.fillMaxSize(),
@@ -1377,13 +1377,13 @@ private fun RemoteScreenShareView(
                     imageVector = Icons.Default.DesktopWindows,
                     contentDescription = null,
                     modifier = Modifier.size(32.dp),
-                    tint = TextMuted
+                    tint = InkDarkFaint
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
                     text = "${screenShare.participantName} 正在共享屏幕",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = TextPrimary
+                    color = InkDark
                 )
                 if (ignored) {
                     Spacer(modifier = Modifier.height(8.dp))
@@ -1394,7 +1394,7 @@ private fun RemoteScreenShareView(
                     Text(
                         text = "正在接入视频流...",
                         style = MaterialTheme.typography.bodySmall,
-                        color = TextMuted,
+                        color = InkDarkFaint,
                         textAlign = TextAlign.Center
                     )
                 }
@@ -1404,8 +1404,8 @@ private fun RemoteScreenShareView(
     }
 
     Surface(
-        modifier = modifier.clip(RoundedCornerShape(12.dp)),
-        color = SurfaceDarker
+        modifier = modifier.clip(RoundedCornerShape(8.dp)),
+        color = PaperDark
     ) {
         Box(contentAlignment = Alignment.Center) {
             AndroidView(
@@ -1434,13 +1434,13 @@ private fun RemoteScreenShareView(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
                     .padding(8.dp),
-                color = SurfaceDark.copy(alpha = 0.8f),
+                color = PaperDarkSubtle.copy(alpha = 0.8f),
                 shape = RoundedCornerShape(4.dp)
             ) {
                 Text(
                     text = "忽略",
                     style = MaterialTheme.typography.labelSmall,
-                    color = TextPrimary,
+                    color = InkDark,
                     modifier = Modifier
                         .clickable { onToggleWatch() }
                         .padding(horizontal = 8.dp, vertical = 4.dp)
@@ -1451,7 +1451,7 @@ private fun RemoteScreenShareView(
                 modifier = Modifier
                     .align(Alignment.BottomStart)
                     .padding(8.dp),
-                color = SurfaceDark.copy(alpha = 0.8f),
+                color = PaperDarkSubtle.copy(alpha = 0.8f),
                 shape = RoundedCornerShape(4.dp)
             ) {
                 Row(
@@ -1463,12 +1463,12 @@ private fun RemoteScreenShareView(
                         imageVector = Icons.Default.DesktopWindows,
                         contentDescription = null,
                         modifier = Modifier.size(14.dp),
-                        tint = VoiceConnected
+                        tint = SuccessDark
                     )
                     Text(
                         text = screenShare.participantName,
                         style = MaterialTheme.typography.labelSmall,
-                        color = TextPrimary
+                        color = InkDark
                     )
                 }
             }

@@ -10,11 +10,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import cn.net.rms.chatroom.ui.theme.SurfaceDark
-import cn.net.rms.chatroom.ui.theme.SurfaceLighter
-import cn.net.rms.chatroom.ui.theme.TextMuted
-import cn.net.rms.chatroom.ui.theme.TextPrimary
-import cn.net.rms.chatroom.ui.theme.TiColor
+import cn.net.rms.chatroom.ui.theme.PaperDarkSubtle
+import cn.net.rms.chatroom.ui.theme.PaperDarkRaised
+import cn.net.rms.chatroom.ui.theme.InkDarkFaint
+import cn.net.rms.chatroom.ui.theme.InkDark
+import cn.net.rms.chatroom.ui.theme.SealDark
 
 data class LicenseInfo(
     val name: String,
@@ -102,10 +102,10 @@ fun OpenSourceLicensesScreen(
                         )
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = SurfaceDark)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = PaperDarkSubtle)
             )
         },
-        containerColor = SurfaceDark
+        containerColor = PaperDarkSubtle
     ) { paddingValues ->
         LazyColumn(
             modifier = Modifier
@@ -118,7 +118,7 @@ fun OpenSourceLicensesScreen(
                 Text(
                     text = "本应用使用了以下开源软件:",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = TextMuted,
+                    color = InkDarkFaint,
                     modifier = Modifier.padding(bottom = 8.dp)
                 )
             }
@@ -138,7 +138,7 @@ fun OpenSourceLicensesScreen(
 private fun LicenseCard(library: LicenseInfo) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = SurfaceLighter)
+        colors = CardDefaults.cardColors(containerColor = PaperDarkRaised)
     ) {
         Column(
             modifier = Modifier.padding(16.dp)
@@ -147,7 +147,7 @@ private fun LicenseCard(library: LicenseInfo) {
                 text = library.name,
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
-                color = TextPrimary
+                color = InkDark
             )
 
             Spacer(modifier = Modifier.height(4.dp))
@@ -155,19 +155,19 @@ private fun LicenseCard(library: LicenseInfo) {
             Text(
                 text = library.description,
                 style = MaterialTheme.typography.bodySmall,
-                color = TextMuted
+                color = InkDarkFaint
             )
 
             Spacer(modifier = Modifier.height(8.dp))
 
             Surface(
-                color = TiColor.copy(alpha = 0.1f),
+                color = SealDark.copy(alpha = 0.1f),
                 shape = MaterialTheme.shapes.small
             ) {
                 Text(
                     text = library.license,
                     style = MaterialTheme.typography.labelSmall,
-                    color = TiColor,
+                    color = SealDark,
                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                 )
             }

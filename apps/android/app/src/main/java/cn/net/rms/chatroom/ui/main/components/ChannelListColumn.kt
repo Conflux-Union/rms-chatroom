@@ -131,14 +131,14 @@ fun ChannelListColumn(
         modifier = Modifier
             .width(240.dp)
             .fillMaxHeight()
-            .background(SurfaceDark)
+            .background(PaperDarkSubtle)
     ) {
         // Server header with edit button
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(48.dp)
-                .background(SurfaceDark)
+                .background(PaperDarkSubtle)
                 .padding(horizontal = 16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -146,7 +146,7 @@ fun ChannelListColumn(
                 text = server?.name ?: "选择服务器",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
-                color = TextPrimary,
+                color = InkDark,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f)
@@ -161,14 +161,14 @@ fun ChannelListColumn(
                     Icon(
                         imageVector = if (editMode) Icons.Default.Check else Icons.Default.Edit,
                         contentDescription = if (editMode) "完成编辑" else "编辑频道",
-                        tint = if (editMode) TiColor else TextMuted,
+                        tint = if (editMode) SealDark else InkDarkFaint,
                         modifier = Modifier.size(18.dp)
                     )
                 }
             }
         }
 
-        HorizontalDivider(color = Color(0xFF1E1F22), thickness = 2.dp)
+        HorizontalDivider(color = PaperDarkSubtle, thickness = 2.dp)
 
         // Channel list with groups
         LazyColumn(
@@ -389,7 +389,7 @@ fun ChannelListColumn(
                         showDeleteDialog = false
                         channelToDelete = null
                     },
-                    colors = ButtonDefaults.textButtonColors(contentColor = Color(0xFFED4245))
+                    colors = ButtonDefaults.textButtonColors(contentColor = DangerDark)
                 ) {
                     Text("删除")
                 }
@@ -432,7 +432,7 @@ fun ChannelListColumn(
                         showDeleteGroupDialog = false
                         groupToDelete = null
                     },
-                    colors = ButtonDefaults.textButtonColors(contentColor = Color(0xFFED4245))
+                    colors = ButtonDefaults.textButtonColors(contentColor = DangerDark)
                 ) {
                     Text("删除")
                 }
@@ -491,7 +491,7 @@ private fun CreateChannelDialog(
                 Text(
                     text = "频道类型",
                     style = MaterialTheme.typography.labelMedium,
-                    color = TextMuted
+                    color = InkDarkFaint
                 )
                 
                 Spacer(modifier = Modifier.height(8.dp))
@@ -615,7 +615,7 @@ private fun ChannelGroupHeader(
             imageVector = if (isCollapsed) Icons.Default.ChevronRight else Icons.Default.ExpandMore,
             contentDescription = if (isCollapsed) "展开" else "折叠",
             modifier = Modifier.size(16.dp),
-            tint = TextMuted
+            tint = InkDarkFaint
         )
         
         Spacer(modifier = Modifier.width(4.dp))
@@ -624,7 +624,7 @@ private fun ChannelGroupHeader(
             text = group.name.uppercase(),
             style = MaterialTheme.typography.labelSmall,
             fontWeight = FontWeight.SemiBold,
-            color = TextMuted,
+            color = InkDarkFaint,
             modifier = Modifier.weight(1f)
         )
         
@@ -638,7 +638,7 @@ private fun ChannelGroupHeader(
                     Icon(
                         imageVector = Icons.Default.KeyboardArrowUp,
                         contentDescription = "上移",
-                        tint = TextMuted,
+                        tint = InkDarkFaint,
                         modifier = Modifier.size(16.dp)
                     )
                 }
@@ -653,7 +653,7 @@ private fun ChannelGroupHeader(
                     Icon(
                         imageVector = Icons.Default.KeyboardArrowDown,
                         contentDescription = "下移",
-                        tint = TextMuted,
+                        tint = InkDarkFaint,
                         modifier = Modifier.size(16.dp)
                     )
                 }
@@ -667,7 +667,7 @@ private fun ChannelGroupHeader(
                 Icon(
                     imageVector = Icons.Default.Add,
                     contentDescription = "添加频道",
-                    tint = TextMuted,
+                    tint = InkDarkFaint,
                     modifier = Modifier.size(16.dp)
                 )
             }
@@ -680,7 +680,7 @@ private fun ChannelGroupHeader(
                 Icon(
                     imageVector = Icons.Default.Delete,
                     contentDescription = "删除分组",
-                    tint = Color(0xFFED4245),
+                    tint = DangerDark,
                     modifier = Modifier.size(16.dp)
                 )
             }
@@ -693,7 +693,7 @@ private fun ChannelGroupHeader(
                 Icon(
                     imageVector = Icons.Default.Add,
                     contentDescription = "添加频道",
-                    tint = TextMuted,
+                    tint = InkDarkFaint,
                     modifier = Modifier.size(16.dp)
                 )
             }
@@ -716,13 +716,13 @@ private fun AddGroupButton(onClick: () -> Unit) {
             imageVector = Icons.Default.CreateNewFolder,
             contentDescription = null,
             modifier = Modifier.size(20.dp),
-            tint = TiColor
+            tint = SealDark
         )
         Spacer(modifier = Modifier.width(8.dp))
         Text(
             text = "添加分组",
             style = MaterialTheme.typography.bodyMedium,
-            color = TiColor
+            color = SealDark
         )
     }
 }
@@ -745,13 +745,13 @@ private fun AddChannelButton(
             imageVector = Icons.Default.Add,
             contentDescription = null,
             modifier = Modifier.size(20.dp),
-            tint = TiColor
+            tint = SealDark
         )
         Spacer(modifier = Modifier.width(8.dp))
         Text(
             text = label,
             style = MaterialTheme.typography.bodyMedium,
-            color = TiColor
+            color = SealDark
         )
     }
 }
@@ -772,13 +772,13 @@ private fun GroupedChannelItem(
     unreadCount: Int = 0
 ) {
     val backgroundColor by animateColorAsState(
-        targetValue = if (isSelected) SurfaceLighter else Color.Transparent,
+        targetValue = if (isSelected) PaperDarkRaised else Color.Transparent,
         animationSpec = tween(150),
         label = "channelBg"
     )
 
     val textColor by animateColorAsState(
-        targetValue = if (isSelected) ChannelActive else ChannelDefault,
+        targetValue = if (isSelected) InkDark else InkDarkMuted,
         animationSpec = tween(150),
         label = "channelText"
     )
@@ -823,13 +823,13 @@ private fun GroupedChannelItem(
             // Mention badge (@)
             if (hasMention && channel.type == ChannelType.TEXT) {
                 Surface(
-                    shape = RoundedCornerShape(10.dp),
-                    color = Color(0xFFEE5A6F)
+                    shape = RoundedCornerShape(8.dp),
+                    color = DangerDark
                 ) {
                     Text(
                         text = "@",
                         style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                        color = Color.White,
+                        color = PaperDark,
                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                     )
                 }
@@ -840,12 +840,12 @@ private fun GroupedChannelItem(
             if (unreadCount > 0 && channel.type == ChannelType.TEXT) {
                 Surface(
                     shape = RoundedCornerShape(8.dp),
-                    color = TextMuted
+                    color = InkDarkFaint
                 ) {
                     Text(
                         text = if (unreadCount > 99) "99+" else unreadCount.toString(),
                         style = MaterialTheme.typography.labelSmall,
-                        color = Color.White,
+                        color = PaperDark,
                         modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
                     )
                 }
@@ -854,13 +854,13 @@ private fun GroupedChannelItem(
             // Voice user count badge
             if (channel.type == ChannelType.VOICE && voiceUsers.isNotEmpty()) {
                 Surface(
-                    shape = RoundedCornerShape(10.dp),
-                    color = SurfaceLighter
+                    shape = RoundedCornerShape(8.dp),
+                    color = PaperDarkRaised
                 ) {
                     Text(
                         text = "${voiceUsers.size}",
                         style = MaterialTheme.typography.labelSmall,
-                        color = TextMuted,
+                        color = InkDarkFaint,
                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                     )
                 }
@@ -876,7 +876,7 @@ private fun GroupedChannelItem(
                         Icon(
                             imageVector = Icons.Default.KeyboardArrowUp,
                             contentDescription = "上移",
-                            tint = TextMuted,
+                            tint = InkDarkFaint,
                             modifier = Modifier.size(16.dp)
                         )
                     }
@@ -889,7 +889,7 @@ private fun GroupedChannelItem(
                         Icon(
                             imageVector = Icons.Default.KeyboardArrowDown,
                             contentDescription = "下移",
-                            tint = TextMuted,
+                            tint = InkDarkFaint,
                             modifier = Modifier.size(16.dp)
                         )
                     }
@@ -932,13 +932,13 @@ private fun UngroupedChannelItem(
     unreadCount: Int = 0
 ) {
     val backgroundColor by animateColorAsState(
-        targetValue = if (isSelected) SurfaceLighter else Color.Transparent,
+        targetValue = if (isSelected) PaperDarkRaised else Color.Transparent,
         animationSpec = tween(150),
         label = "channelBg"
     )
 
     val textColor by animateColorAsState(
-        targetValue = if (isSelected) ChannelActive else ChannelDefault,
+        targetValue = if (isSelected) InkDark else InkDarkMuted,
         animationSpec = tween(150),
         label = "channelText"
     )
@@ -981,13 +981,13 @@ private fun UngroupedChannelItem(
             // Mention badge (@)
             if (hasMention && channel.type == ChannelType.TEXT) {
                 Surface(
-                    shape = RoundedCornerShape(10.dp),
-                    color = Color(0xFFEE5A6F)
+                    shape = RoundedCornerShape(8.dp),
+                    color = DangerDark
                 ) {
                     Text(
                         text = "@",
                         style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                        color = Color.White,
+                        color = PaperDark,
                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                     )
                 }
@@ -998,12 +998,12 @@ private fun UngroupedChannelItem(
             if (unreadCount > 0 && channel.type == ChannelType.TEXT) {
                 Surface(
                     shape = RoundedCornerShape(8.dp),
-                    color = TextMuted
+                    color = InkDarkFaint
                 ) {
                     Text(
                         text = if (unreadCount > 99) "99+" else unreadCount.toString(),
                         style = MaterialTheme.typography.labelSmall,
-                        color = Color.White,
+                        color = PaperDark,
                         modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
                     )
                 }
@@ -1012,13 +1012,13 @@ private fun UngroupedChannelItem(
             // Voice user count badge
             if (channel.type == ChannelType.VOICE && voiceUsers.isNotEmpty()) {
                 Surface(
-                    shape = RoundedCornerShape(10.dp),
-                    color = SurfaceLighter
+                    shape = RoundedCornerShape(8.dp),
+                    color = PaperDarkRaised
                 ) {
                     Text(
                         text = "${voiceUsers.size}",
                         style = MaterialTheme.typography.labelSmall,
-                        color = TextMuted,
+                        color = InkDarkFaint,
                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                     )
                 }
@@ -1034,7 +1034,7 @@ private fun UngroupedChannelItem(
                         Icon(
                             imageVector = Icons.Default.KeyboardArrowUp,
                             contentDescription = "上移",
-                            tint = TextMuted,
+                            tint = InkDarkFaint,
                             modifier = Modifier.size(16.dp)
                         )
                     }
@@ -1047,7 +1047,7 @@ private fun UngroupedChannelItem(
                         Icon(
                             imageVector = Icons.Default.KeyboardArrowDown,
                             contentDescription = "下移",
-                            tint = TextMuted,
+                            tint = InkDarkFaint,
                             modifier = Modifier.size(16.dp)
                         )
                     }
@@ -1087,7 +1087,7 @@ private fun VoiceUserItem(user: VoiceUser) {
             modifier = Modifier
                 .size(20.dp)
                 .clip(CircleShape)
-                .background(TiColor),
+                .background(SealDark),
             contentAlignment = Alignment.Center
         ) {
             if (!user.avatarUrl.isNullOrBlank()) {
@@ -1106,7 +1106,7 @@ private fun VoiceUserItem(user: VoiceUser) {
                 Text(
                     text = user.name.take(1).uppercase(),
                     style = MaterialTheme.typography.labelSmall,
-                    color = Color.White,
+                    color = PaperDark,
                     fontSize = 10.sp
                 )
             }
@@ -1120,7 +1120,7 @@ private fun VoiceUserItem(user: VoiceUser) {
                 modifier = Modifier
                     .padding(start = 2.dp)
                     .size(10.dp),
-                tint = Color(0xFFF59E0B)
+                tint = WarningDark
             )
         }
 
@@ -1130,7 +1130,7 @@ private fun VoiceUserItem(user: VoiceUser) {
         Text(
             text = user.name,
             style = MaterialTheme.typography.bodySmall,
-            color = TextMuted,
+            color = InkDarkFaint,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f)
@@ -1142,7 +1142,7 @@ private fun VoiceUserItem(user: VoiceUser) {
                 imageVector = Icons.Default.MicOff,
                 contentDescription = "已静音",
                 modifier = Modifier.size(12.dp),
-                tint = VoiceMuted
+                tint = DangerDark
             )
         }
     }
@@ -1157,7 +1157,7 @@ private fun UserPanel(
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        color = SurfaceDarker
+        color = PaperDark
     ) {
         Row(
             modifier = Modifier
@@ -1169,8 +1169,8 @@ private fun UserPanel(
             Box(
                 modifier = Modifier
                     .size(32.dp)
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(TiColor),
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(SealDark),
                 contentAlignment = Alignment.Center
             ) {
                 if (!avatarUrl.isNullOrBlank()) {
@@ -1182,14 +1182,14 @@ private fun UserPanel(
                         contentDescription = username,
                         modifier = Modifier
                             .fillMaxSize()
-                            .clip(RoundedCornerShape(16.dp)),
+                            .clip(RoundedCornerShape(8.dp)),
                         contentScale = ContentScale.Crop
                     )
                 } else {
                     Text(
                         text = username.take(1).uppercase(),
                         style = MaterialTheme.typography.labelLarge,
-                        color = Color.White
+                        color = PaperDark
                     )
                 }
             }
@@ -1200,7 +1200,7 @@ private fun UserPanel(
             Text(
                 text = username,
                 style = MaterialTheme.typography.bodyMedium,
-                color = TextPrimary,
+                color = InkDark,
                 modifier = Modifier.weight(1f),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
@@ -1214,7 +1214,7 @@ private fun UserPanel(
                 Icon(
                     imageVector = Icons.Default.Settings,
                     contentDescription = "设置",
-                    tint = TextMuted,
+                    tint = InkDarkFaint,
                     modifier = Modifier.size(18.dp)
                 )
             }
@@ -1227,7 +1227,7 @@ private fun UserPanel(
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.Logout,
                     contentDescription = "退出登录",
-                    tint = TextMuted,
+                    tint = InkDarkFaint,
                     modifier = Modifier.size(18.dp)
                 )
             }
@@ -1252,7 +1252,7 @@ private fun VoiceStatusWidget(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 8.dp, vertical = 4.dp),
-            color = Color(0xFF1A3D2E),
+            color = SuccessDark.copy(alpha = 0.15f),
             shape = RoundedCornerShape(8.dp)
         ) {
             Column(
@@ -1267,7 +1267,7 @@ private fun VoiceStatusWidget(
                         imageVector = Icons.AutoMirrored.Filled.VolumeUp,
                         contentDescription = null,
                         modifier = Modifier.size(16.dp),
-                        tint = VoiceConnected
+                        tint = SuccessDark
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Column(modifier = Modifier.weight(1f)) {
@@ -1275,12 +1275,12 @@ private fun VoiceStatusWidget(
                             text = "通话中",
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.SemiBold,
-                            color = VoiceConnected
+                            color = SuccessDark
                         )
                         Text(
                             text = channelName ?: "",
                             style = MaterialTheme.typography.bodySmall,
-                            color = TextMuted,
+                            color = InkDarkFaint,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
@@ -1301,13 +1301,13 @@ private fun VoiceStatusWidget(
                         modifier = Modifier
                             .size(40.dp)
                             .clip(CircleShape)
-                            .background(if (isMuted) VoiceMuted else SurfaceLighter)
+                            .background(if (isMuted) DangerDark else PaperDarkRaised)
                     ) {
                         Icon(
                             imageVector = if (isMuted) Icons.Default.MicOff else Icons.Default.Mic,
                             contentDescription = if (isMuted) "取消静音" else "静音",
                             modifier = Modifier.size(20.dp),
-                            tint = if (isMuted) Color.White else TextPrimary
+                            tint = if (isMuted) PaperDark else InkDark
                         )
                     }
 
@@ -1317,7 +1317,7 @@ private fun VoiceStatusWidget(
                         modifier = Modifier
                             .size(40.dp)
                             .clip(CircleShape)
-                            .background(VoiceMuted)
+                            .background(DangerDark)
                     ) {
                         Icon(
                             imageVector = Icons.Default.Phone,
@@ -1325,7 +1325,7 @@ private fun VoiceStatusWidget(
                             modifier = Modifier
                                 .size(20.dp)
                                 .rotate(135f),
-                            tint = Color.White
+                            tint = PaperDark
                         )
                     }
                 }

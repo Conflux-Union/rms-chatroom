@@ -7,7 +7,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
-import cn.net.rms.chatroom.ui.theme.TiColor
+import cn.net.rms.chatroom.ui.theme.SealDark
 import org.commonmark.ext.gfm.tables.TableBlock
 import org.commonmark.ext.gfm.tables.TableBody
 import org.commonmark.ext.gfm.tables.TableHead
@@ -77,11 +77,11 @@ class MessageMarkdownTest {
     fun `mentions are highlighted on plain text`() {
         val s = render("ping @alice and @bob42!")
         val mentionSpans = s.spanStyles.filter {
-            it.item.fontWeight == FontWeight.Medium && it.item.color == TiColor
+            it.item.fontWeight == FontWeight.Medium && it.item.color == SealDark
         }
         assertEquals(2, mentionSpans.size)
-        assertTrue(s.spanStyles.any { it.item.color == TiColor && s.text.substring(it.start, it.end) == "@alice" })
-        assertTrue(s.spanStyles.any { it.item.color == TiColor && s.text.substring(it.start, it.end) == "@bob42" })
+        assertTrue(s.spanStyles.any { it.item.color == SealDark && s.text.substring(it.start, it.end) == "@alice" })
+        assertTrue(s.spanStyles.any { it.item.color == SealDark && s.text.substring(it.start, it.end) == "@bob42" })
     }
 
     // Mentions inside code spans and link labels stay untouched, like the web

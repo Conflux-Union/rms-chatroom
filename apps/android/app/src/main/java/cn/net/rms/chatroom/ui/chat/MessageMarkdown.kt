@@ -47,10 +47,10 @@ import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import cn.net.rms.chatroom.ui.theme.SurfaceLighter
-import cn.net.rms.chatroom.ui.theme.TiColor
-import cn.net.rms.chatroom.ui.theme.TextMuted
-import cn.net.rms.chatroom.ui.theme.TextSecondary
+import cn.net.rms.chatroom.ui.theme.PaperDarkRaised
+import cn.net.rms.chatroom.ui.theme.SealDark
+import cn.net.rms.chatroom.ui.theme.InkDarkFaint
+import cn.net.rms.chatroom.ui.theme.InkDarkMuted
 import org.commonmark.ext.autolink.AutolinkExtension
 import org.commonmark.ext.gfm.strikethrough.Strikethrough
 import org.commonmark.ext.gfm.strikethrough.StrikethroughExtension
@@ -99,9 +99,9 @@ private val MESSAGE_PARSER: Parser = Parser.builder()
 // code spans, code blocks and link labels they stay untouched.
 private val MENTION_REGEX = Regex("@(\\w+)")
 
-private val MarkdownBorder = TextMuted.copy(alpha = 0.4f)
-private val MarkdownLinkStyle = SpanStyle(color = TiColor, textDecoration = TextDecoration.Underline)
-private val MarkdownMentionStyle = SpanStyle(color = TiColor, fontWeight = FontWeight.Medium)
+private val MarkdownBorder = InkDarkFaint.copy(alpha = 0.4f)
+private val MarkdownLinkStyle = SpanStyle(color = SealDark, textDecoration = TextDecoration.Underline)
+private val MarkdownMentionStyle = SpanStyle(color = SealDark, fontWeight = FontWeight.Medium)
 // Monospace marks inline code spans; the highlight is drawn by MarkdownInlineText
 private val MarkdownInlineCodeStyle = SpanStyle(fontFamily = FontFamily.Monospace)
 private val MarkdownCodeRadius = 4.dp
@@ -168,7 +168,7 @@ private fun MarkdownBodyText(text: AnnotatedString, inBlockQuote: Boolean, headi
     MarkdownInlineText(
         text = text,
         style = style,
-        color = if (inBlockQuote) TextMuted else TextSecondary
+        color = if (inBlockQuote) InkDarkFaint else InkDarkMuted
     )
 }
 
@@ -206,7 +206,7 @@ private fun MarkdownInlineText(text: AnnotatedString, style: TextStyle, color: C
                         else -> layout.getHorizontalPosition(range.last + 1, true)
                     }
                     drawRoundRect(
-                        color = SurfaceLighter,
+                        color = PaperDarkRaised,
                         topLeft = Offset(left, layout.getLineTop(line)),
                         size = Size(right - left, layout.getLineBottom(line) - layout.getLineTop(line)),
                         cornerRadius = CornerRadius(MarkdownCodeRadius.toPx())
@@ -224,7 +224,7 @@ private fun MarkdownBlockQuote(quote: BlockQuote) {
             modifier = Modifier
                 .fillMaxHeight()
                 .width(3.dp)
-                .background(TextMuted.copy(alpha = 0.55f))
+                .background(InkDarkFaint.copy(alpha = 0.55f))
         )
         MarkdownBlockChildren(
             parent = quote,
@@ -270,7 +270,7 @@ private fun taskListMarker(item: ListItem): TaskListItemMarker? =
 private fun MarkdownCodeBlock(code: String) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        color = SurfaceLighter,
+        color = PaperDarkRaised,
         shape = RoundedCornerShape(MarkdownCodeRadius)
     ) {
         Text(
@@ -278,7 +278,7 @@ private fun MarkdownCodeBlock(code: String) {
             fontFamily = FontFamily.Monospace,
             fontSize = 14.sp,
             lineHeight = 20.sp,
-            color = TextSecondary,
+            color = InkDarkMuted,
             modifier = Modifier
                 .horizontalScroll(rememberScrollState())
                 .padding(horizontal = 12.dp, vertical = 10.dp)
@@ -332,7 +332,7 @@ private fun MarkdownTable(table: TableBlock) {
                         val cell = row.cells.getOrNull(column)
                         Box(
                             modifier = Modifier
-                                .then(if (row.isHeader) Modifier.background(SurfaceLighter) else Modifier)
+                                .then(if (row.isHeader) Modifier.background(PaperDarkRaised) else Modifier)
                                 .border(0.5.dp, MarkdownBorder)
                                 .padding(horizontal = 8.dp, vertical = 3.dp),
                             contentAlignment = Alignment.CenterStart
@@ -345,7 +345,7 @@ private fun MarkdownTable(table: TableBlock) {
                                     } else {
                                         MaterialTheme.typography.bodyMedium
                                     },
-                                    color = TextSecondary
+                                    color = InkDarkMuted
                                 )
                             }
                         }
