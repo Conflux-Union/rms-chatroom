@@ -25,8 +25,9 @@ export default defineConfig({
         changeOrigin: true,
       },
       '/ws': {
-        target: 'ws://localhost:8000',
+        target: 'wss://chatroom.rms.net.cn',
         ws: true,
+        changeOrigin: true,
       },
     },
   },
