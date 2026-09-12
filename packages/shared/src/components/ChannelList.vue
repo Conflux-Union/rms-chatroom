@@ -406,6 +406,9 @@ async function handleUserDropdownSelect(key: string | number) {
 // Edit mode (only when admin toggles it on)
 const editMode = ref(false)
 
+// True while a drag-reorder session is active on either draggable list
+const isDragging = ref(false)
+
 // Server name rename dialog state
 const showRenameServerDialog = ref(false)
 const renameServerName = ref('')
@@ -536,6 +539,7 @@ function getDraggableGroupChannels(groupId: number): Channel[] {
 
 // Handle mixed list reorder (top-level: groups + ungrouped channels)
 async function onMixedListEnd() {
+  isDragging.value = false
   if (!chat.currentServer) return
   isReordering.value = true
   try {
@@ -551,6 +555,7 @@ async function onMixedListEnd() {
 
 // Handle group channels reorder (within a specific group)
 async function onGroupChannelsEnd(groupId: number) {
+  isDragging.value = false
   if (!chat.currentServer) return
   isReordering.value = true
   try {
@@ -605,7 +610,7 @@ async function deleteChannel() {
         </div>
       </div>
 
-      <div class="channels">
+      <div class="channels" :class="{ 'is-dragging': isDragging }">
         <!-- Header with add button -->
         <div class="channel-category">
           <span class="category-name">频道</span>
@@ -621,6 +626,8 @@ async function deleteChannel() {
           ghost-class="drag-ghost"
           chosen-class="drag-chosen"
           drag-class="drag-dragging"
+          :force-auto-scroll-fallback="true"
+          @start="isDragging = true"
           @end="onMixedListEnd"
           class="draggable-list"
         >
@@ -652,6 +659,8 @@ async function deleteChannel() {
                 ghost-class="drag-ghost"
                 chosen-class="drag-chosen"
                 drag-class="drag-dragging"
+                :force-auto-scroll-fallback="true"
+                @start="isDragging = true"
                 @end="() => onGroupChannelsEnd(item.data.id)"
                 class="group-channels"
               >
@@ -1183,6 +1192,13 @@ async function deleteChannel() {
   min-height: 0; /* required for a flex child to scroll instead of growing */
   overflow-y: auto;
   transition: all 0.5s linear;
+}
+
+/* While dragging, let pointer hits pass through the "Channels" category header:
+   it is not a sortable item, so with it in the way the insertion point freezes
+   below the first group and a channel can never be dropped above it. */
+.channels.is-dragging .channel-category {
+  pointer-events: none;
 }
 
 .drag-hint {
