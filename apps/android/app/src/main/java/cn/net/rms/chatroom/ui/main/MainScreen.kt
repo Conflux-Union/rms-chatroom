@@ -260,7 +260,12 @@ fun MainScreen(
                             onFetchChannelMembers = { mainViewModel.fetchChannelMembers() },
                             hasMore = mainViewModel.hasMoreMessages.collectAsState().value,
                             isLoadingOlder = mainViewModel.isLoadingOlder.collectAsState().value,
-                            onLoadOlderMessages = { mainViewModel.loadOlderMessages() }
+                            onLoadOlderMessages = { mainViewModel.loadOlderMessages() },
+                            // Channel.serverId is unparsed (0) in the server-detail
+                            // payload the sidebar is built from; the permalink's
+                            // server segment is the server being viewed, like web.
+                            serverId = mainState.currentServer!!.id,
+                            channelId = mainState.currentChannel!!.id
                         )
                     }
 

@@ -11,6 +11,8 @@ import androidx.compose.animation.slideOutVertically
 import android.app.DownloadManager
 import android.content.ActivityNotFoundException
 import android.content.BroadcastReceiver
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -72,6 +74,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Block
+import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.material.icons.filled.EmojiEmotions
 import androidx.compose.material3.ButtonDefaults
@@ -157,6 +160,13 @@ enum class SendingState {
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+// Web permalink for a message: /server/channel/message on the host that serves
+// the web app — the same MessagePath route the web client deep-links with.
+internal fun buildMessagePermalink(webBaseUrl: String, serverId: Long, channelId: Long, messageId: Long): String {
+    val base = webBaseUrl.trimEnd('/')
+    return "$base/$serverId/$channelId/$messageId"
+}
+
 @Composable
 fun ChatScreen(
     messages: List<Message>,
@@ -182,14 +192,16 @@ fun ChatScreen(
     onFetchChannelMembers: () -> Unit = {},
     hasMore: Boolean = true,
     isLoadingOlder: Boolean = false,
-    onLoadOlderMessages: () -> Unit = {}
+    onLoadOlderMessages: () -> Unit = {},
+    serverId: Long,
+    channelId: Long
 ) {
+    val context = LocalContext.current
     val listState = rememberLazyListState()
     var messageText by remember { mutableStateOf("") }
     var sendingState by remember { mutableStateOf(SendingState.IDLE) }
     val pullRefreshState = rememberPullToRefreshState()
     var isRefreshing by remember { mutableStateOf(false) }
-    val context = LocalContext.current
     var attachmentPreview by remember { mutableStateOf<AttachmentPreview?>(null) }
     var selectedMessage by remember { mutableStateOf<Message?>(null) }
     var showMessageMenu by remember { mutableStateOf(false) }
@@ -624,6 +636,16 @@ fun ChatScreen(
                     showMessageMenu = false
                     emojiPickerMessageId = selectedMessage!!.id
                     showEmojiPicker = true
+                    selectedMessage = null
+                },
+                onCopyLink = {
+                    showMessageMenu = false
+                    selectedMessage?.let { msg ->
+                        val url = buildMessagePermalink(BuildConfig.API_BASE_URL, serverId, channelId, msg.id)
+                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                        clipboard.setPrimaryClip(ClipData.newPlainText("message link", url))
+                        Toast.makeText(context, "消息链接已复制", Toast.LENGTH_SHORT).show()
+                    }
                     selectedMessage = null
                 },
                 onEdit = {
@@ -1902,6 +1924,7 @@ private fun MessageContextMenu(
     onDismiss: () -> Unit,
     onReply: () -> Unit,
     onAddReaction: () -> Unit,
+    onCopyLink: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
     onMute: () -> Unit
@@ -1913,6 +1936,7 @@ private fun MessageContextMenu(
     val canMute = isAdmin && !isOwnMessage
     val canReply = !message.isDeleted
     val canReact = !message.isDeleted
+    val canCopyLink = !message.isDeleted
 
     androidx.compose.material3.ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -1936,6 +1960,14 @@ private fun MessageContextMenu(
                     text = "添加表情",
                     icon = Icons.Default.EmojiEmotions,
                     onClick = onAddReaction
+                )
+            }
+
+            if (canCopyLink) {
+                MenuOption(
+                    text = "复制消息链接",
+                    icon = Icons.Default.Link,
+                    onClick = onCopyLink
                 )
             }
 
