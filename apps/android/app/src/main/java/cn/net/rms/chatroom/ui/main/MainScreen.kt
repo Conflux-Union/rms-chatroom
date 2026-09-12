@@ -38,7 +38,8 @@ fun MainScreen(
     mainViewModel: MainViewModel = hiltViewModel(),
     authViewModel: AuthViewModel = hiltViewModel(),
     onLogout: () -> Unit,
-    onNavigateToSettings: () -> Unit = {}
+    onNavigateToSettings: () -> Unit = {},
+    splashSettled: Boolean = true
 ) {
     val mainState by mainViewModel.state.collectAsState()
     val authState by authViewModel.state.collectAsState()
@@ -351,8 +352,9 @@ fun MainScreen(
         )
     }
 
-    // Update Available Dialog
-    mainState.updateInfo?.let { updateInfo ->
+    // Update Available Dialog - held until the splash overlay has cleared so
+    // startup popups never cover the launch animation
+    mainState.updateInfo?.takeIf { splashSettled }?.let { updateInfo ->
         AlertDialog(
             onDismissRequest = { if (!updateInfo.forceUpdate) mainViewModel.dismissUpdate() },
             title = { Text("发现新版本") },
@@ -402,8 +404,9 @@ fun MainScreen(
         )
     }
 
-    // Battery Optimization Dialog - triggered on startup
-    if (showStartupBatteryDialog) {
+    // Battery Optimization Dialog - triggered on startup, also held until the
+    // splash overlay has cleared
+    if (splashSettled && showStartupBatteryDialog) {
         BatteryOptimizationDialog(
             onDismiss = { showStartupBatteryDialog = false },
             onOpenSettings = {

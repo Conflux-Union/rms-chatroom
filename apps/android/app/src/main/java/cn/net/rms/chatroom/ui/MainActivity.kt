@@ -15,9 +15,11 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.browser.customtabs.CustomTabsIntent
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
@@ -108,24 +110,38 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
-                if (authState.isLoading) {
-                    SplashContent()
-                } else {
-                    // Entry destination is decided once from the settled startup
-                    // state: stored credentials land in main directly (validity
-                    // is verified in the background); login is the no-token entry.
-                    val authenticatedAtEntry = authState.isAuthenticated
-                    val startDestination = remember {
-                        if (authenticatedAtEntry) Screen.Main.route else Screen.Login.route
+                Box(modifier = Modifier.fillMaxSize()) {
+                    // The splash overlay survives the isLoading->settled switch so
+                    // the waveform hands off from rhythm to settle without a jump,
+                    // then removes itself once its exit choreography finishes.
+                    // Saveable so activity recreation does not replay the exit.
+                    var splashVisible by rememberSaveable { mutableStateOf(true) }
+
+                    if (!authState.isLoading) {
+                        // Entry destination is decided once from the settled startup
+                        // state: stored credentials land in main directly (validity
+                        // is verified in the background); login is the no-token entry.
+                        val authenticatedAtEntry = authState.isAuthenticated
+                        val startDestination = remember {
+                            if (authenticatedAtEntry) Screen.Main.route else Screen.Login.route
+                        }
+                        Surface(
+                            modifier = Modifier.fillMaxSize(),
+                            color = PaperDark
+                        ) {
+                            NavGraph(
+                                navController = navController,
+                                startDestination = startDestination,
+                                onSsoLogin = { launchSsoLogin() },
+                                splashSettled = !splashVisible
+                            )
+                        }
                     }
-                    Surface(
-                        modifier = Modifier.fillMaxSize(),
-                        color = PaperDark
-                    ) {
-                        NavGraph(
-                            navController = navController,
-                            startDestination = startDestination,
-                            onSsoLogin = { launchSsoLogin() }
+
+                    if (splashVisible) {
+                        SplashContent(
+                            settled = !authState.isLoading,
+                            onExitFinished = { splashVisible = false }
                         )
                     }
                 }

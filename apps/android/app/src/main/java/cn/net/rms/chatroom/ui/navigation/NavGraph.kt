@@ -33,7 +33,8 @@ sealed class Screen(val route: String) {
 fun NavGraph(
     navController: NavHostController,
     startDestination: String,
-    onSsoLogin: () -> Unit
+    onSsoLogin: () -> Unit,
+    splashSettled: Boolean = true
 ) {
     NavHost(
         navController = navController,
@@ -83,7 +84,8 @@ fun NavGraph(
                 },
                 onNavigateToSettings = {
                     navController.navigate(Screen.Settings.route)
-                }
+                },
+                splashSettled = splashSettled
             )
         }
 
