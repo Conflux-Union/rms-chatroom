@@ -99,6 +99,7 @@ class VoiceViewModel @Inject constructor(
             result.onSuccess { user ->
                 _isAdmin.value = user.permissionLevel >= 3
                 _userId.value = user.id
+                voiceRepository.setLocalUserAvatar(user.id, user.avatarUrl)
             }
         }
     }

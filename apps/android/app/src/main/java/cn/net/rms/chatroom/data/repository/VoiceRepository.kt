@@ -18,20 +18,43 @@ import cn.net.rms.chatroom.data.model.ScreenShareStatusResponse
 import cn.net.rms.chatroom.data.model.VoiceInviteInfo
 import cn.net.rms.chatroom.data.model.VoiceTokenResponse
 import cn.net.rms.chatroom.data.model.VoiceUser
+import cn.net.rms.chatroom.data.websocket.GlobalWebSocket
 import com.google.gson.Gson
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 import retrofit2.HttpException
 import javax.inject.Inject
 import javax.inject.Singleton
+
+/**
+ * Merges non-blank avatar URLs into the cache. Entries with a null/blank URL
+ * (guests, or users the SSO has no avatar for) are skipped so a push round
+ * without their avatar never evicts a known URL.
+ */
+internal fun mergeAvatarUrls(
+    current: Map<String, String>,
+    additions: Map<String, String?>
+): Map<String, String> {
+    if (additions.none { !it.value.isNullOrBlank() }) return current
+    val merged = current.toMutableMap()
+    additions.forEach { (id, url) ->
+        if (!url.isNullOrBlank()) merged[id] = url
+    }
+    return merged
+}
 
 @Singleton
 class VoiceRepository @Inject constructor(
     private val api: ApiService,
     private val authRepository: AuthRepository,
-    private val liveKitManager: LiveKitManager
+    private val liveKitManager: LiveKitManager,
+    private val globalWebSocket: GlobalWebSocket
 ) {
     companion object {
         private const val TAG = "VoiceRepository"
@@ -58,6 +81,24 @@ class VoiceRepository @Inject constructor(
 
     // Avatar URL cache: identity -> avatarUrl
     private val _avatarCache = MutableStateFlow<Map<String, String>>(emptyMap())
+
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    init {
+        // The one-shot REST fetch at channel entry only covers users already in
+        // the room, so everyone joining later would render the letter fallback
+        // forever. Keep the cache fed from the continuous voice_users_update
+        // pushes instead, mirroring web's syncParticipantsFromChatStore.
+        scope.launch {
+            globalWebSocket.voiceChannelUsers.collect { usersByChannel ->
+                var cache = _avatarCache.value
+                usersByChannel.values.forEach { users ->
+                    cache = mergeAvatarUrls(cache, users.associate { it.id to it.avatarUrl })
+                }
+                _avatarCache.value = cache
+            }
+        }
+    }
 
     // Delegate to LiveKitManager
     val connectionState: StateFlow<ConnectionState> = liveKitManager.connectionState
@@ -203,19 +244,22 @@ class VoiceRepository @Inject constructor(
             val token = authRepository.getToken()
                 ?: return Result.failure(AuthException("未登录，请先登录"))
             val users = api.getVoiceUsers(authRepository.getAuthHeader(token), channelId)
-            // Cache avatar URLs
-            val newAvatars = _avatarCache.value.toMutableMap()
-            users.forEach { user ->
-                user.avatarUrl?.let { url ->
-                    newAvatars[user.id] = url
-                }
-            }
-            _avatarCache.value = newAvatars
+            _avatarCache.value = mergeAvatarUrls(_avatarCache.value, users.associate { it.id to it.avatarUrl })
             Result.success(users)
         } catch (e: Exception) {
             Log.e(TAG, "fetchVoiceUsers failed", e)
             Result.failure(e.toAuthException())
         }
+    }
+
+    /**
+     * Seeds the local user's profile avatar. LiveKit identity is the user id,
+     * so this uses the same key as the voice users API and lets the voice
+     * screen render the own avatar before any push arrives — web's
+     * `auth.user?.avatar_url` fallback.
+     */
+    fun setLocalUserAvatar(userId: Long, avatarUrl: String?) {
+        _avatarCache.value = mergeAvatarUrls(_avatarCache.value, mapOf(userId.toString() to avatarUrl))
     }
 
     fun setMuted(muted: Boolean) {
