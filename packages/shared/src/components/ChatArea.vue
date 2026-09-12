@@ -1,15 +1,16 @@
 <script setup lang="ts">
-import { ref, reactive, watch, nextTick, onMounted, onUnmounted, computed } from 'vue'
-import type { CSSProperties } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { useChatStore } from '../stores/chat'
 import { useAuthStore } from '../stores/auth'
-import { useChatWebSocket } from '../composables/useChatWebSocket'
-import { useReadPosition } from '../composables/useReadPosition'
-import { useMentionNotification } from '../composables/useMentionNotification'
-import { formatDateTime, parseUTCDateTime, isWithinMinutes } from '../utils/datetime'
-import { renderMessageHtml } from '../utils/markdown'
 import { parseMessagePermalink, splitMessagePermalinks } from '../utils/messagePermalink'
+import { renderMessageHtml } from '../utils/markdown'
+import { formatDateTime, isWithinMinutes } from '../utils/datetime'
+import {
+  shouldGroupWithPrevious as shouldGroupWithPreviousIn,
+  getGroupLatestEditedAt as getGroupLatestEditedAtIn,
+  sourceBadgeLabel,
+} from '../utils/messageGrouping'
 import {
   ZmDropdown,
   ZmModal,
@@ -23,44 +24,128 @@ import {
   ZmProgress,
   dialog,
 } from './ui'
-import type { ZmDropdownOption, ZmSelectOption } from './ui'
-import { Paperclip, Send, Upload, X, Image, Video, Music, FileText, File, MoreVertical, Reply, CornerUpLeft, SmilePlus, Radio } from 'lucide-vue-next'
+import { Paperclip, Send, Upload, X, Image, MoreVertical, Reply, CornerUpLeft, SmilePlus, Radio } from 'lucide-vue-next'
 import FilePreview from './FilePreview.vue'
 import ForwardQuoteCard from './ForwardQuoteCard.vue'
-import type { Attachment, Message, ReactionGroup } from '../types'
-import axios from 'axios'
+import type { Message } from '../types'
 import { isTauri } from '../index'
-
-const API_BASE = import.meta.env.VITE_API_BASE || ''
+import { useMessageViewport } from '../composables/useMessageViewport'
+import { useMessageAttachments } from '../composables/useMessageAttachments'
+import { useMessageComposer } from '../composables/useMessageComposer'
+import { useMessageActions } from '../composables/useMessageActions'
+import { useMessageReactions } from '../composables/useMessageReactions'
+import { useMuteDialog } from '../composables/useMuteDialog'
+import { useReplyThumbnails } from '../composables/useReplyThumbnails'
 
 const chat = useChatStore()
 const auth = useAuthStore()
-const chatWs = useChatWebSocket()
-const route = useRoute()
 const router = useRouter()
-const messageInput = ref('')
+
 const messagesContainer = ref<HTMLElement | null>(null)
-const fileInput = ref<HTMLInputElement | null>(null)
 
 // FORWARD channels are bridged to the game network via ChatBridge: users can
 // chat both ways, the type only swaps the header hash for a sync icon.
 const isForwardChannel = computed(() => chat.currentChannel?.type === 'FORWARD')
 
-// True while prepending older messages (scrolling up). Suppresses the
-// length-watch auto-scroll (which would yank the user back to the bottom) and
-// guards re-entrancy.
-const isFetchingOlder = ref(false)
+// Feature composables, composed here; destructuring below keeps the template's
+// original flat names.
+const attachments = useMessageAttachments()
+const replyThumbnails = useReplyThumbnails()
+const actions = useMessageActions()
+const mute = useMuteDialog()
+const viewport = useMessageViewport({
+  messagesContainer,
+  onChannelEntered: mute.checkMuteStatus,
+})
+const reactions = useMessageReactions({ isWheelScrolling: viewport.isWheelScrolling })
+const composer = useMessageComposer({ attachments, replyingTo: actions.replyingTo })
 
-// True while appending newer messages (scrolling down a pane that starts
-// mid-history after a message deep link). Same suppression, mirrored.
-const isFetchingNewer = ref(false)
+const {
+  isScrollActive,
+  firstUnreadId,
+  handleMessagesScroll,
+  handleWheelScroll,
+  scrollToMessage,
+} = viewport
+const {
+  fileInput,
+  pendingFiles,
+  uploadedAttachments,
+  uploadProgress,
+  isUploading,
+  isDragging,
+  triggerFileSelect,
+  handleFileSelect,
+  handleDragOver,
+  handleDragLeave,
+  handleDrop,
+  removePendingFile,
+  removeUploadedAttachment,
+  formatFileSize,
+  getFileIconComponent,
+  getAttachmentIconComponent,
+} = attachments
+const {
+  messageInput,
+  messageInputRef,
+  canSend,
+  sendMessage,
+  showMentionDropdown,
+  filteredMentionUsers,
+  selectedMentionIndex,
+  handleInputChange,
+  handleInputKeydown,
+  selectMention,
+} = composer
+const {
+  editingMessage,
+  replyingTo,
+  startEdit,
+  cancelEdit,
+  startReply,
+  cancelReply,
+  saveEdit,
+  confirmDeleteMessage,
+} = actions
+const {
+  commonEmojis,
+  showEmojiPicker,
+  emojiPickerMessageId,
+  emojiPickerPosition,
+  openPickerAt,
+  showReactionPicker,
+  hideReactionPicker,
+  handleMessageMouseEnter,
+  handleMessageMouseLeave,
+  getEmptyReactionsStyle,
+  addReaction,
+  toggleReaction,
+  hasUserReacted,
+  getReactionTooltip,
+} = reactions
+const {
+  muteDialog,
+  scopeOptions,
+  durationOptions,
+  isMuted,
+  muteReason,
+  showMuteDialog,
+  hideMuteDialog,
+  confirmMute,
+} = mute
+const {
+  getReplyOriginalMessage,
+  getReplyThumbnailUrl,
+} = replyThumbnails
 
-// File upload state
-const pendingFiles = ref<File[]>([])
-const uploadedAttachments = ref<Attachment[]>([])
-const uploadProgress = ref<Map<string, number>>(new Map())
-const isUploading = ref(false)
-const isDragging = ref(false)
+// Thin local wrappers keeping the template's original one-argument calls.
+function shouldGroupWithPrevious(index: number): boolean {
+  return shouldGroupWithPreviousIn(chat.messages, index)
+}
+
+function getGroupLatestEditedAt(index: number): string | undefined {
+  return getGroupLatestEditedAtIn(chat.messages, index)
+}
 
 // Context menu state
 const contextMenu = ref<{
@@ -95,696 +180,14 @@ function handleContextMenuSelect(key: string | number) {
   const menuX = contextMenu.value.x
   const menuY = contextMenu.value.y
   hideContextMenu()
-  if (key === 'reaction') {
-    // Show emoji picker at context menu position
-    const pickerHeight = 180
-    const showBelow = menuY < pickerHeight
-    emojiPickerPosition.value = {
-      x: menuX,
-      y: showBelow ? menuY + 10 : menuY - 10,
-      showBelow,
-    }
-    emojiPickerMessageId.value = msg.id
-    showEmojiPicker.value = true
-  } else if (key === 'reply') startReply(msg)
+  if (key === 'reaction') openPickerAt(menuX, menuY, msg.id)
+  else if (key === 'reply') startReply(msg)
   else if (key === 'copy_link') copyMessageLink(msg.id)
   else if (key === 'edit') startEdit(msg)
   else if (key === 'delete') confirmDeleteMessage(msg)
   else if (key === 'mute') showMuteDialog(msg)
 }
 
-// Mute dialog options
-const scopeOptions = [
-  { label: '当前频道', value: 'channel' },
-  { label: '当前服务器', value: 'server' },
-  { label: '全局', value: 'global' },
-]
-
-const durationOptions = [
-  { label: '永久', value: 'permanent' },
-  { label: '10 分钟', value: '10m' },
-  { label: '1 小时', value: '1h' },
-  { label: '1 天', value: '1d' },
-  { label: '自定义', value: 'custom' },
-]
-
-// Edit message state
-const editingMessage = ref<{ id: number; content: string } | null>(null)
-
-// Reply state
-const replyingTo = ref<Message | null>(null)
-
-// Mention autocomplete state
-const mentionQuery = ref('')
-const mentionStartIndex = ref(-1)
-const showMentionDropdown = ref(false)
-const mentionDropdownPosition = ref({ x: 0, y: 0 })
-const selectedMentionIndex = ref(0)
-const messageInputRef = ref<HTMLTextAreaElement | null>(null)
-
-// Extract unique users from messages for mention autocomplete
-const channelUsers = computed(() => {
-  const userMap = new Map<number, { id: number; username: string }>()
-  for (const msg of chat.messages) {
-    if (!userMap.has(msg.user_id)) {
-      userMap.set(msg.user_id, { id: msg.user_id, username: msg.username })
-    }
-  }
-  return Array.from(userMap.values())
-})
-
-// Filtered users for mention autocomplete
-const filteredMentionUsers = computed(() => {
-  if (!mentionQuery.value) return channelUsers.value.slice(0, 10)
-  const query = mentionQuery.value.toLowerCase()
-  return channelUsers.value
-    .filter(u => u.username.toLowerCase().includes(query))
-    .slice(0, 10)
-})
-
-// Mute dialog state
-const muteDialog = ref<{
-  visible: boolean
-  userId: number | null
-  username: string
-  scope: 'global' | 'server' | 'channel'
-  duration: 'permanent' | '10m' | '1h' | '1d' | 'custom'
-  customMinutes: number
-  reason: string
-}>({
-  visible: false,
-  userId: null,
-  username: '',
-  scope: 'channel',
-  duration: 'permanent',
-  customMinutes: 60,
-  reason: '',
-})
-
-// Mute status - combine local check with WebSocket error
-const localMuted = ref(false)
-const localMuteReason = ref('')
-const isMuted = computed(() => localMuted.value || chat.isMutedByWs)
-const muteReason = computed(() => localMuteReason.value || chat.muteReasonByWs)
-
-// Reaction state
-const showEmojiPicker = ref(false)
-const emojiPickerMessageId = ref<number | null>(null)
-const emojiPickerPosition = ref({ x: 0, y: 0, showBelow: false })
-const isWheelScrolling = ref(false)
-const isScrollActive = ref(false)
-let wheelScrollTimeout: ReturnType<typeof setTimeout> | null = null
-const hoveredMessageId = ref<number | null>(null)
-const latestVisibleMessageId = ref<number | null>(null)
-const messageIndexMap = new Map<number, number>()
-const visibleMessageIndices = new Set<number>()
-const maxVisibleIndex = ref<number | null>(null)
-let messageObserver: IntersectionObserver | null = null
-
-// Common emojis for quick reactions
-const commonEmojis = ['👍', '❤️', '😂', '😮', '😢', '🎉', '🔥', '👀']
-
-// Read position tracking (viewport semantics: what enters the viewport is read)
-const {
-  saveReadPosition,
-  getReadPosition,
-  sendChannelAck,
-  syncToServer,
-} = useReadPosition()
-let scrollSaveTimeout: ReturnType<typeof setTimeout> | null = null
-
-// Mention notification tracking
-const {
-  clearChannelMention,
-  getChannelMention,
-  clearUnreadCount,
-} = useMentionNotification()
-
-// First message the user has not seen in the current channel; rendered as an
-// in-list divider until the viewport catches up to the tail as of entry.
-const firstUnreadId = ref<number | null>(null)
-const entryTailId = ref<number | null>(null)
-let entryAckTimer: ReturnType<typeof setTimeout> | null = null
-// Entry positioning (older-page pull + jump to first unread) must not let the
-// bottom page flash advance the read position before the jump happens.
-let entryPositioning = false
-// Bumps on every channel entry; stale settle timers from the previous entry
-// must not release the new entry's suppression early.
-let entryToken = 0
-
-// Keyed on the channel id, not the object reference: re-selecting the same
-// channel (or the server refetch swapping in fresh channel objects) must not
-// reload the pane, while a real channel switch always does.
-watch(
-  () => chat.currentChannel?.id,
-  async () => {
-    const channel = chat.currentChannel
-    if (channel && (channel.type === 'TEXT' || channel.type === 'FORWARD')) {
-      // Clear any in-flight "load older" lock from the previous channel so the
-      // new channel can paginate immediately.
-      isFetchingOlder.value = false
-      if (entryAckTimer) clearTimeout(entryAckTimer)
-      const token = ++entryToken
-      entryPositioning = true
-      // Hold the new-message auto-follow until entry positioning is done, so
-      // the bottom page never flashes into the viewport before the jump.
-      isFetchingOlder.value = true
-
-      try {
-        const linkedMessageId = readLinkedMessageId(channel.id)
-        // A message deep link loads a window around the target instead of the
-        // newest page, so the target message is actually reachable.
-        await chat.fetchMessages(channel.id, undefined, linkedMessageId ?? undefined)
-        await checkMuteStatus()
-
-        const tailId = chat.messages.length > 0
-          ? chat.messages[chat.messages.length - 1].id
-          : null
-        entryTailId.value = tailId
-        const savedId = getReadPosition(channel.id)
-
-        if (linkedMessageId != null) {
-          // Landed via a message deep link: position on the linked message,
-          // not on the unread divider or the bottom.
-          firstUnreadId.value = null
-          await nextTick()
-          refreshMessageObserver()
-          scrollToLinkedMessage(linkedMessageId)
-        } else if (savedId != null && tailId != null && savedId < tailId) {
-          // Gap: pull older pages until the saved position is inside the
-          // window so the first unread message is actually reachable. Cap the
-          // pull — beyond it, land on the window top (still behind the tail).
-          for (
-            let i = 0;
-            i < 5 && chat.hasMore && chat.messages.length > 0 && chat.messages[0].id > savedId;
-            i++
-          ) {
-            await chat.fetchMessages(channel.id, chat.messages[0].id)
-          }
-          firstUnreadId.value = chat.messages.find((m) => m.id > savedId)?.id ?? null
-          await nextTick()
-          refreshMessageObserver()
-          if (firstUnreadId.value != null) {
-            scrollToMessage(firstUnreadId.value, 'auto')
-          } else {
-            scrollToBottom()
-          }
-        } else {
-          firstUnreadId.value = null
-          await nextTick()
-          scrollToBottom()
-          refreshMessageObserver()
-        }
-      } finally {
-        // Let the IntersectionObserver settle on the post-jump viewport before
-        // viewport-driven saves resume, then flush once for the jumped-to view.
-        setTimeout(() => {
-          if (token !== entryToken) return
-          entryPositioning = false
-          isFetchingOlder.value = false
-          flushPositionSave()
-        }, 250)
-      }
-
-      // Acknowledge the channel after a short stay: quick channel switches
-      // don't clear unread badges on this or other devices.
-      entryAckTimer = setTimeout(() => {
-        if (chat.currentChannel?.id === channel.id) {
-          sendChannelAck(channel.id)
-          clearUnreadCount(channel.id)
-        }
-      }, 1000)
-    }
-  },
-  { immediate: true }
-)
-
-// Message-link navigation within the already-open channel (browser back/
-// forward between message links, or a link opened while inside the channel):
-// the entry watcher above is keyed on channel id and does not fire.
-watch(
-  () => route.params.messageId,
-  async () => {
-    if (route.name !== 'MessagePath') return
-    const channelId = Number(route.params.channelId)
-    const messageId = Number(route.params.messageId)
-    if (!Number.isInteger(messageId) || chat.currentChannel?.id !== channelId) return
-    // A fresh channel entry resolves its own linked-message positioning.
-    if (entryPositioning) return
-
-    if (chat.messages.some((m) => m.id === messageId)) {
-      scrollToMessage(messageId)
-      return
-    }
-    // Outside the loaded window: reload the pane as a window around the target.
-    isFetchingOlder.value = true
-    try {
-      await chat.fetchMessages(channelId, undefined, messageId)
-      await nextTick()
-      refreshMessageObserver()
-    } finally {
-      isFetchingOlder.value = false
-    }
-    scrollToLinkedMessage(messageId)
-  }
-)
-
-// Auto-scroll when new messages arrive.
-// Skip when prepending older (isFetchingOlder) or appending newer
-// (isFetchingNewer) — loadOlderMessages/loadNewerMessages restore the scroll
-// position themselves instead of jumping.
-// Skip while hasMoreNewer: a pane that starts mid-history (message deep link)
-// must not yank the user to the bottom on every incoming message; follow
-// resumes once the pane is caught up to the tail.
-watch(
-  () => chat.messages.length,
-  async () => {
-    if (isFetchingOlder.value || isFetchingNewer.value || chat.hasMoreNewer) return
-    await nextTick()
-    scrollToBottom()
-    refreshMessageObserver()
-  }
-)
-
-onMounted(() => {
-  // Close context menu on click outside
-  document.addEventListener('click', hideContextMenu)
-  nextTick(() => {
-    setupMessageObserver()
-  })
-})
-
-function scrollToBottom() {
-  nextTick(() => {
-    if (messagesContainer.value) {
-      messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
-    }
-  })
-}
-
-// Load one page of older messages and keep the user's viewport steady.
-// The store prepends; we anchor on the current oldest message and restore its
-// viewport position so the view does not jump. Using the element's rect (not a
-// scrollHeight delta) keeps the restore exact even if a WebSocket message lands
-// during the fetch.
-async function loadOlderMessages() {
-  if (isFetchingOlder.value) return
-  if (!chat.currentChannel || !chat.hasMore || chat.messages.length === 0) return
-  const container = messagesContainer.value
-  if (!container) return
-
-  isFetchingOlder.value = true
-  const anchorId = chat.messages[0].id
-  const containerTop = container.getBoundingClientRect().top
-  const anchorEl = container.querySelector<HTMLElement>(`[data-message-id="${anchorId}"]`)
-  const anchorRelTop = anchorEl ? anchorEl.getBoundingClientRect().top - containerTop : 0
-
-  await chat.fetchMessages(chat.currentChannel.id, anchorId)
-
-  await nextTick()
-  const newAnchorEl = container.querySelector<HTMLElement>(`[data-message-id="${anchorId}"]`)
-  if (newAnchorEl) {
-    const newRelTop = newAnchorEl.getBoundingClientRect().top - container.getBoundingClientRect().top
-    container.scrollTop += newRelTop - anchorRelTop
-  }
-
-  refreshMessageObserver()
-  isFetchingOlder.value = false
-}
-
-// Load one page of newer messages and keep the user's viewport steady — the
-// mirror of loadOlderMessages, for panes that start mid-history after a
-// message deep link (or a back/forward jump between message links).
-async function loadNewerMessages() {
-  if (isFetchingNewer.value) return
-  if (!chat.currentChannel || !chat.hasMoreNewer || chat.messages.length === 0) return
-  const container = messagesContainer.value
-  if (!container) return
-
-  isFetchingNewer.value = true
-  const anchorId = chat.messages[chat.messages.length - 1].id
-  const containerTop = container.getBoundingClientRect().top
-  const anchorEl = container.querySelector<HTMLElement>(`[data-message-id="${anchorId}"]`)
-  const anchorRelTop = anchorEl ? anchorEl.getBoundingClientRect().top - containerTop : 0
-
-  await chat.fetchMessages(chat.currentChannel.id, undefined, undefined, anchorId)
-
-  await nextTick()
-  const newAnchorEl = container.querySelector<HTMLElement>(`[data-message-id="${anchorId}"]`)
-  if (newAnchorEl) {
-    const newRelTop = newAnchorEl.getBoundingClientRect().top - container.getBoundingClientRect().top
-    container.scrollTop += newRelTop - anchorRelTop
-  }
-
-  refreshMessageObserver()
-  isFetchingNewer.value = false
-}
-
-// Viewport-driven read position: save when the visible set settles, whether
-// the movement came from user scrolling or programmatic jumps — anything that
-// put messages on screen counts as read.
-function schedulePositionSave() {
-  if (entryPositioning) return
-  isScrollActive.value = true
-
-  // Debounce: only save after the viewport stops moving for 120ms
-  if (scrollSaveTimeout) {
-    clearTimeout(scrollSaveTimeout)
-  }
-  scrollSaveTimeout = setTimeout(() => {
-    isScrollActive.value = false
-    flushPositionSave()
-  }, 120)
-}
-
-function flushPositionSave() {
-  const channel = chat.currentChannel
-  if (!channel || chat.messages.length === 0) return
-  const visibleId = latestVisibleMessageId.value
-  if (!visibleId) return
-
-  // An unseen mention survives position updates; once the viewport passes the
-  // mention message, clear the badge both locally and on the server.
-  let hasMention = false
-  let mentionId: number | null = null
-  const mention = getChannelMention(channel.id)
-  if (mention?.hasMention) {
-    mentionId = mention.lastMentionMessageId
-    if (mentionId != null && visibleId >= mentionId) {
-      clearChannelMention(channel.id)
-      mentionId = null
-    } else {
-      hasMention = true
-    }
-  }
-  saveReadPosition(channel.id, visibleId, hasMention, mentionId)
-
-  // Caught up to the tail as of entry: the unread divider served its purpose.
-  if (entryTailId.value != null && visibleId >= entryTailId.value) {
-    firstUnreadId.value = null
-  }
-}
-
-function handleMessagesScroll() {
-  if (!chat.currentChannel || chat.messages.length === 0) return
-
-  // Scrolled near the top: load one more page of older history.
-  if (
-    chat.hasMore &&
-    !isFetchingOlder.value &&
-    messagesContainer.value &&
-    messagesContainer.value.scrollTop < 100
-  ) {
-    loadOlderMessages()
-  }
-
-  // Scrolled near the bottom: load one more page of newer history (panes that
-  // start mid-history after a message deep link). On a pane loaded from the
-  // newest page hasMoreNewer is false and this stays inert.
-  if (
-    chat.hasMoreNewer &&
-    !isFetchingNewer.value &&
-    messagesContainer.value &&
-    messagesContainer.value.scrollHeight - messagesContainer.value.scrollTop - messagesContainer.value.clientHeight < 100
-  ) {
-    loadNewerMessages()
-  }
-
-  schedulePositionSave()
-}
-
-function handleWheelScroll() {
-  isWheelScrolling.value = true
-  if (wheelScrollTimeout) {
-    clearTimeout(wheelScrollTimeout)
-  }
-  wheelScrollTimeout = setTimeout(() => {
-    isWheelScrolling.value = false
-  }, 200)
-}
-
-function setupMessageObserver() {
-  if (!messagesContainer.value) return
-  messageObserver = new IntersectionObserver(handleMessageIntersections, {
-    root: messagesContainer.value,
-    threshold: 0.01,
-  })
-  observeAllMessages()
-}
-
-function refreshMessageObserver() {
-  if (!messageObserver) {
-    setupMessageObserver()
-    return
-  }
-  observeAllMessages()
-}
-
-function observeAllMessages() {
-  if (!messageObserver || !messagesContainer.value) return
-  messageObserver.disconnect()
-  visibleMessageIndices.clear()
-  maxVisibleIndex.value = null
-  latestVisibleMessageId.value = null
-  messageIndexMap.clear()
-  chat.messages.forEach((msg, idx) => {
-    messageIndexMap.set(msg.id, idx)
-  })
-
-  const elements = messagesContainer.value.querySelectorAll('.message[data-message-id]')
-  elements.forEach((el) => messageObserver!.observe(el))
-}
-
-function updateLatestVisibleFromIndex(startIndex: number) {
-  for (let i = startIndex; i >= 0; i--) {
-    if (visibleMessageIndices.has(i)) {
-      maxVisibleIndex.value = i
-      latestVisibleMessageId.value = chat.messages[i]?.id ?? null
-      return
-    }
-  }
-  maxVisibleIndex.value = null
-  latestVisibleMessageId.value = null
-}
-
-function handleMessageIntersections(entries: IntersectionObserverEntry[]) {
-  for (const entry of entries) {
-    const el = entry.target as HTMLElement
-    const id = parseInt(el.getAttribute('data-message-id') || '0', 10)
-    if (!id) continue
-    const index = messageIndexMap.get(id)
-    if (index === undefined) continue
-
-    if (entry.isIntersecting) {
-      visibleMessageIndices.add(index)
-      if (maxVisibleIndex.value === null || index > maxVisibleIndex.value) {
-        maxVisibleIndex.value = index
-        latestVisibleMessageId.value = chat.messages[index]?.id ?? null
-      }
-    } else {
-      visibleMessageIndices.delete(index)
-      if (maxVisibleIndex.value === index) {
-        updateLatestVisibleFromIndex(index - 1)
-      }
-    }
-  }
-  schedulePositionSave()
-}
-
-// Scroll to a specific message by ID
-function scrollToMessage(messageId: number, behavior: ScrollBehavior = 'smooth') {
-  const container = messagesContainer.value
-  if (!container) return
-
-  const messageEl = container.querySelector(`[data-message-id="${messageId}"]`)
-  if (messageEl) {
-    messageEl.scrollIntoView({ behavior, block: 'center' })
-    // Highlight the message briefly
-    messageEl.classList.add('message-highlight')
-    setTimeout(() => {
-      messageEl.classList.remove('message-highlight')
-    }, 2000)
-  }
-}
-
-// Message deep-link target when the current route points into `channelId`.
-function readLinkedMessageId(channelId: number): number | null {
-  if (route.name !== 'MessagePath') return null
-  if (Number(route.params.channelId) !== channelId) return null
-  const id = Number(route.params.messageId)
-  return Number.isInteger(id) && id > 0 ? id : null
-}
-
-// Land on the linked message; if it was deleted (or is otherwise missing from
-// the loaded window), fall back to its nearest older neighbor so the location
-// is still roughly right — without highlighting the wrong message.
-function scrollToLinkedMessage(messageId: number) {
-  if (chat.messages.some((m) => m.id === messageId)) {
-    scrollToMessage(messageId, 'auto')
-    return
-  }
-  const nearestOlder = [...chat.messages].reverse().find((m) => m.id < messageId)
-  const el = nearestOlder
-    ? messagesContainer.value?.querySelector(`[data-message-id="${nearestOlder.id}"]`)
-    : null
-  if (el) {
-    el.scrollIntoView({ behavior: 'auto', block: 'center' })
-  } else {
-    scrollToBottom()
-  }
-}
-
-// Permalink for a message: /server/channel/message, resolved against the
-// current origin (the hash router on desktop yields origin/path#/...).
-async function copyMessageLink(messageId: number) {
-  const serverId = chat.currentServer?.id
-  const channelId = chat.currentChannel?.id
-  if (!serverId || !channelId) return
-  const href = router.resolve({
-    name: 'MessagePath',
-    params: {
-      serverId: String(serverId),
-      channelId: String(channelId),
-      messageId: String(messageId),
-    },
-  }).href
-  const url = new URL(href, window.location.origin).toString()
-  try {
-    await navigator.clipboard.writeText(url)
-    showLinkCopiedToast()
-  } catch (e) {
-    console.warn('[chat] copy message link failed:', e)
-  }
-}
-
-// Brief confirmation for the copied permalink.
-const showLinkCopied = ref(false)
-let linkCopiedTimer: ReturnType<typeof setTimeout> | null = null
-function showLinkCopiedToast() {
-  showLinkCopied.value = true
-  if (linkCopiedTimer) clearTimeout(linkCopiedTimer)
-  linkCopiedTimer = setTimeout(() => {
-    showLinkCopied.value = false
-  }, 1500)
-}
-
-// File handling
-function triggerFileSelect() {
-  fileInput.value?.click()
-}
-
-function handleFileSelect(event: Event) {
-  const target = event.target as HTMLInputElement
-  if (target.files) {
-    pendingFiles.value = [...pendingFiles.value, ...Array.from(target.files)]
-    target.value = '' // Reset for same file selection
-  }
-}
-
-function handleDragOver(event: DragEvent) {
-  event.preventDefault()
-  isDragging.value = true
-}
-
-function handleDragLeave(event: DragEvent) {
-  event.preventDefault()
-  isDragging.value = false
-}
-
-function handleDrop(event: DragEvent) {
-  event.preventDefault()
-  isDragging.value = false
-
-  if (event.dataTransfer?.files) {
-    pendingFiles.value = [...pendingFiles.value, ...Array.from(event.dataTransfer.files)]
-  }
-}
-
-function removePendingFile(index: number) {
-  pendingFiles.value.splice(index, 1)
-}
-
-function removeUploadedAttachment(index: number) {
-  uploadedAttachments.value.splice(index, 1)
-}
-
-async function uploadFiles() {
-  if (!chat.currentChannel || pendingFiles.value.length === 0) return
-
-  isUploading.value = true
-  const channelId = chat.currentChannel.id
-
-  for (const file of pendingFiles.value) {
-    const attachment = await chat.uploadFile(channelId, file, (progress) => {
-      uploadProgress.value.set(file.name, progress)
-    })
-    if (attachment) {
-      uploadedAttachments.value.push(attachment)
-    }
-    uploadProgress.value.delete(file.name)
-  }
-
-  pendingFiles.value = []
-  isUploading.value = false
-}
-
-const canSend = computed(() => {
-  // pendingFiles count too: attachments upload only when send is clicked
-  return (messageInput.value.trim() || uploadedAttachments.value.length > 0 || pendingFiles.value.length > 0) && !isUploading.value
-})
-
-async function sendMessage() {
-  if (!canSend.value) return
-
-  // Upload pending files first
-  if (pendingFiles.value.length > 0) {
-    await uploadFiles()
-  }
-
-  const attachmentIds = uploadedAttachments.value.map(a => a.id)
-  const content = messageInput.value.trim()
-
-  // Must have content or attachments
-  if (!content && attachmentIds.length === 0) return
-
-  if (!chat.currentChannel?.id) return
-
-  chatWs.send({
-    type: 'message',
-    channel_id: chat.currentChannel.id,
-    content: content,
-    attachment_ids: attachmentIds,
-    reply_to_id: replyingTo.value?.id || null,
-  })
-
-  messageInput.value = ''
-  uploadedAttachments.value = []
-  replyingTo.value = null
-}
-
-function formatFileSize(bytes: number) {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`
-}
-
-function getFileIconComponent(file: File) {
-  if (file.type.startsWith('image/')) return Image
-  if (file.type.startsWith('video/')) return Video
-  if (file.type.startsWith('audio/')) return Music
-  if (file.type === 'application/pdf') return FileText
-  return File
-}
-
-function getAttachmentIconComponent(att: Attachment) {
-  if (att.content_type.startsWith('image/')) return Image
-  if (att.content_type.startsWith('video/')) return Video
-  if (att.content_type.startsWith('audio/')) return Music
-  if (att.content_type === 'application/pdf') return FileText
-  return File
-}
-
-// Context menu functions
 function showContextMenu(event: MouseEvent, message: Message) {
   event.preventDefault()
   event.stopPropagation() // Prevent event from bubbling to document click listener
@@ -822,210 +225,38 @@ function canMute(message: Message) {
   return auth.isAdmin && !isOwnMessage(message)
 }
 
-// Message grouping: Discord-style consecutive message merging
-const MESSAGE_GROUP_ADJACENT_THRESHOLD_MINUTES = 1
-const MESSAGE_GROUP_TOTAL_THRESHOLD_MINUTES = 7
-
-// Source badge label for forwarded messages: QQ stays QQ, game messages show
-// the ChatBridge origin server name when the backend provided one.
-function sourceBadgeLabel(msg: Message): string {
-  if (msg.source_platform === 'qq') return 'QQ'
-  return msg.forward_meta?.server || '服务器'
-}
-
-function shouldGroupWithPrevious(index: number): boolean {
-  if (index === 0) return false
-
-  const currentMsg = chat.messages[index]
-  const prevMsg = chat.messages[index - 1]
-
-  // Different user, don't group
-  if (currentMsg.user_id !== prevMsg.user_id) return false
-
-  // Previous message is deleted, don't group (keep visual separation)
-  if (prevMsg.is_deleted) return false
-
-  const currentTime = parseUTCDateTime(currentMsg.created_at).getTime()
-  const prevTime = parseUTCDateTime(prevMsg.created_at).getTime()
-  const diffMinutes = (currentTime - prevTime) / 1000 / 60
-
-  // Adjacent messages must be within 1 minute
-  if (diffMinutes > MESSAGE_GROUP_ADJACENT_THRESHOLD_MINUTES) return false
-
-  // Find the first message in this group (walk backwards)
-  let firstMsgIndex = index - 1
-  while (firstMsgIndex > 0) {
-    const msg = chat.messages[firstMsgIndex]
-    const prevMsgInChain = chat.messages[firstMsgIndex - 1]
-
-    // Different user breaks the chain
-    if (msg.user_id !== prevMsgInChain.user_id) break
-    // Deleted message breaks the chain
-    if (prevMsgInChain.is_deleted) break
-
-    const msgTime = parseUTCDateTime(msg.created_at).getTime()
-    const prevMsgTime = parseUTCDateTime(prevMsgInChain.created_at).getTime()
-    const chainDiff = (msgTime - prevMsgTime) / 1000 / 60
-
-    // Gap > 1 minute breaks the chain
-    if (chainDiff > MESSAGE_GROUP_ADJACENT_THRESHOLD_MINUTES) break
-
-    firstMsgIndex--
-  }
-
-  // Check total time from first message in group
-  const firstMsgTime = parseUTCDateTime(chat.messages[firstMsgIndex].created_at).getTime()
-  const totalDiffMinutes = (currentTime - firstMsgTime) / 1000 / 60
-
-  return totalDiffMinutes <= MESSAGE_GROUP_TOTAL_THRESHOLD_MINUTES
-}
-
-// Get the latest edited_at timestamp from a message group (for header display)
-function getGroupLatestEditedAt(index: number): string | undefined {
-  // Find the first message in this group (the one with header)
-  let firstMsgIndex = index
-  while (firstMsgIndex > 0 && shouldGroupWithPrevious(firstMsgIndex)) {
-    firstMsgIndex--
-  }
-
-  // Find the last message in this group
-  let lastMsgIndex = index
-  while (lastMsgIndex < chat.messages.length - 1 && shouldGroupWithPrevious(lastMsgIndex + 1)) {
-    lastMsgIndex++
-  }
-
-  // Find the latest edited_at in the group
-  let latestEditedAt: string | undefined
-  for (let i = firstMsgIndex; i <= lastMsgIndex; i++) {
-    const msg = chat.messages[i]
-    if (msg.edited_at) {
-      if (!latestEditedAt || new Date(msg.edited_at) > new Date(latestEditedAt)) {
-        latestEditedAt = msg.edited_at
-      }
-    }
-  }
-
-  return latestEditedAt
-}
-
-// Edit message functions
-function startEdit(message: Message) {
-  editingMessage.value = {
-    id: message.id,
-    content: message.content,
-  }
-  hideContextMenu()
-}
-
-function cancelEdit() {
-  editingMessage.value = null
-}
-
-// Reply functions
-function startReply(message: Message) {
-  replyingTo.value = message
-  hideContextMenu()
-}
-
-function cancelReply() {
-  replyingTo.value = null
-}
-
-// Mention autocomplete functions
-function handleInputChange(event: Event) {
-  const input = event.target as HTMLInputElement
-  const value = input.value
-  const cursorPos = input.selectionStart || 0
-
-  // Find if we're in a mention context (after @)
-  const textBeforeCursor = value.slice(0, cursorPos)
-  const lastAtIndex = textBeforeCursor.lastIndexOf('@')
-
-  if (lastAtIndex !== -1) {
-    // Check if there's a space between @ and cursor (would end the mention)
-    const textAfterAt = textBeforeCursor.slice(lastAtIndex + 1)
-    if (!textAfterAt.includes(' ')) {
-      mentionStartIndex.value = lastAtIndex
-      mentionQuery.value = textAfterAt
-      showMentionDropdown.value = true
-      selectedMentionIndex.value = 0
-      return
-    }
-  }
-
-  // Not in mention context
-  showMentionDropdown.value = false
-  mentionQuery.value = ''
-  mentionStartIndex.value = -1
-}
-
-function handleInputKeydown(event: KeyboardEvent) {
-  // IME composition (e.g. Chinese input): Enter and arrow keys belong to the
-  // candidate window, not to sending or mention navigation
-  if (event.isComposing || event.keyCode === 229) return
-  if (showMentionDropdown.value && filteredMentionUsers.value.length > 0) {
-    if (event.key === 'ArrowDown') {
-      event.preventDefault()
-      selectedMentionIndex.value = Math.min(
-        selectedMentionIndex.value + 1,
-        filteredMentionUsers.value.length - 1
-      )
-    } else if (event.key === 'ArrowUp') {
-      event.preventDefault()
-      selectedMentionIndex.value = Math.max(selectedMentionIndex.value - 1, 0)
-    } else if (event.key === 'Enter' || event.key === 'Tab') {
-      event.preventDefault()
-      const selectedUser = filteredMentionUsers.value[selectedMentionIndex.value]
-      if (selectedUser) {
-        selectMention(selectedUser)
-      }
-    } else if (event.key === 'Escape') {
-      event.preventDefault()
-      showMentionDropdown.value = false
-    }
-  } else if (event.key === 'Enter' && !event.shiftKey) {
-    event.preventDefault()
-    sendMessage()
+// Permalink for a message: /server/channel/message, resolved against the
+// current origin (the hash router on desktop yields origin/path#/...).
+async function copyMessageLink(messageId: number) {
+  const serverId = chat.currentServer?.id
+  const channelId = chat.currentChannel?.id
+  if (!serverId || !channelId) return
+  const href = router.resolve({
+    name: 'MessagePath',
+    params: {
+      serverId: String(serverId),
+      channelId: String(channelId),
+      messageId: String(messageId),
+    },
+  }).href
+  const url = new URL(href, window.location.origin).toString()
+  try {
+    await navigator.clipboard.writeText(url)
+    showLinkCopiedToast()
+  } catch (e) {
+    console.warn('[chat] copy message link failed:', e)
   }
 }
 
-// Auto-grow the multiline input with its content; the 160px cap matches the
-// CSS max-height, past which the box scrolls
-function autosizeMessageInput() {
-  const el = messageInputRef.value
-  if (!el) return
-  el.style.height = 'auto'
-  el.style.height = `${Math.min(el.scrollHeight, 160)}px`
-}
-
-watch(messageInput, () => nextTick(autosizeMessageInput))
-
-function selectMention(user: { id: number; username: string }) {
-  if (mentionStartIndex.value === -1) return
-
-  const input = messageInputRef.value
-  if (!input) return
-
-  const value = messageInput.value
-  const beforeMention = value.slice(0, mentionStartIndex.value)
-  const afterCursor = value.slice(input.selectionStart || mentionStartIndex.value + mentionQuery.value.length + 1)
-
-  // Insert @username with a space after
-  messageInput.value = `${beforeMention}@${user.username} ${afterCursor}`
-
-  // Reset mention state
-  showMentionDropdown.value = false
-  mentionQuery.value = ''
-  mentionStartIndex.value = -1
-
-  // Focus back on input and set cursor position
-  nextTick(() => {
-    if (input) {
-      const newCursorPos = beforeMention.length + user.username.length + 2 // +2 for @ and space
-      input.focus()
-      input.setSelectionRange(newCursorPos, newCursorPos)
-    }
-  })
+// Brief confirmation for the copied permalink.
+const showLinkCopied = ref(false)
+let linkCopiedTimer: ReturnType<typeof setTimeout> | null = null
+function showLinkCopiedToast() {
+  showLinkCopied.value = true
+  if (linkCopiedTimer) clearTimeout(linkCopiedTimer)
+  linkCopiedTimer = setTimeout(() => {
+    showLinkCopied.value = false
+  }, 1500)
 }
 
 // Markdown links open in a new tab on the web; the desktop webview blocks
@@ -1058,333 +289,23 @@ async function handleMessageLinkClick(event: MouseEvent) {
   }
 }
 
-async function saveEdit() {
-  if (!editingMessage.value || !chat.currentChannel) return
-
-  const content = editingMessage.value.content.trim()
-  if (!content) {
-    dialog.warning({ title: '警告', content: '消息内容不能为空' })
-    return
-  }
-
-  try {
-    await axios.patch(
-      `${API_BASE}/api/channels/${chat.currentChannel.id}/messages/${editingMessage.value.id}`,
-      { content },
-      { headers: { Authorization: `Bearer ${auth.token}` } }
-    )
-    editingMessage.value = null
-  } catch (error: any) {
-    dialog.error({
-      title: '错误',
-      content: error.response?.data?.detail || '编辑消息失败',
-    })
-  }
-}
-
-// Delete message function
-function confirmDeleteMessage(message: Message) {
-  dialog.warning({
-    title: '删除消息',
-    content: '确定要删除这条消息吗？',
-    positiveText: '删除',
-    negativeText: '取消',
-    onPositiveClick: () => deleteMessage(message),
-  })
-}
-
-async function deleteMessage(message: Message) {
-  if (!chat.currentChannel) return
-
-  try {
-    await axios.delete(
-      `${API_BASE}/api/channels/${chat.currentChannel.id}/messages/${message.id}`,
-      { headers: { Authorization: `Bearer ${auth.token}` } }
-    )
-  } catch (error: any) {
-    dialog.error({
-      title: '错误',
-      content: error.response?.data?.detail || '删除消息失败',
-    })
-  }
-}
-
-// Mute functions
-function showMuteDialog(message: Message) {
-  muteDialog.value = {
-    visible: true,
-    userId: message.user_id,
-    username: message.username,
-    scope: 'channel',
-    duration: 'permanent',
-    customMinutes: 60,
-    reason: '',
-  }
-  hideContextMenu()
-}
-
-function hideMuteDialog() {
-  muteDialog.value.visible = false
-  muteDialog.value.userId = null
-}
-
-async function confirmMute() {
-  if (!muteDialog.value.userId || !chat.currentChannel) return
-
-  let mutedUntil: string | null = null
-  if (muteDialog.value.duration !== 'permanent') {
-    let minutes = 0
-    switch (muteDialog.value.duration) {
-      case '10m': minutes = 10; break
-      case '1h': minutes = 60; break
-      case '1d': minutes = 1440; break
-      case 'custom': minutes = muteDialog.value.customMinutes; break
-    }
-    const until = new Date()
-    until.setMinutes(until.getMinutes() + minutes)
-    mutedUntil = until.toISOString()
-  }
-
-  const payload: any = {
-    user_id: muteDialog.value.userId,
-    scope: muteDialog.value.scope,
-    reason: muteDialog.value.reason || null,
-    muted_until: mutedUntil,
-  }
-
-  // Add server_id or channel_id based on scope
-  if (muteDialog.value.scope === 'server' && chat.currentChannel.server_id) {
-    payload.server_id = chat.currentChannel.server_id
-  } else if (muteDialog.value.scope === 'channel') {
-    payload.channel_id = chat.currentChannel.id
-  }
-
-  try {
-    await axios.post(`${API_BASE}/api/mute`, payload, {
-      headers: { Authorization: `Bearer ${auth.token}` },
-    })
-    dialog.success({ title: '成功', content: '用户已被禁言' })
-    hideMuteDialog()
-  } catch (error: any) {
-    dialog.error({
-      title: '错误',
-      content: error.response?.data?.detail || '禁言用户失败',
-    })
-  }
-}
-
-// Check mute status
-async function checkMuteStatus() {
-  if (!auth.user) return
-
-  try {
-    const resp = await axios.get(`${API_BASE}/api/mute/user/${auth.user.id}`, {
-      headers: { Authorization: `Bearer ${auth.token}` },
-    })
-
-    const mutes = resp.data
-    const currentChannel = chat.currentChannel
-    if (!currentChannel) return
-
-    // Check if user is muted in current context
-    const activeMute = mutes.find((mute: any) => {
-      if (mute.scope === 'global') return true
-      if (mute.scope === 'server' && mute.server_id === currentChannel.server_id) return true
-      if (mute.scope === 'channel' && mute.channel_id === currentChannel.id) return true
-      return false
-    })
-
-    if (activeMute) {
-      localMuted.value = true
-      localMuteReason.value = activeMute.reason || '你已被禁言'
-    } else {
-      localMuted.value = false
-      localMuteReason.value = ''
-      // Also clear WebSocket mute status when API says not muted
-      chat.setMutedByWs(false, '')
-    }
-  } catch (error) {
-    console.error('Failed to check mute status:', error)
-  }
-}
-
-// Close context menu when clicking outside
-function handleClickOutside(event: MouseEvent) {
+// Close context menu and reaction picker when clicking outside
+function handleClickOutside() {
   if (contextMenu.value.visible) {
     hideContextMenu()
   }
-  // Close emoji picker when clicking outside
   if (showEmojiPicker.value) {
-    showEmojiPicker.value = false
-    emojiPickerMessageId.value = null
+    hideReactionPicker()
   }
 }
 
-// Reaction functions
-function showReactionPicker(event: MouseEvent, messageId: number) {
-  if (isWheelScrolling.value) return
-  event.stopPropagation()
-  const rect = (event.target as HTMLElement).getBoundingClientRect()
-  // Emoji picker height is approximately 180px (4 rows * 36px + padding)
-  const pickerHeight = 180
-  const spaceAbove = rect.top
-  const showBelow = spaceAbove < pickerHeight
+onMounted(() => {
+  // Close context menu on click outside
+  document.addEventListener('click', hideContextMenu)
+})
 
-  emojiPickerPosition.value = {
-    x: rect.left,
-    y: showBelow ? rect.bottom + 10 : rect.top - 10,
-    showBelow,
-  }
-  emojiPickerMessageId.value = messageId
-  showEmojiPicker.value = true
-}
-
-function hideReactionPicker() {
-  showEmojiPicker.value = false
-  emojiPickerMessageId.value = null
-}
-
-function handleMessageMouseEnter(messageId: number) {
-  hoveredMessageId.value = messageId
-}
-
-function handleMessageMouseLeave(messageId: number) {
-  if (hoveredMessageId.value === messageId) {
-    hoveredMessageId.value = null
-  }
-}
-
-function shouldShowEmptyReactions(message: Message): boolean {
-  return !message.reactions?.length && hoveredMessageId.value === message.id && !isWheelScrolling.value
-}
-
-function getEmptyReactionsStyle(message: Message): CSSProperties {
-  const show = shouldShowEmptyReactions(message)
-  return {
-    maxHeight: show ? '40px' : '0',
-    opacity: show ? 1 : 0,
-    marginTop: show ? '6px' : '0',
-    // pointerEvents typed strictly in CSSProperties, cast to satisfy TS
-    pointerEvents: (show ? 'auto' : 'none') as CSSProperties['pointerEvents'],
-  } as CSSProperties
-}
-
-async function addReaction(messageId: number, emoji: string) {
-  if (!chat.currentChannel) return
-
-  try {
-    await axios.post(
-      `${API_BASE}/api/messages/${messageId}/reactions`,
-      { emoji },
-      { headers: { Authorization: `Bearer ${auth.token}` } }
-    )
-  } catch (error: any) {
-    console.error('Failed to add reaction:', error)
-  }
-
-  hideReactionPicker()
-}
-
-async function toggleReaction(messageId: number, emoji: string) {
-  if (!chat.currentChannel || !auth.user) return
-
-  const message = chat.messages.find(m => m.id === messageId)
-  if (!message) return
-
-  const existingGroup = message.reactions?.find(r => r.emoji === emoji)
-  const hasReacted = existingGroup?.users.some(u => u.id === auth.user!.id)
-
-  try {
-    if (hasReacted) {
-      // Remove reaction
-      await axios.delete(
-        `${API_BASE}/api/messages/${messageId}/reactions/${encodeURIComponent(emoji)}`,
-        { headers: { Authorization: `Bearer ${auth.token}` } }
-      )
-    } else {
-      // Add reaction
-      await axios.post(
-        `${API_BASE}/api/messages/${messageId}/reactions`,
-        { emoji },
-        { headers: { Authorization: `Bearer ${auth.token}` } }
-      )
-    }
-  } catch (error: any) {
-    console.error('Failed to toggle reaction:', error)
-  }
-}
-
-function hasUserReacted(reactions: ReactionGroup[] | undefined, emoji: string): boolean {
-  if (!reactions || !auth.user) return false
-  const group = reactions.find(r => r.emoji === emoji)
-  return group?.users.some(u => u.id === auth.user!.id) ?? false
-}
-
-function getReactionTooltip(reaction: ReactionGroup): string {
-  const names = reaction.users.map(u => u.username).slice(0, 5)
-  if (reaction.users.length > 5) {
-    names.push(`还有 ${reaction.users.length - 5} 人`)
-  }
-  return names.join(', ')
-}
-
-// Get the original message for reply reference (to access attachments)
-function getReplyOriginalMessage(replyToId: number): Message | undefined {
-  return chat.messages.find(m => m.id === replyToId)
-}
-
-// Cache for reply thumbnail blob URLs (attachment id -> blob url)
-const replyThumbnailCache = ref<Map<number, string>>(new Map())
-
-// Load reply thumbnail with auth header
-async function loadReplyThumbnail(attachmentId: number, attachmentUrl: string): Promise<string | null> {
-  // Check cache first
-  if (replyThumbnailCache.value.has(attachmentId)) {
-    return replyThumbnailCache.value.get(attachmentId)!
-  }
-
-  try {
-    const res = await fetch(`${API_BASE}${attachmentUrl}?inline=1`, {
-      headers: { Authorization: `Bearer ${auth.token}` }
-    })
-    if (res.ok) {
-      const blob = await res.blob()
-      const blobUrl = URL.createObjectURL(blob)
-      replyThumbnailCache.value.set(attachmentId, blobUrl)
-      return blobUrl
-    }
-  } catch (e) {
-    console.error('Failed to load reply thumbnail:', e)
-  }
-  return null
-}
-
-// Get cached thumbnail or trigger load
-function getReplyThumbnailUrl(attachmentId: number, attachmentUrl: string): string | null {
-  const cached = replyThumbnailCache.value.get(attachmentId)
-  if (cached) return cached
-
-  // Trigger async load (will update cache and re-render)
-  loadReplyThumbnail(attachmentId, attachmentUrl)
-  return null
-}
-
-// Cleanup blob URLs on unmount
 onUnmounted(() => {
-  if (scrollSaveTimeout) {
-    clearTimeout(scrollSaveTimeout)
-  }
-  if (wheelScrollTimeout) {
-    clearTimeout(wheelScrollTimeout)
-  }
-  if (messageObserver) {
-    messageObserver.disconnect()
-  }
   document.removeEventListener('click', hideContextMenu)
-  // Revoke all cached blob URLs
-  for (const url of replyThumbnailCache.value.values()) {
-    URL.revokeObjectURL(url)
-  }
 })
 </script>
 
