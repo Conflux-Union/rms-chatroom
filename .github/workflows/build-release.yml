@@ -267,11 +267,12 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: desktop-windows
+          # Tauri v2 updater artifacts: the NSIS installer itself plus the
+          # minisign signature next to it (createUpdaterArtifacts: true
+          # re-uses the bundle; only "v1Compatible" produces a .nsis.zip).
           path: |
             apps/desktop/src-tauri/target/*/release/bundle/nsis/*.exe
-            apps/desktop/src-tauri/target/*/release/bundle/nsis/*-setup.nsis.zip
-            apps/desktop/src-tauri/target/*/release/bundle/nsis/*-setup.nsis.zip.sig
-            apps/desktop/src-tauri/target/*/release/bundle/msi/*.msi
+            apps/desktop/src-tauri/target/*/release/bundle/nsis/*.exe.sig
           retention-days: 7
 
   create-release:
@@ -427,10 +428,18 @@ jobs:
             cp artifacts/android-apk/app-release.apk release-assets/rms-chatroom-${{ needs.extract-version.outputs.version_name }}.apk
           fi
 
-          # Desktop apps (Tauri) - Windows only
+          # Desktop (Tauri) - Windows only. upload-artifact roots the
+          # archive at the globs' common ancestor, so files land nested
+          # under the cargo target dir; match at any depth.
           if [ -d artifacts/desktop-windows ]; then
-            cp artifacts/desktop-windows/*.exe release-assets/ 2>/dev/null || true
-            cp artifacts/desktop-windows/*.msi release-assets/ 2>/dev/null || true
+            find artifacts/desktop-windows -name '*.exe' -exec cp {} release-assets/ \;
+            find artifacts/desktop-windows -name '*.exe.sig' -exec cp {} release-assets/ \;
+          fi
+          # The installer is a required release asset; fail the job instead
+          # of silently publishing a release without it.
+          if ! ls release-assets/*.exe >/dev/null 2>&1; then
+            echo "::error::build-desktop produced no Windows installer artifact"
+            exit 1
           fi
           # Server bundle (Go binary + web dist) and its update manifest
           if [ -d artifacts/server-bundle ]; then
@@ -490,26 +499,27 @@ jobs:
           VERSION_NAME: ${{ needs.extract-version.outputs.version_name }}
           RELEASE_NAME: ${{ steps.release_type.outputs.release_type }} ${{ needs.extract-version.outputs.version_name }}
         run: |
-          # Build the Tauri updater manifest here (tauri-action is build-only
-          # in this workflow). The platform URL is routed through gh-proxy so
+          # Build the Tauri v2 updater manifest here (tauri-action is
+          # build-only in this workflow). In v2 the NSIS installer itself is
+          # the updater artifact and the sibling .exe.sig holds the minisign
+          # signature. The platform URL is routed through gh-proxy so
           # mainland-China clients can download the update; tauri.conf.json
           # lists the gh-proxy endpoint first for the same reason.
-          UPDATER_ZIP=$(ls artifacts/desktop-windows/*-setup.nsis.zip 2>/dev/null | head -n1)
-          if [ -z "$UPDATER_ZIP" ]; then
-            echo "no updater bundle found; skipping latest.json"
-            exit 0
+          UPDATER_EXE=$(find release-assets -maxdepth 1 -name '*-setup.exe' | head -n1)
+          if [ -z "$UPDATER_EXE" ]; then
+            echo "::error::no setup installer found for the updater manifest"
+            exit 1
           fi
-          UPDATER_SIG=$(ls "${UPDATER_ZIP}.sig" 2>/dev/null | head -n1)
-          if [ -z "$UPDATER_SIG" ]; then
-            echo "ERROR: found $UPDATER_ZIP but no .sig next to it" >&2
+          if [ ! -f "${UPDATER_EXE}.sig" ]; then
+            echo "::error::found $UPDATER_EXE but no .sig next to it" >&2
             exit 1
           fi
 
-          ASSET_URL="https://github.com/Conflux-Union/rms-chatroom/releases/download/${TAG_NAME}/$(basename "$UPDATER_ZIP")"
+          ASSET_URL="https://github.com/Conflux-Union/rms-chatroom/releases/download/${TAG_NAME}/$(basename "$UPDATER_EXE")"
           RELEASE_NAME_ESC=$(printf '%s' "$RELEASE_NAME" | sed 's/"/\\"/g')
           python3 << PYEOF
           import json, datetime
-          signature = open("$UPDATER_ZIP.sig").read().strip()
+          signature = open("$UPDATER_EXE.sig").read().strip()
           data = {
               "version": "$VERSION_NAME",
               "notes": "$RELEASE_NAME_ESC",
