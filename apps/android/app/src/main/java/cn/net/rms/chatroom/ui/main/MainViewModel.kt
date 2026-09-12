@@ -33,6 +33,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import retrofit2.HttpException
 import javax.inject.Inject
 
 data class MainState(
@@ -54,9 +55,23 @@ data class MainState(
     val downloadSpeedBps: Long = 0L,
     val firstUnreadMessageId: Long? = null,
     val isPositioningRead: Boolean = false,
+    // Message permalink jump: set by openPermalinkTarget, consumed by
+    // ChatScreen after it parks the viewport on the target message.
+    val jumpTargetMessageId: Long? = null,
     val channelMembers: List<ChannelMember> = emptyList(),
     val channelMentions: Set<Long> = emptySet(),
     val unreadCounts: Map<Long, Int> = emptyMap()
+)
+
+// Resolution outcome for a forwarded-message quote (a message that is exactly
+// a permalink to another message).
+enum class ForwardQuoteStatus { READY, DELETED, DENIED, UNAVAILABLE }
+
+data class ForwardQuoteUi(
+    val status: ForwardQuoteStatus,
+    val username: String? = null,
+    val content: String? = null,
+    val hasAttachments: Boolean = false
 )
 
 @HiltViewModel
@@ -325,6 +340,83 @@ class MainViewModel @Inject constructor(
         if (channel.type != ChannelType.TEXT && channel.type != ChannelType.FORWARD) return
         viewModelScope.launch {
             chatRepository.fetchOlderMessages(channel.id)
+        }
+    }
+
+    // ---------------------------------------------------------------------------
+    // Forwarded-message quotes & permalink jumps
+    // ---------------------------------------------------------------------------
+
+    // Resolved message-permalink quotes, keyed by "<channelId>:<messageId>".
+    private val forwardQuoteCache = mutableMapOf<String, ForwardQuoteUi>()
+
+    fun fetchForwardQuote(channelId: Long, messageId: Long, onResult: (ForwardQuoteUi) -> Unit) {
+        val key = "$channelId:$messageId"
+        forwardQuoteCache[key]?.let {
+            onResult(it)
+            return
+        }
+        viewModelScope.launch {
+            val quote = chatRepository.fetchMessageAround(channelId, messageId).fold(
+                onSuccess = { source ->
+                    if (source == null) {
+                        ForwardQuoteUi(ForwardQuoteStatus.DELETED)
+                    } else {
+                        ForwardQuoteUi(
+                            status = ForwardQuoteStatus.READY,
+                            username = source.username,
+                            content = source.content,
+                            hasAttachments = !source.attachments.isNullOrEmpty()
+                        )
+                    }
+                },
+                onFailure = { e ->
+                    if (e is HttpException && e.code() == 403) {
+                        ForwardQuoteUi(ForwardQuoteStatus.DENIED)
+                    } else {
+                        ForwardQuoteUi(ForwardQuoteStatus.UNAVAILABLE)
+                    }
+                }
+            )
+            forwardQuoteCache[key] = quote
+            onResult(quote)
+        }
+    }
+
+    // Open a message permalink: switch to the source server/channel, then let
+    // ChatScreen park the viewport on the message once it is loaded. Messages
+    // outside the loaded window scroll nothing; the source quote still shows
+    // the fetched content.
+    fun openPermalinkTarget(serverId: Long, channelId: Long, messageId: Long) {
+        viewModelScope.launch {
+            if (_state.value.currentServer?.id != serverId) {
+                chatRepository.fetchServer(serverId)
+                    .onSuccess { server ->
+                        _state.value = _state.value.copy(currentServer = server)
+                        fetchChannelGroups(serverId)
+                    }
+                    .onFailure { e ->
+                        if (!e.isUnauthorized) {
+                            _state.value = _state.value.copy(error = "无法打开原消息所在的服务器")
+                        }
+                        return@launch
+                    }
+            }
+            val channel = _state.value.currentServer?.channels?.firstOrNull { it.id == channelId }
+            if (channel == null) {
+                _state.value = _state.value.copy(error = "无法打开原消息所在的频道")
+                return@launch
+            }
+            _state.value = _state.value.copy(jumpTargetMessageId = messageId)
+            if (_state.value.currentChannel?.id != channelId) {
+                selectChannel(channel)
+            }
+        }
+    }
+
+    fun consumeJumpTarget() {
+        if (_state.value.jumpTargetMessageId != null) {
+            _state.value = _state.value.copy(jumpTargetMessageId = null)
         }
     }
 

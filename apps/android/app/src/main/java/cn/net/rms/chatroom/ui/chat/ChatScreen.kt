@@ -111,6 +111,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -139,7 +140,11 @@ import cn.net.rms.chatroom.ui.theme.PaperDarkRaised
 import cn.net.rms.chatroom.ui.theme.InkDarkFaint
 import cn.net.rms.chatroom.ui.theme.InkDark
 import cn.net.rms.chatroom.ui.theme.SealDark
+import cn.net.rms.chatroom.ui.main.ForwardQuoteStatus
+import cn.net.rms.chatroom.ui.main.ForwardQuoteUi
 import java.io.File
+import java.net.URI
+import java.net.URISyntaxException
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -148,6 +153,9 @@ import java.time.temporal.ChronoUnit
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -165,6 +173,36 @@ enum class SendingState {
 internal fun buildMessagePermalink(webBaseUrl: String, serverId: Long, channelId: Long, messageId: Long): String {
     val base = webBaseUrl.trimEnd('/')
     return "$base/$serverId/$channelId/$messageId"
+}
+
+// Inverse of buildMessagePermalink: recognize message content that is exactly
+// one permalink to a message on our host (web and Android copies share the API
+// origin in production). Links embedded in longer text render as normal links.
+internal data class MessagePermalink(val serverId: Long, val channelId: Long, val messageId: Long)
+
+private val PERMALINK_PATH = Regex("^/(\\d+)/(\\d+)/(\\d+)$")
+
+internal fun parseMessagePermalink(webBaseUrl: String, content: String): MessagePermalink? {
+    val raw = content.trim()
+    if (raw.isEmpty()) return null
+    val uri = try {
+        URI(raw)
+    } catch (_: URISyntaxException) {
+        return null
+    }
+    if (uri.scheme != "http" && uri.scheme != "https") return null
+    val base = try {
+        URI(webBaseUrl.trimEnd('/'))
+    } catch (_: URISyntaxException) {
+        return null
+    }
+    val effectivePort: URI.() -> Int = {
+        if (port != -1) port else if (scheme == "https") 443 else 80
+    }
+    if (!uri.host.equals(base.host, ignoreCase = true)) return null
+    if (uri.effectivePort() != base.effectivePort()) return null
+    val match = PERMALINK_PATH.find(uri.path ?: "") ?: return null
+    return MessagePermalink(match.groupValues[1].toLong(), match.groupValues[2].toLong(), match.groupValues[3].toLong())
 }
 
 @Composable
@@ -193,6 +231,12 @@ fun ChatScreen(
     hasMore: Boolean = true,
     isLoadingOlder: Boolean = false,
     onLoadOlderMessages: () -> Unit = {},
+    // Forwarded-message quotes: resolve message permalinks to their source
+    // message, and jump to the source on click (channel switch + viewport).
+    onResolveForwardQuote: (channelId: Long, messageId: Long, onResult: (ForwardQuoteUi) -> Unit) -> Unit = { _, _, _ -> },
+    onOpenMessagePermalink: (serverId: Long, channelId: Long, messageId: Long) -> Unit = { _, _, _ -> },
+    jumpToMessageId: Long? = null,
+    onJumpHandled: () -> Unit = {},
     serverId: Long,
     channelId: Long
 ) {
@@ -317,6 +361,28 @@ fun ChatScreen(
         }
     }
 
+    // Forward-quote jump: after openPermalinkTarget switches (or keeps) the
+    // channel, wait bounded for the target message to enter the loaded window,
+    // park the viewport on it, then release the jump. The re-scroll after a
+    // short settle wins over the entry tail-follow animation.
+    LaunchedEffect(jumpToMessageId) {
+        val target = jumpToMessageId ?: return@LaunchedEffect
+        val found = withTimeoutOrNull(4000) {
+            snapshotFlow { currentMessages.firstOrNull { it.id == target }?.id }
+                .filterNotNull()
+                .first()
+        }
+        if (found != null) {
+            listState.scrollToItem(currentMessages.indexOfFirst { it.id == found })
+            delay(400)
+            val index = currentMessages.indexOfFirst { it.id == found }
+            if (index >= 0) listState.scrollToItem(index)
+        } else {
+            Toast.makeText(context, "原消息不在已加载的历史中", Toast.LENGTH_SHORT).show()
+        }
+        onJumpHandled()
+    }
+
     // Auto-scroll to bottom when keyboard appears (only if following the tail).
     val imeVisible = WindowInsets.isImeVisible
     LaunchedEffect(imeVisible) {
@@ -439,6 +505,8 @@ fun ChatScreen(
                                     authToken = authToken,
                                     currentUserId = currentUserId,
                                     currentUserPermission = currentUserPermission,
+                                    onResolveForwardQuote = onResolveForwardQuote,
+                                    onOpenMessagePermalink = onOpenMessagePermalink,
                                     onAttachmentClick = { attachment ->
                                         handleAttachmentClick(
                                             context = context,
@@ -814,7 +882,9 @@ private fun MessageItem(
     onLongClick: (Message) -> Unit,
     onReplyClick: (cn.net.rms.chatroom.data.model.ReplyTo) -> Unit = {},
     onReactionClick: (String, Boolean) -> Unit = { _, _ -> },
-    onAddReactionClick: () -> Unit = {}
+    onAddReactionClick: () -> Unit = {},
+    onResolveForwardQuote: (channelId: Long, messageId: Long, onResult: (ForwardQuoteUi) -> Unit) -> Unit = { _, _, _ -> },
+    onOpenMessagePermalink: (serverId: Long, channelId: Long, messageId: Long) -> Unit = { _, _, _ -> }
 ) {
     Row(
         modifier = Modifier
@@ -991,7 +1061,20 @@ private fun MessageItem(
                     fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
                 )
             } else {
-                if (message.content.isNotBlank()) {
+                // A message that is exactly a permalink to another message
+                // renders as a forwarded-message quote instead of markdown.
+                val permalink = remember(message.id, message.content) {
+                    parseMessagePermalink(BuildConfig.API_BASE_URL, message.content)
+                }
+                if (permalink != null) {
+                    ForwardedMessageQuote(
+                        link = permalink,
+                        onResolveQuote = onResolveForwardQuote,
+                        onOpen = {
+                            onOpenMessagePermalink(permalink.serverId, permalink.channelId, permalink.messageId)
+                        }
+                    )
+                } else if (message.content.isNotBlank()) {
                     // Markdown body (GFM subset) with @mention highlighting
                     MarkdownMessage(content = message.content)
                 }
@@ -2442,6 +2525,81 @@ private fun MentionAutocomplete(
                     )
                 }
             }
+        }
+    }
+}
+
+// Forwarded-message quote card: renders the source message content for a
+// message that is exactly a permalink, labeled 转发的消息. Clicking opens the
+// source channel and parks the viewport on the source message.
+@Composable
+private fun ForwardedMessageQuote(
+    link: MessagePermalink,
+    onResolveQuote: (channelId: Long, messageId: Long, onResult: (ForwardQuoteUi) -> Unit) -> Unit,
+    onOpen: () -> Unit
+) {
+    var quote by remember(link.channelId, link.messageId) { mutableStateOf<ForwardQuoteUi?>(null) }
+    LaunchedEffect(link.channelId, link.messageId) {
+        onResolveQuote(link.channelId, link.messageId) { resolved -> quote = resolved }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(PaperDarkSubtle)
+            .clickable(onClick = onOpen)
+            .padding(horizontal = 10.dp, vertical = 6.dp)
+    ) {
+        Text(
+            text = "转发的消息",
+            style = MaterialTheme.typography.labelSmall,
+            color = InkDarkFaint
+        )
+        Spacer(modifier = Modifier.height(2.dp))
+        when {
+            quote == null -> Text(
+                text = "加载原消息…",
+                style = MaterialTheme.typography.bodySmall,
+                color = InkDarkFaint
+            )
+            quote!!.status == ForwardQuoteStatus.READY -> {
+                Text(
+                    text = quote!!.username ?: "",
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.Medium,
+                    color = SealDark
+                )
+                val body = quote!!.content?.takeIf { it.isNotBlank() }
+                    ?: if (quote!!.hasAttachments) "[附件]" else ""
+                if (body.isNotEmpty()) {
+                    Text(
+                        text = body,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = InkDark,
+                        maxLines = 6,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+            quote!!.status == ForwardQuoteStatus.DELETED -> Text(
+                text = "原消息已被删除",
+                style = MaterialTheme.typography.bodySmall,
+                color = InkDarkFaint,
+                fontStyle = FontStyle.Italic
+            )
+            quote!!.status == ForwardQuoteStatus.DENIED -> Text(
+                text = "没有权限查看原消息",
+                style = MaterialTheme.typography.bodySmall,
+                color = InkDarkFaint,
+                fontStyle = FontStyle.Italic
+            )
+            else -> Text(
+                text = "原消息无法加载",
+                style = MaterialTheme.typography.bodySmall,
+                color = InkDarkFaint,
+                fontStyle = FontStyle.Italic
+            )
         }
     }
 }

@@ -265,7 +265,15 @@ fun MainScreen(
                             // payload the sidebar is built from; the permalink's
                             // server segment is the server being viewed, like web.
                             serverId = mainState.currentServer!!.id,
-                            channelId = mainState.currentChannel!!.id
+                            channelId = mainState.currentChannel!!.id,
+                            onResolveForwardQuote = { quoteChannelId, quoteMessageId, onResult ->
+                                mainViewModel.fetchForwardQuote(quoteChannelId, quoteMessageId, onResult)
+                            },
+                            onOpenMessagePermalink = { linkServerId, linkChannelId, linkMessageId ->
+                                mainViewModel.openPermalinkTarget(linkServerId, linkChannelId, linkMessageId)
+                            },
+                            jumpToMessageId = mainState.jumpTargetMessageId,
+                            onJumpHandled = { mainViewModel.consumeJumpTarget() }
                         )
                     }
 

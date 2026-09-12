@@ -103,7 +103,9 @@ interface ApiService {
         @Path("id") channelId: Long,
         @Query("limit") limit: Int = 50,
         // Cursor for paginating older history: returns messages with id < `before`.
-        @Query("before") before: Long? = null
+        @Query("before") before: Long? = null,
+        // Anchor for permalink quotes: returns a window spanning the message id.
+        @Query("around") around: Long? = null
     ): List<Message>
 
     @POST("api/channels/{id}/messages")

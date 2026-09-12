@@ -323,6 +323,28 @@ class ChatRepository @Inject constructor(
         }
     }
 
+    // Resolve a message permalink to its source message for forwarded-message
+    // quotes. Read-only: never touches the current channel's message list, the
+    // source may be any channel the viewer can read. Returns null when the
+    // source message is missing from the window (it was deleted; the list
+    // endpoint filters deleted messages).
+    suspend fun fetchMessageAround(channelId: Long, messageId: Long): Result<Message?> {
+        return try {
+            val token = authRepository.getToken()
+                ?: return Result.failure(AuthException("未登录，请先登录"))
+            val window = api.getMessages(
+                authRepository.getAuthHeader(token),
+                channelId,
+                limit = 5,
+                around = messageId
+            )
+            Result.success(window.firstOrNull { it.id == messageId })
+        } catch (e: Exception) {
+            Log.e(TAG, "fetchMessageAround failed", e)
+            Result.failure(e.toAuthException())
+        }
+    }
+
     // Prepend one older page of history for the current channel. The cursor is
     // the id of the oldest currently-loaded message; the server returns older
     // messages in chronological order, which we prepend directly.
