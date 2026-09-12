@@ -97,6 +97,7 @@ server/rms-discord-server
 # Agent instruction files (local, not shared)
 AGENTS.md
 CLAUDE.md
+.zcode/
 
 # Runtime data
 qimei.json
