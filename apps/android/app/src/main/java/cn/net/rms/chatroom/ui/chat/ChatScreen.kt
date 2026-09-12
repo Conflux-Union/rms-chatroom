@@ -4,6 +4,9 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.EaseOut
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
@@ -107,6 +110,8 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -205,6 +210,48 @@ internal fun parseMessagePermalink(webBaseUrl: String, content: String): Message
     return MessagePermalink(match.groupValues[1].toLong(), match.groupValues[2].toLong(), match.groupValues[3].toLong())
 }
 
+// Split message content around our message permalinks: "AAA <link> BBB"
+// renders as markdown text, quote card, markdown text. Candidates that fail
+// origin validation stay inside the surrounding text. Empty when the content
+// contains no permalink at all.
+internal sealed class PermalinkSegment {
+    data class Text(val text: String) : PermalinkSegment()
+    data class Quote(val link: MessagePermalink) : PermalinkSegment()
+}
+
+// The lazy body plus the (?![/\d]) guard keep trailing punctuation out of the
+// candidate; origin validation still happens in parseMessagePermalink.
+private val PERMALINK_CANDIDATE = Regex("https?://\\S*?/\\d+/\\d+/\\d+(?![/\\d])")
+
+// Split message content around our message permalinks: "AAA <link> BBB"
+// renders as markdown text, quote card, markdown text. A permalink only
+// becomes a card when whitespace-delimited (spaces on both sides, at a
+// content edge, or alone on its line); a link glued to text or punctuation
+// stays a normal inline link. Candidates that fail origin validation always
+// stay inline. Returns empty when no permalink qualifies.
+internal fun splitMessagePermalinks(webBaseUrl: String, content: String): List<PermalinkSegment> {
+    val segments = mutableListOf<PermalinkSegment>()
+    var cursor = 0
+    for (match in PERMALINK_CANDIDATE.findAll(content)) {
+        val link = parseMessagePermalink(webBaseUrl, match.value) ?: continue
+        val start = match.range.first
+        val end = match.range.last + 1
+        val spaceBefore = start == 0 || content[start - 1].isWhitespace()
+        val spaceAfter = end == content.length || content[end].isWhitespace()
+        if (!spaceBefore || !spaceAfter) continue
+        if (start > cursor) {
+            segments.add(PermalinkSegment.Text(content.substring(cursor, start)))
+        }
+        segments.add(PermalinkSegment.Quote(link))
+        cursor = end
+    }
+    if (segments.isEmpty()) return emptyList()
+    if (cursor < content.length) segments.add(PermalinkSegment.Text(content.substring(cursor)))
+    // Whitespace-only segments (e.g. the space between two adjacent links)
+    // render as blank gaps between cards — drop them.
+    return segments.filterNot { it is PermalinkSegment.Text && it.text.isBlank() }
+}
+
 @Composable
 fun ChatScreen(
     messages: List<Message>,
@@ -299,6 +346,10 @@ fun ChatScreen(
     // Anchor captured right before an "older" fetch; consumed to restore the
     // exact viewport position once the older page is prepended.
     var pendingRestore by remember { mutableStateOf<Pair<Long, Int>?>(null) }
+    // Message id currently flashing from a quote/deep-link jump, and its
+    // pulse driven by the jump coroutine itself (not per-item effects).
+    var jumpHighlightId by remember { mutableStateOf<Long?>(null) }
+    val jumpHighlightPulse = remember { Animatable(0f) }
 
     // Latest values for the long-lived pagination trigger (LaunchedEffect(Unit)).
     // rememberUpdatedState avoids capturing stale parameter values that would
@@ -377,6 +428,13 @@ fun ChatScreen(
             delay(400)
             val index = currentMessages.indexOfFirst { it.id == found }
             if (index >= 0) listState.scrollToItem(index)
+            // Parked on the target: flash it like the web .message-highlight.
+            // The pulse is animated here, in the coroutine that provably runs
+            // (it did the scrolling) — not in per-item effects.
+            jumpHighlightId = found
+            jumpHighlightPulse.snapTo(1f)
+            jumpHighlightPulse.animateTo(0f, tween(durationMillis = 2000, easing = EaseOut))
+            jumpHighlightId = null
         } else {
             Toast.makeText(context, "原消息不在已加载的历史中", Toast.LENGTH_SHORT).show()
         }
@@ -505,6 +563,7 @@ fun ChatScreen(
                                     authToken = authToken,
                                     currentUserId = currentUserId,
                                     currentUserPermission = currentUserPermission,
+                                    highlightPulse = if (message.id == jumpHighlightId) jumpHighlightPulse.value else 0f,
                                     onResolveForwardQuote = onResolveForwardQuote,
                                     onOpenMessagePermalink = onOpenMessagePermalink,
                                     onAttachmentClick = { attachment ->
@@ -878,6 +937,7 @@ private fun MessageItem(
     authToken: String?,
     currentUserId: Long?,
     currentUserPermission: Int?,
+    highlightPulse: Float = 0f,
     onAttachmentClick: (Attachment) -> Unit,
     onLongClick: (Message) -> Unit,
     onReplyClick: (cn.net.rms.chatroom.data.model.ReplyTo) -> Unit = {},
@@ -886,10 +946,17 @@ private fun MessageItem(
     onResolveForwardQuote: (channelId: Long, messageId: Long, onResult: (ForwardQuoteUi) -> Unit) -> Unit = { _, _, _ -> },
     onOpenMessagePermalink: (serverId: Long, channelId: Long, messageId: Long) -> Unit = { _, _, _ -> }
 ) {
+    // Deep-link/quote-jump flash: accent tint at 0.3 alpha fading out over 2s,
+    // mirroring the web .message-highlight keyframe pulse. The pulse value is
+    // owned by the jump coroutine in ChatScreen.
+    val highlightColor = SealDark.copy(alpha = 0.3f * highlightPulse)
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            // Background after the top padding: the flash must align with the
+            // message content, not include the group gap above it.
             .padding(top = if (isGrouped) 2.dp else 16.dp)
+            .background(highlightColor, RoundedCornerShape(8.dp))
             .combinedClickable(
                 interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
                 indication = null,
@@ -1061,19 +1128,27 @@ private fun MessageItem(
                     fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
                 )
             } else {
-                // A message that is exactly a permalink to another message
-                // renders as a forwarded-message quote instead of markdown.
-                val permalink = remember(message.id, message.content) {
-                    parseMessagePermalink(BuildConfig.API_BASE_URL, message.content)
+                // Message permalinks (standalone or embedded) render as quote
+                // cards splitting the markdown text around them.
+                val segments = remember(message.id, message.content) {
+                    splitMessagePermalinks(BuildConfig.API_BASE_URL, message.content)
                 }
-                if (permalink != null) {
-                    ForwardedMessageQuote(
-                        link = permalink,
-                        onResolveQuote = onResolveForwardQuote,
-                        onOpen = {
-                            onOpenMessagePermalink(permalink.serverId, permalink.channelId, permalink.messageId)
+                if (segments.isNotEmpty()) {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        segments.forEach { segment ->
+                            when (segment) {
+                                is PermalinkSegment.Text -> MarkdownMessage(content = segment.text)
+                                is PermalinkSegment.Quote -> ForwardedMessageQuote(
+                                    link = segment.link,
+                                    depth = 0,
+                                    highlightPulse = highlightPulse,
+                                    onResolveQuote = onResolveForwardQuote,
+                                    onOpenMessagePermalink = onOpenMessagePermalink,
+                                    onLongClick = { onLongClick(message) }
+                                )
+                            }
                         }
-                    )
+                    }
                 } else if (message.content.isNotBlank()) {
                     // Markdown body (GFM subset) with @mention highlighting
                     MarkdownMessage(content = message.content)
@@ -2529,14 +2604,26 @@ private fun MentionAutocomplete(
     }
 }
 
+// Rendering cap for nested cards so forward cycles cannot recurse forever;
+// deeper permalinks degrade to plain links.
+private const val MAX_NESTING_DEPTH = 3
+
 // Forwarded-message quote card: renders the source message content for a
-// message that is exactly a permalink, labeled 转发的消息. Clicking opens the
-// source channel and parks the viewport on the source message.
+// message permalink, labeled 转发的消息. Inner permalinks in the source
+// content render as nested cards recursively — including a pure forward
+// (content that is exactly one permalink), so every forward level keeps its
+// own sender shown. Clicking opens that level's source.
 @Composable
 private fun ForwardedMessageQuote(
     link: MessagePermalink,
+    depth: Int,
+    highlightPulse: Float = 0f,
     onResolveQuote: (channelId: Long, messageId: Long, onResult: (ForwardQuoteUi) -> Unit) -> Unit,
-    onOpen: () -> Unit
+    onOpenMessagePermalink: (serverId: Long, channelId: Long, messageId: Long) -> Unit,
+    // Long-press must reach the host message's context menu: the card's own
+    // clickable would otherwise consume the gesture (MessageItem's
+    // combinedClickable never sees it).
+    onLongClick: () -> Unit = {}
 ) {
     var quote by remember(link.channelId, link.messageId) { mutableStateOf<ForwardQuoteUi?>(null) }
     LaunchedEffect(link.channelId, link.messageId) {
@@ -2548,7 +2635,21 @@ private fun ForwardedMessageQuote(
             .fillMaxWidth()
             .clip(RoundedCornerShape(8.dp))
             .background(PaperDarkSubtle)
-            .clickable(onClick = onOpen)
+            .drawBehind {
+                // Left accent bar, mirroring the web card's border-left.
+                drawRect(color = SealDark, size = Size(3.dp.toPx(), size.height))
+                // Jump flash on the card itself: without this the row-level
+                // highlight would hide behind the card's opaque background.
+                if (highlightPulse > 0f) {
+                    drawRect(color = SealDark.copy(alpha = 0.3f * highlightPulse))
+                }
+            }
+            .combinedClickable(
+                onClick = {
+                    onOpenMessagePermalink(link.serverId, link.channelId, link.messageId)
+                },
+                onLongClick = onLongClick
+            )
             .padding(horizontal = 10.dp, vertical = 6.dp)
     ) {
         Text(
@@ -2573,13 +2674,40 @@ private fun ForwardedMessageQuote(
                 val body = quote!!.content?.takeIf { it.isNotBlank() }
                     ?: if (quote!!.hasAttachments) "[附件]" else ""
                 if (body.isNotEmpty()) {
-                    Text(
-                        text = body,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = InkDark,
-                        maxLines = 6,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                    // Source content renders with the same markdown pipeline
+                    // as a regular message; inner permalinks become nested
+                    // cards up to the depth cap.
+                    val segments = remember(body) { splitMessagePermalinks(BuildConfig.API_BASE_URL, body) }
+                    if (segments.isEmpty()) {
+                        MarkdownMessage(content = body)
+                    } else {
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            segments.forEach { segment ->
+                                when (segment) {
+                                    is PermalinkSegment.Text -> MarkdownMessage(content = segment.text)
+                                    is PermalinkSegment.Quote -> {
+                                        if (depth < MAX_NESTING_DEPTH) {
+                                            ForwardedMessageQuote(
+                                                link = segment.link,
+                                                depth = depth + 1,
+                                                onResolveQuote = onResolveQuote,
+                                                onOpenMessagePermalink = onOpenMessagePermalink
+                                            )
+                                        } else {
+                                            MarkdownMessage(
+                                                content = buildMessagePermalink(
+                                                    BuildConfig.API_BASE_URL,
+                                                    segment.link.serverId,
+                                                    segment.link.channelId,
+                                                    segment.link.messageId
+                                                )
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
             quote!!.status == ForwardQuoteStatus.DELETED -> Text(

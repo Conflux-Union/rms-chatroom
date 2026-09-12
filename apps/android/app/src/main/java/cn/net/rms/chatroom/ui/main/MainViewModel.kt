@@ -360,6 +360,8 @@ class MainViewModel @Inject constructor(
             val quote = chatRepository.fetchMessageAround(channelId, messageId).fold(
                 onSuccess = { source ->
                     if (source == null) {
+                        // Missing from the window: deleted (the endpoint
+                        // filters deleted messages).
                         ForwardQuoteUi(ForwardQuoteStatus.DELETED)
                     } else {
                         ForwardQuoteUi(
