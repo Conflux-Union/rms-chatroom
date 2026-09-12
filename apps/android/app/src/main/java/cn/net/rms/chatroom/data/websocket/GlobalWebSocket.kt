@@ -27,6 +27,7 @@ sealed class GlobalWebSocketEvent {
         val hasMention: Boolean,
         val lastMentionMessageId: Long?
     ) : GlobalWebSocketEvent()
+    data class ChannelAck(val channelId: Long) : GlobalWebSocketEvent()
     object Connected : GlobalWebSocketEvent()
     object Disconnected : GlobalWebSocketEvent()
     data class Error(val error: String) : GlobalWebSocketEvent()
@@ -202,6 +203,11 @@ class GlobalWebSocket @Inject constructor(
                         lastMentionMessageId = lastMentionMessageId
                     ))
                 }
+                "channel_ack" -> {
+                    val channelId = json.get("channel_id")?.asLong ?: return
+                    Log.d(TAG, "Channel ack from another device: channel=$channelId")
+                    _events.tryEmit(GlobalWebSocketEvent.ChannelAck(channelId))
+                }
                 "connected" -> {
                     Log.d(TAG, "Global WebSocket server confirmed connection")
                 }
@@ -357,6 +363,24 @@ class GlobalWebSocket @Inject constructor(
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error sending read position update", e)
+        }
+    }
+
+    /**
+     * Tell the user's other devices this channel was opened so they can clear
+     * their unread badges. Ack state is per-device and never persisted.
+     */
+    fun sendChannelAck(channelId: Long) {
+        if (_connectionState.value != ConnectionState.CONNECTED) {
+            Log.w(TAG, "Cannot send channel ack: not connected")
+            return
+        }
+
+        try {
+            val json = gson.toJson(mapOf("type" to "channel_ack", "channel_id" to channelId))
+            webSocket?.send(json)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error sending channel ack", e)
         }
     }
 

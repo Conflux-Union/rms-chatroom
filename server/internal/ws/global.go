@@ -69,6 +69,11 @@ func HandleGlobalWS(jwtSecret string, db *sql.DB) echo.HandlerFunc {
 				handleReadPositionSync(db, conn)
 				return
 			}
+
+			if msg.Type == "channel_ack" {
+				handleChannelAck(conn, &msg)
+				return
+			}
 		})
 
 		return nil
@@ -107,6 +112,21 @@ func handleReadPositionUpdate(db *sql.DB, conn *Conn, msg *globalMessage) {
 		"last_read_message_id":   msg.LastReadMessageID,
 		"has_mention":            msg.HasMention,
 		"last_mention_message_id": msg.LastMentionMessageID,
+	}
+	GlobalStateManager.SendToUserExclude(int64(conn.user.ID), update, conn)
+}
+
+// handleChannelAck relays "device opened channel" to the user's other devices
+// so they can clear their local unread badges. Ack state is per-device, so
+// nothing is persisted here.
+func handleChannelAck(conn *Conn, msg *globalMessage) {
+	if msg.ChannelID == 0 {
+		return
+	}
+
+	update := map[string]interface{}{
+		"type":       "channel_ack",
+		"channel_id": msg.ChannelID,
 	}
 	GlobalStateManager.SendToUserExclude(int64(conn.user.ID), update, conn)
 }

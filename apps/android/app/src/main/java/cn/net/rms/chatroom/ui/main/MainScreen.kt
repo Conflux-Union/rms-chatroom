@@ -232,13 +232,6 @@ fun MainScreen(
                         val connectionState by mainViewModel.connectionState.collectAsState()
                         val messages = mainViewModel.messages.collectAsState().value
 
-                        // Clear mention state when entering this channel
-                        LaunchedEffect(mainState.currentChannel?.id) {
-                            mainState.currentChannel?.id?.let { channelId ->
-                                mainViewModel.clearChannelMention(channelId)
-                            }
-                        }
-
                         ChatScreen(
                             messages = messages,
                             isLoading = mainState.isMessagesLoading,
@@ -246,8 +239,8 @@ fun MainScreen(
                             authToken = authState.token,
                             currentUserId = authState.user?.id,
                             currentUserPermission = authState.user?.permissionLevel,
-                            lastReadMessageId = mainState.lastReadMessageId,
-                            showContinueReading = mainState.showContinueReading,
+                            firstUnreadMessageId = mainState.firstUnreadMessageId,
+                            isPositioningRead = mainState.isPositioningRead,
                             channelMembers = mainState.channelMembers,
                             onSendMessage = { content, attachmentIds, replyToId ->
                                 mainViewModel.sendMessage(content, attachmentIds, replyToId)
@@ -261,7 +254,6 @@ fun MainScreen(
                                 mainViewModel.muteUser(userId, scope, durationMinutes, serverId, channelId, reason)
                             },
                             onSaveReadPosition = { messageId -> mainViewModel.saveReadPosition(messageId) },
-                            onDismissContinueReading = { mainViewModel.dismissContinueReading() },
                             onGetMessageIndex = { messageId -> mainViewModel.getMessageIndexById(messageId) },
                             onAddReaction = { messageId, emoji -> mainViewModel.addReaction(messageId, emoji) },
                             onRemoveReaction = { messageId, emoji -> mainViewModel.removeReaction(messageId, emoji) },

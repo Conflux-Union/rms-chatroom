@@ -22,7 +22,7 @@ import {
   dialog,
 } from './ui'
 import type { ZmDropdownOption, ZmSelectOption } from './ui'
-import { Paperclip, Send, Upload, X, Image, Video, Music, FileText, File, MoreVertical, ArrowUp, Reply, CornerUpLeft, SmilePlus, Radio } from 'lucide-vue-next'
+import { Paperclip, Send, Upload, X, Image, Video, Music, FileText, File, MoreVertical, Reply, CornerUpLeft, SmilePlus, Radio } from 'lucide-vue-next'
 import FilePreview from './FilePreview.vue'
 import type { Attachment, Message, ReactionGroup } from '../types'
 import axios from 'axios'
@@ -192,19 +192,33 @@ let messageObserver: IntersectionObserver | null = null
 // Common emojis for quick reactions
 const commonEmojis = ['👍', '❤️', '😂', '😮', '😢', '🎉', '🔥', '👀']
 
-// Read position tracking
+// Read position tracking (viewport semantics: what enters the viewport is read)
 const {
-  lastReadMessageId,
-  showContinueReading,
   saveReadPosition,
-  markChannelAsRead,
-  initForChannel,
-  dismissContinueReading,
+  getReadPosition,
+  sendChannelAck,
+  syncToServer,
 } = useReadPosition()
 let scrollSaveTimeout: ReturnType<typeof setTimeout> | null = null
 
 // Mention notification tracking
-const { clearChannelMention } = useMentionNotification()
+const {
+  clearChannelMention,
+  getChannelMention,
+  clearUnreadCount,
+} = useMentionNotification()
+
+// First message the user has not seen in the current channel; rendered as an
+// in-list divider until the viewport catches up to the tail as of entry.
+const firstUnreadId = ref<number | null>(null)
+const entryTailId = ref<number | null>(null)
+let entryAckTimer: ReturnType<typeof setTimeout> | null = null
+// Entry positioning (older-page pull + jump to first unread) must not let the
+// bottom page flash advance the read position before the jump happens.
+let entryPositioning = false
+// Bumps on every channel entry; stale settle timers from the previous entry
+// must not release the new entry's suppression early.
+let entryToken = 0
 
 // Keyed on the channel id, not the object reference: re-selecting the same
 // channel (or the server refetch swapping in fresh channel objects) must not
@@ -217,27 +231,67 @@ watch(
       // Clear any in-flight "load older" lock from the previous channel so the
       // new channel can paginate immediately.
       isFetchingOlder.value = false
-      await chat.fetchMessages(channel.id)
-      await checkMuteStatus()
+      if (entryAckTimer) clearTimeout(entryAckTimer)
+      const token = ++entryToken
+      entryPositioning = true
+      // Hold the new-message auto-follow until entry positioning is done, so
+      // the bottom page never flashes into the viewport before the jump.
+      isFetchingOlder.value = true
 
-      // Initialize read position tracking
-      const latestMessageId = chat.messages.length > 0
-        ? chat.messages[chat.messages.length - 1].id
-        : null
-      initForChannel(channel.id, latestMessageId)
+      try {
+        await chat.fetchMessages(channel.id)
+        await checkMuteStatus()
 
-      await nextTick()
-      scrollToBottom()
-      refreshMessageObserver()
+        const tailId = chat.messages.length > 0
+          ? chat.messages[chat.messages.length - 1].id
+          : null
+        entryTailId.value = tailId
+        const savedId = getReadPosition(channel.id)
 
-      // Mark as read after user has stayed on channel for 2 seconds
-      // This prevents immediate clearing of mention badges
-      setTimeout(() => {
-        if (chat.currentChannel?.id === channel.id) {
-          markChannelAsRead(channel.id)
-          clearChannelMention(channel.id)
+        if (savedId != null && tailId != null && savedId < tailId) {
+          // Gap: pull older pages until the saved position is inside the
+          // window so the first unread message is actually reachable. Cap the
+          // pull — beyond it, land on the window top (still behind the tail).
+          for (
+            let i = 0;
+            i < 5 && chat.hasMore && chat.messages.length > 0 && chat.messages[0].id > savedId;
+            i++
+          ) {
+            await chat.fetchMessages(channel.id, chat.messages[0].id)
+          }
+          firstUnreadId.value = chat.messages.find((m) => m.id > savedId)?.id ?? null
+          await nextTick()
+          refreshMessageObserver()
+          if (firstUnreadId.value != null) {
+            scrollToMessage(firstUnreadId.value, 'auto')
+          } else {
+            scrollToBottom()
+          }
+        } else {
+          firstUnreadId.value = null
+          await nextTick()
+          scrollToBottom()
+          refreshMessageObserver()
         }
-      }, 2000)
+      } finally {
+        // Let the IntersectionObserver settle on the post-jump viewport before
+        // viewport-driven saves resume, then flush once for the jumped-to view.
+        setTimeout(() => {
+          if (token !== entryToken) return
+          entryPositioning = false
+          isFetchingOlder.value = false
+          flushPositionSave()
+        }, 250)
+      }
+
+      // Acknowledge the channel after a short stay: quick channel switches
+      // don't clear unread badges on this or other devices.
+      entryAckTimer = setTimeout(() => {
+        if (chat.currentChannel?.id === channel.id) {
+          sendChannelAck(channel.id)
+          clearUnreadCount(channel.id)
+        }
+      }, 1000)
     }
   },
   { immediate: true }
@@ -302,7 +356,51 @@ async function loadOlderMessages() {
   isFetchingOlder.value = false
 }
 
-// Save read position when user stops scrolling (debounced)
+// Viewport-driven read position: save when the visible set settles, whether
+// the movement came from user scrolling or programmatic jumps — anything that
+// put messages on screen counts as read.
+function schedulePositionSave() {
+  if (entryPositioning) return
+  isScrollActive.value = true
+
+  // Debounce: only save after the viewport stops moving for 120ms
+  if (scrollSaveTimeout) {
+    clearTimeout(scrollSaveTimeout)
+  }
+  scrollSaveTimeout = setTimeout(() => {
+    isScrollActive.value = false
+    flushPositionSave()
+  }, 120)
+}
+
+function flushPositionSave() {
+  const channel = chat.currentChannel
+  if (!channel || chat.messages.length === 0) return
+  const visibleId = latestVisibleMessageId.value
+  if (!visibleId) return
+
+  // An unseen mention survives position updates; once the viewport passes the
+  // mention message, clear the badge both locally and on the server.
+  let hasMention = false
+  let mentionId: number | null = null
+  const mention = getChannelMention(channel.id)
+  if (mention?.hasMention) {
+    mentionId = mention.lastMentionMessageId
+    if (mentionId != null && visibleId >= mentionId) {
+      clearChannelMention(channel.id)
+      mentionId = null
+    } else {
+      hasMention = true
+    }
+  }
+  saveReadPosition(channel.id, visibleId, hasMention, mentionId)
+
+  // Caught up to the tail as of entry: the unread divider served its purpose.
+  if (entryTailId.value != null && visibleId >= entryTailId.value) {
+    firstUnreadId.value = null
+  }
+}
+
 function handleMessagesScroll() {
   if (!chat.currentChannel || chat.messages.length === 0) return
 
@@ -316,22 +414,7 @@ function handleMessagesScroll() {
     loadOlderMessages()
   }
 
-  isScrollActive.value = true
-
-  // Debounce: only save after user stops scrolling for 500ms
-  if (scrollSaveTimeout) {
-    clearTimeout(scrollSaveTimeout)
-  }
-
-  scrollSaveTimeout = setTimeout(() => {
-    isScrollActive.value = false
-    if (latestVisibleMessageId.value && chat.currentChannel) {
-      saveReadPosition(chat.currentChannel.id, latestVisibleMessageId.value)
-      // Update read timestamp and clear mention notification when user scrolls
-      markChannelAsRead(chat.currentChannel.id)
-      clearChannelMention(chat.currentChannel.id)
-    }
-  }, 120)
+  schedulePositionSave()
 }
 
 function handleWheelScroll() {
@@ -409,23 +492,23 @@ function handleMessageIntersections(entries: IntersectionObserverEntry[]) {
       }
     }
   }
+  schedulePositionSave()
 }
 
 // Scroll to a specific message by ID
-function scrollToMessage(messageId: number) {
+function scrollToMessage(messageId: number, behavior: ScrollBehavior = 'smooth') {
   const container = messagesContainer.value
   if (!container) return
 
   const messageEl = container.querySelector(`[data-message-id="${messageId}"]`)
   if (messageEl) {
-    messageEl.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    messageEl.scrollIntoView({ behavior, block: 'center' })
     // Highlight the message briefly
     messageEl.classList.add('message-highlight')
     setTimeout(() => {
       messageEl.classList.remove('message-highlight')
     }, 2000)
   }
-  dismissContinueReading()
 }
 
 // File handling
@@ -1154,18 +1237,6 @@ onUnmounted(() => {
       <span v-if="!isForwardChannel" class="channel-hash">#</span>
       <Radio v-else class="channel-hash channel-hash-icon" :size="16" />
       <span class="channel-name">{{ chat.currentChannel?.name }}</span>
-
-      <!-- Continue reading button -->
-      <Transition name="continue-reading">
-        <button
-          v-if="showContinueReading && lastReadMessageId"
-          class="continue-reading-btn"
-          @click="scrollToMessage(lastReadMessageId)"
-        >
-          <ArrowUp :size="16" />
-          <span>回到上次阅读位置</span>
-        </button>
-      </Transition>
     </div>
 
     <div
@@ -1179,16 +1250,20 @@ onUnmounted(() => {
       <div v-if="chat.isLoadingOlder" class="loading-more-indicator">
         加载更早的消息…
       </div>
-      <div
-        v-for="(msg, index) in chat.messages"
-        :key="msg.id"
-        :data-message-id="msg.id"
-        class="message"
-        :class="{ 'message-grouped': shouldGroupWithPrevious(index) }"
-        @contextmenu="!msg.is_deleted && showContextMenu($event, msg)"
-        @mouseenter="handleMessageMouseEnter(msg.id)"
-        @mouseleave="handleMessageMouseLeave(msg.id)"
-      >
+      <template v-for="(msg, index) in chat.messages" :key="msg.id">
+        <div v-if="msg.id === firstUnreadId" class="unread-divider">
+          <span class="unread-divider-line"></span>
+          <span class="unread-divider-label">新消息</span>
+          <span class="unread-divider-line"></span>
+        </div>
+        <div
+          :data-message-id="msg.id"
+          class="message"
+          :class="{ 'message-grouped': shouldGroupWithPrevious(index) }"
+          @contextmenu="!msg.is_deleted && showContextMenu($event, msg)"
+          @mouseenter="handleMessageMouseEnter(msg.id)"
+          @mouseleave="handleMessageMouseLeave(msg.id)"
+        >
         <!-- Avatar: hidden placeholder for grouped messages to maintain alignment -->
         <div class="message-avatar" :class="{ 'avatar-hidden': shouldGroupWithPrevious(index) }">
           <template v-if="!shouldGroupWithPrevious(index)">
@@ -1334,6 +1409,7 @@ onUnmounted(() => {
           </div>
         </div>
       </div>
+      </template>
     </div>
 
     <!-- Pending files preview -->
@@ -2066,49 +2142,26 @@ onUnmounted(() => {
   margin-left: auto;
 }
 
-/* Continue Reading Button */
-.continue-reading-btn {
-  margin-left: auto;
+/* Unread divider */
+.unread-divider {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 16px;
-  background: var(--zhimo-seal);
-  color: var(--zhimo-accent-fg);
-  border: 1px solid var(--zhimo-seal-hover);
-  border-radius: var(--zhimo-radius);
-  font-size: 14px;
+  gap: 10px;
+  padding: 8px 0;
+  margin: 4px 0;
+}
+
+.unread-divider-line {
+  flex: 1;
+  height: 1px;
+  background: var(--zhimo-seal-hover);
+}
+
+.unread-divider-label {
+  font-size: 12px;
   font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  box-shadow: none;
-  animation: btn-pulse 2s ease-in-out infinite;
-}
-
-.continue-reading-btn:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 10px 25px rgba(252, 121, 97, 0.4);
-}
-
-@keyframes btn-pulse {
-  0%, 100% {
-    box-shadow: 0 4px 15px rgba(252, 121, 97, 0.3);
-  }
-  50% {
-    box-shadow: 0 4px 25px rgba(252, 121, 97, 0.5);
-  }
-}
-
-/* Continue reading transition */
-.continue-reading-enter-active,
-.continue-reading-leave-active {
-  transition: all 0.3s ease;
-}
-
-.continue-reading-enter-from,
-.continue-reading-leave-to {
-  opacity: 0;
-  transform: translateX(20px);
+  color: var(--zhimo-seal);
+  white-space: nowrap;
 }
 
 /* Message highlight animation */

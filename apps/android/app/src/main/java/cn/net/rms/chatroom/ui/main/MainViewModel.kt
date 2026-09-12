@@ -15,6 +15,7 @@ import cn.net.rms.chatroom.data.model.VoiceUser
 import cn.net.rms.chatroom.data.api.AppUpdateResponse
 import cn.net.rms.chatroom.data.model.AttachmentResponse
 import cn.net.rms.chatroom.data.manager.MentionNotificationManager
+import cn.net.rms.chatroom.data.model.Message
 import cn.net.rms.chatroom.data.repository.AuthRepository
 import cn.net.rms.chatroom.data.repository.isUnauthorized
 import cn.net.rms.chatroom.data.repository.BugReportRepository
@@ -51,8 +52,8 @@ data class MainState(
     val downloadedBytes: Long = 0L,
     val downloadTotalBytes: Long = 0L,
     val downloadSpeedBps: Long = 0L,
-    val lastReadMessageId: Long? = null,
-    val showContinueReading: Boolean = false,
+    val firstUnreadMessageId: Long? = null,
+    val isPositioningRead: Boolean = false,
     val channelMembers: List<ChannelMember> = emptyList(),
     val channelMentions: Set<Long> = emptySet(),
     val unreadCounts: Map<Long, Int> = emptyMap()
@@ -71,10 +72,16 @@ class MainViewModel @Inject constructor(
 ) : ViewModel() {
     companion object {
         private const val TAG = "MainViewModel"
+        // Max older pages pulled while hunting for the first unread message.
+        private const val POSITION_PAGES_CAP = 5
     }
 
     private val _state = MutableStateFlow(MainState())
     val state: StateFlow<MainState> = _state.asStateFlow()
+
+    // Tail of the message list at channel entry; the unread divider hides once
+    // the viewport catches up to it.
+    private var entryTailId: Long? = null
 
     val messages = chatRepository.messages
     val hasMoreMessages = chatRepository.hasMoreMessages
@@ -233,48 +240,77 @@ class MainViewModel @Inject constructor(
         chatRepository.setCurrentChannel(channel)
         _state.value = _state.value.copy(
             currentChannel = channel,
-            lastReadMessageId = null,
-            showContinueReading = false
+            firstUnreadMessageId = null,
+            isPositioningRead = false
         )
 
         // Load messages for text and forward (sync) channels
         if (channel.type == ChannelType.TEXT || channel.type == ChannelType.FORWARD) {
-            loadMessages(channel.id)
-            // Load last read position
-            loadLastReadPosition(channel.id)
+            // Opening the channel acknowledges it: this device's badge clears
+            // and other devices are told to clear theirs. The read position
+            // itself only advances when messages enter the viewport.
+            readPositionRepository.acknowledgeChannel(channel.id)
+            loadMessages(channel.id, positionViewport = true)
         }
     }
 
-    private fun loadLastReadPosition(channelId: Long) {
-        viewModelScope.launch {
-            val lastReadId = readPositionRepository.getLastReadMessageId(channelId)
-            if (lastReadId != null) {
-                _state.value = _state.value.copy(
-                    lastReadMessageId = lastReadId,
-                    showContinueReading = true
-                )
-            }
-        }
-    }
-
-    private fun loadMessages(channelId: Long) {
+    private fun loadMessages(channelId: Long, positionViewport: Boolean = false) {
         viewModelScope.launch {
             _state.value = _state.value.copy(isMessagesLoading = true)
+            if (positionViewport) {
+                _state.value = _state.value.copy(isPositioningRead = true)
+            }
             chatRepository.fetchMessages(channelId)
                 .onSuccess { fetched ->
                     _state.value = _state.value.copy(isMessagesLoading = false)
-                    // Entering a channel shows the newest page (ChatScreen scrolls to
-                    // the tail on first load), so everything fetched counts as read.
-                    // Mark read here, not on channel entry, to avoid using another
-                    // channel's still-cached messages for the read position.
-                    if (fetched.isNotEmpty() && _state.value.currentChannel?.id == channelId) {
-                        readPositionRepository.markChannelAsRead(channelId, fetched.last().id)
+                    if (positionViewport && _state.value.currentChannel?.id == channelId) {
+                        positionViewportToUnread(channelId, fetched)
                     }
                 }
                 .onFailure { e ->
-                    _state.value = _state.value.copy(isMessagesLoading = false)
+                    _state.value = _state.value.copy(
+                        isMessagesLoading = false,
+                        isPositioningRead = false
+                    )
                     if (!e.isUnauthorized) _state.value = _state.value.copy(error = e.message)
                 }
+        }
+    }
+
+    /**
+     * Viewport read-position semantics: if the saved position is behind the
+     * tail, pull older pages (bounded) until the first unread message is
+     * inside the loaded window and park the viewport there. The position only
+     * advances afterwards from real viewport reports (ChatScreen).
+     */
+    private suspend fun positionViewportToUnread(channelId: Long, fetched: List<Message>) {
+        entryTailId = fetched.lastOrNull()?.id
+        if (fetched.isEmpty()) {
+            _state.value = _state.value.copy(isPositioningRead = false)
+            return
+        }
+
+        val savedId = readPositionRepository.getLastReadMessageId(channelId)
+        val firstUnread: Long? = if (savedId != null && fetched.last().id > savedId) {
+            var pages = 0
+            while (
+                pages < POSITION_PAGES_CAP &&
+                chatRepository.hasMoreMessages.value &&
+                (chatRepository.messages.value.firstOrNull()?.id ?: Long.MAX_VALUE) > savedId
+            ) {
+                chatRepository.fetchOlderMessages(channelId)
+                pages++
+            }
+            chatRepository.messages.value.firstOrNull { it.id > savedId }?.id
+        } else {
+            null
+        }
+
+        if (_state.value.currentChannel?.id == channelId) {
+            _state.value = _state.value.copy(
+                firstUnreadMessageId = firstUnread,
+                isPositioningRead = false
+            )
         }
     }
 
@@ -376,10 +412,13 @@ class MainViewModel @Inject constructor(
     fun saveReadPosition(messageId: Long) {
         val channelId = _state.value.currentChannel?.id ?: return
         readPositionRepository.saveReadPosition(channelId, messageId)
-    }
 
-    fun dismissContinueReading() {
-        _state.value = _state.value.copy(showContinueReading = false)
+        // Viewport reached the tail as of entry: the unread divider served
+        // its purpose.
+        val tail = entryTailId
+        if (tail != null && messageId >= tail) {
+            _state.value = _state.value.copy(firstUnreadMessageId = null)
+        }
     }
 
     fun getMessageIndexById(messageId: Long): Int {
@@ -714,12 +753,6 @@ class MainViewModel @Inject constructor(
                 Log.d(TAG, "MainViewModel received unread counts update: $counts")
                 _state.value = _state.value.copy(unreadCounts = counts)
             }
-        }
-    }
-
-    fun clearChannelMention(channelId: Long) {
-        viewModelScope.launch {
-            mentionNotificationManager.clearChannelMention(channelId)
         }
     }
 }

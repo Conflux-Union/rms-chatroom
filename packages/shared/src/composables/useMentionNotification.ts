@@ -26,6 +26,25 @@ const sharedChannelMentions = ref<Record<number, boolean>>({})
 const sharedUnreadCounts = ref<Record<number, number>>({})
 let initialized = false
 
+const UNREAD_COUNTS_KEY = 'rms-unread-counts'
+
+function getStoredUnreadCounts(): Record<number, number> {
+  try {
+    const stored = localStorage.getItem(UNREAD_COUNTS_KEY)
+    return stored ? JSON.parse(stored) : {}
+  } catch {
+    return {}
+  }
+}
+
+function persistUnreadCounts() {
+  try {
+    localStorage.setItem(UNREAD_COUNTS_KEY, JSON.stringify(sharedUnreadCounts.value))
+  } catch {
+    // localStorage might be full or disabled
+  }
+}
+
 function getStoredMentions(): MentionNotification {
   try {
     const stored = localStorage.getItem(STORAGE_KEY)
@@ -129,6 +148,7 @@ export function useMentionNotification() {
   if (!initialized) {
     initialized = true
     loadChannelMentions()
+    sharedUnreadCounts.value = getStoredUnreadCounts()
     // Fetch server mentions after a short delay
     setTimeout(() => {
       fetchAndMergeServerMentions()
@@ -136,7 +156,13 @@ export function useMentionNotification() {
   }
 
   // Listen for read position sync from other devices (includes mention state)
+  // and for channel acks (another device opened the channel).
   onMessage((data: any) => {
+    if (data.type === 'channel_ack') {
+      clearUnreadCount(data.channel_id)
+      return
+    }
+
     if (data.type === 'read_position_sync') {
       const { channel_id, has_mention, last_mention_message_id } = data
 
@@ -213,17 +239,13 @@ export function useMentionNotification() {
 
   function clearChannelMention(channelId: number) {
     const mentions = getStoredMentions()
-    const lastMentionId = mentions[channelId]?.lastMentionMessageId ?? null
     if (mentions[channelId]) {
       mentions[channelId].hasMention = false
     }
     saveMentions(mentions)
-    
+
     channelMentions.value[channelId] = false
     triggerRef(channelMentions)
-    
-    unreadCounts.value[channelId] = 0
-    triggerRef(unreadCounts)
 
     // Sync cleared mention to server (will be handled by useReadPosition)
   }
@@ -253,6 +275,7 @@ export function useMentionNotification() {
   function setUnreadCount(channelId: number, count: number) {
     unreadCounts.value[channelId] = count
     triggerRef(unreadCounts)
+    persistUnreadCounts()
   }
 
   function getUnreadCount(channelId: number): number {
@@ -262,10 +285,26 @@ export function useMentionNotification() {
   function clearUnreadCount(channelId: number) {
     unreadCounts.value[channelId] = 0
     triggerRef(unreadCounts)
+    persistUnreadCounts()
   }
 
   function hasUnreadMention(channelId: number): boolean {
     return channelMentions.value[channelId] ?? false
+  }
+
+  /**
+   * Current mention state for a channel. hasMention comes from the reactive
+   * flag; the mention message id from persisted storage.
+   */
+  function getChannelMention(
+    channelId: number
+  ): { hasMention: boolean; lastMentionMessageId: number | null } | null {
+    if (!channelMentions.value[channelId]) return null
+    const stored = getStoredMentions()[channelId]
+    return {
+      hasMention: true,
+      lastMentionMessageId: stored?.lastMentionMessageId ?? null,
+    }
   }
 
   function loadChannelMentions() {
@@ -280,35 +319,6 @@ export function useMentionNotification() {
     channelMentions.value = mentionMap
   }
 
-  function checkMessagesForMentions(
-    messages: Array<{ id: number; mentions?: Array<{ username: string }> }>,
-    currentUsername: string,
-    lastReadMessageId: number | null,
-    channelId: number,
-    currentUserId?: number
-  ): { hasMention: boolean; lastMentionMessageId: number | null } {
-    let hasMention = false
-    let lastMentionMessageId: number | null = null
-
-    for (const message of messages) {
-      if (lastReadMessageId && message.id <= lastReadMessageId) {
-        continue
-      }
-
-      if (message.mentions && message.mentions.length > 0) {
-        const isMentioned = message.mentions.some(
-          mention => mention.username === currentUsername
-        )
-        if (isMentioned) {
-          hasMention = true
-          lastMentionMessageId = message.id
-        }
-      }
-    }
-
-    return { hasMention, lastMentionMessageId }
-  }
-
   return {
     channelMentions,
     unreadCounts,
@@ -316,8 +326,8 @@ export function useMentionNotification() {
     markChannelAsMentioned,
     clearChannelMention,
     hasUnreadMention,
+    getChannelMention,
     loadChannelMentions,
-    checkMessagesForMentions,
     setUnreadCount,
     getUnreadCount,
     clearUnreadCount,

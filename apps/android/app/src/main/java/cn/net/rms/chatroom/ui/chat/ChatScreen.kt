@@ -80,6 +80,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -162,8 +163,8 @@ fun ChatScreen(
     authToken: String? = null,
     currentUserId: Long? = null,
     currentUserPermission: Int? = null,
-    lastReadMessageId: Long? = null,
-    showContinueReading: Boolean = false,
+    firstUnreadMessageId: Long? = null,
+    isPositioningRead: Boolean = false,
     channelMembers: List<ChannelMember> = emptyList(),
     onSendMessage: (String, List<Long>, Long?) -> Unit,  // Added replyToId parameter
     onUploadFile: suspend (Uri) -> Result<AttachmentResponse>,
@@ -173,7 +174,6 @@ fun ChatScreen(
     onDeleteMessage: (Long) -> Unit = {},
     onMuteUser: (Long, String, Int?, Long?, Long?, String?) -> Unit = { _, _, _, _, _, _ -> },
     onSaveReadPosition: (Long) -> Unit = {},
-    onDismissContinueReading: () -> Unit = {},
     onGetMessageIndex: (Long) -> Int = { -1 },
     onAddReaction: (Long, String) -> Unit = { _, _ -> },
     onRemoveReaction: (Long, String) -> Unit = { _, _ -> },
@@ -249,6 +249,7 @@ fun ChatScreen(
     val currentHasMore by rememberUpdatedState(hasMore)
     val currentIsLoadingOlder by rememberUpdatedState(isLoadingOlder)
     val currentMessages by rememberUpdatedState(messages)
+    val currentIsPositioning by rememberUpdatedState(isPositioningRead)
 
     // Scroll handling keyed on both list size and the older-loading flag:
     //  - prepend: restore the viewport on the previously-first item
@@ -276,7 +277,11 @@ fun ChatScreen(
                 pendingRestore = null
             }
             isFullReplace || prevFirstId == null -> {
-                listState.animateScrollToItem(messages.size - 1)
+                // Entry positioning parks the viewport on the first unread
+                // message; don't fight it by jumping to the tail.
+                if (!currentIsPositioning) {
+                    listState.animateScrollToItem(messages.size - 1)
+                }
             }
             !isLoadingOlder && pendingRestore?.first == currentFirstId -> {
                 // Older fetch finished without prepending (failed / reached top).
@@ -287,6 +292,16 @@ fun ChatScreen(
             }
         }
         lastFirstId.value = currentFirstId
+    }
+
+    // Entry positioning resolved the first unread message: park the viewport
+    // on it. Fires only when the target id changes, not on every list update.
+    LaunchedEffect(firstUnreadMessageId) {
+        if (firstUnreadMessageId == null) return@LaunchedEffect
+        val index = currentMessages.indexOfFirst { it.id == firstUnreadMessageId }
+        if (index >= 0) {
+            listState.animateScrollToItem(index)
+        }
     }
 
     // Auto-scroll to bottom when keyboard appears (only if following the tail).
@@ -321,12 +336,24 @@ fun ChatScreen(
 
     // Save read position when scrolling stops
     LaunchedEffect(listState.isScrollInProgress) {
-        if (!listState.isScrollInProgress && messages.isNotEmpty()) {
+        if (!listState.isScrollInProgress && !isPositioningRead && messages.isNotEmpty()) {
             val lastVisibleIndex = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index
             if (lastVisibleIndex != null && lastVisibleIndex < messages.size) {
                 val lastVisibleMessage = messages[lastVisibleIndex]
                 onSaveReadPosition(lastVisibleMessage.id)
             }
+        }
+    }
+
+    // Advance the read position after (re)loads that involve no scrolling —
+    // short channels and parked viewports never trip the scroll-stop report.
+    LaunchedEffect(messages.size, isPositioningRead) {
+        if (isPositioningRead || messages.isEmpty() || listState.isScrollInProgress) return@LaunchedEffect
+        delay(300)
+        if (listState.isScrollInProgress) return@LaunchedEffect
+        val lastVisibleIndex = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index
+        if (lastVisibleIndex != null && lastVisibleIndex < messages.size) {
+            onSaveReadPosition(messages[lastVisibleIndex].id)
         }
     }
 
@@ -387,6 +414,9 @@ fun ChatScreen(
                         ) {
                             items(messages.size, key = { messages[it].id }) { index ->
                                 val message = messages[index]
+                                if (message.id == firstUnreadMessageId) {
+                                    UnreadDivider()
+                                }
                                 val isGrouped = shouldGroupWithPrevious(messages, index)
                                 val groupLatestEditedAt = if (!isGrouped) getGroupLatestEditedAt(messages, index) else null
                                 MessageItem(
@@ -577,54 +607,6 @@ fun ChatScreen(
             authToken = authToken,
             onDismiss = { attachmentPreview = null }
         )
-
-        // Continue reading button
-        AnimatedVisibility(
-            visible = showContinueReading && lastReadMessageId != null && messages.isNotEmpty(),
-            enter = fadeIn() + slideInVertically(),
-            exit = fadeOut() + slideOutVertically(),
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(16.dp)
-        ) {
-            Surface(
-                onClick = {
-                    val index = onGetMessageIndex(lastReadMessageId ?: 0)
-                    if (index >= 0) {
-                        scope.launch {
-                            listState.animateScrollToItem(index)
-                        }
-                    }
-                    onDismissContinueReading()
-                },
-                shape = RoundedCornerShape(8.dp),
-                color = SealDark,
-                shadowElevation = 4.dp
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text(
-                        text = "继续阅读",
-                        color = PaperDark,
-                        style = MaterialTheme.typography.labelMedium
-                    )
-                    IconButton(
-                        onClick = { onDismissContinueReading() },
-                        modifier = Modifier.size(16.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Close,
-                            contentDescription = "关闭",
-                            tint = PaperDark,
-                            modifier = Modifier.size(12.dp)
-                        )
-                    }
-                }
-            }
-        }
 
         // Message context menu
         if (showMessageMenu && selectedMessage != null) {
@@ -2335,6 +2317,25 @@ private fun EmojiPickerDialog(
 }
 
 // Mention autocomplete dropdown
+@Composable
+private fun UnreadDivider() {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        HorizontalDivider(modifier = Modifier.weight(1f), thickness = 1.dp, color = InkDarkFaint)
+        Text(
+            text = "新消息",
+            color = SealDark,
+            style = MaterialTheme.typography.labelSmall
+        )
+        HorizontalDivider(modifier = Modifier.weight(1f), thickness = 1.dp, color = InkDarkFaint)
+    }
+}
+
 @Composable
 private fun MentionAutocomplete(
     query: String,

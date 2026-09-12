@@ -1,4 +1,4 @@
-import { ref, watch } from 'vue'
+import { ref } from 'vue'
 import { useGlobalWebSocket } from './useGlobalWebSocket'
 import { useAuthStore } from '../stores/auth'
 import axios from 'axios'
@@ -83,9 +83,7 @@ async function fetchAndMergeServerPositions(): Promise<void> {
 }
 
 export function useReadPosition() {
-  const { send, onMessage, isConnected } = useGlobalWebSocket()
-  const lastReadMessageId = ref<number | null>(null)
-  const showContinueReading = ref(false)
+  const { send, onMessage } = useGlobalWebSocket()
 
   // Initialize on first use
   if (!initialized) {
@@ -115,10 +113,16 @@ export function useReadPosition() {
   })
 
   /**
-   * Save read position locally and sync to server.
-   * Debounced to avoid excessive server calls.
+   * Record that the viewport has reached a message, and sync to the server
+   * (debounced). The caller resolves the current mention flags so an unseen
+   * mention survives position updates.
    */
-  function saveReadPosition(channelId: number, messageId: number) {
+  function saveReadPosition(
+    channelId: number,
+    messageId: number,
+    hasMention: boolean = false,
+    lastMentionMessageId: number | null = null
+  ) {
     const current = positions.value[channelId]
 
     // Only update if new position is greater
@@ -137,7 +141,7 @@ export function useReadPosition() {
       clearTimeout(syncDebounceTimers[channelId])
     }
     syncDebounceTimers[channelId] = window.setTimeout(() => {
-      syncToServer(channelId, messageId)
+      syncToServer(channelId, messageId, hasMention, lastMentionMessageId)
       delete syncDebounceTimers[channelId]
     }, 500)
   }
@@ -164,62 +168,18 @@ export function useReadPosition() {
     return positions.value[channelId]?.messageId ?? null
   }
 
-  function getReadTimestamp(channelId: number): number | null {
-    const timestamp = positions.value[channelId]?.timestamp ?? null
-    return timestamp
-  }
-
-  function markChannelAsRead(channelId: number) {
-    const now = Date.now()
-    const current = positions.value[channelId]
-    const messageId = current?.messageId ?? 0
-
-    positions.value[channelId] = {
-      messageId,
-      timestamp: now,
-    }
-    savePositionsToStorage(positions.value)
-
-    // Sync to server with cleared mention
-    if (messageId > 0) {
-      syncToServer(channelId, messageId, false, null)
-    }
-  }
-
-  function clearReadPosition(channelId: number) {
-    delete positions.value[channelId]
-    savePositionsToStorage(positions.value)
-  }
-
-  function initForChannel(channelId: number, latestMessageId: number | null) {
-    const savedId = getReadPosition(channelId)
-
-    // Show continue reading button if:
-    // 1. We have a saved position
-    // 2. The saved position is different from the latest message
-    if (savedId && latestMessageId && savedId < latestMessageId) {
-      lastReadMessageId.value = savedId
-      showContinueReading.value = true
-    } else {
-      lastReadMessageId.value = null
-      showContinueReading.value = false
-    }
-  }
-
-  function dismissContinueReading() {
-    showContinueReading.value = false
+  /**
+   * Tell the user's other devices this channel was opened so they can clear
+   * their unread badges. Ack state is per-device and never persisted.
+   */
+  function sendChannelAck(channelId: number) {
+    send({ type: 'channel_ack', channel_id: channelId })
   }
 
   return {
-    lastReadMessageId,
-    showContinueReading,
     saveReadPosition,
     getReadPosition,
-    getReadTimestamp,
-    markChannelAsRead,
-    clearReadPosition,
-    initForChannel,
-    dismissContinueReading,
+    sendChannelAck,
     syncToServer,
     refetchFromServer: fetchAndMergeServerPositions,
   }

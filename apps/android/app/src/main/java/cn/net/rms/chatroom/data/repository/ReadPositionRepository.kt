@@ -62,6 +62,11 @@ class ReadPositionRepository @Inject constructor(
                     is GlobalWebSocketEvent.ReadPositionSync -> {
                         handleReadPositionSync(event)
                     }
+                    is GlobalWebSocketEvent.ChannelAck -> {
+                        // Another device opened the channel: clear this device's
+                        // unread badge. Mention flags ride on position sync only.
+                        mentionManager.clearUnreadCount(event.channelId)
+                    }
                     is GlobalWebSocketEvent.Connected -> {
                         // Fetch server positions when connected
                         if (initialized) {
@@ -84,8 +89,8 @@ class ReadPositionRepository @Inject constructor(
             Log.d(TAG, "Marking channel ${event.channelId} as mentioned (messageId=${event.lastMentionMessageId})")
             mentionManager.markChannelAsMentioned(event.channelId, event.lastMentionMessageId)
         } else {
-            Log.d(TAG, "Clearing mention for channel ${event.channelId}")
-            mentionManager.clearChannelMention(event.channelId)
+            Log.d(TAG, "Clearing mention flag for channel ${event.channelId}")
+            mentionManager.clearMentionFlag(event.channelId)
         }
 
         // Update read position if server has newer data
@@ -137,7 +142,7 @@ class ReadPositionRepository @Inject constructor(
                 if (pos.hasMention && pos.lastMentionMessageId != null) {
                     mentionManager.markChannelAsMentioned(pos.channelId, pos.lastMentionMessageId)
                 } else {
-                    mentionManager.clearChannelMention(pos.channelId)
+                    mentionManager.clearMentionFlag(pos.channelId)
                 }
 
                 // Server wins for read position if local doesn't exist or server has higher message ID
@@ -183,15 +188,11 @@ class ReadPositionRepository @Inject constructor(
     }
 
     /**
-     * Save read position locally and sync to server.
-     * Debounced to avoid excessive server calls.
+     * Record that the viewport has reached a message, and sync to server
+     * (debounced). An unseen mention survives the sync: has_mention is only
+     * reported false once the read position has passed the mention message.
      */
-    fun saveReadPosition(
-        channelId: Long,
-        messageId: Long,
-        hasMention: Boolean = false,
-        lastMentionMessageId: Long? = null
-    ) {
+    fun saveReadPosition(channelId: Long, messageId: Long) {
         val current = _readPositions.value[channelId]
 
         // Only update if new position is greater
@@ -203,8 +204,8 @@ class ReadPositionRepository @Inject constructor(
         val newPosition = ReadPositionItem(
             channelId = channelId,
             lastReadMessageId = messageId,
-            hasMention = hasMention,
-            lastMentionMessageId = lastMentionMessageId
+            hasMention = current?.hasMention ?: false,
+            lastMentionMessageId = current?.lastMentionMessageId
         )
         _readPositions.value = _readPositions.value + (channelId to newPosition)
 
@@ -217,21 +218,27 @@ class ReadPositionRepository @Inject constructor(
         pendingSyncs[channelId]?.cancel()
         pendingSyncs[channelId] = scope.launch {
             delay(SYNC_DEBOUNCE_MS)
-            syncToServer(channelId, messageId, hasMention, lastMentionMessageId)
+            val mentionId = mentionManager.getLastMentionMessageId(channelId)
+            val hasMention = mentionId != null && messageId < mentionId
+            syncToServer(channelId, messageId, hasMention, if (hasMention) mentionId else null)
+            if (mentionId != null && !hasMention) {
+                // The viewport passed the mention: the @ badge has been seen.
+                mentionManager.clearMentionFlag(channelId)
+            }
             pendingSyncs.remove(channelId)
         }
     }
 
     /**
-     * Mark channel as read and sync to server.
+     * Acknowledge a channel: clear this device's unread badge and tell the
+     * user's other devices to do the same. Does not touch the read position —
+     * that advances only when messages actually enter the viewport.
      */
-    fun markChannelAsRead(channelId: Long, messageId: Long) {
-        saveReadPosition(channelId, messageId, hasMention = false, lastMentionMessageId = null)
-
-        // Clear mention state
+    fun acknowledgeChannel(channelId: Long) {
         scope.launch {
-            mentionManager.clearChannelMention(channelId)
+            mentionManager.clearUnreadCount(channelId)
         }
+        globalWebSocket.sendChannelAck(channelId)
     }
 
     /**
@@ -241,7 +248,7 @@ class ReadPositionRepository @Inject constructor(
         val current = _readPositions.value[channelId]
         val lastReadId = current?.lastReadMessageId ?: messageId
 
-        saveReadPosition(channelId, lastReadId, hasMention = true, lastMentionMessageId = lastMentionMessageId)
+        saveReadPosition(channelId, lastReadId)
 
         scope.launch {
             mentionManager.markChannelAsMentioned(channelId, lastMentionMessageId)

@@ -101,15 +101,27 @@ class MentionNotificationManager(private val context: Context) {
     }
 
     /**
-     * Clear mention state for a channel
+     * Clear the mention flag only. Unread counts are cleared separately via
+     * [clearUnreadCount] (driven by channel acks), never as a side effect.
      */
-    suspend fun clearChannelMention(channelId: Long) {
-        Log.d(TAG, "clearChannelMention: channelId=$channelId")
+    suspend fun clearMentionFlag(channelId: Long) {
+        Log.d(TAG, "clearMentionFlag: channelId=$channelId")
         dataStore.edit { prefs ->
             prefs[getMentionKey(channelId)] = false
+        }
+    }
+
+    /**
+     * Clear the unread count only, leaving the mention flag untouched.
+     */
+    suspend fun clearUnreadCount(channelId: Long) {
+        dataStore.edit { prefs ->
             prefs[getUnreadCountKey(channelId)] = 0
         }
-        Log.d(TAG, "DataStore updated for channel $channelId (mention=false, unread=0)")
+    }
+
+    suspend fun getLastMentionMessageId(channelId: Long): Long? {
+        return dataStore.data.first()[getLastMentionMessageIdKey(channelId)]
     }
 
     /**

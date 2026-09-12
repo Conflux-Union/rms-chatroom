@@ -775,15 +775,6 @@ class ChatRepository @Inject constructor(
         }
     }
 
-    // Read position tracking
-    suspend fun getLastReadMessageId(channelId: Long): Long? {
-        return settingsPreferences.getLastReadMessageId(channelId)
-    }
-
-    suspend fun setLastReadMessageId(channelId: Long, messageId: Long) {
-        settingsPreferences.setLastReadMessageId(channelId, messageId)
-    }
-
     // Reaction methods
     suspend fun addReaction(messageId: Long, emoji: String): Result<Unit> {
         return try {
