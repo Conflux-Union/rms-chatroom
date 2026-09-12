@@ -26,10 +26,14 @@ export const useChatStore = defineStore('chat', () => {
   const currentServer = ref<Server | null>(null)
   const currentChannel = ref<Channel | null>(null)
   const messages = ref<Message[]>([])
-  // Pagination state for the current channel's history (cursor = oldest loaded message id).
-  // hasMore: false once a page returns fewer than MESSAGES_PAGE_SIZE (reached the top).
+  // Pagination state for the current channel's history (cursor pagination by
+  // message id). hasMore: older pages may exist above the window; hasMoreNewer:
+  // newer pages may exist below it (only after an around/deep-link load).
+  // xxx-more flips to false once a page returns fewer than MESSAGES_PAGE_SIZE.
   const hasMore = ref(true)
+  const hasMoreNewer = ref(false)
   const isLoadingOlder = ref(false)
+  const isLoadingNewer = ref(false)
   // Map: channelId -> users in that voice channel
   const voiceChannelUsers = ref<Map<number, VoiceChannelUser[]>>(new Map())
   // Mute status from WebSocket error
@@ -278,24 +282,32 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  async function fetchMessages(channelId: number, before?: number) {
-    // Guard against concurrent "load older" requests for the same channel.
+  async function fetchMessages(channelId: number, before?: number, around?: number, after?: number) {
+    // Guard against concurrent "load older"/"load newer" requests.
     if (before && isLoadingOlder.value) return []
+    if (after && isLoadingNewer.value) return []
 
     if (before) {
       isLoadingOlder.value = true
+    } else if (after) {
+      isLoadingNewer.value = true
     } else {
-      // Fresh load (channel switch): clear the pane and reset pagination in
-      // the same action as the fetch, so no caller can end up with a cleared
-      // list that never reloads.
+      // Fresh load (channel switch or message-deep-link jump): clear the pane
+      // and reset pagination in the same action as the fetch, so no caller can
+      // end up with a cleared list that never reloads. An around window starts
+      // mid-history, so newer pages may exist below it.
       messages.value = []
       hasMore.value = true
+      hasMoreNewer.value = Boolean(around)
       isLoadingOlder.value = false
+      isLoadingNewer.value = false
     }
 
     try {
       const params: Record<string, any> = { limit: MESSAGES_PAGE_SIZE }
       if (before) params.before = before
+      if (around) params.around = around
+      if (after) params.after = after
 
       const resp = await axios.get(`${API_BASE}/api/channels/${channelId}/messages`, {
         headers: getAuthHeaders(),
@@ -309,12 +321,27 @@ export const useChatStore = defineStore('chat', () => {
         // messages was cleared and this older-page request is stale.
         if (!messages.value.some((m) => m.id === before)) return []
         messages.value = [...resp.data, ...messages.value]
+        // A short page means we've reached the top of the history.
+        if (resp.data.length < MESSAGES_PAGE_SIZE) {
+          hasMore.value = false
+        }
+      } else if (after) {
+        // Cursor must still be loaded (channel switched away and back).
+        if (!messages.value.some((m) => m.id === after)) return []
+        // A live WebSocket message may already have appended ids this page
+        // also contains — keep the first copy.
+        const seen = new Set(messages.value.map((m) => m.id))
+        messages.value = [...messages.value, ...resp.data.filter((m: Message) => !seen.has(m.id))]
+        // A short page means we've reached the newest message.
+        if (resp.data.length < MESSAGES_PAGE_SIZE) {
+          hasMoreNewer.value = false
+        }
       } else {
         messages.value = resp.data
-      }
-      // A short page means we've reached the top of the history.
-      if (resp.data.length < MESSAGES_PAGE_SIZE) {
-        hasMore.value = false
+        // A short page means we've reached the top of the history.
+        if (resp.data.length < MESSAGES_PAGE_SIZE) {
+          hasMore.value = false
+        }
       }
       return resp.data
     } catch (e) {
@@ -322,6 +349,7 @@ export const useChatStore = defineStore('chat', () => {
       return []
     } finally {
       if (before) isLoadingOlder.value = false
+      if (after) isLoadingNewer.value = false
     }
   }
 
@@ -332,6 +360,9 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   function addMessage(message: Message) {
+    // Live tail only. A load-newer page in flight may already contain this
+    // message (WS delivery racing the fetch) — keep the first copy.
+    if (messages.value.some((m) => m.id === message.id)) return
     messages.value.push(message)
   }
 
@@ -453,7 +484,9 @@ export const useChatStore = defineStore('chat', () => {
     currentChannel,
     messages,
     hasMore,
+    hasMoreNewer,
     isLoadingOlder,
+    isLoadingNewer,
     voiceChannelUsers,
     isMutedByWs,
     muteReasonByWs,

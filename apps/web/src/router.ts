@@ -9,6 +9,21 @@ const routes = [
     meta: { requiresAuth: true },
   },
   {
+    // Deep links to a channel, and to a specific message inside it.
+    // IDs are global, so the channel group level of the hierarchy is not part
+    // of the path (a channel moving between groups must not break the link).
+    path: '/:serverId(\\d+)/:channelId(\\d+)',
+    name: 'ChannelPath',
+    component: () => import('@rms-discord/shared/views/Main.vue'),
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/:serverId(\\d+)/:channelId(\\d+)/:messageId(\\d+)',
+    name: 'MessagePath',
+    component: () => import('@rms-discord/shared/views/Main.vue'),
+    meta: { requiresAuth: true },
+  },
+  {
     path: '/login',
     name: 'Login',
     component: () => import('@rms-discord/shared/views/Login.vue'),
@@ -23,6 +38,12 @@ const routes = [
     alias: '/voice-invite/:token',
     name: 'VoiceInvite',
     component: () => import('@rms-discord/shared/views/VoiceInvite.vue'),
+    meta: { requiresAuth: false },
+  },
+  {
+    path: '/:pathMatch(.*)*',
+    name: 'NotFound',
+    component: () => import('@rms-discord/shared/views/NotFound.vue'),
     meta: { requiresAuth: false },
   },
 ]

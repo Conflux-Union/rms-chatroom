@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useChatStore } from '../stores/chat'
 import { useVoiceStore } from '../stores/voice'
 import { useMusicStore } from '../stores/music'
@@ -19,6 +20,8 @@ import { Music, Menu, X } from 'lucide-vue-next'
 const auth = useAuthStore()
 const chat = useChatStore()
 const voice = useVoiceStore()
+const route = useRoute()
+const router = useRouter()
 // Initialize music store early so WebSocket auto-connects when joining voice
 useMusicStore()
 
@@ -176,14 +179,70 @@ onSwipeLeft(() => {
   }
 })
 
+// ---------------------------------------------------------------------------
+// Channel / message deep links & URL sync
+//
+// `/:serverId/:channelId(/:messageId)` opens a specific channel (and message;
+// the message part is consumed by ChatArea). Selection changes mirror back
+// into the URL: a server-driven default selection replaces the history entry,
+// a user click pushes one — so the browser back button returns to the
+// previously viewed channel.
+// ---------------------------------------------------------------------------
+
+// True while a route target is being resolved into store state. Suppresses the
+// default first-channel selection and URL mirroring for the intermediate
+// states, which would otherwise push spurious history entries.
+const isResolvingRouteChannel = ref(false)
+
+function routeChannelTarget(): { serverId: number; channelId: number } | null {
+  if (route.name !== 'ChannelPath' && route.name !== 'MessagePath') return null
+  const serverId = Number(route.params.serverId)
+  const channelId = Number(route.params.channelId)
+  if (!Number.isInteger(serverId) || !Number.isInteger(channelId)) return null
+  return { serverId, channelId }
+}
+
+// Select the channel targeted by the current route. Redirects to NotFound when
+// the target does not exist or is not accessible — unless the server list
+// itself failed to load, then fall through to the plain boot state.
+async function openChannelFromRoute(): Promise<void> {
+  const target = routeChannelTarget()
+  if (!target) return
+  if (chat.currentServer?.id === target.serverId && chat.currentChannel?.id === target.channelId) return
+
+  isResolvingRouteChannel.value = true
+  try {
+    const serverListLoaded = chat.servers.length > 0
+    if (chat.currentServer?.id !== target.serverId) {
+      const server = await chat.fetchServer(target.serverId)
+      if (!server) {
+        if (serverListLoaded) router.replace({ name: 'NotFound' })
+        return
+      }
+    }
+    const channel = chat.currentServer?.channels?.find(c => c.id === target.channelId)
+    if (!channel) {
+      if (serverListLoaded) router.replace({ name: 'NotFound' })
+      return
+    }
+    chat.setCurrentChannel(channel)
+  } finally {
+    isResolvingRouteChannel.value = false
+  }
+}
+
 onMounted(async () => {
   // Connect global chat WebSocket
   chatWs.connect()
-  
+
   await chat.fetchServers()
-  const firstServer = chat.servers[0]
-  if (firstServer) {
-    await chat.fetchServer(firstServer.id)
+  if (routeChannelTarget()) {
+    await openChannelFromRoute()
+  } else {
+    const firstServer = chat.servers[0]
+    if (firstServer) {
+      await chat.fetchServer(firstServer.id)
+    }
   }
 
   printConsoleEasterEgg()
@@ -192,6 +251,9 @@ onMounted(async () => {
 watch(
   () => chat.currentServer,
   (server) => {
+    // A route deep link owns the selection while resolving; the default
+    // first-channel pick must not race it.
+    if (isResolvingRouteChannel.value) return
     if (server && server.channels && server.channels.length > 0) {
       // 按照频道列表的排序逻辑选择第一个文字频道
       // 1. 首先检查独立频道（按 top_position 排序）
@@ -246,6 +308,44 @@ watch(
         chat.setCurrentChannel(anyTextChannel)
       }
     }
+  }
+)
+
+// Mirror selection changes into the URL. Server switches land on their default
+// channel as one update → replace (back returns to the previous server's
+// channel); clicks within a server → push (back returns to the previous
+// channel).
+watch(
+  [() => chat.currentServer, () => chat.currentChannel],
+  ([server, channel], [prevServer]) => {
+    if (isResolvingRouteChannel.value) return
+    if (!server || !channel) return
+    // Already reflected in the URL (deep-link mount, back/forward navigation,
+    // or a re-select of the same channel).
+    if (
+      (route.name === 'ChannelPath' || route.name === 'MessagePath') &&
+      Number(route.params.channelId) === channel.id
+    ) {
+      return
+    }
+    const target = {
+      name: 'ChannelPath',
+      params: { serverId: String(server.id), channelId: String(channel.id) },
+    }
+    if (server !== prevServer) {
+      router.replace(target)
+    } else {
+      router.push(target)
+    }
+  }
+)
+
+// Route → state: browser back/forward (or a manual URL edit) must select the
+// channel the path points at, across servers if needed.
+watch(
+  () => [route.name, route.params.serverId, route.params.channelId],
+  () => {
+    openChannelFromRoute()
   }
 )
 

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, watch, nextTick, onMounted, onUnmounted, computed } from 'vue'
 import type { CSSProperties } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useChatStore } from '../stores/chat'
 import { useAuthStore } from '../stores/auth'
 import { useChatWebSocket } from '../composables/useChatWebSocket'
@@ -33,6 +34,8 @@ const API_BASE = import.meta.env.VITE_API_BASE || ''
 const chat = useChatStore()
 const auth = useAuthStore()
 const chatWs = useChatWebSocket()
+const route = useRoute()
+const router = useRouter()
 const messageInput = ref('')
 const messagesContainer = ref<HTMLElement | null>(null)
 const fileInput = ref<HTMLInputElement | null>(null)
@@ -41,9 +44,14 @@ const fileInput = ref<HTMLInputElement | null>(null)
 // chat both ways, the type only swaps the header hash for a sync icon.
 const isForwardChannel = computed(() => chat.currentChannel?.type === 'FORWARD')
 
-// True while prepending older messages. Suppresses the length-watch auto-scroll
-// (which would yank the user back to the bottom) and guards re-entrancy.
+// True while prepending older messages (scrolling up). Suppresses the
+// length-watch auto-scroll (which would yank the user back to the bottom) and
+// guards re-entrancy.
 const isFetchingOlder = ref(false)
+
+// True while appending newer messages (scrolling down a pane that starts
+// mid-history after a message deep link). Same suppression, mirrored.
+const isFetchingNewer = ref(false)
 
 // File upload state
 const pendingFiles = ref<File[]>([])
@@ -72,6 +80,7 @@ const contextMenuOptions = computed(() => {
   const opts: Array<{ label: string; key: string }> = []
   opts.push({ label: '添加表情', key: 'reaction' })
   opts.push({ label: '回复', key: 'reply' })
+  if (!msg.is_deleted) opts.push({ label: '复制消息链接', key: 'copy_link' })
   if (canEdit(msg)) opts.push({ label: '编辑', key: 'edit' })
   if (canDelete(msg)) opts.push({ label: '删除', key: 'delete' })
   if (canMute(msg)) opts.push({ label: '禁言用户', key: 'mute' })
@@ -96,6 +105,7 @@ function handleContextMenuSelect(key: string | number) {
     emojiPickerMessageId.value = msg.id
     showEmojiPicker.value = true
   } else if (key === 'reply') startReply(msg)
+  else if (key === 'copy_link') copyMessageLink(msg.id)
   else if (key === 'edit') startEdit(msg)
   else if (key === 'delete') confirmDeleteMessage(msg)
   else if (key === 'mute') showMuteDialog(msg)
@@ -239,7 +249,10 @@ watch(
       isFetchingOlder.value = true
 
       try {
-        await chat.fetchMessages(channel.id)
+        const linkedMessageId = readLinkedMessageId(channel.id)
+        // A message deep link loads a window around the target instead of the
+        // newest page, so the target message is actually reachable.
+        await chat.fetchMessages(channel.id, undefined, linkedMessageId ?? undefined)
         await checkMuteStatus()
 
         const tailId = chat.messages.length > 0
@@ -248,7 +261,14 @@ watch(
         entryTailId.value = tailId
         const savedId = getReadPosition(channel.id)
 
-        if (savedId != null && tailId != null && savedId < tailId) {
+        if (linkedMessageId != null) {
+          // Landed via a message deep link: position on the linked message,
+          // not on the unread divider or the bottom.
+          firstUnreadId.value = null
+          await nextTick()
+          refreshMessageObserver()
+          scrollToLinkedMessage(linkedMessageId)
+        } else if (savedId != null && tailId != null && savedId < tailId) {
           // Gap: pull older pages until the saved position is inside the
           // window so the first unread message is actually reachable. Cap the
           // pull — beyond it, land on the window top (still behind the tail).
@@ -297,13 +317,47 @@ watch(
   { immediate: true }
 )
 
+// Message-link navigation within the already-open channel (browser back/
+// forward between message links, or a link opened while inside the channel):
+// the entry watcher above is keyed on channel id and does not fire.
+watch(
+  () => route.params.messageId,
+  async () => {
+    if (route.name !== 'MessagePath') return
+    const channelId = Number(route.params.channelId)
+    const messageId = Number(route.params.messageId)
+    if (!Number.isInteger(messageId) || chat.currentChannel?.id !== channelId) return
+    // A fresh channel entry resolves its own linked-message positioning.
+    if (entryPositioning) return
+
+    if (chat.messages.some((m) => m.id === messageId)) {
+      scrollToMessage(messageId)
+      return
+    }
+    // Outside the loaded window: reload the pane as a window around the target.
+    isFetchingOlder.value = true
+    try {
+      await chat.fetchMessages(channelId, undefined, messageId)
+      await nextTick()
+      refreshMessageObserver()
+    } finally {
+      isFetchingOlder.value = false
+    }
+    scrollToLinkedMessage(messageId)
+  }
+)
+
 // Auto-scroll when new messages arrive.
-// Skip when prepending older messages (isFetchingOlder) — loadOlderMessages
-// restores the scroll position itself instead of jumping to the bottom.
+// Skip when prepending older (isFetchingOlder) or appending newer
+// (isFetchingNewer) — loadOlderMessages/loadNewerMessages restore the scroll
+// position themselves instead of jumping.
+// Skip while hasMoreNewer: a pane that starts mid-history (message deep link)
+// must not yank the user to the bottom on every incoming message; follow
+// resumes once the pane is caught up to the tail.
 watch(
   () => chat.messages.length,
   async () => {
-    if (isFetchingOlder.value) return
+    if (isFetchingOlder.value || isFetchingNewer.value || chat.hasMoreNewer) return
     await nextTick()
     scrollToBottom()
     refreshMessageObserver()
@@ -354,6 +408,34 @@ async function loadOlderMessages() {
 
   refreshMessageObserver()
   isFetchingOlder.value = false
+}
+
+// Load one page of newer messages and keep the user's viewport steady — the
+// mirror of loadOlderMessages, for panes that start mid-history after a
+// message deep link (or a back/forward jump between message links).
+async function loadNewerMessages() {
+  if (isFetchingNewer.value) return
+  if (!chat.currentChannel || !chat.hasMoreNewer || chat.messages.length === 0) return
+  const container = messagesContainer.value
+  if (!container) return
+
+  isFetchingNewer.value = true
+  const anchorId = chat.messages[chat.messages.length - 1].id
+  const containerTop = container.getBoundingClientRect().top
+  const anchorEl = container.querySelector<HTMLElement>(`[data-message-id="${anchorId}"]`)
+  const anchorRelTop = anchorEl ? anchorEl.getBoundingClientRect().top - containerTop : 0
+
+  await chat.fetchMessages(chat.currentChannel.id, undefined, undefined, anchorId)
+
+  await nextTick()
+  const newAnchorEl = container.querySelector<HTMLElement>(`[data-message-id="${anchorId}"]`)
+  if (newAnchorEl) {
+    const newRelTop = newAnchorEl.getBoundingClientRect().top - container.getBoundingClientRect().top
+    container.scrollTop += newRelTop - anchorRelTop
+  }
+
+  refreshMessageObserver()
+  isFetchingNewer.value = false
 }
 
 // Viewport-driven read position: save when the visible set settles, whether
@@ -412,6 +494,18 @@ function handleMessagesScroll() {
     messagesContainer.value.scrollTop < 100
   ) {
     loadOlderMessages()
+  }
+
+  // Scrolled near the bottom: load one more page of newer history (panes that
+  // start mid-history after a message deep link). On a pane loaded from the
+  // newest page hasMoreNewer is false and this stays inert.
+  if (
+    chat.hasMoreNewer &&
+    !isFetchingNewer.value &&
+    messagesContainer.value &&
+    messagesContainer.value.scrollHeight - messagesContainer.value.scrollTop - messagesContainer.value.clientHeight < 100
+  ) {
+    loadNewerMessages()
   }
 
   schedulePositionSave()
@@ -509,6 +603,67 @@ function scrollToMessage(messageId: number, behavior: ScrollBehavior = 'smooth')
       messageEl.classList.remove('message-highlight')
     }, 2000)
   }
+}
+
+// Message deep-link target when the current route points into `channelId`.
+function readLinkedMessageId(channelId: number): number | null {
+  if (route.name !== 'MessagePath') return null
+  if (Number(route.params.channelId) !== channelId) return null
+  const id = Number(route.params.messageId)
+  return Number.isInteger(id) && id > 0 ? id : null
+}
+
+// Land on the linked message; if it was deleted (or is otherwise missing from
+// the loaded window), fall back to its nearest older neighbor so the location
+// is still roughly right — without highlighting the wrong message.
+function scrollToLinkedMessage(messageId: number) {
+  if (chat.messages.some((m) => m.id === messageId)) {
+    scrollToMessage(messageId, 'auto')
+    return
+  }
+  const nearestOlder = [...chat.messages].reverse().find((m) => m.id < messageId)
+  const el = nearestOlder
+    ? messagesContainer.value?.querySelector(`[data-message-id="${nearestOlder.id}"]`)
+    : null
+  if (el) {
+    el.scrollIntoView({ behavior: 'auto', block: 'center' })
+  } else {
+    scrollToBottom()
+  }
+}
+
+// Permalink for a message: /server/channel/message, resolved against the
+// current origin (the hash router on desktop yields origin/path#/...).
+async function copyMessageLink(messageId: number) {
+  const serverId = chat.currentServer?.id
+  const channelId = chat.currentChannel?.id
+  if (!serverId || !channelId) return
+  const href = router.resolve({
+    name: 'MessagePath',
+    params: {
+      serverId: String(serverId),
+      channelId: String(channelId),
+      messageId: String(messageId),
+    },
+  }).href
+  const url = new URL(href, window.location.origin).toString()
+  try {
+    await navigator.clipboard.writeText(url)
+    showLinkCopiedToast()
+  } catch (e) {
+    console.warn('[chat] copy message link failed:', e)
+  }
+}
+
+// Brief confirmation for the copied permalink.
+const showLinkCopied = ref(false)
+let linkCopiedTimer: ReturnType<typeof setTimeout> | null = null
+function showLinkCopiedToast() {
+  showLinkCopied.value = true
+  if (linkCopiedTimer) clearTimeout(linkCopiedTimer)
+  linkCopiedTimer = setTimeout(() => {
+    showLinkCopied.value = false
+  }, 1500)
 }
 
 // File handling
@@ -1584,6 +1739,11 @@ onUnmounted(() => {
         </ZmSpace>
       </template>
     </ZmModal>
+
+    <!-- Copied-permalink confirmation -->
+    <Transition name="copy-toast">
+      <div v-if="showLinkCopied" class="copy-link-toast">消息链接已复制</div>
+    </Transition>
   </div>
 </template>
 
@@ -2515,5 +2675,32 @@ onUnmounted(() => {
 
 .emoji-btn:hover {
   background: var(--surface-glass-input);
+}
+
+/* Copied-permalink toast */
+.copy-link-toast {
+  position: fixed;
+  top: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 300;
+  padding: 8px 18px;
+  border-radius: var(--radius-md);
+  background: var(--zhimo-surface-bg);
+  border: 1px solid var(--zhimo-border-strong);
+  box-shadow: var(--zhimo-shadow-sm);
+  color: var(--color-text-main);
+  font-size: 0.85rem;
+}
+
+.copy-toast-enter-active,
+.copy-toast-leave-active {
+  transition: opacity var(--transition-fast), transform var(--transition-fast);
+}
+
+.copy-toast-enter-from,
+.copy-toast-leave-to {
+  opacity: 0;
+  transform: translateX(-50%) translateY(-6px);
 }
 </style>
