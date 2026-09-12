@@ -35,20 +35,27 @@ class AuthViewModel @Inject constructor(
 
     init {
         checkAuth()
-        observeTokenCleared()
+        observeTokenChanges()
     }
 
     /**
-     * Watch for token removal by TokenAuthenticator (e.g. refresh failed
-     * on a background request). When tokens disappear, silently transition
-     * to unauthenticated state so the user lands on the login screen.
+     * Mirror DataStore token changes into the UI state. TokenAuthenticator
+     * rotates tokens on background 401s and only writes to DataStore; image,
+     * video, and text previews send `state.token` verbatim, so a rotation
+     * that stays unseen would keep them sending the expired value until
+     * restart. Token removal still routes to the login screen.
      */
-    private fun observeTokenCleared() {
+    private fun observeTokenChanges() {
         viewModelScope.launch {
             authRepository.tokenFlow.collect { token ->
-                if (token == null && _state.value.isAuthenticated) {
-                    Log.d(TAG, "Token cleared externally, transitioning to unauthenticated")
-                    _state.value = AuthState(isLoading = false, isAuthenticated = false)
+                if (token == null) {
+                    if (_state.value.isAuthenticated) {
+                        Log.d(TAG, "Token cleared externally, transitioning to unauthenticated")
+                        _state.value = AuthState(isLoading = false, isAuthenticated = false)
+                    }
+                } else if (token != _state.value.token) {
+                    Log.d(TAG, "Token rotated externally, updating state")
+                    _state.value = _state.value.copy(token = token)
                 }
             }
         }
@@ -58,7 +65,7 @@ class AuthViewModel @Inject constructor(
      * The startup decision must not wait on the network: any stored credential,
      * even an expired one, goes straight to main. Validity is re-checked in the
      * background by [validateStoredToken]; when a credential turns out to be
-     * invalid, tokens are cleared and [observeTokenCleared] routes the user to
+     * invalid, tokens are cleared and [observeTokenChanges] routes the user to
      * the login screen.
      */
     private fun checkAuth() {

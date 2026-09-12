@@ -7,9 +7,12 @@ import coil.disk.DiskCache
 import coil.memory.MemoryCache
 import coil.request.CachePolicy
 import coil.util.DebugLogger
+import cn.net.rms.chatroom.data.auth.TokenAuthenticator
 import cn.net.rms.chatroom.data.telemetry.TelemetryReporter
 import cn.net.rms.chatroom.notification.NotificationHelper
 import dagger.hilt.android.HiltAndroidApp
+import okhttp3.OkHttpClient
+import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 
 @HiltAndroidApp
@@ -20,6 +23,9 @@ class RMSDiscordApp : Application(), ImageLoaderFactory {
 
     @Inject
     lateinit var telemetryReporter: TelemetryReporter
+
+    @Inject
+    lateinit var tokenAuthenticator: TokenAuthenticator
 
     override fun onCreate() {
         super.onCreate()
@@ -49,6 +55,16 @@ class RMSDiscordApp : Application(), ImageLoaderFactory {
             .networkCachePolicy(CachePolicy.ENABLED)
             .crossfade(true)
             .respectCacheHeaders(false) // Ignore server cache headers for better caching
+            // Composables capture the access token when the request is built, so
+            // it can expire before the image is fetched. The authenticator retries
+            // the 401 with the rotated DataStore token instead of failing the load.
+            .okHttpClient(
+                OkHttpClient.Builder()
+                    .connectTimeout(30, TimeUnit.SECONDS)
+                    .readTimeout(30, TimeUnit.SECONDS)
+                    .authenticator(tokenAuthenticator)
+                    .build()
+            )
             .apply {
                 if (BuildConfig.DEBUG) {
                     logger(DebugLogger())
