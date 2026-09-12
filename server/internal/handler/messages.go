@@ -359,59 +359,115 @@ func (h *MessageHandler) GetMessages(c echo.Context) error {
 		return c.JSON(http.StatusForbidden, map[string]string{"error": "you do not have permission to view this channel"})
 	}
 
-	query := "SELECT id, channel_id, user_id, username, content, created_at, is_deleted, deleted_by, edited_at, reply_to_id, source_platform, forward_meta FROM messages WHERE channel_id = ? AND is_deleted = FALSE"
-	args := []interface{}{channelID}
-
-	if before := c.QueryParam("before"); before != "" {
-		if bid, err := strconv.ParseInt(before, 10, 64); err == nil {
-			query += " AND id < ?"
-			args = append(args, bid)
+	// Optional `around` anchor: return a window spanning that message id
+	// instead of the newest page (message deep links). The anchor side gets
+	// the leftover page budget, so a full page still means "older history may
+	// exist" for the client's has-more heuristic.
+	var aroundID int64
+	hasAround := false
+	if v := c.QueryParam("around"); v != "" {
+		id, parseErr := strconv.ParseInt(v, 10, 64)
+		if parseErr != nil || id <= 0 {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid around message id"})
 		}
+		aroundID = id
+		hasAround = true
 	}
-	query += " ORDER BY id DESC LIMIT ?"
-	args = append(args, limit)
 
-	rows, err := h.db.Query(query, args...)
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	// Optional `after` cursor: the oldest `limit` messages newer than the id
+	// (load-newer pagination, the mirror of `before`).
+	var afterID int64
+	hasAfter := false
+	if v := c.QueryParam("after"); v != "" {
+		id, parseErr := strconv.ParseInt(v, 10, 64)
+		if parseErr != nil || id <= 0 {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid after message id"})
+		}
+		afterID = id
+		hasAfter = true
 	}
-	defer rows.Close()
 
-	// First pass: scan messages and collect IDs needed for batch loading.
+	msgQuery := "SELECT id, channel_id, user_id, username, content, created_at, is_deleted, deleted_by, edited_at, reply_to_id, source_platform, forward_meta FROM messages WHERE channel_id = ? AND is_deleted = FALSE"
+
+	// scanPage appends one page to msgs and collects the IDs needed for batch
+	// loading. The around/before modes scan DESC and are reversed once at the
+	// end; the after mode scans ASC and skips the reverse.
 	var msgs []messageResp
 	messageIDs := make([]int64, 0)
 	replyToIDSet := make(map[int64]bool)
-	for rows.Next() {
-		var m messageResp
-		var createdAt time.Time
-		var editedAt sql.NullTime
-		var deletedBy sql.NullInt64
-		var replyToID sql.NullInt64
-		var sourcePlatform, forwardMeta sql.NullString
-		if err := rows.Scan(&m.ID, &m.ChannelID, &m.UserID, &m.Username, &m.Content,
-			&createdAt, &m.IsDeleted, &deletedBy, &editedAt, &replyToID,
-			&sourcePlatform, &forwardMeta); err != nil {
+	scanPage := func(where string, whereArgs []interface{}, pageLimit int, order string) error {
+		args := append([]interface{}{channelID}, whereArgs...)
+		args = append(args, pageLimit)
+		rows, err := h.db.Query(msgQuery+where+" ORDER BY id "+order+" LIMIT ?", args...)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			var m messageResp
+			var createdAt time.Time
+			var editedAt sql.NullTime
+			var deletedBy sql.NullInt64
+			var replyToID sql.NullInt64
+			var sourcePlatform, forwardMeta sql.NullString
+			if err := rows.Scan(&m.ID, &m.ChannelID, &m.UserID, &m.Username, &m.Content,
+				&createdAt, &m.IsDeleted, &deletedBy, &editedAt, &replyToID,
+				&sourcePlatform, &forwardMeta); err != nil {
+				return err
+			}
+			m.CreatedAt = createdAt.UTC().Format("2006-01-02T15:04:05Z")
+			if editedAt.Valid {
+				s := editedAt.Time.UTC().Format("2006-01-02T15:04:05Z")
+				m.EditedAt = &s
+			}
+			if deletedBy.Valid {
+				m.DeletedBy = &deletedBy.Int64
+			}
+			if replyToID.Valid {
+				m.ReplyToID = &replyToID.Int64
+				replyToIDSet[replyToID.Int64] = true
+			}
+			m.SourcePlatform = sourcePlatform.String
+			if forwardMeta.Valid {
+				m.ForwardMeta = json.RawMessage(forwardMeta.String)
+			}
+
+			messageIDs = append(messageIDs, m.ID)
+			msgs = append(msgs, m)
+		}
+		return rows.Err()
+	}
+
+	descOrder := true
+	if hasAround {
+		afterCap := limit/2 - 1
+		if afterCap < 0 {
+			afterCap = 0
+		}
+		if err := scanPage(" AND id > ?", []interface{}{aroundID}, afterCap, "DESC"); err != nil {
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		}
-		m.CreatedAt = createdAt.UTC().Format("2006-01-02T15:04:05Z")
-		if editedAt.Valid {
-			s := editedAt.Time.UTC().Format("2006-01-02T15:04:05Z")
-			m.EditedAt = &s
+		if err := scanPage(" AND id <= ?", []interface{}{aroundID}, limit-len(msgs), "DESC"); err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		}
-		if deletedBy.Valid {
-			m.DeletedBy = &deletedBy.Int64
+	} else if hasAfter {
+		// Oldest page after the cursor, already chronological: no reverse.
+		descOrder = false
+		if err := scanPage(" AND id > ?", []interface{}{afterID}, limit, "ASC"); err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		}
-		if replyToID.Valid {
-			m.ReplyToID = &replyToID.Int64
-			replyToIDSet[replyToID.Int64] = true
+	} else {
+		before := c.QueryParam("before")
+		if bid, parseErr := strconv.ParseInt(before, 10, 64); before != "" && parseErr == nil {
+			if err := scanPage(" AND id < ?", []interface{}{bid}, limit, "DESC"); err != nil {
+				return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			}
+		} else {
+			if err := scanPage("", nil, limit, "DESC"); err != nil {
+				return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			}
 		}
-		m.SourcePlatform = sourcePlatform.String
-		if forwardMeta.Valid {
-			m.ForwardMeta = json.RawMessage(forwardMeta.String)
-		}
-
-		messageIDs = append(messageIDs, m.ID)
-		msgs = append(msgs, m)
 	}
 
 	// Batch load related entities: 3 queries regardless of message count,
@@ -452,9 +508,12 @@ func (h *MessageHandler) GetMessages(c echo.Context) error {
 
 	// Batch fetch avatars
 	avatarMap := h.sso.GetAvatarURLsBatch(userIDs)
-	// Reverse for chronological order and apply avatars
-	for i, j := 0, len(msgs)-1; i < j; i, j = i+1, j-1 {
-		msgs[i], msgs[j] = msgs[j], msgs[i]
+	// Reverse the DESC pages for chronological output (the after mode is
+	// already chronological), then apply avatars
+	if descOrder {
+		for i, j := 0, len(msgs)-1; i < j; i, j = i+1, j-1 {
+			msgs[i], msgs[j] = msgs[j], msgs[i]
+		}
 	}
 	for i := range msgs {
 		if url, ok := avatarMap[int(msgs[i].UserID)]; ok {
