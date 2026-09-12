@@ -109,7 +109,7 @@ func TestMergeUserInfo(t *testing.T) {
 		want   permission.UserInfo
 	}{
 		{
-			name:   "partial SSO response keeps stored strings",
+			name:   "partial SSO response keeps stored strings and group",
 			stored: storedFull,
 			fresh: &permission.UserInfo{
 				Username:        "Trirrin",
@@ -122,22 +122,42 @@ func TestMergeUserInfo(t *testing.T) {
 				Nickname:        "缇Rain",
 				Email:           "a@b.c",
 				PermissionLevel: 4,
-				// A missing group object yields 0, indistinguishable from
-				// an explicit 0; SSO wins for numeric levels.
-				GroupLevel: 0,
+				// account_info omits the group object entirely, so the
+				// stored group level must survive the merge.
+				GroupLevel: 5,
 				AvatarURL:  "https://sso/avatar",
+			},
+		},
+		{
+			name:   "explicit group level wins even at zero",
+			stored: storedFull,
+			fresh: &permission.UserInfo{
+				Username:          "Trirrin",
+				Nickname:          "缇Rain",
+				PermissionLevel:   4,
+				GroupLevel:        0,
+				GroupLevelPresent: true,
+			},
+			want: permission.UserInfo{
+				ID:              1,
+				Username:        "Trirrin",
+				Nickname:        "缇Rain",
+				Email:           "a@b.c",
+				PermissionLevel: 4,
+				GroupLevel:      0,
 			},
 		},
 		{
 			name:   "complete SSO response wins",
 			stored: storedFull,
 			fresh: &permission.UserInfo{
-				Username:        "Trirrin",
-				Nickname:        "NewName",
-				Email:           "new@b.c",
-				PermissionLevel: 3,
-				GroupLevel:      2,
-				AvatarURL:       "https://sso/new",
+				Username:          "Trirrin",
+				Nickname:          "NewName",
+				Email:             "new@b.c",
+				PermissionLevel:   3,
+				GroupLevel:        2,
+				GroupLevelPresent: true,
+				AvatarURL:         "https://sso/new",
 			},
 			want: permission.UserInfo{
 				ID:              1,
@@ -168,7 +188,7 @@ func TestMergeUserInfo(t *testing.T) {
 				Nickname:        "Trirrin",
 				Email:           "a@b.c",
 				PermissionLevel: 4,
-				GroupLevel:      0,
+				GroupLevel:      5,
 			},
 		},
 		{
@@ -190,7 +210,7 @@ func TestMergeUserInfo(t *testing.T) {
 				Nickname:        "SomeName",
 				Email:           "a@b.c",
 				PermissionLevel: 4,
-				GroupLevel:      0,
+				GroupLevel:      5,
 			},
 		},
 	}

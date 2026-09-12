@@ -538,11 +538,11 @@ func (h *AuthHandler) isValidRedirect(redirectURL string) bool {
 
 // Refresh exchanges a refresh token for new access + refresh tokens.
 // mergeUserInfo overlays a fresh SSO profile onto stored refresh-token
-// metadata. SSO wins, but a partial response (SSO deployments have dropped
-// optional fields like nickname/email/group before) must not erase stored
-// data with empty strings. An empty nickname falls back to the username,
-// matching the login path. Permission levels have legitimate zero values, so
-// a missing field is indistinguishable from an explicit 0 and SSO wins.
+// metadata. SSO wins, but account_info responses carry neither nickname,
+// email nor group, so a partial response must not erase stored data with
+// empty strings or a zeroed group level. An empty nickname falls back to
+// the username, matching the login path. permission_level is always present
+// in account_info responses, so SSO wins for it unconditionally.
 func mergeUserInfo(stored, fresh *permission.UserInfo) *permission.UserInfo {
 	if fresh == nil {
 		return stored
@@ -558,7 +558,9 @@ func mergeUserInfo(stored, fresh *permission.UserInfo) *permission.UserInfo {
 		merged.Email = fresh.Email
 	}
 	merged.PermissionLevel = fresh.PermissionLevel
-	merged.GroupLevel = fresh.GroupLevel
+	if fresh.GroupLevelPresent {
+		merged.GroupLevel = fresh.GroupLevel
+	}
 	merged.AvatarURL = fresh.AvatarURL
 	if merged.Nickname == "" {
 		merged.Nickname = merged.Username

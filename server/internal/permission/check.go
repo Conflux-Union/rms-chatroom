@@ -9,6 +9,13 @@ type UserInfo struct {
 	PermissionLevel int    `json:"permission_level"`
 	GroupLevel      int    `json:"group_level"`
 	AvatarURL       string `json:"avatar_url"`
+
+	// GroupLevelPresent reports whether the SSO profile response this
+	// UserInfo was built from actually carried a group. The account_info
+	// endpoint omits it entirely, so there a zero GroupLevel means
+	// "unknown", not "no group". Profile merges (auth refresh) must not
+	// let an absent group erase a stored one; the zero value errs safe.
+	GroupLevelPresent bool `json:"-"`
 }
 
 // PermRule defines a dual-dimension permission rule.

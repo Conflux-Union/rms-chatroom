@@ -54,12 +54,30 @@ type ssoAccountInfoResponse struct {
 		Email           string `json:"email"`
 		PermissionLevel int    `json:"permission_level"`
 		AvatarURL       string `json:"avatar_url"`
-		Group           struct {
+		Group           *struct {
 			ID    int    `json:"id"`
 			Name  string `json:"name"`
 			Level int    `json:"level"`
 		} `json:"group"`
 	} `json:"user"`
+}
+
+// accountInfoUser converts a decoded account_info user into a UserInfo,
+// recording whether the response actually carried a group.
+func accountInfoUser(resp *ssoAccountInfoResponse) *permission.UserInfo {
+	u := &permission.UserInfo{
+		ID:              resp.User.ID,
+		Username:        resp.User.Username,
+		Nickname:        resp.User.Nickname,
+		Email:           resp.User.Email,
+		PermissionLevel: resp.User.PermissionLevel,
+		AvatarURL:       resp.User.AvatarURL,
+	}
+	if resp.User.Group != nil {
+		u.GroupLevel = resp.User.Group.Level
+		u.GroupLevelPresent = true
+	}
+	return u
 }
 
 // GetUserByID fetches user info from SSO by user ID, including group level.
@@ -83,15 +101,7 @@ func (c *Client) GetUserByID(userID int) (*permission.UserInfo, error) {
 		return nil, fmt.Errorf("user %d not found", userID)
 	}
 
-	u := &permission.UserInfo{
-		ID:              result.User.ID,
-		Username:        result.User.Username,
-		Nickname:        result.User.Nickname,
-		Email:           result.User.Email,
-		PermissionLevel: result.User.PermissionLevel,
-		GroupLevel:      result.User.Group.Level,
-		AvatarURL:       result.User.AvatarURL,
-	}
+	u := accountInfoUser(&result)
 
 	// Cache avatar URL
 	if u.AvatarURL != "" {
@@ -169,15 +179,7 @@ func (c *Client) fetchAccountInfo(query string) (*permission.UserInfo, error) {
 		return nil, fmt.Errorf("user not found (%s)", query)
 	}
 
-	u := &permission.UserInfo{
-		ID:              result.User.ID,
-		Username:        result.User.Username,
-		Nickname:        result.User.Nickname,
-		Email:           result.User.Email,
-		PermissionLevel: result.User.PermissionLevel,
-		GroupLevel:      result.User.Group.Level,
-		AvatarURL:       result.User.AvatarURL,
-	}
+	u := accountInfoUser(&result)
 
 	// Warm the avatar cache so message broadcasts don't refetch.
 	if u.AvatarURL != "" {
