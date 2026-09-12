@@ -106,7 +106,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -185,7 +184,6 @@ fun ChatScreen(
     val listState = rememberLazyListState()
     var messageText by remember { mutableStateOf("") }
     var sendingState by remember { mutableStateOf(SendingState.IDLE) }
-    val keyboardController = LocalSoftwareKeyboardController.current
     val pullRefreshState = rememberPullToRefreshState()
     var isRefreshing by remember { mutableStateOf(false) }
     val context = LocalContext.current
@@ -588,7 +586,6 @@ fun ChatScreen(
                             val replyToId = replyingTo?.id
 
                             if (content.isNotBlank() || attachmentIds.isNotEmpty()) {
-                                keyboardController?.hide()
                                 onSendMessage(content, attachmentIds, replyToId)
                                 messageText = ""
                                 uploadedAttachments = emptyList()
