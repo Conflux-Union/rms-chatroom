@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, nextTick, onMounted, onUnmounted, computed } from 'vue'
+import { ref, reactive, watch, nextTick, onMounted, onUnmounted, computed } from 'vue'
 import type { CSSProperties } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useChatStore } from '../stores/chat'
@@ -9,6 +9,7 @@ import { useReadPosition } from '../composables/useReadPosition'
 import { useMentionNotification } from '../composables/useMentionNotification'
 import { formatDateTime, parseUTCDateTime, isWithinMinutes } from '../utils/datetime'
 import { renderMessageHtml } from '../utils/markdown'
+import { parseMessagePermalink, type MessagePermalink } from '../utils/messagePermalink'
 import {
   ZmDropdown,
   ZmModal,
@@ -666,6 +667,75 @@ function showLinkCopiedToast() {
   }, 1500)
 }
 
+// ---------------------------------------------------------------------------
+// Forwarded-message quotes: a message whose content is exactly a message
+// permalink renders as a quote card labeled 转发的消息, with the source
+// message fetched from its (possibly different) channel. The cache is keyed by
+// the source message so several quotes of the same target share one fetch.
+interface ForwardQuote {
+  status: 'loading' | 'ready' | 'unavailable'
+  author?: string
+  body?: string
+  note?: string
+}
+const forwardQuoteCache = reactive(new Map<string, ForwardQuote>())
+const forwardQuoteInFlight = new Set<string>()
+
+function forwardQuoteFor(message: Message): ForwardQuote | null {
+  const link = parseMessagePermalink(message.content ?? '')
+  if (!link) return null
+  const key = `${link.channelId}:${link.messageId}`
+  const cached = forwardQuoteCache.get(key)
+  if (cached) return cached
+  if (!forwardQuoteInFlight.has(key)) {
+    forwardQuoteInFlight.add(key)
+    const quote = reactive<ForwardQuote>({ status: 'loading', note: '加载原消息…' })
+    forwardQuoteCache.set(key, quote)
+    fetchForwardQuote(link, key, quote)
+  }
+  return forwardQuoteCache.get(key)!
+}
+
+async function fetchForwardQuote(link: MessagePermalink, key: string, quote: ForwardQuote) {
+  try {
+    const res = await axios.get(`${API_BASE}/api/channels/${link.channelId}/messages`, {
+      params: { around: link.messageId, limit: 5 },
+      headers: { Authorization: `Bearer ${auth.token}` },
+    })
+    const source = (res.data as Message[]).find((m) => m.id === link.messageId)
+    if (!source) {
+      // The list endpoint filters deleted messages, so a 200 without the
+      // target means the source message no longer exists.
+      quote.status = 'unavailable'
+      quote.note = '原消息已被删除'
+    } else {
+      quote.status = 'ready'
+      quote.author = source.username
+      quote.body = source.content || ((source.attachments?.length ?? 0) > 0 ? '[附件]' : '')
+    }
+  } catch (error: any) {
+    quote.status = 'unavailable'
+    quote.note = error.response?.status === 403 ? '没有权限查看原消息' : '原消息无法加载'
+  } finally {
+    forwardQuoteInFlight.delete(key)
+  }
+}
+
+// Open the quoted source: push the message deep-link route; the route watcher
+// in Main.vue switches the channel and ChatArea positions on the message.
+function openForwardedMessage(message: Message) {
+  const link = parseMessagePermalink(message.content ?? '')
+  if (!link) return
+  router.push({
+    name: 'MessagePath',
+    params: {
+      serverId: String(link.serverId),
+      channelId: String(link.channelId),
+      messageId: String(link.messageId),
+    },
+  })
+}
+
 // File handling
 function triggerFileSelect() {
   fileInput.value?.click()
@@ -1027,13 +1097,27 @@ function selectMention(user: { id: number; username: string }) {
 }
 
 // Markdown links open in a new tab on the web; the desktop webview blocks
-// target=_blank, so route clicks through the shell opener instead.
+// target=_blank, so route clicks through the shell opener instead. Our own
+// message permalinks navigate in-app through the deep-link route.
 async function handleMessageLinkClick(event: MouseEvent) {
   const anchor = (event.target as HTMLElement | null)?.closest?.('a')
-  if (!anchor || !isTauri) return
+  if (!anchor) return
   const href = anchor.getAttribute('href')
   if (!href || href.startsWith('#')) return
-  event.preventDefault()
+  const link = parseMessagePermalink(href, window.location.origin)
+  if (link) {
+    event.preventDefault()
+    router.push({
+      name: 'MessagePath',
+      params: {
+        serverId: String(link.serverId),
+        channelId: String(link.channelId),
+        messageId: String(link.messageId),
+      },
+    })
+    return
+  }
+  if (!isTauri) return
   try {
     const { invoke } = await import('@tauri-apps/api/core')
     await invoke('open_external', { url: href })
@@ -1521,7 +1605,23 @@ onUnmounted(() => {
               <span class="reply-author">{{ msg.forward_meta.quote.nickname }}</span>
               <span v-if="msg.forward_meta.quote.content" class="reply-content">{{ msg.forward_meta.quote.content }}</span>
             </div>
-            <div v-if="msg.content" class="message-text" @click="handleMessageLinkClick" v-html="renderMessageHtml(msg.content)"></div>
+            <!-- Forwarded-message quote: content is exactly a message permalink -->
+            <div
+              v-if="msg.content && forwardQuoteFor(msg)"
+              class="message-forward-quote"
+              role="button"
+              tabindex="0"
+              @click="openForwardedMessage(msg)"
+              @keydown.enter="openForwardedMessage(msg)"
+            >
+              <span class="forward-quote-label">转发的消息</span>
+              <span v-if="forwardQuoteFor(msg)!.note" class="forward-quote-note">{{ forwardQuoteFor(msg)!.note }}</span>
+              <template v-else>
+                <span class="forward-quote-author">{{ forwardQuoteFor(msg)!.author }}</span>
+                <span class="forward-quote-body">{{ forwardQuoteFor(msg)!.body }}</span>
+              </template>
+            </div>
+            <div v-else-if="msg.content" class="message-text" @click="handleMessageLinkClick" v-html="renderMessageHtml(msg.content)"></div>
             <!-- Attachments -->
             <div v-if="msg.attachments?.length" class="message-attachments">
               <FilePreview
@@ -2398,6 +2498,59 @@ onUnmounted(() => {
 
 .message-reply-static:hover {
   background: var(--surface-glass);
+}
+
+/* Forwarded-message quote: the message is exactly a permalink to another
+   message. Full row like .message-reply-ref; left accent bar keeps the quote
+   language of the reply reference. */
+.message-forward-quote {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-width: 100%;
+  margin: 2px 0 4px;
+  padding: 6px 10px;
+  text-align: left;
+  background: var(--surface-glass);
+  border-left: 3px solid var(--color-accent);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.message-forward-quote:hover {
+  background: var(--surface-glass-input);
+}
+
+.message-forward-quote:focus-visible {
+  outline: 1px solid var(--color-accent);
+}
+
+.forward-quote-label {
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.forward-quote-author {
+  color: var(--color-accent);
+  font-weight: 500;
+  font-size: 13px;
+}
+
+.forward-quote-body {
+  color: var(--color-text-main);
+  font-size: 13px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 6;
+  overflow: hidden;
+}
+
+.forward-quote-note {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  font-style: italic;
 }
 
 /* Source badge next to forwarded message authors (FORWARD channels) */
