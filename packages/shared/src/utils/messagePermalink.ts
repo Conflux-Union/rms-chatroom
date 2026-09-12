@@ -59,3 +59,41 @@ export function parseMessagePermalink(content: string, base?: string): MessagePe
   if (!permalinkOrigins().has(url.origin)) return null
   return parsePermalinkPath(url)
 }
+
+// Candidate scan for permalink URLs embedded in longer text. The lazy body
+// plus the (?![/\d]) guard keep trailing punctuation (e.g. a full stop) out
+// of the candidate; origin validation still happens in parseMessagePermalink.
+const PERMALINK_CANDIDATE = /https?:\/\/[^\s]*?\/\d+\/\d+\/\d+(?![/\d])/g
+
+export type MessageContentSegment =
+  | { type: 'text'; text: string }
+  | { type: 'quote'; link: MessagePermalink }
+
+// Split message content around our message permalinks: "AAA <link> BBB"
+// becomes text("AAA") + quote(link) + text("BBB"), so the text renders as
+// markdown with a quote card where the link was. A permalink only becomes a
+// card when whitespace-delimited (spaces on both sides, at a content edge, or
+// alone on its line); a link glued to text or punctuation ("看这个<link>。")
+// stays a normal inline link. Candidates that fail origin/path validation
+// always stay inline. Returns [] when no permalink qualifies.
+export function splitMessagePermalinks(content: string): MessageContentSegment[] {
+  const segments: MessageContentSegment[] = []
+  let cursor = 0
+  for (const match of content.matchAll(PERMALINK_CANDIDATE)) {
+    const link = parseMessagePermalink(match[0])
+    if (!link) continue
+    const start = match.index ?? 0
+    const end = start + match[0].length
+    const spaceBefore = start === 0 || /\s/.test(content[start - 1])
+    const spaceAfter = end === content.length || /\s/.test(content[end])
+    if (!spaceBefore || !spaceAfter) continue
+    if (start > cursor) segments.push({ type: 'text', text: content.slice(cursor, start) })
+    segments.push({ type: 'quote', link })
+    cursor = end
+  }
+  if (segments.length === 0) return []
+  if (cursor < content.length) segments.push({ type: 'text', text: content.slice(cursor) })
+  // Whitespace-only segments (e.g. the space between two adjacent links)
+  // would render as empty paragraphs between cards — drop them.
+  return segments.filter((s) => s.type !== 'text' || s.text.trim() !== '')
+}
