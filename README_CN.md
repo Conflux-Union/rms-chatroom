@@ -74,7 +74,7 @@ go run ./cmd/server/main.go
 
 ```bash
 pnpm install
-pnpm dev:web
+pnpm web:dev
 ```
 
 前端运行在 `http://localhost:5173`
@@ -82,6 +82,9 @@ pnpm dev:web
 ### Android 设置
 
 ```bash
+pnpm android:assemble-debug   # 在仓库根目录执行
+
+# 或进入 apps/android/：
 cd apps/android
 ./gradlew assembleDebug
 ./gradlew installDebug
@@ -144,10 +147,10 @@ Redirect URL 验证防止开放重定向：仅允许 `cors_origins` 下的 `/cal
 ## 生产构建
 
 ```bash
-pnpm build:web                # Web 前端
-pnpm build:desktop            # 桌面端 (Tauri) 前端
+pnpm web:build                # Web 前端
+pnpm desktop:build-frontend   # 桌面端 (Tauri) 前端
+pnpm android:assemble-release # Android APK
 cd server && go build ./cmd/server  # Go 二进制
-cd apps/android && ./gradlew assembleRelease     # Android APK
 ```
 
 ## 部署

@@ -133,7 +133,7 @@ jobs:
           echo "Generated shared version.ts: $VERSION_NAME($VERSION_CODE)"
 
       - name: Build web frontend
-        run: pnpm build:web
+        run: pnpm web:build
 
       - name: Build server binary
         run: |

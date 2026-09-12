@@ -64,10 +64,10 @@ jobs:
         run: pnpm install
 
       - name: Build web frontend
-        run: pnpm build:web
+        run: pnpm web:build
 
       - name: Build desktop frontend
-        run: pnpm build:desktop
+        run: pnpm desktop:build-frontend
 
   go-backend-check:
     name: Go Backend Check
