@@ -112,12 +112,12 @@ fun VoiceInviteScreen(
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = PaperDarkSubtle
+                        containerColor = Zhimo.paperSubtle
                     )
                 )
             }
         },
-        containerColor = PaperDarkSubtle
+        containerColor = Zhimo.paperSubtle
     ) { padding ->
         Column(
             modifier = Modifier
@@ -133,7 +133,7 @@ fun VoiceInviteScreen(
                         modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.Center
                     ) {
-                        CircularProgressIndicator(color = SealDark)
+                        CircularProgressIndicator(color = Zhimo.seal)
                     }
                 }
                 !state.isValidInvite && state.inviteInfo != null -> {
@@ -181,25 +181,25 @@ private fun InvalidInviteContent(
                 imageVector = Icons.Default.LinkOff,
                 contentDescription = null,
                 modifier = Modifier.size(64.dp),
-                tint = DangerDark
+                tint = Zhimo.danger
             )
             Spacer(modifier = Modifier.height(16.dp))
             Text(
                 text = "邀请链接无效",
                 style = MaterialTheme.typography.titleLarge,
-                color = InkDark
+                color = Zhimo.ink
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
                 text = "该邀请链接可能已过期或已被使用",
                 style = MaterialTheme.typography.bodyMedium,
-                color = InkDarkFaint,
+                color = Zhimo.inkFaint,
                 textAlign = TextAlign.Center
             )
             Spacer(modifier = Modifier.height(24.dp))
             Button(
                 onClick = onNavigateBack,
-                colors = ButtonDefaults.buttonColors(containerColor = SealDark)
+                colors = ButtonDefaults.buttonColors(containerColor = Zhimo.seal)
             ) {
                 Text("返回")
             }
@@ -224,7 +224,7 @@ private fun JoinFormContent(
         state.inviteInfo?.let { info ->
             Surface(
                 modifier = Modifier.fillMaxWidth(),
-                color = PaperDarkHover,
+                color = Zhimo.paperHover,
                 shape = RoundedCornerShape(8.dp)
             ) {
                 Column(
@@ -235,20 +235,20 @@ private fun JoinFormContent(
                         imageVector = Icons.AutoMirrored.Filled.VolumeUp,
                         contentDescription = null,
                         modifier = Modifier.size(48.dp),
-                        tint = SuccessDark
+                        tint = Zhimo.success
                     )
                     Spacer(modifier = Modifier.height(12.dp))
                     Text(
                         text = "语音邀请",
                         style = MaterialTheme.typography.titleMedium,
-                        color = InkDark
+                        color = Zhimo.ink
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     info.serverName?.let { serverName ->
                         Text(
                             text = serverName,
                             style = MaterialTheme.typography.bodyLarge,
-                            color = InkDark,
+                            color = Zhimo.ink,
                             fontWeight = FontWeight.Bold
                         )
                     }
@@ -256,7 +256,7 @@ private fun JoinFormContent(
                         Text(
                             text = "# $channelName",
                             style = MaterialTheme.typography.bodyMedium,
-                            color = InkDarkMuted
+                            color = Zhimo.inkMuted
                         )
                     }
                 }
@@ -269,7 +269,7 @@ private fun JoinFormContent(
         state.error?.let { error ->
             Surface(
                 modifier = Modifier.fillMaxWidth(),
-                color = DangerDark.copy(alpha = 0.2f),
+                color = Zhimo.danger.copy(alpha = 0.2f),
                 shape = RoundedCornerShape(8.dp)
             ) {
                 Row(
@@ -279,21 +279,21 @@ private fun JoinFormContent(
                     Icon(
                         imageVector = Icons.Default.Error,
                         contentDescription = null,
-                        tint = DangerDark,
+                        tint = Zhimo.danger,
                         modifier = Modifier.size(20.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         text = error,
                         style = MaterialTheme.typography.bodySmall,
-                        color = DangerDark,
+                        color = Zhimo.danger,
                         modifier = Modifier.weight(1f)
                     )
                     IconButton(onClick = onClearError, modifier = Modifier.size(24.dp)) {
                         Icon(
                             imageVector = Icons.Default.Close,
                             contentDescription = "关闭",
-                            tint = DangerDark,
+                            tint = Zhimo.danger,
                             modifier = Modifier.size(16.dp)
                         )
                     }
@@ -310,10 +310,10 @@ private fun JoinFormContent(
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
             colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = SealDark,
-                unfocusedBorderColor = InkDarkFaint,
-                focusedLabelColor = SealDark,
-                cursorColor = SealDark
+                focusedBorderColor = Zhimo.seal,
+                unfocusedBorderColor = Zhimo.inkFaint,
+                focusedLabelColor = Zhimo.seal,
+                cursorColor = Zhimo.seal
             ),
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
             keyboardActions = KeyboardActions(onDone = { onJoin() })
@@ -326,13 +326,13 @@ private fun JoinFormContent(
             onClick = onJoin,
             enabled = !state.isJoining && state.username.isNotBlank(),
             modifier = Modifier.fillMaxWidth(),
-            colors = ButtonDefaults.buttonColors(containerColor = SuccessDark),
+            colors = ButtonDefaults.buttonColors(containerColor = Zhimo.success),
             shape = RoundedCornerShape(8.dp)
         ) {
             if (state.isJoining) {
                 CircularProgressIndicator(
                     modifier = Modifier.size(24.dp),
-                    color = PaperDark,
+                    color = Zhimo.paper,
                     strokeWidth = 2.dp
                 )
             } else {
@@ -363,7 +363,7 @@ private fun VoiceRoomContent(
         Text(
             text = state.inviteInfo?.channelName?.let { "# $it" } ?: "语音通话",
             style = MaterialTheme.typography.titleLarge,
-            color = InkDark
+            color = Zhimo.ink
         )
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -391,13 +391,13 @@ private fun VoiceRoomContent(
                         imageVector = Icons.AutoMirrored.Filled.VolumeUp,
                         contentDescription = null,
                         modifier = Modifier.size(64.dp),
-                        tint = InkDarkFaint
+                        tint = Zhimo.inkFaint
                     )
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(
                         text = "等待其他人加入...",
                         style = MaterialTheme.typography.bodyLarge,
-                        color = InkDarkFaint
+                        color = Zhimo.inkFaint
                     )
                 }
             }
@@ -406,7 +406,7 @@ private fun VoiceRoomContent(
         // Controls
         Surface(
             modifier = Modifier.fillMaxWidth(),
-            color = PaperDark,
+            color = Zhimo.paper,
             shape = RoundedCornerShape(8.dp)
         ) {
             Row(
@@ -421,7 +421,7 @@ private fun VoiceRoomContent(
                     icon = if (state.isMuted) Icons.Default.MicOff else Icons.Default.Mic,
                     label = if (state.isMuted) stringResource(R.string.unmute) else stringResource(R.string.mute),
                     isActive = state.isMuted,
-                    activeColor = DangerDark,
+                    activeColor = Zhimo.danger,
                     onClick = onToggleMute
                 )
 
@@ -430,7 +430,7 @@ private fun VoiceRoomContent(
                     icon = if (state.isDeafened) Icons.AutoMirrored.Filled.VolumeOff else Icons.AutoMirrored.Filled.VolumeUp,
                     label = if (state.isDeafened) stringResource(R.string.undeafen) else stringResource(R.string.deafen),
                     isActive = state.isDeafened,
-                    activeColor = DangerDark,
+                    activeColor = Zhimo.danger,
                     onClick = onToggleDeafen
                 )
 
@@ -439,7 +439,7 @@ private fun VoiceRoomContent(
                     icon = Icons.Default.CallEnd,
                     label = stringResource(R.string.leave_voice),
                     isActive = true,
-                    activeColor = DangerDark,
+                    activeColor = Zhimo.danger,
                     onClick = onLeave
                 )
             }
@@ -462,9 +462,9 @@ private fun GuestVoiceUserItem(participant: ParticipantInfo) {
 
     val borderColor by animateColorAsState(
         targetValue = when {
-            participant.isSpeaking -> SuccessDark
-            participant.isMuted -> InkDarkFaint
-            else -> SuccessDark
+            participant.isSpeaking -> Zhimo.success
+            participant.isMuted -> Zhimo.inkFaint
+            else -> Zhimo.success
         },
         animationSpec = tween(200),
         label = "borderColor"
@@ -476,7 +476,7 @@ private fun GuestVoiceUserItem(participant: ParticipantInfo) {
         modifier = Modifier
             .width(100.dp)
             .clip(RoundedCornerShape(8.dp))
-            .background(PaperDarkHover)
+            .background(Zhimo.paperHover)
             .padding(12.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
@@ -488,7 +488,7 @@ private fun GuestVoiceUserItem(participant: ParticipantInfo) {
                 .background(borderColor.copy(alpha = 0.3f))
                 .then(
                     if (participant.isSpeaking) {
-                        Modifier.border(2.dp, SuccessDark, CircleShape)
+                        Modifier.border(2.dp, Zhimo.success, CircleShape)
                     } else {
                         Modifier
                     }
@@ -499,14 +499,14 @@ private fun GuestVoiceUserItem(participant: ParticipantInfo) {
                 modifier = Modifier
                     .size(48.dp)
                     .clip(CircleShape)
-                    .background(SealDark),
+                    .background(Zhimo.seal),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
                     text = participant.name.take(1).uppercase(),
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
-                    color = PaperDark
+                    color = Zhimo.paper
                 )
             }
         }
@@ -516,7 +516,7 @@ private fun GuestVoiceUserItem(participant: ParticipantInfo) {
         Text(
             text = participant.name,
             style = MaterialTheme.typography.labelMedium,
-            color = InkDark,
+            color = Zhimo.ink,
             maxLines = 1,
             textAlign = TextAlign.Center
         )
@@ -527,7 +527,7 @@ private fun GuestVoiceUserItem(participant: ParticipantInfo) {
                 imageVector = Icons.Default.MicOff,
                 contentDescription = "静音",
                 modifier = Modifier.size(14.dp),
-                tint = DangerDark
+                tint = Zhimo.danger
             )
         }
     }
@@ -542,7 +542,7 @@ private fun GuestVoiceControlButton(
     onClick: () -> Unit
 ) {
     val backgroundColor by animateColorAsState(
-        targetValue = if (isActive) activeColor else PaperDarkHover,
+        targetValue = if (isActive) activeColor else Zhimo.paperHover,
         animationSpec = tween(200),
         label = "controlBg"
     )
@@ -566,7 +566,7 @@ private fun GuestVoiceControlButton(
                 imageVector = icon,
                 contentDescription = label,
                 modifier = Modifier.size(24.dp),
-                tint = InkDark
+                tint = Zhimo.ink
             )
         }
 
@@ -575,7 +575,7 @@ private fun GuestVoiceControlButton(
         Text(
             text = label,
             style = MaterialTheme.typography.labelSmall,
-            color = InkDarkFaint
+            color = Zhimo.inkFaint
         )
     }
 }

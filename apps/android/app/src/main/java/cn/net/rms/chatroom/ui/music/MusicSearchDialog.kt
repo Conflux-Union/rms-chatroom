@@ -60,7 +60,7 @@ fun MusicSearchDialog(
                 .fillMaxWidth(0.95f)
                 .fillMaxHeight(0.8f),
             shape = RoundedCornerShape(8.dp),
-            color = PaperDarkSubtle
+            color = Zhimo.paperSubtle
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
                 // Search header
@@ -77,7 +77,7 @@ fun MusicSearchDialog(
                             .weight(1f)
                             .focusRequester(focusRequester),
                         placeholder = {
-                            Text("搜索歌曲...", color = InkDarkFaint)
+                            Text("搜索歌曲...", color = Zhimo.inkFaint)
                         },
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(
@@ -87,13 +87,13 @@ fun MusicSearchDialog(
                             onSearch = { onSearch(searchQuery) }
                         ),
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = SealDark,
-                            unfocusedBorderColor = PaperDarkHover,
-                            focusedContainerColor = PaperDarkHover,
-                            unfocusedContainerColor = PaperDarkHover,
-                            cursorColor = SealDark,
-                            focusedTextColor = InkDark,
-                            unfocusedTextColor = InkDark
+                            focusedBorderColor = Zhimo.seal,
+                            unfocusedBorderColor = Zhimo.paperHover,
+                            focusedContainerColor = Zhimo.paperHover,
+                            unfocusedContainerColor = Zhimo.paperHover,
+                            cursorColor = Zhimo.seal,
+                            focusedTextColor = Zhimo.ink,
+                            unfocusedTextColor = Zhimo.ink
                         ),
                         shape = RoundedCornerShape(8.dp)
                     )
@@ -106,19 +106,19 @@ fun MusicSearchDialog(
                         modifier = Modifier
                             .size(48.dp)
                             .clip(RoundedCornerShape(8.dp))
-                            .background(SealDark)
+                            .background(Zhimo.seal)
                     ) {
                         if (isSearching) {
                             CircularProgressIndicator(
                                 modifier = Modifier.size(20.dp),
-                                color = PaperDark,
+                                color = Zhimo.paper,
                                 strokeWidth = 2.dp
                             )
                         } else {
                             Icon(
                                 imageVector = Icons.Default.Search,
                                 contentDescription = "搜索",
-                                tint = PaperDark
+                                tint = Zhimo.paper
                             )
                         }
                     }
@@ -137,16 +137,16 @@ fun MusicSearchDialog(
                             onClick = { onSearchPlatformChange(value) },
                             label = { Text(label, style = MaterialTheme.typography.labelSmall) },
                             colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = SealDark,
-                                selectedLabelColor = PaperDark,
-                                containerColor = PaperDarkHover,
-                                labelColor = InkDarkFaint
+                                selectedContainerColor = Zhimo.seal,
+                                selectedLabelColor = Zhimo.paper,
+                                containerColor = Zhimo.paperHover,
+                                labelColor = Zhimo.inkFaint
                             )
                         )
                     }
                 }
 
-                HorizontalDivider(color = PaperDarkHover)
+                HorizontalDivider(color = Zhimo.paperHover)
 
                 // Search results
                 if (searchResults.isEmpty()) {
@@ -159,7 +159,7 @@ fun MusicSearchDialog(
                         Text(
                             text = if (isSearching) "搜索中..." else if (searchQuery.isNotEmpty()) "未找到结果" else "输入关键词搜索歌曲",
                             style = MaterialTheme.typography.bodyMedium,
-                            color = InkDarkFaint
+                            color = Zhimo.inkFaint
                         )
                     }
                 } else {
@@ -186,11 +186,11 @@ fun MusicSearchDialog(
                         .fillMaxWidth()
                         .padding(16.dp),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = PaperDarkHover
+                        containerColor = Zhimo.paperHover
                     ),
                     shape = RoundedCornerShape(8.dp)
                 ) {
-                    Text("关闭", color = InkDark)
+                    Text("关闭", color = Zhimo.ink)
                 }
             }
         }
@@ -230,7 +230,7 @@ private fun SearchResultItem(
                 Text(
                     text = song.name,
                     style = MaterialTheme.typography.bodyMedium,
-                    color = InkDark,
+                    color = Zhimo.ink,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f, fill = false)
@@ -252,7 +252,7 @@ private fun SearchResultItem(
             Text(
                 text = "${song.artist} · ${song.album}",
                 style = MaterialTheme.typography.bodySmall,
-                color = InkDarkFaint,
+                color = Zhimo.inkFaint,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -262,7 +262,7 @@ private fun SearchResultItem(
         Text(
             text = formatDuration(song.duration),
             style = MaterialTheme.typography.labelSmall,
-            color = InkDarkFaint
+            color = Zhimo.inkFaint
         )
     }
 }

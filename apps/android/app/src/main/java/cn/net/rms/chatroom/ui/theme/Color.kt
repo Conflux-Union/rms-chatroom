@@ -12,7 +12,9 @@ import androidx.compose.ui.graphics.Color
  */
 
 // Night-reading dark theme (default). Layer order from deepest paper up:
-// PaperDark < PaperDarkSubtle < PaperDarkHover < PaperDarkRaised.
+// PaperDark < PaperDarkSubtle < PaperDarkHover < PaperDarkRaised. Raised is
+// an Android-only extension layer (tokens.css stops at hover); it sits just
+// shy of BorderDark.
 val PaperDark = Color(0xFF16140F)
 val PaperDarkSubtle = Color(0xFF1D1A14)
 val PaperDarkHover = Color(0xFF282318)
@@ -31,11 +33,14 @@ val SuccessDark = Color(0xFF7D9A72)
 val WarningDark = Color(0xFFCFA050)
 
 // Daylight light theme. Layer order: PaperLight < PaperLightSubtle <
-// PaperLightHover < PaperLightRaised.
+// PaperLightHover < PaperLightRaised. Raised is an Android-only extension
+// layer (tokens.css stops at hover); the light value mirrors the dark
+// ladder's geometry — roughly one step short of BorderLight — so selection
+// fills, code backgrounds and input fields stay warm paper, never white.
 val PaperLight = Color(0xFFFAF7F0)
 val PaperLightSubtle = Color(0xFFF3EEE1)
 val PaperLightHover = Color(0xFFEEE8D8)
-val PaperLightRaised = Color(0xFFFFFFFF)
+val PaperLightRaised = Color(0xFFE2DBCA)
 val InkLight = Color(0xFF1A1714)
 val InkLightMuted = Color(0xFF7A7265)
 val InkLightFaint = Color(0xFF9C948A)

@@ -22,7 +22,7 @@ fun PlatformSelectDialog(
     Dialog(onDismissRequest = onDismiss) {
         Surface(
             shape = RoundedCornerShape(8.dp),
-            color = PaperDarkSubtle
+            color = Zhimo.paperSubtle
         ) {
             Column(
                 modifier = Modifier
@@ -34,7 +34,7 @@ fun PlatformSelectDialog(
                     text = "选择登录平台",
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
-                    color = InkDark
+                    color = Zhimo.ink
                 )
 
                 Spacer(modifier = Modifier.height(24.dp))
@@ -83,7 +83,7 @@ fun PlatformSelectDialog(
 
                 // Close button
                 TextButton(onClick = onDismiss) {
-                    Text("取消", color = InkDarkFaint)
+                    Text("取消", color = Zhimo.inkFaint)
                 }
             }
         }

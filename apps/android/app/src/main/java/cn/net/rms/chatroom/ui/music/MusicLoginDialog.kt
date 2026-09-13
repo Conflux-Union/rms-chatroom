@@ -32,7 +32,7 @@ fun MusicLoginDialog(
     Dialog(onDismissRequest = onDismiss) {
         Surface(
             shape = RoundedCornerShape(8.dp),
-            color = PaperDarkSubtle
+            color = Zhimo.paperSubtle
         ) {
             Column(
                 modifier = Modifier
@@ -44,7 +44,7 @@ fun MusicLoginDialog(
                     text = "扫码登录 $platformName",
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
-                    color = InkDark
+                    color = Zhimo.ink
                 )
 
                 Spacer(modifier = Modifier.height(16.dp))
@@ -76,12 +76,12 @@ fun MusicLoginDialog(
                             modifier = Modifier
                                 .size(200.dp)
                                 .clip(RoundedCornerShape(8.dp))
-                                .background(PaperDarkHover),
+                                .background(Zhimo.paperHover),
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
                                 text = "二维码加载失败",
-                                color = InkDarkFaint
+                                color = Zhimo.inkFaint
                             )
                         }
                     }
@@ -90,11 +90,11 @@ fun MusicLoginDialog(
                         modifier = Modifier
                             .size(200.dp)
                             .clip(RoundedCornerShape(8.dp))
-                            .background(PaperDarkHover),
+                            .background(Zhimo.paperHover),
                         contentAlignment = Alignment.Center
                     ) {
                         CircularProgressIndicator(
-                            color = SealDark,
+                            color = Zhimo.seal,
                             modifier = Modifier.size(32.dp)
                         )
                     }
@@ -116,10 +116,10 @@ fun MusicLoginDialog(
                     },
                     style = MaterialTheme.typography.bodyMedium,
                     color = when (loginStatus) {
-                        "success" -> SuccessDark
-                        "expired", "refused", "error" -> DangerDark
-                        "scanned" -> WarningDark
-                        else -> InkDarkFaint
+                        "success" -> Zhimo.success
+                        "expired", "refused", "error" -> Zhimo.danger
+                        "scanned" -> Zhimo.warning
+                        else -> Zhimo.inkFaint
                     },
                     textAlign = TextAlign.Center
                 )
@@ -131,7 +131,7 @@ fun MusicLoginDialog(
                     Button(
                         onClick = onRefreshQRCode,
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = SealDark
+                            containerColor = Zhimo.seal
                         ),
                         shape = RoundedCornerShape(8.dp)
                     ) {
@@ -143,7 +143,7 @@ fun MusicLoginDialog(
 
                 // Close button
                 TextButton(onClick = onDismiss) {
-                    Text("关闭", color = InkDarkFaint)
+                    Text("关闭", color = Zhimo.inkFaint)
                 }
             }
         }

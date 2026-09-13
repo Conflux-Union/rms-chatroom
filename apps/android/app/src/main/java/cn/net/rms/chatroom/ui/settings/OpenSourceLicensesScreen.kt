@@ -10,11 +10,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import cn.net.rms.chatroom.ui.theme.PaperDarkSubtle
-import cn.net.rms.chatroom.ui.theme.PaperDarkRaised
-import cn.net.rms.chatroom.ui.theme.InkDarkFaint
-import cn.net.rms.chatroom.ui.theme.InkDark
-import cn.net.rms.chatroom.ui.theme.SealDark
+import cn.net.rms.chatroom.ui.theme.Zhimo
 
 data class LicenseInfo(
     val name: String,
@@ -102,10 +98,10 @@ fun OpenSourceLicensesScreen(
                         )
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = PaperDarkSubtle)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Zhimo.paperSubtle)
             )
         },
-        containerColor = PaperDarkSubtle
+        containerColor = Zhimo.paperSubtle
     ) { paddingValues ->
         LazyColumn(
             modifier = Modifier
@@ -118,7 +114,7 @@ fun OpenSourceLicensesScreen(
                 Text(
                     text = "本应用使用了以下开源软件:",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = InkDarkFaint,
+                    color = Zhimo.inkFaint,
                     modifier = Modifier.padding(bottom = 8.dp)
                 )
             }
@@ -138,7 +134,7 @@ fun OpenSourceLicensesScreen(
 private fun LicenseCard(library: LicenseInfo) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = PaperDarkRaised)
+        colors = CardDefaults.cardColors(containerColor = Zhimo.paperRaised)
     ) {
         Column(
             modifier = Modifier.padding(16.dp)
@@ -147,7 +143,7 @@ private fun LicenseCard(library: LicenseInfo) {
                 text = library.name,
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
-                color = InkDark
+                color = Zhimo.ink
             )
 
             Spacer(modifier = Modifier.height(4.dp))
@@ -155,19 +151,19 @@ private fun LicenseCard(library: LicenseInfo) {
             Text(
                 text = library.description,
                 style = MaterialTheme.typography.bodySmall,
-                color = InkDarkFaint
+                color = Zhimo.inkFaint
             )
 
             Spacer(modifier = Modifier.height(8.dp))
 
             Surface(
-                color = SealDark.copy(alpha = 0.1f),
+                color = Zhimo.seal.copy(alpha = 0.1f),
                 shape = MaterialTheme.shapes.small
             ) {
                 Text(
                     text = library.license,
                     style = MaterialTheme.typography.labelSmall,
-                    color = SealDark,
+                    color = Zhimo.seal,
                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                 )
             }

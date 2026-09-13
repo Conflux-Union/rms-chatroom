@@ -21,10 +21,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import cn.net.rms.chatroom.ui.theme.PaperDarkSubtle
-import cn.net.rms.chatroom.ui.theme.InkDarkFaint
-import cn.net.rms.chatroom.ui.theme.InkDark
-import cn.net.rms.chatroom.ui.theme.SealDark
+import cn.net.rms.chatroom.data.local.ThemeMode
+import cn.net.rms.chatroom.ui.theme.Zhimo
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -38,6 +36,7 @@ fun SettingsScreen(
     val floatingWindowEnabled by viewModel.floatingWindowEnabled.collectAsState()
     val backgroundMessageServiceEnabled by viewModel.backgroundMessageServiceEnabled.collectAsState()
     val telemetryEnabled by viewModel.telemetryEnabled.collectAsState()
+    val themeMode by viewModel.themeMode.collectAsState()
     val hasOverlayPermission by viewModel.hasOverlayPermission.collectAsState()
     val isIgnoringBatteryOptimization by viewModel.isIgnoringBatteryOptimization.collectAsState()
 
@@ -66,10 +65,10 @@ fun SettingsScreen(
                         )
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = PaperDarkSubtle)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Zhimo.paperSubtle)
             )
         },
-        containerColor = PaperDarkSubtle
+        containerColor = Zhimo.paperSubtle
     ) { paddingValues ->
         Column(
             modifier = Modifier
@@ -77,6 +76,16 @@ fun SettingsScreen(
                 .padding(paddingValues)
                 .verticalScroll(rememberScrollState())
         ) {
+            // Appearance section
+            SettingsSectionHeader(title = "外观")
+
+            ThemeModeItem(
+                mode = themeMode,
+                onChange = { viewModel.setThemeMode(it) }
+            )
+
+            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+
             // Voice call section
             SettingsSectionHeader(title = "语音通话")
 
@@ -104,7 +113,7 @@ fun SettingsScreen(
                                 viewModel.setFloatingWindowEnabled(enabled)
                             }
                         },
-                        colors = SwitchDefaults.colors(checkedTrackColor = SealDark)
+                        colors = SwitchDefaults.colors(checkedTrackColor = Zhimo.seal)
                     )
                 }
             )
@@ -127,7 +136,7 @@ fun SettingsScreen(
                         onCheckedChange = { enabled ->
                             viewModel.setBackgroundMessageServiceEnabled(enabled)
                         },
-                        colors = SwitchDefaults.colors(checkedTrackColor = SealDark)
+                        colors = SwitchDefaults.colors(checkedTrackColor = Zhimo.seal)
                     )
                 }
             )
@@ -159,7 +168,7 @@ fun SettingsScreen(
                         onCheckedChange = { enabled ->
                             viewModel.setTelemetryEnabled(enabled)
                         },
-                        colors = SwitchDefaults.colors(checkedTrackColor = SealDark)
+                        colors = SwitchDefaults.colors(checkedTrackColor = Zhimo.seal)
                     )
                 }
             )
@@ -188,9 +197,69 @@ private fun SettingsSectionHeader(title: String) {
         text = title,
         style = MaterialTheme.typography.labelLarge,
         fontWeight = FontWeight.SemiBold,
-        color = SealDark,
+        color = Zhimo.seal,
         modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
     )
+}
+
+// Theme appearance picker. Segmented buttons inherit the zhimo shapes and the
+// secondaryContainer slot (paperHover in both themes) from MaterialTheme.
+@Composable
+private fun ThemeModeItem(
+    mode: ThemeMode,
+    onChange: (ThemeMode) -> Unit
+) {
+    val options = listOf(
+        ThemeMode.SYSTEM to "跟随系统",
+        ThemeMode.LIGHT to "浅色",
+        ThemeMode.DARK to "深色"
+    )
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = Icons.Default.DarkMode,
+            contentDescription = null,
+            tint = Zhimo.inkFaint,
+            modifier = Modifier.size(24.dp)
+        )
+
+        Spacer(modifier = Modifier.width(16.dp))
+
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = "主题外观",
+                style = MaterialTheme.typography.bodyLarge,
+                color = Zhimo.ink
+            )
+            Text(
+                text = "选择应用的配色，切换后立即生效",
+                style = MaterialTheme.typography.bodySmall,
+                color = Zhimo.inkFaint
+            )
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                options.forEachIndexed { index, (value, text) ->
+                    SegmentedButton(
+                        selected = mode == value,
+                        onClick = { onChange(value) },
+                        shape = SegmentedButtonDefaults.itemShape(
+                            index = index,
+                            count = options.size
+                        )
+                    ) {
+                        Text(text)
+                    }
+                }
+            }
+        }
+    }
 }
 
 @Composable
@@ -211,7 +280,7 @@ private fun SettingsItem(
         Icon(
             imageVector = icon,
             contentDescription = null,
-            tint = InkDarkFaint,
+            tint = Zhimo.inkFaint,
             modifier = Modifier.size(24.dp)
         )
 
@@ -221,13 +290,13 @@ private fun SettingsItem(
             Text(
                 text = title,
                 style = MaterialTheme.typography.bodyLarge,
-                color = InkDark
+                color = Zhimo.ink
             )
             if (subtitle != null) {
                 Text(
                     text = subtitle,
                     style = MaterialTheme.typography.bodySmall,
-                    color = InkDarkFaint
+                    color = Zhimo.inkFaint
                 )
             }
         }
@@ -238,7 +307,7 @@ private fun SettingsItem(
             Icon(
                 imageVector = Icons.Default.ChevronRight,
                 contentDescription = null,
-                tint = InkDarkFaint
+                tint = Zhimo.inkFaint
             )
         }
     }

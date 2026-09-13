@@ -25,9 +25,7 @@ import cn.net.rms.chatroom.ui.chat.ChatScreen
 import cn.net.rms.chatroom.ui.main.components.ChannelListColumn
 import cn.net.rms.chatroom.ui.main.components.ServerListColumn
 import cn.net.rms.chatroom.ui.common.BatteryOptimizationDialog
-import cn.net.rms.chatroom.ui.theme.SealDark
-import cn.net.rms.chatroom.ui.theme.PaperDarkSubtle
-import cn.net.rms.chatroom.ui.theme.PaperDark
+import cn.net.rms.chatroom.ui.theme.Zhimo
 import cn.net.rms.chatroom.ui.voice.VoiceScreen
 import cn.net.rms.chatroom.util.BatteryOptimizationHelper
 import kotlinx.coroutines.launch
@@ -90,7 +88,7 @@ fun MainScreen(
         drawerContent = {
             ModalDrawerSheet(
                 modifier = Modifier.width(312.dp),
-                drawerContainerColor = PaperDark
+                drawerContainerColor = Zhimo.paper
             ) {
                 Row(modifier = Modifier.fillMaxHeight()) {
                     // Server List
@@ -186,7 +184,7 @@ fun MainScreen(
                                 CircularProgressIndicator(
                                     modifier = Modifier.size(24.dp),
                                     strokeWidth = 2.dp,
-                                    color = SealDark
+                                    color = Zhimo.seal
                                 )
                             } else {
                                 Icon(
@@ -197,7 +195,7 @@ fun MainScreen(
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = PaperDarkSubtle
+                        containerColor = Zhimo.paperSubtle
                     )
                 )
             },
@@ -205,7 +203,7 @@ fun MainScreen(
                 // Music button - only show when connected to voice (Phase 3)
                 // TODO: Check voice connection state
             },
-            containerColor = PaperDarkSubtle
+            containerColor = Zhimo.paperSubtle
         ) { paddingValues ->
             Box(
                 modifier = Modifier
@@ -216,7 +214,7 @@ fun MainScreen(
                     mainState.isLoading -> {
                         CircularProgressIndicator(
                             modifier = Modifier.align(Alignment.Center),
-                            color = SealDark
+                            color = Zhimo.seal
                         )
                     }
 

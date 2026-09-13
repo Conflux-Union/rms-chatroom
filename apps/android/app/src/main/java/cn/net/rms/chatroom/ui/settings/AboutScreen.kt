@@ -20,9 +20,7 @@ import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.unit.dp
 import cn.net.rms.chatroom.BuildConfig
 import cn.net.rms.chatroom.R
-import cn.net.rms.chatroom.ui.theme.PaperDarkSubtle
-import cn.net.rms.chatroom.ui.theme.InkDarkFaint
-import cn.net.rms.chatroom.ui.theme.InkDark
+import cn.net.rms.chatroom.ui.theme.Zhimo
 
 private const val GITHUB_REPO_URL = "https://github.com/Conflux-Union/rms-chatroom"
 
@@ -45,10 +43,10 @@ fun AboutScreen(
                         )
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = PaperDarkSubtle)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Zhimo.paperSubtle)
             )
         },
-        containerColor = PaperDarkSubtle
+        containerColor = Zhimo.paperSubtle
     ) { paddingValues ->
         Column(
             modifier = Modifier
@@ -117,7 +115,7 @@ private fun AboutItem(
         Icon(
             imageVector = icon,
             contentDescription = null,
-            tint = InkDarkFaint,
+            tint = Zhimo.inkFaint,
             modifier = Modifier.size(24.dp)
         )
 
@@ -127,13 +125,13 @@ private fun AboutItem(
             Text(
                 text = title,
                 style = MaterialTheme.typography.bodyLarge,
-                color = InkDark
+                color = Zhimo.ink
             )
             if (subtitle != null) {
                 Text(
                     text = subtitle,
                     style = MaterialTheme.typography.bodySmall,
-                    color = InkDarkFaint
+                    color = Zhimo.inkFaint
                 )
             }
         }
@@ -142,7 +140,7 @@ private fun AboutItem(
             Icon(
                 imageVector = Icons.Default.ChevronRight,
                 contentDescription = null,
-                tint = InkDarkFaint
+                tint = Zhimo.inkFaint
             )
         }
     }

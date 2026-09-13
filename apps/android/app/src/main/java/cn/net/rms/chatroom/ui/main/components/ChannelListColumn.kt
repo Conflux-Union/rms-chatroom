@@ -131,14 +131,14 @@ fun ChannelListColumn(
         modifier = Modifier
             .width(240.dp)
             .fillMaxHeight()
-            .background(PaperDarkSubtle)
+            .background(Zhimo.paperSubtle)
     ) {
         // Server header with edit button
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(48.dp)
-                .background(PaperDarkSubtle)
+                .background(Zhimo.paperSubtle)
                 .padding(horizontal = 16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -146,7 +146,7 @@ fun ChannelListColumn(
                 text = server?.name ?: "选择服务器",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
-                color = InkDark,
+                color = Zhimo.ink,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f)
@@ -161,14 +161,14 @@ fun ChannelListColumn(
                     Icon(
                         imageVector = if (editMode) Icons.Default.Check else Icons.Default.Edit,
                         contentDescription = if (editMode) "完成编辑" else "编辑频道",
-                        tint = if (editMode) SealDark else InkDarkFaint,
+                        tint = if (editMode) Zhimo.seal else Zhimo.inkFaint,
                         modifier = Modifier.size(18.dp)
                     )
                 }
             }
         }
 
-        HorizontalDivider(color = PaperDarkSubtle, thickness = 2.dp)
+        HorizontalDivider(color = Zhimo.paperSubtle, thickness = 2.dp)
 
         // Channel list with groups
         LazyColumn(
@@ -389,7 +389,7 @@ fun ChannelListColumn(
                         showDeleteDialog = false
                         channelToDelete = null
                     },
-                    colors = ButtonDefaults.textButtonColors(contentColor = DangerDark)
+                    colors = ButtonDefaults.textButtonColors(contentColor = Zhimo.danger)
                 ) {
                     Text("删除")
                 }
@@ -432,7 +432,7 @@ fun ChannelListColumn(
                         showDeleteGroupDialog = false
                         groupToDelete = null
                     },
-                    colors = ButtonDefaults.textButtonColors(contentColor = DangerDark)
+                    colors = ButtonDefaults.textButtonColors(contentColor = Zhimo.danger)
                 ) {
                     Text("删除")
                 }
@@ -491,7 +491,7 @@ private fun CreateChannelDialog(
                 Text(
                     text = "频道类型",
                     style = MaterialTheme.typography.labelMedium,
-                    color = InkDarkFaint
+                    color = Zhimo.inkFaint
                 )
                 
                 Spacer(modifier = Modifier.height(8.dp))
@@ -615,7 +615,7 @@ private fun ChannelGroupHeader(
             imageVector = if (isCollapsed) Icons.Default.ChevronRight else Icons.Default.ExpandMore,
             contentDescription = if (isCollapsed) "展开" else "折叠",
             modifier = Modifier.size(16.dp),
-            tint = InkDarkFaint
+            tint = Zhimo.inkFaint
         )
         
         Spacer(modifier = Modifier.width(4.dp))
@@ -624,7 +624,7 @@ private fun ChannelGroupHeader(
             text = group.name.uppercase(),
             style = MaterialTheme.typography.labelSmall,
             fontWeight = FontWeight.SemiBold,
-            color = InkDarkFaint,
+            color = Zhimo.inkFaint,
             modifier = Modifier.weight(1f)
         )
         
@@ -638,7 +638,7 @@ private fun ChannelGroupHeader(
                     Icon(
                         imageVector = Icons.Default.KeyboardArrowUp,
                         contentDescription = "上移",
-                        tint = InkDarkFaint,
+                        tint = Zhimo.inkFaint,
                         modifier = Modifier.size(16.dp)
                     )
                 }
@@ -653,7 +653,7 @@ private fun ChannelGroupHeader(
                     Icon(
                         imageVector = Icons.Default.KeyboardArrowDown,
                         contentDescription = "下移",
-                        tint = InkDarkFaint,
+                        tint = Zhimo.inkFaint,
                         modifier = Modifier.size(16.dp)
                     )
                 }
@@ -667,7 +667,7 @@ private fun ChannelGroupHeader(
                 Icon(
                     imageVector = Icons.Default.Add,
                     contentDescription = "添加频道",
-                    tint = InkDarkFaint,
+                    tint = Zhimo.inkFaint,
                     modifier = Modifier.size(16.dp)
                 )
             }
@@ -680,7 +680,7 @@ private fun ChannelGroupHeader(
                 Icon(
                     imageVector = Icons.Default.Delete,
                     contentDescription = "删除分组",
-                    tint = DangerDark,
+                    tint = Zhimo.danger,
                     modifier = Modifier.size(16.dp)
                 )
             }
@@ -693,7 +693,7 @@ private fun ChannelGroupHeader(
                 Icon(
                     imageVector = Icons.Default.Add,
                     contentDescription = "添加频道",
-                    tint = InkDarkFaint,
+                    tint = Zhimo.inkFaint,
                     modifier = Modifier.size(16.dp)
                 )
             }
@@ -716,13 +716,13 @@ private fun AddGroupButton(onClick: () -> Unit) {
             imageVector = Icons.Default.CreateNewFolder,
             contentDescription = null,
             modifier = Modifier.size(20.dp),
-            tint = SealDark
+            tint = Zhimo.seal
         )
         Spacer(modifier = Modifier.width(8.dp))
         Text(
             text = "添加分组",
             style = MaterialTheme.typography.bodyMedium,
-            color = SealDark
+            color = Zhimo.seal
         )
     }
 }
@@ -745,13 +745,13 @@ private fun AddChannelButton(
             imageVector = Icons.Default.Add,
             contentDescription = null,
             modifier = Modifier.size(20.dp),
-            tint = SealDark
+            tint = Zhimo.seal
         )
         Spacer(modifier = Modifier.width(8.dp))
         Text(
             text = label,
             style = MaterialTheme.typography.bodyMedium,
-            color = SealDark
+            color = Zhimo.seal
         )
     }
 }
@@ -772,13 +772,13 @@ private fun GroupedChannelItem(
     unreadCount: Int = 0
 ) {
     val backgroundColor by animateColorAsState(
-        targetValue = if (isSelected) PaperDarkRaised else Color.Transparent,
+        targetValue = if (isSelected) Zhimo.paperRaised else Color.Transparent,
         animationSpec = tween(150),
         label = "channelBg"
     )
 
     val textColor by animateColorAsState(
-        targetValue = if (isSelected) InkDark else InkDarkMuted,
+        targetValue = if (isSelected) Zhimo.ink else Zhimo.inkMuted,
         animationSpec = tween(150),
         label = "channelText"
     )
@@ -824,12 +824,12 @@ private fun GroupedChannelItem(
             if (hasMention && channel.type == ChannelType.TEXT) {
                 Surface(
                     shape = RoundedCornerShape(8.dp),
-                    color = DangerDark
+                    color = Zhimo.danger
                 ) {
                     Text(
                         text = "@",
                         style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                        color = PaperDark,
+                        color = Zhimo.paper,
                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                     )
                 }
@@ -840,12 +840,12 @@ private fun GroupedChannelItem(
             if (unreadCount > 0 && channel.type == ChannelType.TEXT) {
                 Surface(
                     shape = RoundedCornerShape(8.dp),
-                    color = InkDarkFaint
+                    color = Zhimo.inkFaint
                 ) {
                     Text(
                         text = if (unreadCount > 99) "99+" else unreadCount.toString(),
                         style = MaterialTheme.typography.labelSmall,
-                        color = PaperDark,
+                        color = Zhimo.paper,
                         modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
                     )
                 }
@@ -855,12 +855,12 @@ private fun GroupedChannelItem(
             if (channel.type == ChannelType.VOICE && voiceUsers.isNotEmpty()) {
                 Surface(
                     shape = RoundedCornerShape(8.dp),
-                    color = PaperDarkRaised
+                    color = Zhimo.paperRaised
                 ) {
                     Text(
                         text = "${voiceUsers.size}",
                         style = MaterialTheme.typography.labelSmall,
-                        color = InkDarkFaint,
+                        color = Zhimo.inkFaint,
                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                     )
                 }
@@ -876,7 +876,7 @@ private fun GroupedChannelItem(
                         Icon(
                             imageVector = Icons.Default.KeyboardArrowUp,
                             contentDescription = "上移",
-                            tint = InkDarkFaint,
+                            tint = Zhimo.inkFaint,
                             modifier = Modifier.size(16.dp)
                         )
                     }
@@ -889,7 +889,7 @@ private fun GroupedChannelItem(
                         Icon(
                             imageVector = Icons.Default.KeyboardArrowDown,
                             contentDescription = "下移",
-                            tint = InkDarkFaint,
+                            tint = Zhimo.inkFaint,
                             modifier = Modifier.size(16.dp)
                         )
                     }
@@ -932,13 +932,13 @@ private fun UngroupedChannelItem(
     unreadCount: Int = 0
 ) {
     val backgroundColor by animateColorAsState(
-        targetValue = if (isSelected) PaperDarkRaised else Color.Transparent,
+        targetValue = if (isSelected) Zhimo.paperRaised else Color.Transparent,
         animationSpec = tween(150),
         label = "channelBg"
     )
 
     val textColor by animateColorAsState(
-        targetValue = if (isSelected) InkDark else InkDarkMuted,
+        targetValue = if (isSelected) Zhimo.ink else Zhimo.inkMuted,
         animationSpec = tween(150),
         label = "channelText"
     )
@@ -982,12 +982,12 @@ private fun UngroupedChannelItem(
             if (hasMention && channel.type == ChannelType.TEXT) {
                 Surface(
                     shape = RoundedCornerShape(8.dp),
-                    color = DangerDark
+                    color = Zhimo.danger
                 ) {
                     Text(
                         text = "@",
                         style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                        color = PaperDark,
+                        color = Zhimo.paper,
                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                     )
                 }
@@ -998,12 +998,12 @@ private fun UngroupedChannelItem(
             if (unreadCount > 0 && channel.type == ChannelType.TEXT) {
                 Surface(
                     shape = RoundedCornerShape(8.dp),
-                    color = InkDarkFaint
+                    color = Zhimo.inkFaint
                 ) {
                     Text(
                         text = if (unreadCount > 99) "99+" else unreadCount.toString(),
                         style = MaterialTheme.typography.labelSmall,
-                        color = PaperDark,
+                        color = Zhimo.paper,
                         modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
                     )
                 }
@@ -1013,12 +1013,12 @@ private fun UngroupedChannelItem(
             if (channel.type == ChannelType.VOICE && voiceUsers.isNotEmpty()) {
                 Surface(
                     shape = RoundedCornerShape(8.dp),
-                    color = PaperDarkRaised
+                    color = Zhimo.paperRaised
                 ) {
                     Text(
                         text = "${voiceUsers.size}",
                         style = MaterialTheme.typography.labelSmall,
-                        color = InkDarkFaint,
+                        color = Zhimo.inkFaint,
                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                     )
                 }
@@ -1034,7 +1034,7 @@ private fun UngroupedChannelItem(
                         Icon(
                             imageVector = Icons.Default.KeyboardArrowUp,
                             contentDescription = "上移",
-                            tint = InkDarkFaint,
+                            tint = Zhimo.inkFaint,
                             modifier = Modifier.size(16.dp)
                         )
                     }
@@ -1047,7 +1047,7 @@ private fun UngroupedChannelItem(
                         Icon(
                             imageVector = Icons.Default.KeyboardArrowDown,
                             contentDescription = "下移",
-                            tint = InkDarkFaint,
+                            tint = Zhimo.inkFaint,
                             modifier = Modifier.size(16.dp)
                         )
                     }
@@ -1087,7 +1087,7 @@ private fun VoiceUserItem(user: VoiceUser) {
             modifier = Modifier
                 .size(20.dp)
                 .clip(CircleShape)
-                .background(SealDark),
+                .background(Zhimo.seal),
             contentAlignment = Alignment.Center
         ) {
             if (!user.avatarUrl.isNullOrBlank()) {
@@ -1106,7 +1106,7 @@ private fun VoiceUserItem(user: VoiceUser) {
                 Text(
                     text = user.name.take(1).uppercase(),
                     style = MaterialTheme.typography.labelSmall,
-                    color = PaperDark,
+                    color = Zhimo.paper,
                     fontSize = 10.sp
                 )
             }
@@ -1120,7 +1120,7 @@ private fun VoiceUserItem(user: VoiceUser) {
                 modifier = Modifier
                     .padding(start = 2.dp)
                     .size(10.dp),
-                tint = WarningDark
+                tint = Zhimo.warning
             )
         }
 
@@ -1130,7 +1130,7 @@ private fun VoiceUserItem(user: VoiceUser) {
         Text(
             text = user.name,
             style = MaterialTheme.typography.bodySmall,
-            color = InkDarkFaint,
+            color = Zhimo.inkFaint,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f)
@@ -1142,7 +1142,7 @@ private fun VoiceUserItem(user: VoiceUser) {
                 imageVector = Icons.Default.MicOff,
                 contentDescription = "已静音",
                 modifier = Modifier.size(12.dp),
-                tint = DangerDark
+                tint = Zhimo.danger
             )
         }
     }
@@ -1157,7 +1157,7 @@ private fun UserPanel(
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        color = PaperDark
+        color = Zhimo.paper
     ) {
         Row(
             modifier = Modifier
@@ -1170,7 +1170,7 @@ private fun UserPanel(
                 modifier = Modifier
                     .size(32.dp)
                     .clip(RoundedCornerShape(8.dp))
-                    .background(SealDark),
+                    .background(Zhimo.seal),
                 contentAlignment = Alignment.Center
             ) {
                 if (!avatarUrl.isNullOrBlank()) {
@@ -1189,7 +1189,7 @@ private fun UserPanel(
                     Text(
                         text = username.take(1).uppercase(),
                         style = MaterialTheme.typography.labelLarge,
-                        color = PaperDark
+                        color = Zhimo.paper
                     )
                 }
             }
@@ -1200,7 +1200,7 @@ private fun UserPanel(
             Text(
                 text = username,
                 style = MaterialTheme.typography.bodyMedium,
-                color = InkDark,
+                color = Zhimo.ink,
                 modifier = Modifier.weight(1f),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
@@ -1214,7 +1214,7 @@ private fun UserPanel(
                 Icon(
                     imageVector = Icons.Default.Settings,
                     contentDescription = "设置",
-                    tint = InkDarkFaint,
+                    tint = Zhimo.inkFaint,
                     modifier = Modifier.size(18.dp)
                 )
             }
@@ -1227,7 +1227,7 @@ private fun UserPanel(
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.Logout,
                     contentDescription = "退出登录",
-                    tint = InkDarkFaint,
+                    tint = Zhimo.inkFaint,
                     modifier = Modifier.size(18.dp)
                 )
             }
@@ -1252,7 +1252,7 @@ private fun VoiceStatusWidget(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 8.dp, vertical = 4.dp),
-            color = SuccessDark.copy(alpha = 0.15f),
+            color = Zhimo.success.copy(alpha = 0.15f),
             shape = RoundedCornerShape(8.dp)
         ) {
             Column(
@@ -1267,7 +1267,7 @@ private fun VoiceStatusWidget(
                         imageVector = Icons.AutoMirrored.Filled.VolumeUp,
                         contentDescription = null,
                         modifier = Modifier.size(16.dp),
-                        tint = SuccessDark
+                        tint = Zhimo.success
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Column(modifier = Modifier.weight(1f)) {
@@ -1275,12 +1275,12 @@ private fun VoiceStatusWidget(
                             text = "通话中",
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.SemiBold,
-                            color = SuccessDark
+                            color = Zhimo.success
                         )
                         Text(
                             text = channelName ?: "",
                             style = MaterialTheme.typography.bodySmall,
-                            color = InkDarkFaint,
+                            color = Zhimo.inkFaint,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
@@ -1301,13 +1301,13 @@ private fun VoiceStatusWidget(
                         modifier = Modifier
                             .size(40.dp)
                             .clip(CircleShape)
-                            .background(if (isMuted) DangerDark else PaperDarkRaised)
+                            .background(if (isMuted) Zhimo.danger else Zhimo.paperRaised)
                     ) {
                         Icon(
                             imageVector = if (isMuted) Icons.Default.MicOff else Icons.Default.Mic,
                             contentDescription = if (isMuted) "取消静音" else "静音",
                             modifier = Modifier.size(20.dp),
-                            tint = if (isMuted) PaperDark else InkDark
+                            tint = if (isMuted) Zhimo.paper else Zhimo.ink
                         )
                     }
 
@@ -1317,7 +1317,7 @@ private fun VoiceStatusWidget(
                         modifier = Modifier
                             .size(40.dp)
                             .clip(CircleShape)
-                            .background(DangerDark)
+                            .background(Zhimo.danger)
                     ) {
                         Icon(
                             imageVector = Icons.Default.Phone,
@@ -1325,7 +1325,7 @@ private fun VoiceStatusWidget(
                             modifier = Modifier
                                 .size(20.dp)
                                 .rotate(135f),
-                            tint = PaperDark
+                            tint = Zhimo.paper
                         )
                     }
                 }

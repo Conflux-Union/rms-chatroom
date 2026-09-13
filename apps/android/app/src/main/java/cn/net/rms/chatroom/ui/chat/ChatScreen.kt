@@ -125,6 +125,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.FileProvider
+import cn.net.rms.chatroom.ui.theme.Zhimo
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import me.saket.telephoto.zoomable.coil.ZoomableAsyncImage
@@ -137,14 +138,6 @@ import cn.net.rms.chatroom.data.model.Attachment
 import cn.net.rms.chatroom.data.model.Message
 import cn.net.rms.chatroom.data.model.ReactionGroup
 import cn.net.rms.chatroom.data.websocket.ConnectionState
-import cn.net.rms.chatroom.ui.theme.DangerDark
-import cn.net.rms.chatroom.ui.theme.WarningDark
-import cn.net.rms.chatroom.ui.theme.PaperDarkSubtle
-import cn.net.rms.chatroom.ui.theme.PaperDark
-import cn.net.rms.chatroom.ui.theme.PaperDarkRaised
-import cn.net.rms.chatroom.ui.theme.InkDarkFaint
-import cn.net.rms.chatroom.ui.theme.InkDark
-import cn.net.rms.chatroom.ui.theme.SealDark
 import cn.net.rms.chatroom.ui.main.ForwardQuoteStatus
 import cn.net.rms.chatroom.ui.main.ForwardQuoteUi
 import java.io.File
@@ -525,7 +518,7 @@ fun ChatScreen(
                             modifier = Modifier.fillMaxSize(),
                             contentAlignment = Alignment.Center
                         ) {
-                            CircularProgressIndicator(color = SealDark)
+                            CircularProgressIndicator(color = Zhimo.seal)
                         }
                     }
                     messages.isEmpty() -> {
@@ -535,7 +528,7 @@ fun ChatScreen(
                         ) {
                             Text(
                                 text = "暂无消息\n发送第一条消息吧！",
-                                color = InkDarkFaint,
+                                color = Zhimo.inkFaint,
                                 textAlign = TextAlign.Center
                             )
                         }
@@ -613,7 +606,7 @@ fun ChatScreen(
                                 CircularProgressIndicator(
                                     modifier = Modifier.size(20.dp),
                                     strokeWidth = 2.dp,
-                                    color = SealDark
+                                    color = Zhimo.seal
                                 )
                             }
                         }
@@ -853,17 +846,17 @@ private fun ConnectionBanner(
     ) {
         val (backgroundColor, text, showReconnect) = when (connectionState) {
             ConnectionState.CONNECTING -> Triple(
-                WarningDark.copy(alpha = 0.9f),
+                Zhimo.warning.copy(alpha = 0.9f),
                 "正在连接...",
                 false
             )
             ConnectionState.RECONNECTING -> Triple(
-                WarningDark.copy(alpha = 0.9f),
+                Zhimo.warning.copy(alpha = 0.9f),
                 "正在重新连接...",
                 false
             )
             ConnectionState.DISCONNECTED -> Triple(
-                DangerDark.copy(alpha = 0.9f),
+                Zhimo.danger.copy(alpha = 0.9f),
                 "连接已断开",
                 true
             )
@@ -889,19 +882,19 @@ private fun ConnectionBanner(
                         Icon(
                             imageVector = Icons.Default.CloudOff,
                             contentDescription = null,
-                            tint = PaperDark,
+                            tint = Zhimo.paper,
                             modifier = Modifier.size(16.dp)
                         )
                     } else {
                         CircularProgressIndicator(
                             modifier = Modifier.size(16.dp),
                             strokeWidth = 2.dp,
-                            color = PaperDark
+                            color = Zhimo.paper
                         )
                     }
                     Text(
                         text = text,
-                        color = PaperDark,
+                        color = Zhimo.paper,
                         style = MaterialTheme.typography.bodySmall,
                         fontWeight = FontWeight.Medium
                     )
@@ -911,7 +904,7 @@ private fun ConnectionBanner(
                     TextButton(
                         onClick = onReconnect,
                         colors = ButtonDefaults.textButtonColors(
-                            contentColor = PaperDark
+                            contentColor = Zhimo.paper
                         )
                     ) {
                         Icon(
@@ -949,7 +942,7 @@ private fun MessageItem(
     // Deep-link/quote-jump flash: accent tint at 0.3 alpha fading out over 2s,
     // mirroring the web .message-highlight keyframe pulse. The pulse value is
     // owned by the jump coroutine in ChatScreen.
-    val highlightColor = SealDark.copy(alpha = 0.3f * highlightPulse)
+    val highlightColor = Zhimo.seal.copy(alpha = 0.3f * highlightPulse)
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -975,7 +968,7 @@ private fun MessageItem(
                 modifier = Modifier
                     .size(40.dp)
                     .clip(CircleShape)
-                    .background(SealDark),
+                    .background(Zhimo.seal),
                 contentAlignment = Alignment.Center
             ) {
                 if (!message.avatarUrl.isNullOrBlank()) {
@@ -995,7 +988,7 @@ private fun MessageItem(
                         text = message.username.take(1).uppercase(),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
-                        color = PaperDark
+                        color = Zhimo.paper
                     )
                 }
             }
@@ -1015,7 +1008,7 @@ private fun MessageItem(
                         text = message.username,
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.SemiBold,
-                        color = InkDark
+                        color = Zhimo.ink
                     )
 
                     // Source badge for forwarded messages (FORWARD channels)
@@ -1024,11 +1017,11 @@ private fun MessageItem(
                             text = if (message.sourcePlatform == "qq") "QQ"
                                    else message.forwardMeta?.server ?: "服务器",
                             style = MaterialTheme.typography.labelSmall,
-                            color = InkDarkFaint,
+                            color = Zhimo.inkFaint,
                             modifier = Modifier
                                 .align(Alignment.CenterVertically)
                                 .clip(RoundedCornerShape(4.dp))
-                                .background(PaperDarkSubtle)
+                                .background(Zhimo.paperSubtle)
                                 .padding(horizontal = 4.dp, vertical = 1.dp)
                         )
                     }
@@ -1036,7 +1029,7 @@ private fun MessageItem(
                     Text(
                         text = formatTimestamp(message.createdAt),
                         style = MaterialTheme.typography.labelSmall,
-                        color = InkDarkFaint,
+                        color = Zhimo.inkFaint,
                         modifier = Modifier.align(Alignment.CenterVertically)
                     )
                 }
@@ -1046,7 +1039,7 @@ private fun MessageItem(
                     Text(
                         text = "(已编辑于 ${formatTimestamp(groupLatestEditedAt)})",
                         style = MaterialTheme.typography.labelSmall,
-                        color = InkDarkFaint
+                        color = Zhimo.inkFaint
                     )
                 }
 
@@ -1065,19 +1058,19 @@ private fun MessageItem(
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.Reply,
                         contentDescription = null,
-                        tint = InkDarkFaint,
+                        tint = Zhimo.inkFaint,
                         modifier = Modifier.size(12.dp)
                     )
                     Text(
                         text = "@${message.replyTo.username}",
                         style = MaterialTheme.typography.labelSmall,
-                        color = SealDark,
+                        color = Zhimo.seal,
                         fontWeight = FontWeight.Medium
                     )
                     Text(
                         text = message.replyTo.content.take(40) + if (message.replyTo.content.length > 40) "..." else "",
                         style = MaterialTheme.typography.labelSmall,
-                        color = InkDarkFaint,
+                        color = Zhimo.inkFaint,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -1093,13 +1086,13 @@ private fun MessageItem(
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.Reply,
                         contentDescription = null,
-                        tint = InkDarkFaint,
+                        tint = Zhimo.inkFaint,
                         modifier = Modifier.size(12.dp)
                     )
                     Text(
                         text = message.forwardMeta.quote.nickname,
                         style = MaterialTheme.typography.labelSmall,
-                        color = SealDark,
+                        color = Zhimo.seal,
                         fontWeight = FontWeight.Medium
                     )
                     if (message.forwardMeta.quote.content.isNotBlank()) {
@@ -1107,7 +1100,7 @@ private fun MessageItem(
                             text = message.forwardMeta.quote.content.take(40) +
                                 if (message.forwardMeta.quote.content.length > 40) "..." else "",
                             style = MaterialTheme.typography.labelSmall,
-                            color = InkDarkFaint,
+                            color = Zhimo.inkFaint,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
@@ -1124,7 +1117,7 @@ private fun MessageItem(
                         else -> "管理员撤回了一条消息"
                     },
                     style = MaterialTheme.typography.bodyMedium,
-                    color = InkDarkFaint,
+                    color = Zhimo.inkFaint,
                     fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
                 )
             } else {
@@ -1227,7 +1220,7 @@ private fun AttachmentItem(
                 .fillMaxWidth()
                 .clickable { onAttachmentClick(attachment) },
             shape = RoundedCornerShape(8.dp),
-            color = PaperDarkRaised
+            color = Zhimo.paperRaised
         ) {
             Row(
                 modifier = Modifier
@@ -1239,7 +1232,7 @@ private fun AttachmentItem(
                 Icon(
                     imageVector = icon,
                     contentDescription = null,
-                    tint = SealDark,
+                    tint = Zhimo.seal,
                     modifier = Modifier.size(24.dp)
                 )
 
@@ -1247,20 +1240,20 @@ private fun AttachmentItem(
                     Text(
                         text = attachment.filename,
                         style = MaterialTheme.typography.bodyMedium,
-                        color = InkDark,
+                        color = Zhimo.ink,
                         maxLines = 1
                     )
                     Text(
                         text = formatFileSize(attachment.size),
                         style = MaterialTheme.typography.labelSmall,
-                        color = InkDarkFaint
+                        color = Zhimo.inkFaint
                     )
                 }
 
                 Icon(
                     imageVector = Icons.Default.Download,
                     contentDescription = "下载",
-                    tint = InkDarkFaint,
+                    tint = Zhimo.inkFaint,
                     modifier = Modifier.size(20.dp)
                 )
             }
@@ -1640,7 +1633,7 @@ private fun TextPreview(
                     is TextContentState.Error -> {
                         Text(
                             text = current.message,
-                            color = DangerDark,
+                            color = Zhimo.danger,
                             modifier = Modifier.align(Alignment.Center)
                         )
                     }
@@ -1677,7 +1670,7 @@ private fun PendingFilesPreview(
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        color = PaperDark
+        color = Zhimo.paper
     ) {
         LazyRow(
             modifier = Modifier
@@ -1733,7 +1726,7 @@ private fun PendingFileItem(
     Surface(
         modifier = Modifier.width(120.dp),
         shape = RoundedCornerShape(8.dp),
-        color = PaperDarkRaised
+        color = Zhimo.paperRaised
     ) {
         Column(
             modifier = Modifier.padding(8.dp),
@@ -1743,7 +1736,7 @@ private fun PendingFileItem(
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.InsertDriveFile,
                     contentDescription = null,
-                    tint = SealDark,
+                    tint = Zhimo.seal,
                     modifier = Modifier
                         .size(32.dp)
                         .align(Alignment.Center)
@@ -1769,7 +1762,7 @@ private fun PendingFileItem(
             Text(
                 text = fileName,
                 style = MaterialTheme.typography.labelSmall,
-                color = InkDark,
+                color = Zhimo.ink,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -1778,7 +1771,7 @@ private fun PendingFileItem(
                 LinearProgressIndicator(
                     progress = { progress },
                     modifier = Modifier.fillMaxWidth(),
-                    color = SealDark
+                    color = Zhimo.seal
                 )
             }
         }
@@ -1801,7 +1794,7 @@ private fun UploadedAttachmentItem(
     Surface(
         modifier = Modifier.width(120.dp),
         shape = RoundedCornerShape(8.dp),
-        color = PaperDarkRaised
+        color = Zhimo.paperRaised
     ) {
         Column(
             modifier = Modifier.padding(8.dp),
@@ -1811,7 +1804,7 @@ private fun UploadedAttachmentItem(
                 Icon(
                     imageVector = icon,
                     contentDescription = null,
-                    tint = SealDark,
+                    tint = Zhimo.seal,
                     modifier = Modifier
                         .size(32.dp)
                         .align(Alignment.Center)
@@ -1835,14 +1828,14 @@ private fun UploadedAttachmentItem(
             Text(
                 text = attachment.filename,
                 style = MaterialTheme.typography.labelSmall,
-                color = InkDark,
+                color = Zhimo.ink,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
             Text(
                 text = formatFileSize(attachment.size),
                 style = MaterialTheme.typography.labelSmall,
-                color = InkDarkFaint
+                color = Zhimo.inkFaint
             )
         }
     }
@@ -1861,7 +1854,7 @@ private fun MessageInput(
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        color = PaperDark
+        color = Zhimo.paper
     ) {
         Row(
             modifier = Modifier
@@ -1879,7 +1872,7 @@ private fun MessageInput(
                 Icon(
                     imageVector = Icons.Default.AttachFile,
                     contentDescription = "添加附件",
-                    tint = if (isConnected && !isUploading) SealDark else InkDarkFaint
+                    tint = if (isConnected && !isUploading) Zhimo.seal else Zhimo.inkFaint
                 )
             }
 
@@ -1891,20 +1884,20 @@ private fun MessageInput(
                 placeholder = {
                     Text(
                         text = if (isConnected) stringResource(R.string.send_message) else "连接断开，无法发送",
-                        color = InkDarkFaint
+                        color = Zhimo.inkFaint
                     )
                 },
                 colors = TextFieldDefaults.colors(
-                    focusedContainerColor = PaperDarkRaised,
-                    unfocusedContainerColor = PaperDarkRaised,
-                    disabledContainerColor = PaperDarkRaised.copy(alpha = 0.5f),
+                    focusedContainerColor = Zhimo.paperRaised,
+                    unfocusedContainerColor = Zhimo.paperRaised,
+                    disabledContainerColor = Zhimo.paperRaised.copy(alpha = 0.5f),
                     focusedIndicatorColor = Color.Transparent,
                     unfocusedIndicatorColor = Color.Transparent,
                     disabledIndicatorColor = Color.Transparent,
-                    cursorColor = SealDark,
-                    focusedTextColor = InkDark,
-                    unfocusedTextColor = InkDark,
-                    disabledTextColor = InkDarkFaint
+                    cursorColor = Zhimo.seal,
+                    focusedTextColor = Zhimo.ink,
+                    unfocusedTextColor = Zhimo.ink,
+                    disabledTextColor = Zhimo.inkFaint
                 ),
                 shape = RoundedCornerShape(8.dp),
                 // Multiline input: Enter inserts a newline (markdown-capable
@@ -1925,7 +1918,7 @@ private fun MessageInput(
                     modifier = Modifier
                         .size(40.dp)
                         .background(
-                            if (isConnected && !isUploading) SealDark else SealDark.copy(alpha = 0.5f),
+                            if (isConnected && !isUploading) Zhimo.seal else Zhimo.seal.copy(alpha = 0.5f),
                             CircleShape
                         )
                 ) {
@@ -1934,14 +1927,14 @@ private fun MessageInput(
                             CircularProgressIndicator(
                                 modifier = Modifier.size(20.dp),
                                 strokeWidth = 2.dp,
-                                color = PaperDark
+                                color = Zhimo.paper
                             )
                         }
                         else -> {
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.Send,
                                 contentDescription = "发送",
-                                tint = PaperDark,
+                                tint = Zhimo.paper,
                                 modifier = Modifier.size(20.dp)
                             )
                         }
@@ -2098,7 +2091,7 @@ private fun MessageContextMenu(
 
     androidx.compose.material3.ModalBottomSheet(
         onDismissRequest = onDismiss,
-        containerColor = PaperDark
+        containerColor = Zhimo.paper
     ) {
         Column(
             modifier = Modifier
@@ -2159,7 +2152,7 @@ private fun MessageContextMenu(
                 Text(
                     text = "无可用操作",
                     modifier = Modifier.padding(16.dp),
-                    color = InkDarkFaint,
+                    color = Zhimo.inkFaint,
                     style = MaterialTheme.typography.bodyMedium
                 )
             }
@@ -2185,13 +2178,13 @@ private fun MenuOption(
         Icon(
             imageVector = icon,
             contentDescription = null,
-            tint = if (isDestructive) DangerDark else InkDark,
+            tint = if (isDestructive) Zhimo.danger else Zhimo.ink,
             modifier = Modifier.size(24.dp)
         )
         Text(
             text = text,
             style = MaterialTheme.typography.bodyLarge,
-            color = if (isDestructive) DangerDark else InkDark
+            color = if (isDestructive) Zhimo.danger else Zhimo.ink
         )
     }
 }
@@ -2214,11 +2207,11 @@ private fun EditMessageDialog(
                 modifier = Modifier.fillMaxWidth(),
                 placeholder = { Text("输入消息内容") },
                 colors = TextFieldDefaults.colors(
-                    focusedContainerColor = PaperDarkRaised,
-                    unfocusedContainerColor = PaperDarkRaised,
+                    focusedContainerColor = Zhimo.paperRaised,
+                    unfocusedContainerColor = Zhimo.paperRaised,
                     focusedIndicatorColor = Color.Transparent,
                     unfocusedIndicatorColor = Color.Transparent,
-                    cursorColor = SealDark
+                    cursorColor = Zhimo.seal
                 ),
                 shape = RoundedCornerShape(8.dp),
                 minLines = 3,
@@ -2230,15 +2223,15 @@ private fun EditMessageDialog(
                 onClick = { if (editedContent.isNotBlank()) onConfirm(editedContent.trim()) },
                 enabled = editedContent.isNotBlank() && editedContent.trim() != message.content
             ) {
-                Text("保存", color = SealDark)
+                Text("保存", color = Zhimo.seal)
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("取消", color = InkDarkFaint)
+                Text("取消", color = Zhimo.inkFaint)
             }
         },
-        containerColor = PaperDark
+        containerColor = Zhimo.paper
     )
 }
 
@@ -2264,7 +2257,7 @@ private fun MuteUserDialog(
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 // Scope selection
-                Text("禁言范围", style = MaterialTheme.typography.labelLarge, color = InkDark)
+                Text("禁言范围", style = MaterialTheme.typography.labelLarge, color = Zhimo.ink)
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     RadioOption("当前频道", "channel", selectedScope) { selectedScope = it }
                     RadioOption("当前服务器", "server", selectedScope) { selectedScope = it }
@@ -2272,7 +2265,7 @@ private fun MuteUserDialog(
                 }
 
                 // Duration selection
-                Text("禁言时长", style = MaterialTheme.typography.labelLarge, color = InkDark)
+                Text("禁言时长", style = MaterialTheme.typography.labelLarge, color = Zhimo.ink)
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     RadioOption("10分钟", "10m", selectedDuration) { selectedDuration = it }
                     RadioOption("1小时", "1h", selectedDuration) { selectedDuration = it }
@@ -2281,18 +2274,18 @@ private fun MuteUserDialog(
                 }
 
                 // Reason input
-                Text("原因（可选）", style = MaterialTheme.typography.labelLarge, color = InkDark)
+                Text("原因（可选）", style = MaterialTheme.typography.labelLarge, color = Zhimo.ink)
                 TextField(
                     value = reason,
                     onValueChange = { reason = it },
                     modifier = Modifier.fillMaxWidth(),
                     placeholder = { Text("输入禁言原因") },
                     colors = TextFieldDefaults.colors(
-                        focusedContainerColor = PaperDarkRaised,
-                        unfocusedContainerColor = PaperDarkRaised,
+                        focusedContainerColor = Zhimo.paperRaised,
+                        unfocusedContainerColor = Zhimo.paperRaised,
                         focusedIndicatorColor = Color.Transparent,
                         unfocusedIndicatorColor = Color.Transparent,
-                        cursorColor = SealDark
+                        cursorColor = Zhimo.seal
                     ),
                     shape = RoundedCornerShape(8.dp),
                     maxLines = 3
@@ -2311,15 +2304,15 @@ private fun MuteUserDialog(
                     onConfirm(selectedScope, durationMinutes, null, null, reason.ifBlank { null })
                 }
             ) {
-                Text("确认", color = DangerDark)
+                Text("确认", color = Zhimo.danger)
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("取消", color = InkDarkFaint)
+                Text("取消", color = Zhimo.inkFaint)
             }
         },
-        containerColor = PaperDark
+        containerColor = Zhimo.paper
     )
 }
 
@@ -2342,14 +2335,14 @@ private fun RadioOption(
             selected = selectedValue == value,
             onClick = { onSelect(value) },
             colors = androidx.compose.material3.RadioButtonDefaults.colors(
-                selectedColor = SealDark,
-                unselectedColor = InkDarkFaint
+                selectedColor = Zhimo.seal,
+                unselectedColor = Zhimo.inkFaint
             )
         )
         Text(
             text = label,
             style = MaterialTheme.typography.bodyMedium,
-            color = InkDark
+            color = Zhimo.ink
         )
     }
 }
@@ -2362,7 +2355,7 @@ private fun ReplyPreviewBar(
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        color = PaperDarkRaised
+        color = Zhimo.paperRaised
     ) {
         Row(
             modifier = Modifier
@@ -2374,20 +2367,20 @@ private fun ReplyPreviewBar(
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.Reply,
                 contentDescription = null,
-                tint = SealDark,
+                tint = Zhimo.seal,
                 modifier = Modifier.size(16.dp)
             )
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = "回复 ${replyingTo.username}",
                     style = MaterialTheme.typography.labelSmall,
-                    color = SealDark,
+                    color = Zhimo.seal,
                     fontWeight = FontWeight.Medium
                 )
                 Text(
                     text = replyingTo.content.take(50) + if (replyingTo.content.length > 50) "..." else "",
                     style = MaterialTheme.typography.labelSmall,
-                    color = InkDarkFaint,
+                    color = Zhimo.inkFaint,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -2399,7 +2392,7 @@ private fun ReplyPreviewBar(
                 Icon(
                     imageVector = Icons.Default.Close,
                     contentDescription = "取消回复",
-                    tint = InkDarkFaint,
+                    tint = Zhimo.inkFaint,
                     modifier = Modifier.size(16.dp)
                 )
             }
@@ -2423,9 +2416,9 @@ private fun ReactionsBar(
             Surface(
                 onClick = { onReactionClick(reaction.emoji, hasReacted) },
                 shape = RoundedCornerShape(8.dp),
-                color = if (hasReacted) SealDark.copy(alpha = 0.2f) else PaperDarkRaised,
+                color = if (hasReacted) Zhimo.seal.copy(alpha = 0.2f) else Zhimo.paperRaised,
                 border = if (hasReacted) {
-                    androidx.compose.foundation.BorderStroke(1.dp, SealDark)
+                    androidx.compose.foundation.BorderStroke(1.dp, Zhimo.seal)
                 } else null
             ) {
                 Row(
@@ -2440,7 +2433,7 @@ private fun ReactionsBar(
                     Text(
                         text = reaction.count.toString(),
                         style = MaterialTheme.typography.labelSmall,
-                        color = if (hasReacted) SealDark else InkDarkFaint
+                        color = if (hasReacted) Zhimo.seal else Zhimo.inkFaint
                     )
                 }
             }
@@ -2451,12 +2444,12 @@ private fun ReactionsBar(
             Surface(
                 onClick = onAddReactionClick,
                 shape = RoundedCornerShape(8.dp),
-                color = PaperDarkRaised
+                color = Zhimo.paperRaised
             ) {
                 Icon(
                     imageVector = Icons.Default.EmojiEmotions,
                     contentDescription = "添加表情",
-                    tint = InkDarkFaint,
+                    tint = Zhimo.inkFaint,
                     modifier = Modifier
                         .padding(horizontal = 8.dp, vertical = 4.dp)
                         .size(16.dp)
@@ -2477,7 +2470,7 @@ private fun EmojiPickerDialog(
     Dialog(onDismissRequest = onDismiss) {
         Surface(
             shape = RoundedCornerShape(8.dp),
-            color = PaperDark
+            color = Zhimo.paper
         ) {
             Column(
                 modifier = Modifier.padding(16.dp)
@@ -2485,7 +2478,7 @@ private fun EmojiPickerDialog(
                 Text(
                     text = "选择表情",
                     style = MaterialTheme.typography.titleMedium,
-                    color = InkDark,
+                    color = Zhimo.ink,
                     modifier = Modifier.padding(bottom = 12.dp)
                 )
                 
@@ -2530,13 +2523,13 @@ private fun UnreadDivider() {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        HorizontalDivider(modifier = Modifier.weight(1f), thickness = 1.dp, color = InkDarkFaint)
+        HorizontalDivider(modifier = Modifier.weight(1f), thickness = 1.dp, color = Zhimo.inkFaint)
         Text(
             text = "新消息",
-            color = SealDark,
+            color = Zhimo.seal,
             style = MaterialTheme.typography.labelSmall
         )
-        HorizontalDivider(modifier = Modifier.weight(1f), thickness = 1.dp, color = InkDarkFaint)
+        HorizontalDivider(modifier = Modifier.weight(1f), thickness = 1.dp, color = Zhimo.inkFaint)
     }
 }
 
@@ -2565,7 +2558,7 @@ private fun MentionAutocomplete(
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(max = 200.dp),
-        color = PaperDark,
+        color = Zhimo.paper,
         shadowElevation = 4.dp
     ) {
         LazyColumn {
@@ -2583,20 +2576,20 @@ private fun MentionAutocomplete(
                         modifier = Modifier
                             .size(32.dp)
                             .clip(CircleShape)
-                            .background(SealDark),
+                            .background(Zhimo.seal),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
                             text = member.username.take(1).uppercase(),
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.Bold,
-                            color = PaperDark
+                            color = Zhimo.paper
                         )
                     }
                     Text(
                         text = member.username,
                         style = MaterialTheme.typography.bodyMedium,
-                        color = InkDark
+                        color = Zhimo.ink
                     )
                 }
             }
@@ -2630,18 +2623,21 @@ private fun ForwardedMessageQuote(
         onResolveQuote(link.channelId, link.messageId) { resolved -> quote = resolved }
     }
 
+    // Read once: the draw lambda below runs on the DrawScope, not in composition.
+    val accent = Zhimo.seal
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(8.dp))
-            .background(PaperDarkSubtle)
+            .background(Zhimo.paperSubtle)
             .drawBehind {
                 // Left accent bar, mirroring the web card's border-left.
-                drawRect(color = SealDark, size = Size(3.dp.toPx(), size.height))
+                drawRect(color = accent, size = Size(3.dp.toPx(), size.height))
                 // Jump flash on the card itself: without this the row-level
                 // highlight would hide behind the card's opaque background.
                 if (highlightPulse > 0f) {
-                    drawRect(color = SealDark.copy(alpha = 0.3f * highlightPulse))
+                    drawRect(color = accent.copy(alpha = 0.3f * highlightPulse))
                 }
             }
             .combinedClickable(
@@ -2655,21 +2651,21 @@ private fun ForwardedMessageQuote(
         Text(
             text = "转发的消息",
             style = MaterialTheme.typography.labelSmall,
-            color = InkDarkFaint
+            color = Zhimo.inkFaint
         )
         Spacer(modifier = Modifier.height(2.dp))
         when {
             quote == null -> Text(
                 text = "加载原消息…",
                 style = MaterialTheme.typography.bodySmall,
-                color = InkDarkFaint
+                color = Zhimo.inkFaint
             )
             quote!!.status == ForwardQuoteStatus.READY -> {
                 Text(
                     text = quote!!.username ?: "",
                     style = MaterialTheme.typography.bodySmall,
                     fontWeight = FontWeight.Medium,
-                    color = SealDark
+                    color = Zhimo.seal
                 )
                 val body = quote!!.content?.takeIf { it.isNotBlank() }
                     ?: if (quote!!.hasAttachments) "[附件]" else ""
@@ -2713,19 +2709,19 @@ private fun ForwardedMessageQuote(
             quote!!.status == ForwardQuoteStatus.DELETED -> Text(
                 text = "原消息已被删除",
                 style = MaterialTheme.typography.bodySmall,
-                color = InkDarkFaint,
+                color = Zhimo.inkFaint,
                 fontStyle = FontStyle.Italic
             )
             quote!!.status == ForwardQuoteStatus.DENIED -> Text(
                 text = "没有权限查看原消息",
                 style = MaterialTheme.typography.bodySmall,
-                color = InkDarkFaint,
+                color = Zhimo.inkFaint,
                 fontStyle = FontStyle.Italic
             )
             else -> Text(
                 text = "原消息无法加载",
                 style = MaterialTheme.typography.bodySmall,
-                color = InkDarkFaint,
+                color = Zhimo.inkFaint,
                 fontStyle = FontStyle.Italic
             )
         }

@@ -25,14 +25,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import cn.net.rms.chatroom.ui.theme.Zhimo
 import coil.compose.AsyncImage
 import cn.net.rms.chatroom.data.model.Server
-import cn.net.rms.chatroom.ui.theme.SealDark
-import cn.net.rms.chatroom.ui.theme.PaperDark
-import cn.net.rms.chatroom.ui.theme.PaperDarkHover
-import cn.net.rms.chatroom.ui.theme.BorderStrongDark
-import cn.net.rms.chatroom.ui.theme.DangerDark
-import cn.net.rms.chatroom.ui.theme.InkDark
 
 @Composable
 fun ServerListColumn(
@@ -51,7 +46,7 @@ fun ServerListColumn(
         modifier = Modifier
             .width(72.dp)
             .fillMaxHeight()
-            .background(PaperDark)
+            .background(Zhimo.paper)
             .padding(vertical = 12.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
@@ -84,7 +79,7 @@ fun ServerListColumn(
                 modifier = Modifier
                     .width(32.dp)
                     .padding(vertical = 4.dp),
-                color = BorderStrongDark
+                color = Zhimo.borderStrong
             )
             Spacer(modifier = Modifier.height(4.dp))
             AddServerButton(onClick = { showCreateDialog = true })
@@ -118,7 +113,7 @@ fun ServerListColumn(
                         showDeleteDialog = false
                         serverToDelete = null
                     },
-                    colors = ButtonDefaults.textButtonColors(contentColor = DangerDark)
+                    colors = ButtonDefaults.textButtonColors(contentColor = Zhimo.danger)
                 ) {
                     Text("删除")
                 }
@@ -176,14 +171,14 @@ private fun AddServerButton(onClick: () -> Unit) {
         modifier = Modifier
             .size(48.dp)
             .clip(CircleShape)
-            .background(PaperDarkHover)
+            .background(Zhimo.paperHover)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
         Icon(
             imageVector = Icons.Default.Add,
             contentDescription = "添加服务器",
-            tint = SealDark,
+            tint = Zhimo.seal,
             modifier = Modifier.size(24.dp)
         )
     }
@@ -204,7 +199,7 @@ private fun ServerItem(
     )
 
     val backgroundColor by animateColorAsState(
-        targetValue = if (isSelected) SealDark else PaperDarkHover,
+        targetValue = if (isSelected) Zhimo.seal else Zhimo.paperHover,
         animationSpec = tween(200),
         label = "backgroundColor"
     )
@@ -225,7 +220,7 @@ private fun ServerItem(
                 .width(4.dp)
                 .height(indicatorHeight)
                 .clip(RoundedCornerShape(topEnd = 4.dp, bottomEnd = 4.dp))
-                .background(if (isSelected) InkDark else Color.Transparent)
+                .background(if (isSelected) Zhimo.ink else Color.Transparent)
         )
 
         Spacer(modifier = Modifier.width(8.dp))
@@ -254,7 +249,7 @@ private fun ServerItem(
                     text = server.name.take(2).uppercase(),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
-                    color = InkDark,
+                    color = Zhimo.ink,
                     textAlign = TextAlign.Center
                 )
             }

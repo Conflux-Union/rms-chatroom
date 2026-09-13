@@ -60,7 +60,7 @@ fun MusicBottomSheet(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .background(PaperDarkSubtle)
+            .background(Zhimo.paperSubtle)
     ) {
         // Header
         MusicHeader(
@@ -124,7 +124,7 @@ private fun MusicHeader(
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        color = PaperDark
+        color = Zhimo.paper
     ) {
         Row(
             modifier = Modifier
@@ -135,7 +135,7 @@ private fun MusicHeader(
             Icon(
                 imageVector = Icons.Default.MusicNote,
                 contentDescription = null,
-                tint = InkDark,
+                tint = Zhimo.ink,
                 modifier = Modifier.size(20.dp)
             )
             Spacer(modifier = Modifier.width(8.dp))
@@ -143,7 +143,7 @@ private fun MusicHeader(
                 text = "音乐播放器",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
-                color = InkDark
+                color = Zhimo.ink
             )
 
             Spacer(modifier = Modifier.weight(1f))
@@ -154,7 +154,7 @@ private fun MusicHeader(
                     modifier = Modifier
                         .clip(RoundedCornerShape(8.dp))
                         .clickable { onStopPlayback() },
-                    color = SealDark.copy(alpha = 0.2f)
+                    color = Zhimo.seal.copy(alpha = 0.2f)
                 ) {
                     Row(
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
@@ -163,14 +163,14 @@ private fun MusicHeader(
                         Icon(
                             imageVector = Icons.Default.GraphicEq,
                             contentDescription = null,
-                            tint = SealDark,
+                            tint = Zhimo.seal,
                             modifier = Modifier.size(14.dp)
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
                             text = "播放中",
                             style = MaterialTheme.typography.labelSmall,
-                            color = SealDark
+                            color = Zhimo.seal
                         )
                     }
                 }
@@ -183,12 +183,12 @@ private fun MusicHeader(
                     modifier = Modifier
                         .clip(RoundedCornerShape(8.dp))
                         .clickable { onQQLogoutClick() },
-                    color = SuccessDark.copy(alpha = 0.2f)
+                    color = Zhimo.success.copy(alpha = 0.2f)
                 ) {
                     Text(
                         text = "QQ",
                         style = MaterialTheme.typography.labelSmall,
-                        color = SuccessDark,
+                        color = Zhimo.success,
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
                     )
                 }
@@ -219,12 +219,12 @@ private fun MusicHeader(
                     modifier = Modifier
                         .clip(RoundedCornerShape(8.dp))
                         .clickable { onLoginClick() },
-                    color = PaperDarkHover
+                    color = Zhimo.paperHover
                 ) {
                     Text(
                         text = "登录",
                         style = MaterialTheme.typography.labelSmall,
-                        color = InkDarkFaint,
+                        color = Zhimo.inkFaint,
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
                     )
                 }
@@ -249,7 +249,7 @@ private fun NowPlayingSection(
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        color = PaperDarkHover,
+        color = Zhimo.paperHover,
         shape = RoundedCornerShape(8.dp)
     ) {
         Column(
@@ -282,14 +282,14 @@ private fun NowPlayingSection(
                         text = song.name,
                         style = MaterialTheme.typography.bodyLarge,
                         fontWeight = FontWeight.SemiBold,
-                        color = InkDark,
+                        color = Zhimo.ink,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
                         text = song.artist,
                         style = MaterialTheme.typography.bodySmall,
-                        color = InkDarkFaint,
+                        color = Zhimo.inkFaint,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -315,7 +315,7 @@ private fun NowPlayingSection(
                         modifier = Modifier
                             .size(48.dp)
                             .clip(CircleShape)
-                            .background(SealDark)
+                            .background(Zhimo.seal)
                     ) {
                         when (playbackState) {
                             "loading" -> CircularProgressIndicator(
@@ -338,12 +338,12 @@ private fun NowPlayingSection(
                         modifier = Modifier
                             .size(40.dp)
                             .clip(CircleShape)
-                            .background(PaperDarkSubtle)
+                            .background(Zhimo.paperSubtle)
                     ) {
                         Icon(
                             imageVector = Icons.Default.SkipNext,
                             contentDescription = "下一首",
-                            tint = InkDark,
+                            tint = Zhimo.ink,
                             modifier = Modifier.size(20.dp)
                         )
                     }
@@ -382,12 +382,12 @@ private fun ProgressBar(
             Text(
                 text = formatTime(if (isDragging) (sliderPosition * durationMs).toLong() else positionMs),
                 style = MaterialTheme.typography.labelSmall,
-                color = InkDarkFaint
+                color = Zhimo.inkFaint
             )
             Text(
                 text = formatTime(durationMs),
                 style = MaterialTheme.typography.labelSmall,
-                color = InkDarkFaint
+                color = Zhimo.inkFaint
             )
         }
 
@@ -406,9 +406,9 @@ private fun ProgressBar(
             trackHeight = 6.dp,
             coerceThumbInTrack = true,
             colors = MaterialSliderDefaults.materialColors(
-                thumbColor = SliderBrushColor(color = SealDark),
-                activeTrackColor = SliderBrushColor(color = SealDark),
-                inactiveTrackColor = SliderBrushColor(color = PaperDarkSubtle)
+                thumbColor = SliderBrushColor(color = Zhimo.seal),
+                activeTrackColor = SliderBrushColor(color = Zhimo.seal),
+                inactiveTrackColor = SliderBrushColor(color = Zhimo.paperSubtle)
             )
         )
     }
@@ -425,20 +425,20 @@ private fun EmptyPlayingState(onShowSearch: () -> Unit) {
         Icon(
             imageVector = Icons.Default.MusicNote,
             contentDescription = null,
-            tint = InkDarkFaint,
+            tint = Zhimo.inkFaint,
             modifier = Modifier.size(48.dp)
         )
         Spacer(modifier = Modifier.height(12.dp))
         Text(
             text = "暂无播放",
             style = MaterialTheme.typography.bodyLarge,
-            color = InkDarkFaint
+            color = Zhimo.inkFaint
         )
         Spacer(modifier = Modifier.height(16.dp))
         Button(
             onClick = onShowSearch,
             colors = ButtonDefaults.buttonColors(
-                containerColor = SealDark
+                containerColor = Zhimo.seal
             ),
             shape = RoundedCornerShape(8.dp)
         ) {
@@ -457,7 +457,7 @@ private fun QueueSection(
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        color = PaperDarkHover,
+        color = Zhimo.paperHover,
         shape = RoundedCornerShape(8.dp)
     ) {
         Column {
@@ -472,7 +472,7 @@ private fun QueueSection(
                     text = "播放队列 (${queue.size})",
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold,
-                    color = InkDark
+                    color = Zhimo.ink
                 )
 
                 Spacer(modifier = Modifier.weight(1f))
@@ -484,7 +484,7 @@ private fun QueueSection(
                     Icon(
                         imageVector = Icons.Default.Add,
                         contentDescription = "添加",
-                        tint = InkDarkFaint,
+                        tint = Zhimo.inkFaint,
                         modifier = Modifier.size(18.dp)
                     )
                 }
@@ -497,14 +497,14 @@ private fun QueueSection(
                         Icon(
                             imageVector = Icons.Default.Delete,
                             contentDescription = "清空",
-                            tint = InkDarkFaint,
+                            tint = Zhimo.inkFaint,
                             modifier = Modifier.size(18.dp)
                         )
                     }
                 }
             }
 
-            HorizontalDivider(color = PaperDarkSubtle)
+            HorizontalDivider(color = Zhimo.paperSubtle)
 
             // Queue list
             if (queue.isEmpty()) {
@@ -517,7 +517,7 @@ private fun QueueSection(
                     Text(
                         text = "队列为空",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = InkDarkFaint
+                        color = Zhimo.inkFaint
                     )
                 }
             } else {
@@ -546,7 +546,7 @@ private fun QueueItemRow(
     onRemove: () -> Unit
 ) {
     val backgroundColor by animateColorAsState(
-        targetValue = if (isCurrent) SealDark.copy(alpha = 0.15f) else Color.Transparent,
+        targetValue = if (isCurrent) Zhimo.seal.copy(alpha = 0.15f) else Color.Transparent,
         animationSpec = tween(200),
         label = "queueItemBg"
     )
@@ -578,14 +578,14 @@ private fun QueueItemRow(
             Text(
                 text = item.song.name,
                 style = MaterialTheme.typography.bodyMedium,
-                color = InkDark,
+                color = Zhimo.ink,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
             Text(
                 text = item.song.artist,
                 style = MaterialTheme.typography.bodySmall,
-                color = InkDarkFaint,
+                color = Zhimo.inkFaint,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -595,7 +595,7 @@ private fun QueueItemRow(
         Text(
             text = formatDuration(item.song.duration),
             style = MaterialTheme.typography.labelSmall,
-            color = InkDarkFaint
+            color = Zhimo.inkFaint
         )
 
         // Remove button
@@ -606,7 +606,7 @@ private fun QueueItemRow(
             Icon(
                 imageVector = Icons.Default.Close,
                 contentDescription = "删除",
-                tint = InkDarkFaint,
+                tint = Zhimo.inkFaint,
                 modifier = Modifier.size(16.dp)
             )
         }
@@ -634,7 +634,7 @@ private fun VolumeControl(
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        color = PaperDarkSubtle.copy(alpha = 0.5f),
+        color = Zhimo.paperSubtle.copy(alpha = 0.5f),
         shape = RoundedCornerShape(8.dp)
     ) {
         Row(
@@ -647,7 +647,7 @@ private fun VolumeControl(
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.VolumeUp,
                 contentDescription = "音量",
-                tint = InkDarkFaint,
+                tint = Zhimo.inkFaint,
                 modifier = Modifier.size(16.dp)
             )
 
@@ -659,16 +659,16 @@ private fun VolumeControl(
                 trackHeight = 4.dp,
                 coerceThumbInTrack = true,
                 colors = MaterialSliderDefaults.materialColors(
-                    thumbColor = SliderBrushColor(color = SealDark),
-                    activeTrackColor = SliderBrushColor(color = SealDark),
-                    inactiveTrackColor = SliderBrushColor(color = PaperDark)
+                    thumbColor = SliderBrushColor(color = Zhimo.seal),
+                    activeTrackColor = SliderBrushColor(color = Zhimo.seal),
+                    inactiveTrackColor = SliderBrushColor(color = Zhimo.paper)
                 )
             )
 
             Text(
                 text = "${(volume * 100).toInt()}%",
                 style = MaterialTheme.typography.labelSmall,
-                color = InkDarkFaint,
+                color = Zhimo.inkFaint,
                 modifier = Modifier.width(32.dp),
                 textAlign = TextAlign.End
             )

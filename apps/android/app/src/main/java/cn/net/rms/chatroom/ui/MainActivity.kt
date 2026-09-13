@@ -1,6 +1,7 @@
 package cn.net.rms.chatroom.ui
 
 import android.Manifest
+import android.app.Activity
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -15,17 +16,21 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.browser.customtabs.CustomTabsIntent
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalView
 import androidx.core.content.ContextCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import androidx.core.view.WindowCompat
 import androidx.navigation.compose.rememberNavController
 import cn.net.rms.chatroom.BuildConfig
 import cn.net.rms.chatroom.data.local.SettingsPreferences
+import cn.net.rms.chatroom.data.local.ThemeMode
 import cn.net.rms.chatroom.data.repository.ChatRepository
 import cn.net.rms.chatroom.service.MessageConnectionService
 import cn.net.rms.chatroom.ui.auth.AuthViewModel
@@ -33,7 +38,7 @@ import cn.net.rms.chatroom.ui.common.SplashContent
 import cn.net.rms.chatroom.ui.navigation.NavGraph
 import cn.net.rms.chatroom.ui.navigation.Screen
 import cn.net.rms.chatroom.ui.theme.RMSDiscordTheme
-import cn.net.rms.chatroom.ui.theme.PaperDark
+import cn.net.rms.chatroom.ui.theme.Zhimo
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
@@ -67,7 +72,36 @@ class MainActivity : ComponentActivity() {
         requestNotificationPermission()
 
         setContent {
-            RMSDiscordTheme {
+            // Default SYSTEM so the first frame follows the OS until DataStore
+            // emits; the flip lands behind the splash, which waits on network I/O.
+            val themeMode by settingsPreferences.themeMode.collectAsState(initial = ThemeMode.SYSTEM)
+            val systemDark = isSystemInDarkTheme()
+            val darkTheme = when (themeMode) {
+                ThemeMode.SYSTEM -> systemDark
+                ThemeMode.LIGHT -> false
+                ThemeMode.DARK -> true
+            }
+
+            RMSDiscordTheme(darkTheme = darkTheme) {
+                val view = LocalView.current
+                // The splash overlay survives the isLoading->settled switch so
+                // the waveform hands off from rhythm to settle without a jump,
+                // then removes itself once its exit choreography finishes.
+                // Saveable so activity recreation does not replay the exit.
+                var splashVisible by rememberSaveable { mutableStateOf(true) }
+
+                // The splash is always dark paper regardless of theme, so keep
+                // system bar icons light while it is up and defer to the active
+                // theme on exit. Registered deeper than the theme's own effect,
+                // it is the last writer on every frame it runs.
+                SideEffect {
+                    val window = (view.context as Activity).window
+                    val controller = WindowCompat.getInsetsController(window, view)
+                    val lightBars = !splashVisible && !darkTheme
+                    controller.isAppearanceLightStatusBars = lightBars
+                    controller.isAppearanceLightNavigationBars = lightBars
+                }
+
                 val navController = rememberNavController()
                 val authState by authViewModel.state.collectAsState()
                 val backgroundMessageServiceEnabled by settingsPreferences
@@ -111,12 +145,6 @@ class MainActivity : ComponentActivity() {
                 }
 
                 Box(modifier = Modifier.fillMaxSize()) {
-                    // The splash overlay survives the isLoading->settled switch so
-                    // the waveform hands off from rhythm to settle without a jump,
-                    // then removes itself once its exit choreography finishes.
-                    // Saveable so activity recreation does not replay the exit.
-                    var splashVisible by rememberSaveable { mutableStateOf(true) }
-
                     if (!authState.isLoading) {
                         // Entry destination is decided once from the settled startup
                         // state: stored credentials land in main directly (validity
@@ -127,7 +155,7 @@ class MainActivity : ComponentActivity() {
                         }
                         Surface(
                             modifier = Modifier.fillMaxSize(),
-                            color = PaperDark
+                            color = Zhimo.paper
                         ) {
                             NavGraph(
                                 navController = navController,

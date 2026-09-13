@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.longPreferencesKey
+import androidx.datastore.preferences.core.stringPreferencesKey
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -21,6 +22,7 @@ class SettingsPreferences @Inject constructor(
         private val FLOATING_WINDOW_ENABLED = booleanPreferencesKey("floating_window_enabled")
         private val BACKGROUND_MESSAGE_SERVICE_ENABLED = booleanPreferencesKey("background_message_service_enabled")
         private val TELEMETRY_ENABLED = booleanPreferencesKey("telemetry_enabled")
+        private val THEME_MODE = stringPreferencesKey("theme_mode")
         private fun lastReadMessageKey(channelId: Long) = longPreferencesKey("last_read_message_$channelId")
     }
 
@@ -34,6 +36,10 @@ class SettingsPreferences @Inject constructor(
 
     val telemetryEnabled: Flow<Boolean> = dataStore.data.map { prefs ->
         prefs[TELEMETRY_ENABLED] ?: true
+    }
+
+    val themeMode: Flow<ThemeMode> = dataStore.data.map { prefs ->
+        ThemeMode.fromStored(prefs[THEME_MODE])
     }
 
     suspend fun setFloatingWindowEnabled(enabled: Boolean) {
@@ -51,6 +57,12 @@ class SettingsPreferences @Inject constructor(
     suspend fun setTelemetryEnabled(enabled: Boolean) {
         dataStore.edit { prefs ->
             prefs[TELEMETRY_ENABLED] = enabled
+        }
+    }
+
+    suspend fun setThemeMode(mode: ThemeMode) {
+        dataStore.edit { prefs ->
+            prefs[THEME_MODE] = mode.name
         }
     }
 

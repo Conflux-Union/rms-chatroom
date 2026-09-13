@@ -1,6 +1,7 @@
 package cn.net.rms.chatroom.ui.theme
 
 import android.app.Activity
+import android.graphics.drawable.ColorDrawable
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -11,8 +12,10 @@ import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
@@ -122,22 +125,28 @@ fun RMSDiscordTheme(
         darkTheme -> DarkColorScheme
         else -> LightColorScheme
     }
+    val zhimo = if (darkTheme) zhimoDarkColors() else zhimoLightColors()
 
     val view = LocalView.current
     if (!view.isInEditMode) {
         SideEffect {
             val window = (view.context as Activity).window
             WindowCompat.setDecorFitsSystemWindows(window, false)
+            // Set explicitly so activity recreation never flashes the platform
+            // default background before Compose redraws.
+            window.setBackgroundDrawable(ColorDrawable(colorScheme.background.toArgb()))
             val controller = WindowCompat.getInsetsController(window, view)
             controller.isAppearanceLightStatusBars = !darkTheme
             controller.isAppearanceLightNavigationBars = !darkTheme
         }
     }
 
-    MaterialTheme(
-        colorScheme = colorScheme,
-        typography = Typography,
-        shapes = ZhimoShapes,
-        content = content
-    )
+    CompositionLocalProvider(LocalZhimoColors provides zhimo) {
+        MaterialTheme(
+            colorScheme = colorScheme,
+            typography = Typography,
+            shapes = ZhimoShapes,
+            content = content
+        )
+    }
 }

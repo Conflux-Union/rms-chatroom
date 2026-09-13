@@ -5,6 +5,7 @@ import android.provider.Settings
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import cn.net.rms.chatroom.data.local.SettingsPreferences
+import cn.net.rms.chatroom.data.local.ThemeMode
 import cn.net.rms.chatroom.service.MessageConnectionService
 import cn.net.rms.chatroom.util.BatteryOptimizationHelper
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -33,6 +34,9 @@ class SettingsViewModel @Inject constructor(
     val telemetryEnabled: StateFlow<Boolean> = settingsPreferences.telemetryEnabled
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
 
+    val themeMode: StateFlow<ThemeMode> = settingsPreferences.themeMode
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), ThemeMode.SYSTEM)
+
     private val _hasOverlayPermission = MutableStateFlow(checkOverlayPermission())
     val hasOverlayPermission: StateFlow<Boolean> = _hasOverlayPermission.asStateFlow()
 
@@ -59,6 +63,12 @@ class SettingsViewModel @Inject constructor(
     fun setTelemetryEnabled(enabled: Boolean) {
         viewModelScope.launch {
             settingsPreferences.setTelemetryEnabled(enabled)
+        }
+    }
+
+    fun setThemeMode(mode: ThemeMode) {
+        viewModelScope.launch {
+            settingsPreferences.setThemeMode(mode)
         }
     }
 

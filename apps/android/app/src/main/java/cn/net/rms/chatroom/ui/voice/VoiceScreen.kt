@@ -207,7 +207,7 @@ fun VoiceScreen(
         ModalBottomSheet(
             onDismissRequest = { showAudioDeviceSelector = false },
             sheetState = deviceSheetState,
-            containerColor = PaperDarkSubtle,
+            containerColor = Zhimo.paperSubtle,
             dragHandle = { BottomSheetDefaults.DragHandle() }
         ) {
             AudioDeviceSelectorSheet(
@@ -229,7 +229,7 @@ fun VoiceScreen(
         ModalBottomSheet(
             onDismissRequest = { showMusicPanel = false },
             sheetState = sheetState,
-            containerColor = PaperDarkSubtle,
+            containerColor = Zhimo.paperSubtle,
             dragHandle = { BottomSheetDefaults.DragHandle() }
         ) {
             MusicBottomSheet(
@@ -281,7 +281,7 @@ fun VoiceScreen(
         ModalBottomSheet(
             onDismissRequest = { selectedParticipant = null },
             sheetState = participantSheetState,
-            containerColor = PaperDarkSubtle,
+            containerColor = Zhimo.paperSubtle,
             dragHandle = { BottomSheetDefaults.DragHandle() }
         ) {
             ParticipantSettingsSheet(
@@ -322,12 +322,12 @@ fun VoiceScreen(
             if (state.isConnected) {
                 FloatingActionButton(
                     onClick = { showMusicPanel = true },
-                    containerColor = SealDark
+                    containerColor = Zhimo.seal
                 ) {
                     Icon(
                         imageVector = Icons.Default.MusicNote,
                         contentDescription = "音乐",
-                        tint = PaperDark
+                        tint = Zhimo.paper
                     )
                 }
             }
@@ -399,13 +399,13 @@ fun VoiceScreen(
                             imageVector = Icons.AutoMirrored.Filled.VolumeUp,
                             contentDescription = null,
                             modifier = Modifier.size(64.dp),
-                            tint = InkDarkFaint
+                            tint = Zhimo.inkFaint
                         )
                         Spacer(modifier = Modifier.height(16.dp))
                         Text(
                             text = if (state.isConnected) "等待其他人加入..." else "点击下方按钮加入语音",
                             style = MaterialTheme.typography.bodyLarge,
-                            color = InkDarkFaint,
+                            color = Zhimo.inkFaint,
                             textAlign = TextAlign.Center
                         )
                     }
@@ -467,7 +467,7 @@ private fun ConnectionStatusBanner(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(bottom = 8.dp),
-            color = DangerDark.copy(alpha = 0.2f),
+            color = Zhimo.danger.copy(alpha = 0.2f),
             shape = RoundedCornerShape(8.dp)
         ) {
             Row(
@@ -477,21 +477,21 @@ private fun ConnectionStatusBanner(
                 Icon(
                     imageVector = Icons.Default.Error,
                     contentDescription = null,
-                    tint = DangerDark,
+                    tint = Zhimo.danger,
                     modifier = Modifier.size(20.dp)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
                     text = it,
                     style = MaterialTheme.typography.bodySmall,
-                    color = DangerDark,
+                    color = Zhimo.danger,
                     modifier = Modifier.weight(1f)
                 )
                 IconButton(onClick = onDismissError, modifier = Modifier.size(24.dp)) {
                     Icon(
                         imageVector = Icons.Default.Close,
                         contentDescription = "关闭",
-                        tint = DangerDark,
+                        tint = Zhimo.danger,
                         modifier = Modifier.size(16.dp)
                     )
                 }
@@ -505,7 +505,7 @@ private fun ConnectionStatusBanner(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(bottom = 8.dp),
-            color = WarningDark.copy(alpha = 0.2f),
+            color = Zhimo.warning.copy(alpha = 0.2f),
             shape = RoundedCornerShape(8.dp)
         ) {
             Row(
@@ -514,14 +514,14 @@ private fun ConnectionStatusBanner(
             ) {
                 CircularProgressIndicator(
                     modifier = Modifier.size(16.dp),
-                    color = WarningDark,
+                    color = Zhimo.warning,
                     strokeWidth = 2.dp
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
                     text = "正在重新连接...",
                     style = MaterialTheme.typography.bodySmall,
-                    color = WarningDark
+                    color = Zhimo.warning
                 )
             }
         }
@@ -547,9 +547,9 @@ private fun VoiceUserItem(
 
     val borderColor by animateColorAsState(
         targetValue = when {
-            participant.isSpeaking -> SuccessDark
-            participant.isMuted -> InkDarkFaint
-            else -> SuccessDark
+            participant.isSpeaking -> Zhimo.success
+            participant.isMuted -> Zhimo.inkFaint
+            else -> Zhimo.success
         },
         animationSpec = tween(200),
         label = "borderColor"
@@ -561,7 +561,7 @@ private fun VoiceUserItem(
         modifier = Modifier
             .width(100.dp)
             .clip(RoundedCornerShape(8.dp))
-            .background(PaperDarkHover)
+            .background(Zhimo.paperHover)
             .clickable(enabled = !participant.isLocal, onClick = onClick)
             .padding(12.dp),
         horizontalAlignment = Alignment.CenterHorizontally
@@ -575,7 +575,7 @@ private fun VoiceUserItem(
                 .background(borderColor.copy(alpha = 0.3f))
                 .then(
                     if (participant.isSpeaking) {
-                        Modifier.border(2.dp, SuccessDark, CircleShape)
+                        Modifier.border(2.dp, Zhimo.success, CircleShape)
                     } else {
                         Modifier
                     }
@@ -586,7 +586,7 @@ private fun VoiceUserItem(
                 modifier = Modifier
                     .size(48.dp)
                     .clip(CircleShape)
-                    .background(SealDark),
+                    .background(Zhimo.seal),
                 contentAlignment = Alignment.Center
             ) {
                 if (!participant.avatarUrl.isNullOrBlank()) {
@@ -606,7 +606,7 @@ private fun VoiceUserItem(
                         text = participant.name.take(1).uppercase(),
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold,
-                        color = PaperDark
+                        color = Zhimo.paper
                     )
                 }
             }
@@ -618,7 +618,7 @@ private fun VoiceUserItem(
         Text(
             text = participant.name,
             style = MaterialTheme.typography.labelMedium,
-            color = InkDark,
+            color = Zhimo.ink,
             maxLines = 1,
             textAlign = TextAlign.Center
         )
@@ -633,7 +633,7 @@ private fun VoiceUserItem(
                     imageVector = Icons.Default.MicOff,
                     contentDescription = "静音",
                     modifier = Modifier.size(14.dp),
-                    tint = DangerDark
+                    tint = Zhimo.danger
                 )
             }
             // Show volume indicator if not default
@@ -641,7 +641,7 @@ private fun VoiceUserItem(
                 Text(
                     text = "${(participant.volume * 100).toInt()}%",
                     style = MaterialTheme.typography.labelSmall,
-                    color = if (participant.volume > 1.0f) WarningDark else InkDarkFaint,
+                    color = if (participant.volume > 1.0f) Zhimo.warning else Zhimo.inkFaint,
                     fontSize = 10.sp
                 )
             }
@@ -655,7 +655,7 @@ private fun HostModeBanner(hostName: String) {
         modifier = Modifier
             .fillMaxWidth()
             .padding(bottom = 8.dp),
-        color = WarningDark.copy(alpha = 0.2f),
+        color = Zhimo.warning.copy(alpha = 0.2f),
         shape = RoundedCornerShape(8.dp)
     ) {
         Row(
@@ -667,13 +667,13 @@ private fun HostModeBanner(hostName: String) {
                 imageVector = Icons.Default.Star,
                 contentDescription = null,
                 modifier = Modifier.size(16.dp),
-                tint = WarningDark
+                tint = Zhimo.warning
             )
             Spacer(modifier = Modifier.width(8.dp))
             Text(
                 text = "$hostName 正在主持",
                 style = MaterialTheme.typography.bodySmall,
-                color = WarningDark,
+                color = Zhimo.warning,
                 fontWeight = FontWeight.Medium
             )
         }
@@ -692,20 +692,20 @@ private fun InviteDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = PaperDarkSubtle,
+        containerColor = Zhimo.paperSubtle,
         icon = {
             Icon(
                 imageVector = Icons.Default.Link,
                 contentDescription = null,
                 modifier = Modifier.size(48.dp),
-                tint = SuccessDark
+                tint = Zhimo.success
             )
         },
         title = {
             Text(
                 text = "邀请访客",
                 fontWeight = FontWeight.Bold,
-                color = InkDark
+                color = Zhimo.ink
             )
         },
         text = {
@@ -717,25 +717,25 @@ private fun InviteDialog(
                     isLoading -> {
                         CircularProgressIndicator(
                             modifier = Modifier.size(32.dp),
-                            color = SuccessDark
+                            color = Zhimo.success
                         )
                         Spacer(modifier = Modifier.height(8.dp))
-                        Text("正在生成链接...", color = InkDarkFaint)
+                        Text("正在生成链接...", color = Zhimo.inkFaint)
                     }
                     error != null -> {
-                        Text(error, color = DangerDark)
+                        Text(error, color = Zhimo.danger)
                     }
                     inviteUrl != null -> {
                         Text(
                             text = "此链接仅可使用一次，访客离开后无法再次加入。",
                             style = MaterialTheme.typography.bodySmall,
-                            color = InkDarkFaint,
+                            color = Zhimo.inkFaint,
                             textAlign = TextAlign.Center
                         )
                         Spacer(modifier = Modifier.height(12.dp))
                         Surface(
                             modifier = Modifier.fillMaxWidth(),
-                            color = PaperDarkHover,
+                            color = Zhimo.paperHover,
                             shape = RoundedCornerShape(8.dp)
                         ) {
                             Column(
@@ -750,7 +750,7 @@ private fun InviteDialog(
                                     Text(
                                         text = inviteUrl,
                                         style = MaterialTheme.typography.bodySmall,
-                                        color = InkDark,
+                                        color = Zhimo.ink,
                                         maxLines = 1
                                     )
                                 }
@@ -764,7 +764,7 @@ private fun InviteDialog(
                                     },
                                     modifier = Modifier.fillMaxWidth(),
                                     colors = ButtonDefaults.buttonColors(
-                                        containerColor = if (copied) SuccessDark else SealDark
+                                        containerColor = if (copied) Zhimo.success else Zhimo.seal
                                     ),
                                     shape = RoundedCornerShape(8.dp)
                                 ) {
@@ -784,7 +784,7 @@ private fun InviteDialog(
         },
         confirmButton = {
             TextButton(onClick = onDismiss) {
-                Text("关闭", color = InkDark)
+                Text("关闭", color = Zhimo.ink)
             }
         }
     )
@@ -819,7 +819,7 @@ private fun ParticipantSettingsSheet(
                 modifier = Modifier
                     .size(48.dp)
                     .clip(CircleShape)
-                    .background(SealDark),
+                    .background(Zhimo.seal),
                 contentAlignment = Alignment.Center
             ) {
                 if (!participant.avatarUrl.isNullOrBlank()) {
@@ -839,7 +839,7 @@ private fun ParticipantSettingsSheet(
                         text = participant.name.take(1).uppercase(),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
-                        color = PaperDark
+                        color = Zhimo.paper
                     )
                 }
             }
@@ -848,7 +848,7 @@ private fun ParticipantSettingsSheet(
                     text = participant.name,
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
-                    color = InkDark
+                    color = Zhimo.ink
                 )
                 if (participant.isMuted) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -856,13 +856,13 @@ private fun ParticipantSettingsSheet(
                             imageVector = Icons.Default.MicOff,
                             contentDescription = null,
                             modifier = Modifier.size(14.dp),
-                            tint = DangerDark
+                            tint = Zhimo.danger
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
                             text = "已静音",
                             style = MaterialTheme.typography.bodySmall,
-                            color = DangerDark
+                            color = Zhimo.danger
                         )
                     }
                 }
@@ -877,7 +877,7 @@ private fun ParticipantSettingsSheet(
                 onClick = onMuteParticipant,
                 modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = DangerDark
+                    containerColor = Zhimo.danger
                 ),
                 shape = RoundedCornerShape(8.dp)
             ) {
@@ -894,7 +894,7 @@ private fun ParticipantSettingsSheet(
                 onClick = onKickParticipant,
                 modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = DangerDark.copy(alpha = 0.8f)
+                    containerColor = Zhimo.danger.copy(alpha = 0.8f)
                 ),
                 shape = RoundedCornerShape(8.dp)
             ) {
@@ -914,7 +914,7 @@ private fun ParticipantSettingsSheet(
             text = "用户音量",
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Medium,
-            color = InkDark
+            color = Zhimo.ink
         )
 
         Spacer(modifier = Modifier.height(12.dp))
@@ -930,13 +930,13 @@ private fun ParticipantSettingsSheet(
                               else Icons.AutoMirrored.Filled.VolumeUp,
                 contentDescription = null,
                 modifier = Modifier.size(24.dp),
-                tint = if (isBoost) WarningDark else InkDarkFaint
+                tint = if (isBoost) Zhimo.warning else Zhimo.inkFaint
             )
             Text(
                 text = "$volumePercent%",
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
-                color = if (isBoost) WarningDark else InkDark
+                color = if (isBoost) Zhimo.warning else Zhimo.ink
             )
         }
 
@@ -955,9 +955,9 @@ private fun ParticipantSettingsSheet(
             trackHeight = 8.dp,
             coerceThumbInTrack = true,
             colors = MaterialSliderDefaults.materialColors(
-                thumbColor = SliderBrushColor(color = if (isBoost) WarningDark else SuccessDark),
-                activeTrackColor = SliderBrushColor(color = if (isBoost) WarningDark else SuccessDark),
-                inactiveTrackColor = SliderBrushColor(color = PaperDark)
+                thumbColor = SliderBrushColor(color = if (isBoost) Zhimo.warning else Zhimo.success),
+                activeTrackColor = SliderBrushColor(color = if (isBoost) Zhimo.warning else Zhimo.success),
+                inactiveTrackColor = SliderBrushColor(color = Zhimo.paper)
             )
         )
 
@@ -969,17 +969,17 @@ private fun ParticipantSettingsSheet(
             Text(
                 text = "0%",
                 style = MaterialTheme.typography.labelSmall,
-                color = InkDarkFaint
+                color = Zhimo.inkFaint
             )
             Text(
                 text = "100%",
                 style = MaterialTheme.typography.labelSmall,
-                color = InkDarkFaint
+                color = Zhimo.inkFaint
             )
             Text(
                 text = "200%",
                 style = MaterialTheme.typography.labelSmall,
-                color = WarningDark
+                color = Zhimo.warning
             )
         }
 
@@ -988,7 +988,7 @@ private fun ParticipantSettingsSheet(
             Spacer(modifier = Modifier.height(12.dp))
             Surface(
                 modifier = Modifier.fillMaxWidth(),
-                color = WarningDark.copy(alpha = 0.15f),
+                color = Zhimo.warning.copy(alpha = 0.15f),
                 shape = RoundedCornerShape(8.dp)
             ) {
                 Row(
@@ -1000,12 +1000,12 @@ private fun ParticipantSettingsSheet(
                         imageVector = Icons.Default.Warning,
                         contentDescription = null,
                         modifier = Modifier.size(18.dp),
-                        tint = WarningDark
+                        tint = Zhimo.warning
                     )
                     Text(
                         text = "音量增益可能导致音频失真",
                         style = MaterialTheme.typography.bodySmall,
-                        color = WarningDark
+                        color = Zhimo.warning
                     )
                 }
             }
@@ -1022,7 +1022,7 @@ private fun ParticipantSettingsSheet(
                 },
                 modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.outlinedButtonColors(
-                    contentColor = InkDark
+                    contentColor = Zhimo.ink
                 )
             ) {
                 Text("重置为 100%")
@@ -1056,7 +1056,7 @@ private fun VoiceControls(
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        color = PaperDark,
+        color = Zhimo.paper,
         shape = RoundedCornerShape(8.dp)
     ) {
         if (isConnected) {
@@ -1073,7 +1073,7 @@ private fun VoiceControls(
                     icon = if (isMuted) Icons.Default.MicOff else Icons.Default.Mic,
                     label = if (isMuted) stringResource(R.string.unmute) else stringResource(R.string.mute),
                     isActive = isMuted,
-                    activeColor = DangerDark,
+                    activeColor = Zhimo.danger,
                     onClick = onToggleMute
                 )
 
@@ -1082,7 +1082,7 @@ private fun VoiceControls(
                     icon = if (isDeafened) Icons.AutoMirrored.Filled.VolumeOff else Icons.AutoMirrored.Filled.VolumeUp,
                     label = if (isDeafened) stringResource(R.string.undeafen) else stringResource(R.string.deafen),
                     isActive = isDeafened,
-                    activeColor = DangerDark,
+                    activeColor = Zhimo.danger,
                     onClick = onToggleDeafen
                 )
 
@@ -1097,7 +1097,7 @@ private fun VoiceControls(
                     },
                     label = selectedDevice?.name?.take(6) ?: "音频",
                     isActive = true,
-                    activeColor = SuccessDark,
+                    activeColor = Zhimo.success,
                     onClick = onOpenDeviceSelector
                 )
 
@@ -1109,7 +1109,7 @@ private fun VoiceControls(
                                 else if (hostButtonDisabled) "主持中" 
                                 else "主持模式",
                         isActive = hostModeEnabled && isCurrentUserHost,
-                        activeColor = WarningDark,
+                        activeColor = Zhimo.warning,
                         enabled = !hostButtonDisabled,
                         onClick = onToggleHostMode
                     )
@@ -1119,7 +1119,7 @@ private fun VoiceControls(
                         icon = Icons.Default.Link,
                         label = "邀请访客",
                         isActive = true,
-                        activeColor = SuccessDark,
+                        activeColor = Zhimo.success,
                         onClick = onCreateInvite
                     )
                 }
@@ -1131,7 +1131,7 @@ private fun VoiceControls(
                             else if (screenShareButtonDisabled) "${screenSharerName ?: "其他用户"}共享中"
                             else "共享屏幕",
                     isActive = isScreenSharing,
-                    activeColor = SuccessDark,
+                    activeColor = Zhimo.success,
                     enabled = !screenShareButtonDisabled,
                     onClick = onToggleScreenShare
                 )
@@ -1141,7 +1141,7 @@ private fun VoiceControls(
                     icon = Icons.Default.CallEnd,
                     label = stringResource(R.string.leave_voice),
                     isActive = true,
-                    activeColor = DangerDark,
+                    activeColor = Zhimo.danger,
                     onClick = onLeave
                 )
             }
@@ -1159,14 +1159,14 @@ private fun VoiceControls(
                     enabled = !isLoading,
                     modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = SuccessDark
+                        containerColor = Zhimo.success
                     ),
                     shape = RoundedCornerShape(8.dp)
                 ) {
                     if (isLoading) {
                         CircularProgressIndicator(
                             modifier = Modifier.size(24.dp),
-                            color = PaperDark,
+                            color = Zhimo.paper,
                             strokeWidth = 2.dp
                         )
                     } else {
@@ -1195,9 +1195,9 @@ private fun VoiceControlButton(
 ) {
     val backgroundColor by animateColorAsState(
         targetValue = when {
-            !enabled -> PaperDarkHover.copy(alpha = 0.5f)
+            !enabled -> Zhimo.paperHover.copy(alpha = 0.5f)
             isActive -> activeColor
-            else -> PaperDarkHover
+            else -> Zhimo.paperHover
         },
         animationSpec = tween(200),
         label = "controlBg"
@@ -1225,7 +1225,7 @@ private fun VoiceControlButton(
                 imageVector = icon,
                 contentDescription = label,
                 modifier = Modifier.size(24.dp),
-                tint = if (enabled) InkDark else InkDark.copy(alpha = 0.5f)
+                tint = if (enabled) Zhimo.ink else Zhimo.ink.copy(alpha = 0.5f)
             )
         }
 
@@ -1234,7 +1234,7 @@ private fun VoiceControlButton(
         Text(
             text = label,
             style = MaterialTheme.typography.labelSmall,
-            color = if (enabled) InkDarkFaint else InkDarkFaint.copy(alpha = 0.5f)
+            color = if (enabled) Zhimo.inkFaint else Zhimo.inkFaint.copy(alpha = 0.5f)
         )
     }
 }
@@ -1256,7 +1256,7 @@ private fun AudioDeviceSelectorSheet(
             text = "选择音频设备",
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.Bold,
-            color = InkDark,
+            color = Zhimo.ink,
             modifier = Modifier.padding(bottom = 16.dp)
         )
 
@@ -1264,7 +1264,7 @@ private fun AudioDeviceSelectorSheet(
             Text(
                 text = "没有可用的音频设备",
                 style = MaterialTheme.typography.bodyMedium,
-                color = InkDarkFaint,
+                color = Zhimo.inkFaint,
                 modifier = Modifier.padding(vertical = 24.dp)
             )
         } else {
@@ -1291,7 +1291,7 @@ private fun AudioDeviceItem(
     onClick: () -> Unit
 ) {
     val backgroundColor by animateColorAsState(
-        targetValue = if (isSelected) SealDark.copy(alpha = 0.2f) else PaperDarkHover,
+        targetValue = if (isSelected) Zhimo.seal.copy(alpha = 0.2f) else Zhimo.paperHover,
         animationSpec = tween(200),
         label = "deviceItemBg"
     )
@@ -1320,14 +1320,14 @@ private fun AudioDeviceItem(
                 },
                 contentDescription = null,
                 modifier = Modifier.size(24.dp),
-                tint = if (isSelected) SealDark else InkDarkFaint
+                tint = if (isSelected) Zhimo.seal else Zhimo.inkFaint
             )
 
             // Device name
             Text(
                 text = device.name,
                 style = MaterialTheme.typography.bodyLarge,
-                color = if (isSelected) SealDark else InkDark,
+                color = if (isSelected) Zhimo.seal else Zhimo.ink,
                 modifier = Modifier.weight(1f)
             )
 
@@ -1337,7 +1337,7 @@ private fun AudioDeviceItem(
                     imageVector = Icons.Default.Check,
                     contentDescription = "已选择",
                     modifier = Modifier.size(24.dp),
-                    tint = SealDark
+                    tint = Zhimo.seal
                 )
             }
         }
@@ -1366,7 +1366,7 @@ private fun RemoteScreenShareView(
     if (videoTrack == null) {
         Surface(
             modifier = modifier.clip(RoundedCornerShape(8.dp)),
-            color = PaperDark
+            color = Zhimo.paper
         ) {
             Column(
                 modifier = Modifier.fillMaxSize(),
@@ -1377,13 +1377,13 @@ private fun RemoteScreenShareView(
                     imageVector = Icons.Default.DesktopWindows,
                     contentDescription = null,
                     modifier = Modifier.size(32.dp),
-                    tint = InkDarkFaint
+                    tint = Zhimo.inkFaint
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
                     text = "${screenShare.participantName} 正在共享屏幕",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = InkDark
+                    color = Zhimo.ink
                 )
                 if (ignored) {
                     Spacer(modifier = Modifier.height(8.dp))
@@ -1394,7 +1394,7 @@ private fun RemoteScreenShareView(
                     Text(
                         text = "正在接入视频流...",
                         style = MaterialTheme.typography.bodySmall,
-                        color = InkDarkFaint,
+                        color = Zhimo.inkFaint,
                         textAlign = TextAlign.Center
                     )
                 }
@@ -1405,7 +1405,7 @@ private fun RemoteScreenShareView(
 
     Surface(
         modifier = modifier.clip(RoundedCornerShape(8.dp)),
-        color = PaperDark
+        color = Zhimo.paper
     ) {
         Box(contentAlignment = Alignment.Center) {
             AndroidView(
@@ -1434,13 +1434,13 @@ private fun RemoteScreenShareView(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
                     .padding(8.dp),
-                color = PaperDarkSubtle.copy(alpha = 0.8f),
+                color = Zhimo.paperSubtle.copy(alpha = 0.8f),
                 shape = RoundedCornerShape(4.dp)
             ) {
                 Text(
                     text = "忽略",
                     style = MaterialTheme.typography.labelSmall,
-                    color = InkDark,
+                    color = Zhimo.ink,
                     modifier = Modifier
                         .clickable { onToggleWatch() }
                         .padding(horizontal = 8.dp, vertical = 4.dp)
@@ -1451,7 +1451,7 @@ private fun RemoteScreenShareView(
                 modifier = Modifier
                     .align(Alignment.BottomStart)
                     .padding(8.dp),
-                color = PaperDarkSubtle.copy(alpha = 0.8f),
+                color = Zhimo.paperSubtle.copy(alpha = 0.8f),
                 shape = RoundedCornerShape(4.dp)
             ) {
                 Row(
@@ -1463,12 +1463,12 @@ private fun RemoteScreenShareView(
                         imageVector = Icons.Default.DesktopWindows,
                         contentDescription = null,
                         modifier = Modifier.size(14.dp),
-                        tint = SuccessDark
+                        tint = Zhimo.success
                     )
                     Text(
                         text = screenShare.participantName,
                         style = MaterialTheme.typography.labelSmall,
-                        color = InkDark
+                        color = Zhimo.ink
                     )
                 }
             }

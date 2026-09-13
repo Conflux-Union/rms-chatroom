@@ -18,10 +18,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import cn.net.rms.chatroom.ui.theme.WarningDark
-import cn.net.rms.chatroom.ui.theme.SealDark
-import cn.net.rms.chatroom.ui.theme.InkDarkFaint
-import cn.net.rms.chatroom.ui.theme.InkDarkMuted
+import cn.net.rms.chatroom.ui.theme.Zhimo
 
 /**
  * Animated loading indicator with pulsing effect
@@ -54,13 +51,13 @@ fun LoadingContent(
                 modifier = Modifier
                     .size(48.dp)
                     .scale(scale),
-                color = SealDark,
+                color = Zhimo.seal,
                 strokeWidth = 4.dp
             )
             Text(
                 text = message,
                 style = MaterialTheme.typography.bodyMedium,
-                color = InkDarkFaint
+                color = Zhimo.inkFaint
             )
         }
     }
@@ -91,19 +88,19 @@ fun EmptyContent(
                 imageVector = icon,
                 contentDescription = null,
                 modifier = Modifier.size(64.dp),
-                tint = InkDarkFaint
+                tint = Zhimo.inkFaint
             )
             Text(
                 text = title,
                 style = MaterialTheme.typography.titleMedium,
-                color = InkDarkMuted,
+                color = Zhimo.inkMuted,
                 textAlign = TextAlign.Center
             )
             if (description != null) {
                 Text(
                     text = description,
                     style = MaterialTheme.typography.bodyMedium,
-                    color = InkDarkFaint,
+                    color = Zhimo.inkFaint,
                     textAlign = TextAlign.Center
                 )
             }
@@ -112,7 +109,7 @@ fun EmptyContent(
                 OutlinedButton(
                     onClick = onAction,
                     colors = ButtonDefaults.outlinedButtonColors(
-                        contentColor = SealDark
+                        contentColor = Zhimo.seal
                     )
                 ) {
                     Text(actionText)
@@ -149,12 +146,12 @@ fun ErrorContent(
             Text(
                 text = "出错了",
                 style = MaterialTheme.typography.titleMedium,
-                color = InkDarkMuted
+                color = Zhimo.inkMuted
             )
             Text(
                 text = message,
                 style = MaterialTheme.typography.bodyMedium,
-                color = InkDarkFaint,
+                color = Zhimo.inkFaint,
                 textAlign = TextAlign.Center
             )
             if (onRetry != null) {
@@ -162,7 +159,7 @@ fun ErrorContent(
                 Button(
                     onClick = onRetry,
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = SealDark
+                        containerColor = Zhimo.seal
                     )
                 ) {
                     Icon(
@@ -199,17 +196,17 @@ fun NetworkErrorContent(
                 imageVector = Icons.Default.WifiOff,
                 contentDescription = null,
                 modifier = Modifier.size(64.dp),
-                tint = InkDarkFaint
+                tint = Zhimo.inkFaint
             )
             Text(
                 text = "网络连接失败",
                 style = MaterialTheme.typography.titleMedium,
-                color = InkDarkMuted
+                color = Zhimo.inkMuted
             )
             Text(
                 text = "请检查网络连接后重试",
                 style = MaterialTheme.typography.bodyMedium,
-                color = InkDarkFaint,
+                color = Zhimo.inkFaint,
                 textAlign = TextAlign.Center
             )
             if (onRetry != null) {
@@ -217,7 +214,7 @@ fun NetworkErrorContent(
                 Button(
                     onClick = onRetry,
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = SealDark
+                        containerColor = Zhimo.seal
                     )
                 ) {
                     Icon(
@@ -239,8 +236,8 @@ fun NetworkErrorContent(
 @Composable
 fun ShimmerBox(
     modifier: Modifier = Modifier,
-    baseColor: Color = InkDarkFaint.copy(alpha = 0.1f),
-    highlightColor: Color = InkDarkFaint.copy(alpha = 0.2f)
+    baseColor: Color = Zhimo.inkFaint.copy(alpha = 0.1f),
+    highlightColor: Color = Zhimo.inkFaint.copy(alpha = 0.2f)
 ) {
     val infiniteTransition = rememberInfiniteTransition(label = "shimmer")
     val alpha by infiniteTransition.animateFloat(
@@ -275,7 +272,7 @@ fun BatteryOptimizationDialog(
             Icon(
                 imageVector = Icons.Default.Warning,
                 contentDescription = null,
-                tint = WarningDark
+                tint = Zhimo.warning
             )
         },
         title = {
@@ -290,14 +287,14 @@ fun BatteryOptimizationDialog(
                 Text(
                     text = "请在弹出的页面中找到「电池优化」或「省电策略」，设为「不优化」或「无限制」",
                     style = MaterialTheme.typography.bodySmall,
-                    color = InkDarkMuted
+                    color = Zhimo.inkMuted
                 )
             }
         },
         confirmButton = {
             Button(
                 onClick = onOpenSettings,
-                colors = ButtonDefaults.buttonColors(containerColor = SealDark)
+                colors = ButtonDefaults.buttonColors(containerColor = Zhimo.seal)
             ) {
                 Text("前往设置")
             }
@@ -305,7 +302,7 @@ fun BatteryOptimizationDialog(
         dismissButton = {
             Row {
                 TextButton(onClick = onNeverShowAgain) {
-                    Text("不再提示", color = InkDarkFaint)
+                    Text("不再提示", color = Zhimo.inkFaint)
                 }
                 TextButton(onClick = onDismiss) {
                     Text("稍后")

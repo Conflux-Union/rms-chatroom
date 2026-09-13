@@ -47,10 +47,7 @@ import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import cn.net.rms.chatroom.ui.theme.PaperDarkRaised
-import cn.net.rms.chatroom.ui.theme.SealDark
-import cn.net.rms.chatroom.ui.theme.InkDarkFaint
-import cn.net.rms.chatroom.ui.theme.InkDarkMuted
+import cn.net.rms.chatroom.ui.theme.Zhimo
 import org.commonmark.ext.autolink.AutolinkExtension
 import org.commonmark.ext.gfm.strikethrough.Strikethrough
 import org.commonmark.ext.gfm.strikethrough.StrikethroughExtension
@@ -99,9 +96,22 @@ private val MESSAGE_PARSER: Parser = Parser.builder()
 // code spans, code blocks and link labels they stay untouched.
 private val MENTION_REGEX = Regex("@(\\w+)")
 
-private val MarkdownBorder = InkDarkFaint.copy(alpha = 0.4f)
-private val MarkdownLinkStyle = SpanStyle(color = SealDark, textDecoration = TextDecoration.Underline)
-private val MarkdownMentionStyle = SpanStyle(color = SealDark, fontWeight = FontWeight.Medium)
+// Palette-dependent markdown styles, resolved from the active theme at the
+// composable entry points and passed down as plain data: the string-builder
+// recursion below (withLink lambdas included) is not composable.
+private class MarkdownStyles(
+    val border: Color,
+    val link: SpanStyle,
+    val mention: SpanStyle,
+)
+
+@Composable
+private fun markdownStyles() = MarkdownStyles(
+    border = Zhimo.inkFaint.copy(alpha = 0.4f),
+    link = SpanStyle(color = Zhimo.seal, textDecoration = TextDecoration.Underline),
+    mention = SpanStyle(color = Zhimo.seal, fontWeight = FontWeight.Medium)
+)
+
 // Monospace marks inline code spans; the highlight is drawn by MarkdownInlineText
 private val MarkdownInlineCodeStyle = SpanStyle(fontFamily = FontFamily.Monospace)
 private val MarkdownCodeRadius = 4.dp
@@ -139,7 +149,7 @@ private fun MarkdownBlockChildren(parent: Node, inBlockQuote: Boolean, modifier:
                 is ThematicBreak -> HorizontalDivider(
                     modifier = Modifier.padding(vertical = 4.dp),
                     thickness = 1.dp,
-                    color = MarkdownBorder
+                    color = markdownStyles().border
                 )
                 is BlockQuote -> MarkdownBlockQuote(node)
                 is BulletList -> MarkdownList(node, startNumber = null, inBlockQuote = inBlockQuote)
@@ -168,7 +178,7 @@ private fun MarkdownBodyText(text: AnnotatedString, inBlockQuote: Boolean, headi
     MarkdownInlineText(
         text = text,
         style = style,
-        color = if (inBlockQuote) InkDarkFaint else InkDarkMuted
+        color = if (inBlockQuote) Zhimo.inkFaint else Zhimo.inkMuted
     )
 }
 
@@ -183,6 +193,8 @@ private fun MarkdownInlineText(text: AnnotatedString, style: TextStyle, color: C
             .map { IntRange(it.start, it.end - 1) }
     }
     var layoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
+    // Read once: the draw lambda below runs on the DrawScope, not in composition.
+    val paperRaised = Zhimo.paperRaised
     Text(
         text = text,
         style = style,
@@ -206,7 +218,7 @@ private fun MarkdownInlineText(text: AnnotatedString, style: TextStyle, color: C
                         else -> layout.getHorizontalPosition(range.last + 1, true)
                     }
                     drawRoundRect(
-                        color = PaperDarkRaised,
+                        color = paperRaised,
                         topLeft = Offset(left, layout.getLineTop(line)),
                         size = Size(right - left, layout.getLineBottom(line) - layout.getLineTop(line)),
                         cornerRadius = CornerRadius(MarkdownCodeRadius.toPx())
@@ -224,7 +236,7 @@ private fun MarkdownBlockQuote(quote: BlockQuote) {
             modifier = Modifier
                 .fillMaxHeight()
                 .width(3.dp)
-                .background(InkDarkFaint.copy(alpha = 0.55f))
+                .background(Zhimo.inkFaint.copy(alpha = 0.55f))
         )
         MarkdownBlockChildren(
             parent = quote,
@@ -270,7 +282,7 @@ private fun taskListMarker(item: ListItem): TaskListItemMarker? =
 private fun MarkdownCodeBlock(code: String) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        color = PaperDarkRaised,
+        color = Zhimo.paperRaised,
         shape = RoundedCornerShape(MarkdownCodeRadius)
     ) {
         Text(
@@ -278,7 +290,7 @@ private fun MarkdownCodeBlock(code: String) {
             fontFamily = FontFamily.Monospace,
             fontSize = 14.sp,
             lineHeight = 20.sp,
-            color = InkDarkMuted,
+            color = Zhimo.inkMuted,
             modifier = Modifier
                 .horizontalScroll(rememberScrollState())
                 .padding(horizontal = 12.dp, vertical = 10.dp)
@@ -332,8 +344,8 @@ private fun MarkdownTable(table: TableBlock) {
                         val cell = row.cells.getOrNull(column)
                         Box(
                             modifier = Modifier
-                                .then(if (row.isHeader) Modifier.background(PaperDarkRaised) else Modifier)
-                                .border(0.5.dp, MarkdownBorder)
+                                .then(if (row.isHeader) Modifier.background(Zhimo.paperRaised) else Modifier)
+                                .border(0.5.dp, markdownStyles().border)
                                 .padding(horizontal = 8.dp, vertical = 3.dp),
                             contentAlignment = Alignment.CenterStart
                         ) {
@@ -345,7 +357,7 @@ private fun MarkdownTable(table: TableBlock) {
                                     } else {
                                         MaterialTheme.typography.bodyMedium
                                     },
-                                    color = InkDarkMuted
+                                    color = Zhimo.inkMuted
                                 )
                             }
                         }
@@ -401,39 +413,42 @@ private fun MarkdownTable(table: TableBlock) {
     }
 }
 
+@Composable
 internal fun renderMarkdownInlines(block: Node?): AnnotatedString {
+    val styles = markdownStyles()
     val builder = AnnotatedString.Builder()
-    renderInlineChildren(block, builder, SpanStyle(), inProtectedText = false)
+    renderInlineChildren(block, builder, styles, SpanStyle(), inProtectedText = false)
     return builder.toAnnotatedString()
 }
 
 private fun renderInlineChildren(
     parent: Node?,
     builder: AnnotatedString.Builder,
+    styles: MarkdownStyles,
     style: SpanStyle,
     inProtectedText: Boolean
 ) {
     var node = parent?.firstChild ?: return
     while (node != null) {
         when (node) {
-            is MdText -> appendMarkdownText(builder, node.literal, style, inProtectedText)
+            is MdText -> appendMarkdownText(builder, node.literal, styles, style, inProtectedText)
             is Code -> builder.withStyle(style.merge(MarkdownInlineCodeStyle)) { append(node.literal) }
             is Emphasis -> renderInlineChildren(
-                node, builder,
+                node, builder, styles,
                 style.merge(SpanStyle(fontStyle = FontStyle.Italic)), inProtectedText
             )
             is StrongEmphasis -> renderInlineChildren(
-                node, builder,
+                node, builder, styles,
                 style.merge(SpanStyle(fontWeight = FontWeight.Bold)), inProtectedText
             )
             is Strikethrough -> renderInlineChildren(
-                node, builder,
+                node, builder, styles,
                 style.merge(SpanStyle(textDecoration = TextDecoration.LineThrough)), inProtectedText
             )
             is Link -> builder.withLink(
-                LinkAnnotation.Url(node.destination, TextLinkStyles(style = style.merge(MarkdownLinkStyle)))
+                LinkAnnotation.Url(node.destination, TextLinkStyles(style = style.merge(styles.link)))
             ) {
-                renderInlineChildren(node, this, style, inProtectedText = true)
+                renderInlineChildren(node, this, styles, style, inProtectedText = true)
             }
             // Images render as links instead of loading remote content: remote
             // images would leak viewer IPs and enable tracking pixels, and media
@@ -441,16 +456,16 @@ private fun renderInlineChildren(
             is Image -> {
                 val label = imageAltText(node) ?: node.destination
                 builder.withLink(
-                    LinkAnnotation.Url(node.destination, TextLinkStyles(style = style.merge(MarkdownLinkStyle)))
+                    LinkAnnotation.Url(node.destination, TextLinkStyles(style = style.merge(styles.link)))
                 ) {
-                    withStyle(style.merge(MarkdownLinkStyle)) { append(label) }
+                    withStyle(style.merge(styles.link)) { append(label) }
                 }
             }
             is SoftLineBreak, is HardLineBreak -> builder.withStyle(style) { append("\n") }
             // Task list checkboxes are drawn by the list marker; raw HTML is
             // stripped entirely (stricter than the web sanitizer allowlist).
             is TaskListItemMarker, is HtmlInline, is HtmlBlock -> Unit
-            else -> renderInlineChildren(node, builder, style, inProtectedText)
+            else -> renderInlineChildren(node, builder, styles, style, inProtectedText)
         }
         node = node.next
     }
@@ -469,6 +484,7 @@ private fun imageAltText(image: Node): String? {
 private fun appendMarkdownText(
     builder: AnnotatedString.Builder,
     text: String,
+    styles: MarkdownStyles,
     style: SpanStyle,
     inProtectedText: Boolean
 ) {
@@ -481,7 +497,7 @@ private fun appendMarkdownText(
         if (match.range.first > last) {
             builder.withStyle(style) { append(text.substring(last, match.range.first)) }
         }
-        builder.withStyle(style.merge(MarkdownMentionStyle)) { append(match.value) }
+        builder.withStyle(style.merge(styles.mention)) { append(match.value) }
         last = match.range.last + 1
     }
     if (last < text.length) {
