@@ -9,7 +9,6 @@ export { useMusicStore } from './stores/music'
 export type { VoiceParticipant, AudioDevice, ScreenShareInfo } from './stores/voice'
 
 // Composables
-export { useWebSocket } from './composables/useWebSocket'
 export { useChatWebSocket } from './composables/useChatWebSocket'
 export { useSwipe } from './composables/useSwipe'
 

@@ -25,7 +25,6 @@ interface ReconnectingWebSocket {
   resetRetries: () => void
 }
 
-const MAX_RECONNECT_ATTEMPTS = 10
 const HEARTBEAT_INTERVAL = 5000
 const HEARTBEAT_TIMEOUT = 3000
 // One RTT report every N pongs (~5 min at the 5s heartbeat interval).
@@ -87,9 +86,7 @@ export function createReconnectingWebSocket(
 
         heartbeatTimeout = window.setTimeout(() => {
           console.warn(`[${name}] Heartbeat timeout, reconnecting...`)
-          waitingForPong = false
-          disconnect()
-          connect()
+          teardownForReconnect()
         }, HEARTBEAT_TIMEOUT)
       }
     }, HEARTBEAT_INTERVAL)
@@ -129,16 +126,27 @@ export function createReconnectingWebSocket(
     }
   }
 
-  function scheduleReconnect() {
-    if (manualDisconnect || reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
-      if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
-        console.error(`[${name}] Max reconnect attempts (${MAX_RECONNECT_ATTEMPTS}) reached`)
-        reportTelemetryEvent('ws_reconnect_exhausted', name, {
-          meta: { ws: name, attempts: reconnectAttempts, close_code: lastCloseCode, close_reason: lastCloseReason },
-        })
-      }
-      return
+  // A heartbeat timeout means the socket is dead (silent network loss never
+  // reaches onclose). Tear it down without flagging a manual disconnect so
+  // the normal backoff path takes over — calling connect() directly here used
+  // to bypass the retry counter entirely.
+  function teardownForReconnect() {
+    generation++
+    clearAllTimers()
+
+    if (ws) {
+      ws.close()
+      ws = null
     }
+
+    state.value = 'disconnected'
+    isConnected.value = false
+    onDisconnected?.()
+    scheduleReconnect()
+  }
+
+  function scheduleReconnect() {
+    if (manualDisconnect) return
 
     // Report the start of each outage, not every retry of it.
     if (reconnectAttempts === 0) {
@@ -147,13 +155,18 @@ export function createReconnectingWebSocket(
       })
     }
 
+    // No attempt cap: the delay caps at 30s, and a hard dead-end after 10
+    // tries used to strand the socket until a full page reload.
     const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000)
+    // Equal jitter: uniform in [delay/2, delay] so the three sockets
+    // restarting after a network flap do not retry in lockstep.
+    const jittered = delay / 2 + Math.random() * (delay / 2)
 
     state.value = 'reconnecting'
     reconnectTimer = window.setTimeout(() => {
       reconnectAttempts++
       connect()
-    }, delay)
+    }, jittered)
   }
 
   function connect() {
@@ -228,8 +241,10 @@ export function createReconnectingWebSocket(
           }
 
           onMessage?.(data)
-        } catch {
-          // Ignore non-JSON messages
+        } catch (e) {
+          // Non-JSON frame: log a preview so corrupt payloads are debuggable
+          // instead of vanishing.
+          console.warn(`[${name}] Failed to parse message:`, String(event.data).slice(0, 200), e)
         }
       }
     }
@@ -254,6 +269,24 @@ export function createReconnectingWebSocket(
     state.value = 'disconnected'
     isConnected.value = false
   }
+
+  // Browsers fire 'online' when connectivity returns; reconnect immediately
+  // instead of waiting out the backoff or the next heartbeat timeout.
+  window.addEventListener('online', () => {
+    if (manualDisconnect || isConnected.value) return
+    reconnectAttempts = 0
+    connect()
+  })
+
+  // Background tabs get their timers throttled, starving the heartbeat and
+  // slowing the backoff. On return to the foreground, kick an immediate
+  // reconnect; a live connection is left alone for the resumed heartbeat.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') return
+    if (manualDisconnect || isConnected.value) return
+    reconnectAttempts = 0
+    connect()
+  })
 
   function send(data: any) {
     if (ws && ws.readyState === WebSocket.OPEN) {
