@@ -136,6 +136,7 @@ class ChatRepository @Inject constructor(
                     }
                     is WebSocketEvent.Connected -> {
                         Log.d(TAG, "WebSocket connected (global)")
+                        backfillCurrentChannelAfterReconnect()
                     }
                     is WebSocketEvent.Disconnected -> {
                         Log.d(TAG, "WebSocket disconnected")
@@ -150,6 +151,37 @@ class ChatRepository @Inject constructor(
                         Log.d(TAG, "User left: ${event.userId}")
                     }
                 }
+            }
+        }
+    }
+
+    // WS frames only cover what arrives while connected; on reconnect, pull
+    // everything newer than the newest message already held so the outage
+    // window never shows as a gap. Appending chronologically avoids yanking
+    // the viewport the way a fresh fetchMessages (newest-page replace) would.
+    private fun backfillCurrentChannelAfterReconnect() {
+        val channel = _currentChannel.value ?: return
+        val newest = _messages.value.lastOrNull() ?: return
+        if (newest.channelId != channel.id) return
+        scope.launch {
+            try {
+                val token = authRepository.getToken() ?: return@launch
+                val newer = api.getMessages(
+                    authRepository.getAuthHeader(token),
+                    channel.id,
+                    limit = MESSAGES_PAGE_SIZE,
+                    after = newest.id
+                )
+                if (_currentChannel.value?.id != channel.id) return@launch
+                if (newer.isEmpty()) return@launch
+                val knownIds = _messages.value.mapTo(mutableSetOf()) { it.id }
+                val fresh = newer.filter { it.id !in knownIds }
+                if (fresh.isNotEmpty()) {
+                    _messages.value = _messages.value + fresh
+                }
+                cacheMessages(newer)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to backfill messages after reconnect", e)
             }
         }
     }

@@ -105,7 +105,10 @@ interface ApiService {
         // Cursor for paginating older history: returns messages with id < `before`.
         @Query("before") before: Long? = null,
         // Anchor for permalink quotes: returns a window spanning the message id.
-        @Query("around") around: Long? = null
+        @Query("around") around: Long? = null,
+        // Cursor for paginating newer history (reconnect backfill): returns
+        // the oldest `limit` messages with id > `after`, already chronological.
+        @Query("after") after: Long? = null
     ): List<Message>
 
     @POST("api/channels/{id}/messages")

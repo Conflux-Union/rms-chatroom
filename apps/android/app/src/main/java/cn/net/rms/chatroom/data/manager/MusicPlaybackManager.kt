@@ -258,6 +258,12 @@ class MusicPlaybackManager @Inject constructor(
                     }
                     is MusicWebSocketEvent.Connected -> {
                         Log.d(TAG, "Music WebSocket connected")
+                        // The server only pushes on the next state change; after a
+                        // reconnect, re-pull the room's queue and playback state.
+                        if (currentRoom != null) {
+                            refreshQueue(currentRoom)
+                            refreshPlaybackStatus(currentRoom)
+                        }
                     }
                     is MusicWebSocketEvent.Disconnected -> {
                         Log.d(TAG, "Music WebSocket disconnected")

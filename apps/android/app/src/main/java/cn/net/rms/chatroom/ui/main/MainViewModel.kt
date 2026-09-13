@@ -25,6 +25,7 @@ import cn.net.rms.chatroom.data.repository.UpdateRepository
 import cn.net.rms.chatroom.data.repository.VoiceRepository
 import cn.net.rms.chatroom.data.websocket.ConnectionState
 import cn.net.rms.chatroom.data.websocket.GlobalWebSocket
+import cn.net.rms.chatroom.data.websocket.GlobalWebSocketEvent
 import cn.net.rms.chatroom.data.websocket.WebSocketEvent
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
@@ -117,6 +118,7 @@ class MainViewModel @Inject constructor(
     init {
         loadServers()
         observeWebSocket()
+        observeGlobalWebSocket()
         checkForUpdate()
         loadMentionStates()
         loadCurrentUser()
@@ -474,6 +476,20 @@ class MainViewModel @Inject constructor(
                         _state.value = _state.value.copy(error = event.error)
                     }
                     else -> { /* Handle other events */ }
+                }
+            }
+        }
+    }
+
+    private fun observeGlobalWebSocket() {
+        viewModelScope.launch {
+            globalWebSocket.events.collect { event ->
+                if (event is GlobalWebSocketEvent.Connected) {
+                    // Presence pushes only resume on the next change after a
+                    // reconnect; re-pull the current server's voice users.
+                    if (chatRepository.currentServer.value != null) {
+                        chatRepository.fetchAllVoiceChannelUsers()
+                    }
                 }
             }
         }
