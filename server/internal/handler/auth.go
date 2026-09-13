@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"net/http"
 	"net/url"
@@ -243,7 +242,7 @@ func (h *AuthHandler) buildSilentSessionUser(session *silentSessionResponse) (*p
 func (h *AuthHandler) SilentLogin(c echo.Context) error {
 	session, err := h.fetchSilentSession(c)
 	if err != nil {
-		log.Printf("auth/silent-login: fetch session failed: %v", err)
+		middleware.ReqLogf(c, "auth/silent-login: fetch session failed: %v", err)
 		return c.JSON(http.StatusBadGateway, map[string]string{"error": "failed to validate SSO session"})
 	}
 	if session == nil || !session.Data.Authenticated {
@@ -258,13 +257,13 @@ func (h *AuthHandler) SilentLogin(c echo.Context) error {
 
 	user, err := h.buildSilentSessionUser(session)
 	if err != nil {
-		log.Printf("auth/silent-login: invalid session payload: %v", err)
+		middleware.ReqLogf(c, "auth/silent-login: invalid session payload: %v", err)
 		return c.JSON(http.StatusBadGateway, map[string]string{"error": "invalid silent SSO response"})
 	}
 
 	tokens, err := h.issueLocalSession(user, false)
 	if err != nil {
-		log.Printf("auth/silent-login: issue local session failed: %v", err)
+		middleware.ReqLogf(c, "auth/silent-login: issue local session failed: %v", err)
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to create local session"})
 	}
 
@@ -602,7 +601,7 @@ func (h *AuthHandler) Refresh(c echo.Context) error {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "invalid refresh token"})
 	}
 	if err != nil {
-		log.Printf("auth/refresh: db error: %v", err)
+		middleware.ReqLogf(c, "auth/refresh: db error: %v", err)
 		metrics.AuthRefresh.WithLabelValues("error").Inc()
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "internal server error"})
 	}

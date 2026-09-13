@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"path/filepath"
 	"strconv"
@@ -16,6 +15,7 @@ import (
 	"github.com/labstack/echo/v4"
 
 	"github.com/RMS-Server/rms-discord-go/internal/metrics"
+	mw "github.com/RMS-Server/rms-discord-go/internal/middleware"
 	"github.com/RMS-Server/rms-discord-go/internal/permission"
 	"github.com/RMS-Server/rms-discord-go/internal/sso"
 )
@@ -378,7 +378,7 @@ func (h *ForwardHandler) Upload(c echo.Context) error {
 	prepared := prepareUpload(c.Request().Context(), safeName, fh.Header.Get("Content-Type"), content)
 	id, _, err := saveAttachment(h.db, h.uploadDir, channelID, ghostUserID, prepared)
 	if err != nil {
-		log.Printf("handler/forward: failed to save attachment: %v", err)
+		mw.ReqLogf(c, "handler/forward: failed to save attachment: %v", err)
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to create record"})
 	}
 

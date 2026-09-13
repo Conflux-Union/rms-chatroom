@@ -15,6 +15,7 @@ import (
 
 	"github.com/RMS-Server/rms-discord-go/internal/jwtutil"
 	"github.com/RMS-Server/rms-discord-go/internal/metrics"
+	mw "github.com/RMS-Server/rms-discord-go/internal/middleware"
 	"github.com/RMS-Server/rms-discord-go/internal/music"
 	"github.com/RMS-Server/rms-discord-go/internal/permission"
 	"github.com/RMS-Server/rms-discord-go/internal/ws"
@@ -620,7 +621,7 @@ func musicSearch(jwtSecret string) echo.HandlerFunc {
 		if platform == "" || platform == "all" || platform == "qq" {
 			results, err := qqClient.SearchSongs(req.Keyword, req.Num)
 			if err != nil {
-				log.Printf("music: qq search error: %v", err)
+				mw.ReqLogf(c, "music: qq search error: %v", err)
 			} else {
 				allResults = append(allResults, results...)
 			}
@@ -628,7 +629,7 @@ func musicSearch(jwtSecret string) echo.HandlerFunc {
 		if platform == "" || platform == "all" || platform == "netease" {
 			results, err := neteaseClient.SearchSongs(req.Keyword, req.Num)
 			if err != nil {
-				log.Printf("music: netease search error: %v", err)
+				mw.ReqLogf(c, "music: netease search error: %v", err)
 			} else {
 				allResults = append(allResults, results...)
 			}

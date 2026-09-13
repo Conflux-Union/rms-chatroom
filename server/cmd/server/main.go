@@ -22,6 +22,7 @@ import (
 	dbm "github.com/RMS-Server/rms-discord-go/internal/db"
 	"github.com/RMS-Server/rms-discord-go/internal/handler"
 	"github.com/RMS-Server/rms-discord-go/internal/metrics"
+	mw "github.com/RMS-Server/rms-discord-go/internal/middleware"
 	"github.com/RMS-Server/rms-discord-go/internal/permission"
 	"github.com/RMS-Server/rms-discord-go/internal/sso"
 	"github.com/RMS-Server/rms-discord-go/internal/update"
@@ -89,8 +90,13 @@ func main() {
 	e := echo.New()
 	e.HideBanner = true
 
+	// RequestID must come first so panic-rendered 500s and every response
+	// below it carry the correlation id.
+	e.Use(mw.RequestID())
 	e.Use(middleware.Recover())
-	e.Use(middleware.Logger())
+	e.Use(middleware.LoggerWithConfig(middleware.LoggerConfig{
+		Format: "${time_rfc3339} ${remote_ip} ${method} ${uri} ${status} ${latency_human} in=${bytes_in} out=${bytes_out} error=\"${error}\" req_id=${header:X-Request-Id}" + "\n",
+	}))
 	e.Use(metrics.Middleware())
 	// Tauri desktop webview origins are not known at config time.
 	// Always allow them so the desktop app can make API calls.
@@ -102,6 +108,7 @@ func main() {
 		AllowOrigins:     allowOrigins,
 		AllowMethods:     []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete, http.MethodOptions},
 		AllowHeaders:     []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept, echo.HeaderAuthorization},
+		ExposeHeaders:    []string{echo.HeaderXRequestID},
 		AllowCredentials: true,
 	}))
 

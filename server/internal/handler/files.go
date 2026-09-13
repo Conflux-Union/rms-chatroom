@@ -24,6 +24,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 
+	mw "github.com/RMS-Server/rms-discord-go/internal/middleware"
 	"github.com/RMS-Server/rms-discord-go/internal/permission"
 )
 
@@ -189,7 +190,7 @@ func uploadFile(jwtSecret string, db *sql.DB, uploadDir string) echo.HandlerFunc
 		prepared := prepareUpload(c.Request().Context(), safeName, fh.Header.Get("Content-Type"), content)
 		id, _, err := saveAttachment(db, uploadDir, channelID, int64(user.ID), prepared)
 		if err != nil {
-			log.Printf("handler/files: failed to save attachment: %v", err)
+			mw.ReqLogf(c, "handler/files: failed to save attachment: %v", err)
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to create record"})
 		}
 
