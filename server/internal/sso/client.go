@@ -26,6 +26,7 @@ type lookupEntry struct {
 // Client fetches user info and avatars from RMSSSO.
 type Client struct {
 	baseURL     string
+	apiKey      string
 	httpClient  *http.Client
 	avatarCache sync.Map // map[int]*avatarEntry
 	// lookupCache is keyed by the account_info query string ("email=x", "username=y").
@@ -34,14 +35,29 @@ type Client struct {
 	lookupTTL   time.Duration
 }
 
-// NewClient creates an SSO client with the given base URL.
-func NewClient(baseURL string) *Client {
+// NewClient creates an SSO client with the given base URL and API key. The
+// key is sent as X-API-Key on every account_info request (empty omits it).
+func NewClient(baseURL, apiKey string) *Client {
 	return &Client{
 		baseURL:    baseURL,
+		apiKey:     apiKey,
 		httpClient: &http.Client{Timeout: 10 * time.Second},
 		avatarTTL:  5 * time.Minute,
 		lookupTTL:  10 * time.Minute,
 	}
+}
+
+// getAccountInfo performs a GET on the account_info endpoint with the raw
+// query string (e.g. "uid=1", "email=a@b.com"), attaching the API key header.
+func (c *Client) getAccountInfo(query string) (*http.Response, error) {
+	req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("%s/api/account_info?%s", c.baseURL, query), nil)
+	if err != nil {
+		return nil, err
+	}
+	if c.apiKey != "" {
+		req.Header.Set("X-API-Key", c.apiKey)
+	}
+	return c.httpClient.Do(req)
 }
 
 // ssoAccountInfoResponse is the JSON envelope from the account_info endpoint.
@@ -82,8 +98,7 @@ func accountInfoUser(resp *ssoAccountInfoResponse) *permission.UserInfo {
 
 // GetUserByID fetches user info from SSO by user ID, including group level.
 func (c *Client) GetUserByID(userID int) (*permission.UserInfo, error) {
-	url := fmt.Sprintf("%s/api/account_info?uid=%d", c.baseURL, userID)
-	resp, err := c.httpClient.Get(url)
+	resp, err := c.getAccountInfo(fmt.Sprintf("uid=%d", userID))
 	if err != nil {
 		return nil, err
 	}
@@ -160,8 +175,7 @@ func (c *Client) lookupCached(query string) (*permission.UserInfo, error) {
 // fetchAccountInfo calls the account_info endpoint with a raw query string
 // (e.g. "email=a@b.com") and decodes the response.
 func (c *Client) fetchAccountInfo(query string) (*permission.UserInfo, error) {
-	url := fmt.Sprintf("%s/api/account_info?%s", c.baseURL, query)
-	resp, err := c.httpClient.Get(url)
+	resp, err := c.getAccountInfo(query)
 	if err != nil {
 		return nil, err
 	}
@@ -201,8 +215,7 @@ func (c *Client) GetAvatarURL(userID int) (string, error) {
 		}
 	}
 
-	url := fmt.Sprintf("%s/api/account_info?uid=%d", c.baseURL, userID)
-	resp, err := c.httpClient.Get(url)
+	resp, err := c.getAccountInfo(fmt.Sprintf("uid=%d", userID))
 	if err != nil {
 		return "", err
 	}

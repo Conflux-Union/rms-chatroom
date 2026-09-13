@@ -85,7 +85,7 @@ func main() {
 		log.Fatalf("failed to connect to database: %v", err)
 	}
 
-	ssoClient := sso.NewClient(cfg.SSOBaseURL)
+	ssoClient := sso.NewClient(cfg.SSOBaseURL, cfg.SSOAPIKey)
 
 	e := echo.New()
 	e.HideBanner = true

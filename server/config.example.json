@@ -1,6 +1,7 @@
 {
   "database_url": "mysql://rmschat:your-password@tcp(localhost:3306)/rmschat?charset=utf8mb4",
   "sso_base_url": "https://sso.rms.net.cn",
+  "sso_api_key": "",
   "host": "0.0.0.0",
   "port": 8000,
   "debug": true,

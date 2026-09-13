@@ -11,6 +11,9 @@ import (
 type Config struct {
 	DatabaseURL      string   `json:"database_url"`
 	SSOBaseURL       string   `json:"sso_base_url"`
+	// SSOAPIKey is sent as X-API-Key on /api/account_info requests. Required
+	// by the SSO side; empty means the header is omitted.
+	SSOAPIKey string `json:"sso_api_key"`
 	Host             string   `json:"host"`
 	Port             int      `json:"port"`
 	Debug            bool     `json:"debug"`
@@ -146,6 +149,9 @@ func applyEnvOverrides(cfg *Config) {
 	}
 	if v := os.Getenv("SSO_BASE_URL"); v != "" {
 		cfg.SSOBaseURL = v
+	}
+	if v := os.Getenv("SSO_API_KEY"); v != "" {
+		cfg.SSOAPIKey = v
 	}
 	if v := os.Getenv("HOST"); v != "" {
 		cfg.Host = v
