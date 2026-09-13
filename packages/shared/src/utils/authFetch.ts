@@ -1,4 +1,5 @@
 import { useAuthStore } from '../stores/auth'
+import { reportFetchError } from './requestIdFeedback'
 
 /**
  * Fetch wrapper that adds Bearer token and retries once on 401 via
@@ -25,6 +26,8 @@ export async function authFetch(url: string, options: RequestInit = {}): Promise
       throw new Error('Authentication failed')
     }
   }
+
+  reportFetchError(response)
 
   return response
 }

@@ -3,6 +3,7 @@ import { ref, computed } from 'vue'
 import type { User } from '../types'
 import axios from 'axios'
 import { reportTelemetryEvent } from '../utils/telemetry'
+import { reportAxiosError } from '../utils/requestIdFeedback'
 
 const _isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
 
@@ -240,7 +241,12 @@ export const useAuthStore = defineStore('auth', () => {
     (response) => response,
     async (error) => {
       const originalRequest = error.config
-      if (error.response?.status === 401 && !originalRequest._retry && canRecoverSession()) {
+      if (
+        error.response?.status === 401 &&
+        originalRequest &&
+        !originalRequest._retry &&
+        canRecoverSession()
+      ) {
         originalRequest._retry = true
         try {
           const newToken = await doRefreshToken()
@@ -248,9 +254,11 @@ export const useAuthStore = defineStore('auth', () => {
           return axios(originalRequest)
         } catch (refreshError) {
           logout()
+          reportAxiosError(refreshError)
           return Promise.reject(refreshError)
         }
       }
+      reportAxiosError(error)
       return Promise.reject(error)
     }
   )
