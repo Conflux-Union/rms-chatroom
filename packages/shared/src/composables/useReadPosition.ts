@@ -47,8 +47,10 @@ function savePositionsToStorage(data: ReadPositions) {
 /**
  * Fetch read positions from server and merge with local storage.
  * Server positions take precedence if they have a higher message ID.
+ * Exported for the reconnect resync in Main.vue (shared module state, no
+ * composable instance needed).
  */
-async function fetchAndMergeServerPositions(): Promise<void> {
+export async function fetchAndMergeServerPositions(): Promise<void> {
   const auth = useAuthStore()
   if (!auth.token) return
 

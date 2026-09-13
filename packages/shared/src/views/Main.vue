@@ -7,8 +7,10 @@ import { useMusicStore } from '../stores/music'
 import { useAuthStore } from '../stores/auth'
 import { useSwipe } from '../composables/useSwipe'
 import { useChatWebSocket } from '../composables/useChatWebSocket'
+import { useGlobalWebSocket } from '../composables/useGlobalWebSocket'
 import { useMentionNotification } from '../composables/useMentionNotification'
 import { useDesktopNotifications } from '../composables/useDesktopNotifications'
+import { fetchAndMergeServerPositions } from '../composables/useReadPosition'
 import { printConsoleEasterEgg } from '../utils/consoleArt'
 import ServerList from '../components/ServerList.vue'
 import ChannelList from '../components/ChannelList.vue'
@@ -23,11 +25,11 @@ const voice = useVoiceStore()
 const route = useRoute()
 const router = useRouter()
 // Initialize music store early so WebSocket auto-connects when joining voice
-useMusicStore()
+const music = useMusicStore()
 
 // Initialize global chat WebSocket (persists across channel switches)
 const chatWs = useChatWebSocket()
-const { playMentionSound, markChannelAsMentioned, setUnreadCount, getUnreadCount } = useMentionNotification()
+const { playMentionSound, markChannelAsMentioned, setUnreadCount, getUnreadCount, refetchFromServer: refetchMentionFlags } = useMentionNotification()
 const { showMessageNotification, setUnreadAttention } = useDesktopNotifications()
 
 // Resolve a channel display name across all loaded servers (for toasts).
@@ -230,6 +232,44 @@ async function openChannelFromRoute(): Promise<void> {
     isResolvingRouteChannel.value = false
   }
 }
+
+// --- WebSocket reconnect resync -------------------------------------------
+// The sockets only deliver what arrives while connected; on every reconnect,
+// re-pull server-authoritative state so the outage window leaves no gap.
+const globalWs = useGlobalWebSocket()
+
+let chatWsHadConnected = false
+watch(chatWs.isConnected, (connected) => {
+  if (!connected) return
+  if (!chatWsHadConnected) {
+    chatWsHadConnected = true
+    return
+  }
+  chat.backfillAfterReconnect()
+}, { immediate: true })
+
+let globalWsHadConnected = false
+watch(globalWs.isConnected, (connected) => {
+  if (!connected) return
+  if (!globalWsHadConnected) {
+    globalWsHadConnected = true
+    return
+  }
+  // Voice presence pushes resume only on the next change; read marks and
+  // mention flags are server-authoritative overlays on local state.
+  if (chat.currentServer) chat.fetchAllVoiceChannelUsers()
+  fetchAndMergeServerPositions()
+  refetchMentionFlags()
+}, { immediate: true })
+
+// Logged out: drop the sockets — they keep operating under the revoked
+// identity, and with no token getUrl() can never reconnect them anyway.
+watch(() => auth.token, (token) => {
+  if (token) return
+  chatWs.disconnect()
+  globalWs.disconnect()
+  music.disconnectMusicWs()
+})
 
 onMounted(async () => {
   // Connect global chat WebSocket
