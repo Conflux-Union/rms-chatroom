@@ -1,5 +1,6 @@
 package cn.net.rms.chatroom.ui.main
 
+import android.widget.Toast
 import androidx.compose.animation.*
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.foundation.layout.*
@@ -19,6 +20,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import cn.net.rms.chatroom.R
 import cn.net.rms.chatroom.data.model.ChannelType
+import cn.net.rms.chatroom.data.repository.REQUEST_ID_PATTERN
 import cn.net.rms.chatroom.data.websocket.ConnectionState
 import cn.net.rms.chatroom.ui.auth.AuthViewModel
 import cn.net.rms.chatroom.ui.chat.ChatScreen
@@ -286,11 +288,22 @@ fun MainScreen(
 
                 // Error Snackbar
                 mainState.error?.let { error ->
+                    val requestId = REQUEST_ID_PATTERN.find(error)?.value
                     Snackbar(
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
                             .padding(16.dp),
                         action = {
+                            if (requestId != null) {
+                                TextButton(
+                                    onClick = {
+                                        clipboardManager.setText(AnnotatedString(requestId))
+                                        Toast.makeText(context, "请求ID已复制", Toast.LENGTH_SHORT).show()
+                                    }
+                                ) {
+                                    Text("复制ID")
+                                }
+                            }
                             TextButton(onClick = { mainViewModel.clearError() }) {
                                 Text("关闭")
                             }

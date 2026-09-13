@@ -155,23 +155,31 @@ class AuthRepository @Inject constructor(
 
 class AuthException(
     message: String,
-    val isUnauthorized: Boolean = false
+    val isUnauthorized: Boolean = false,
+    val requestId: String? = null
 ) : Exception(message)
+
+/** Matches backend request ids (cxu_chat_req_...) embedded in error messages. */
+val REQUEST_ID_PATTERN = Regex("cxu_chat_req_[0-9a-f]{24}")
 
 /** True when the failure is a 401 that TokenAuthenticator already handled (or tried to). */
 val Throwable.isUnauthorized: Boolean
     get() = (this as? AuthException)?.isUnauthorized == true
             || (this as? HttpException)?.code() == 401
 
+private fun withRequestId(message: String, requestId: String?): String =
+    if (requestId != null) "$message\n请求ID: $requestId" else message
+
 fun Exception.toAuthException(): AuthException {
+    val requestId = (this as? HttpException)?.response()?.raw()?.header("X-Request-Id")
     return when (this) {
-        is UnknownHostException -> AuthException("无法连接服务器，请检查网络", isUnauthorized = false)
-        is ConnectException -> AuthException("连接服务器失败，请稍后重试", isUnauthorized = false)
-        is SocketTimeoutException -> AuthException("连接超时，请检查网络", isUnauthorized = false)
+        is UnknownHostException -> AuthException(withRequestId("无法连接服务器，请检查网络", requestId), requestId = requestId)
+        is ConnectException -> AuthException(withRequestId("连接服务器失败，请稍后重试", requestId), requestId = requestId)
+        is SocketTimeoutException -> AuthException(withRequestId("连接超时，请检查网络", requestId), requestId = requestId)
         is HttpException -> {
             val isUnauthorized = code() == 401
-            AuthException("服务器错误 (${code()}): ${message()}", isUnauthorized = isUnauthorized)
+            AuthException(withRequestId("服务器错误 (${code()}): ${message()}", requestId), isUnauthorized = isUnauthorized, requestId = requestId)
         }
-        else -> AuthException("未知错误: ${this.message ?: this.javaClass.simpleName}", isUnauthorized = false)
+        else -> AuthException(withRequestId("未知错误: ${this.message ?: this.javaClass.simpleName}", requestId), requestId = requestId)
     }
 }
