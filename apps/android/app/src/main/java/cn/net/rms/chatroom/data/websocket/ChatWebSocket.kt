@@ -1,8 +1,6 @@
 package cn.net.rms.chatroom.data.websocket
 
 import android.util.Log
-import com.google.gson.Gson
-import com.google.gson.JsonParser
 import cn.net.rms.chatroom.BuildConfig
 import cn.net.rms.chatroom.data.auth.TokenAuthenticator
 import cn.net.rms.chatroom.data.model.Attachment
@@ -10,19 +8,13 @@ import cn.net.rms.chatroom.data.model.Message
 import cn.net.rms.chatroom.data.model.Mention
 import cn.net.rms.chatroom.data.model.ReplyTo
 import cn.net.rms.chatroom.data.model.ReactionGroup
-import cn.net.rms.chatroom.data.model.ReactionUser
 import cn.net.rms.chatroom.data.model.VoiceUser
+import cn.net.rms.chatroom.data.monitor.NetworkMonitor
 import cn.net.rms.chatroom.data.telemetry.TelemetryReporter
+import com.google.gson.Gson
+import com.google.gson.JsonObject
 import com.google.gson.reflect.TypeToken
-import kotlinx.coroutines.*
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharedFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asSharedFlow
-import kotlinx.coroutines.flow.asStateFlow
-import okhttp3.*
-import java.util.concurrent.TimeUnit
+import okhttp3.OkHttpClient
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -40,359 +32,149 @@ sealed class WebSocketEvent {
     data class ReactionRemoved(val messageId: Long, val emoji: String, val userId: Long) : WebSocketEvent()
 }
 
-enum class ConnectionState {
-    DISCONNECTED,
-    CONNECTING,
-    CONNECTED,
-    RECONNECTING
-}
-
 @Singleton
 class ChatWebSocket @Inject constructor(
-    private val client: OkHttpClient,
-    private val gson: Gson,
-    private val tokenAuthenticator: TokenAuthenticator,
-    private val telemetryReporter: TelemetryReporter
+    client: OkHttpClient,
+    gson: Gson,
+    tokenAuthenticator: TokenAuthenticator,
+    telemetryReporter: TelemetryReporter,
+    networkMonitor: NetworkMonitor
+) : BaseWebSocket<WebSocketEvent>(
+    client, gson, tokenAuthenticator, telemetryReporter, networkMonitor,
+    tag = TAG, wsName = "chat"
 ) {
-    companion object {
-        private const val TAG = "ChatWebSocket"
-        private const val HEARTBEAT_INTERVAL_MS = 5_000L
-        private const val HEARTBEAT_TIMEOUT_MS = 3_000L
-        private const val INITIAL_RECONNECT_DELAY_MS = 1_000L
-        private const val MAX_RECONNECT_DELAY_MS = 30_000L
-        private const val MAX_RECONNECT_ATTEMPTS = 10
+    override fun buildUrl(token: String): String {
+        return "${BuildConfig.WS_BASE_URL}/ws/chat?token=$token"
     }
 
-    private var webSocket: WebSocket? = null
-    private val _events = MutableSharedFlow<WebSocketEvent>(replay = 0, extraBufferCapacity = 64)
-    val events: SharedFlow<WebSocketEvent> = _events.asSharedFlow()
+    override fun connectedEvent(): WebSocketEvent = WebSocketEvent.Connected(0) // global connection, no channel
+    override fun disconnectedEvent(): WebSocketEvent = WebSocketEvent.Disconnected
+    override fun errorEvent(message: String): WebSocketEvent = WebSocketEvent.Error(message)
 
-    private val _connectionState = MutableStateFlow(ConnectionState.DISCONNECTED)
-    val connectionState: StateFlow<ConnectionState> = _connectionState.asStateFlow()
-
-    private var currentToken: String? = null
-    private var reconnectAttempts = 0
-    private var shouldReconnect = false
-    private var waitingForPong = false
-    private var lastDisconnectReason: String? = null
-
-    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-    private var heartbeatJob: Job? = null
-    private var heartbeatTimeoutJob: Job? = null
-    private var reconnectJob: Job? = null
-
-    fun connect(token: String) {
-        disconnect(sendEvent = false)
-
-        currentToken = token
-        shouldReconnect = true
-        reconnectAttempts = 0
-
-        doConnect()
+    override fun onParseError(e: Exception) {
+        emitEvent(errorEvent("Failed to parse message: ${e.message}"))
     }
 
-    private fun doConnect() {
-        if (currentToken == null) return
-
-        if (_connectionState.value == ConnectionState.RECONNECTING) {
-            // Keep reconnecting state
-        } else {
-            _connectionState.value = ConnectionState.CONNECTING
-        }
-
-        scope.launch {
-            if (!shouldReconnect) return@launch
-            // WS auth happens only at handshake; refresh a near-expiry token first
-            tokenAuthenticator.getFreshToken()?.let { currentToken = it }
-            openWebSocket()
-        }
-    }
-
-    private fun openWebSocket() {
-        val token = currentToken ?: return
-
-        // Connect to global WebSocket endpoint (no channel ID in path)
-        val url = "${BuildConfig.WS_BASE_URL}/ws/chat?token=$token"
-        Log.d(TAG, "Connecting to WebSocket: $url")
-
-        val request = Request.Builder()
-            .url(url)
-            .build()
-
-        webSocket = client.newWebSocket(request, object : WebSocketListener() {
-            override fun onOpen(webSocket: WebSocket, response: Response) {
-                Log.d(TAG, "WebSocket connected to global chat")
-                _connectionState.value = ConnectionState.CONNECTED
-                reconnectAttempts = 0
-                _events.tryEmit(WebSocketEvent.Connected(0)) // channelId = 0 for global connection
-                startHeartbeat()
-            }
-
-            override fun onMessage(webSocket: WebSocket, text: String) {
-                handleMessage(text)
-            }
-
-            override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                Log.e(TAG, "WebSocket failure: ${t.message}", t)
-                lastDisconnectReason = t.message ?: t.toString()
-                _connectionState.value = ConnectionState.DISCONNECTED
-                stopHeartbeat()
-                _events.tryEmit(WebSocketEvent.Error(t.message ?: "WebSocket error"))
-                _events.tryEmit(WebSocketEvent.Disconnected)
-                scheduleReconnect()
-            }
-
-            override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-                Log.d(TAG, "WebSocket closed: code=$code, reason=$reason")
-                lastDisconnectReason = "closed code=$code $reason"
-                _connectionState.value = ConnectionState.DISCONNECTED
-                stopHeartbeat()
-                _events.tryEmit(WebSocketEvent.Disconnected)
-
-                // Only reconnect if it wasn't a normal close initiated by us
-                if (code != 1000) {
-                    scheduleReconnect()
+    override fun handleMessage(json: JsonObject): WebSocketEvent? {
+        return when (val type = json.get("type")?.asString) {
+            "message" -> {
+                // Parse attachments if present
+                val attachments = if (json.has("attachments") && !json.get("attachments").isJsonNull) {
+                    val attachmentsType = object : TypeToken<List<Attachment>>() {}.type
+                    gson.fromJson<List<Attachment>>(json.get("attachments"), attachmentsType)
+                } else {
+                    null
                 }
-            }
 
-            override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
-                Log.d(TAG, "WebSocket closing: code=$code, reason=$reason")
-            }
-        })
-    }
-
-    private fun handleMessage(text: String) {
-        try {
-            val json = JsonParser.parseString(text).asJsonObject
-            val type = json.get("type")?.asString
-
-            when (type) {
-                "message" -> {
-                    // Parse attachments if present
-                    val attachments = if (json.has("attachments") && !json.get("attachments").isJsonNull) {
-                        val attachmentsType = object : TypeToken<List<Attachment>>() {}.type
-                        gson.fromJson<List<Attachment>>(json.get("attachments"), attachmentsType)
-                    } else {
-                        null
-                    }
-
-                    // Parse reply_to if present
-                    val replyTo = if (json.has("reply_to") && !json.get("reply_to").isJsonNull) {
-                        val replyToJson = json.getAsJsonObject("reply_to")
-                        ReplyTo(
-                            id = replyToJson.get("id").asLong,
-                            userId = replyToJson.get("user_id")?.asLong ?: 0L,
-                            username = replyToJson.get("username")?.asString ?: "",
-                            content = replyToJson.get("content")?.asString ?: ""
-                        )
-                    } else {
-                        null
-                    }
-
-                    // Parse mentions if present
-                    val mentions = if (json.has("mentions") && !json.get("mentions").isJsonNull) {
-                        val mentionsType = object : TypeToken<List<Mention>>() {}.type
-                        gson.fromJson<List<Mention>>(json.get("mentions"), mentionsType)
-                    } else {
-                        null
-                    }
-
-                    // Parse reactions if present
-                    val reactions = if (json.has("reactions") && !json.get("reactions").isJsonNull) {
-                        val reactionsType = object : TypeToken<List<ReactionGroup>>() {}.type
-                        gson.fromJson<List<ReactionGroup>>(json.get("reactions"), reactionsType)
-                    } else {
-                        null
-                    }
-
-                    // Parse avatar_url if present
-                    val avatarUrl = if (json.has("avatar_url") && !json.get("avatar_url").isJsonNull) {
-                        json.get("avatar_url").asString
-                    } else {
-                        null
-                    }
-
-                    val message = Message(
-                        id = json.get("id").asLong,
-                        channelId = json.get("channel_id")?.asLong ?: 0L,
-                        userId = json.get("user_id").asLong,
-                        username = json.get("username").asString,
-                        avatarUrl = avatarUrl,
-                        content = json.get("content")?.asString ?: "",
-                        createdAt = json.get("created_at").asString,
-                        attachments = attachments,
-                        replyToId = if (json.has("reply_to_id") && !json.get("reply_to_id").isJsonNull) json.get("reply_to_id").asLong else null,
-                        replyTo = replyTo,
-                        mentions = mentions,
-                        reactions = reactions
+                // Parse reply_to if present
+                val replyTo = if (json.has("reply_to") && !json.get("reply_to").isJsonNull) {
+                    val replyToJson = json.getAsJsonObject("reply_to")
+                    ReplyTo(
+                        id = replyToJson.get("id").asLong,
+                        userId = replyToJson.get("user_id")?.asLong ?: 0L,
+                        username = replyToJson.get("username")?.asString ?: "",
+                        content = replyToJson.get("content")?.asString ?: ""
                     )
-                    Log.d(TAG, "Received message: ${message.id} from ${message.username}, attachments: ${attachments?.size ?: 0}, replyTo: ${replyTo?.username}, mentions: ${mentions?.size ?: 0}")
-                    _events.tryEmit(WebSocketEvent.NewMessage(message))
+                } else {
+                    null
                 }
-                "message_deleted" -> {
-                    val messageId = json.get("message_id").asLong
-                    val deletedBy = json.get("deleted_by").asLong
-                    val deletedByUsername = json.get("deleted_by_username").asString
-                    Log.d(TAG, "Message deleted: $messageId by $deletedByUsername")
-                    _events.tryEmit(WebSocketEvent.MessageDeleted(messageId, deletedBy, deletedByUsername))
+
+                // Parse mentions if present
+                val mentions = if (json.has("mentions") && !json.get("mentions").isJsonNull) {
+                    val mentionsType = object : TypeToken<List<Mention>>() {}.type
+                    gson.fromJson<List<Mention>>(json.get("mentions"), mentionsType)
+                } else {
+                    null
                 }
-                "message_edited" -> {
-                    val messageId = json.get("message_id").asLong
-                    val content = json.get("content").asString
-                    val editedAt = json.get("edited_at").asString
-                    Log.d(TAG, "Message edited: $messageId")
-                    _events.tryEmit(WebSocketEvent.MessageEdited(messageId, content, editedAt))
+
+                // Parse reactions if present
+                val reactions = if (json.has("reactions") && !json.get("reactions").isJsonNull) {
+                    val reactionsType = object : TypeToken<List<ReactionGroup>>() {}.type
+                    gson.fromJson<List<ReactionGroup>>(json.get("reactions"), reactionsType)
+                } else {
+                    null
                 }
-                "reaction_added" -> {
-                    val messageId = json.get("message_id").asLong
-                    val emoji = json.get("emoji").asString
-                    val userId = json.get("user_id").asLong
-                    val username = json.get("username").asString
-                    Log.d(TAG, "Reaction added: $emoji to message $messageId by $username")
-                    _events.tryEmit(WebSocketEvent.ReactionAdded(messageId, emoji, userId, username))
+
+                // Parse avatar_url if present
+                val avatarUrl = if (json.has("avatar_url") && !json.get("avatar_url").isJsonNull) {
+                    json.get("avatar_url").asString
+                } else {
+                    null
                 }
-                "reaction_removed" -> {
-                    val messageId = json.get("message_id").asLong
-                    val emoji = json.get("emoji").asString
-                    val userId = json.get("user_id").asLong
-                    Log.d(TAG, "Reaction removed: $emoji from message $messageId")
-                    _events.tryEmit(WebSocketEvent.ReactionRemoved(messageId, emoji, userId))
-                }
-                "error" -> {
-                    val errorCode = json.get("code")?.asString
-                    val errorMessage = json.get("message")?.asString ?: "Unknown error"
-                    Log.w(TAG, "Received error: code=$errorCode, message=$errorMessage")
-                    _events.tryEmit(WebSocketEvent.Error(errorMessage, errorCode))
-                }
-                "user_joined" -> {
-                    val user = gson.fromJson(json.getAsJsonObject("user"), VoiceUser::class.java)
-                    _events.tryEmit(WebSocketEvent.UserJoined(user))
-                }
-                "user_left" -> {
-                    val userId = json.get("user_id").asLong
-                    _events.tryEmit(WebSocketEvent.UserLeft(userId))
-                }
-                "pong" -> {
-                    if (json.has("data") && json.get("data").asString == "cute") {
-                        Log.v(TAG, "Received pong: cute")
-                        handlePong()
-                    }
-                }
-                "connected" -> {
-                    Log.v(TAG, "Received connected")
-                }
-                else -> {
-                    Log.d(TAG, "Unknown message type: $type")
-                }
+
+                val message = Message(
+                    id = json.get("id").asLong,
+                    channelId = json.get("channel_id")?.asLong ?: 0L,
+                    userId = json.get("user_id").asLong,
+                    username = json.get("username").asString,
+                    avatarUrl = avatarUrl,
+                    content = json.get("content")?.asString ?: "",
+                    createdAt = json.get("created_at").asString,
+                    attachments = attachments,
+                    replyToId = if (json.has("reply_to_id") && !json.get("reply_to_id").isJsonNull) json.get("reply_to_id").asLong else null,
+                    replyTo = replyTo,
+                    mentions = mentions,
+                    reactions = reactions
+                )
+                Log.d(TAG, "Received message: ${message.id} from ${message.username}, attachments: ${attachments?.size ?: 0}, replyTo: ${replyTo?.username}, mentions: ${mentions?.size ?: 0}")
+                WebSocketEvent.NewMessage(message)
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to parse message: $text", e)
-            _events.tryEmit(WebSocketEvent.Error("Failed to parse message: ${e.message}"))
-        }
-    }
-
-    private fun handlePong() {
-        waitingForPong = false
-        heartbeatTimeoutJob?.cancel()
-        heartbeatTimeoutJob = null
-    }
-
-    private fun startHeartbeat() {
-        stopHeartbeat()
-        heartbeatJob = scope.launch {
-            while (isActive) {
-                delay(HEARTBEAT_INTERVAL_MS)
-                if (_connectionState.value == ConnectionState.CONNECTED && !waitingForPong) {
-                    sendPing()
-                }
+            "message_deleted" -> {
+                val messageId = json.get("message_id").asLong
+                val deletedBy = json.get("deleted_by").asLong
+                val deletedByUsername = json.get("deleted_by_username").asString
+                Log.d(TAG, "Message deleted: $messageId by $deletedByUsername")
+                WebSocketEvent.MessageDeleted(messageId, deletedBy, deletedByUsername)
             }
-        }
-    }
-
-    private fun stopHeartbeat() {
-        heartbeatJob?.cancel()
-        heartbeatJob = null
-        heartbeatTimeoutJob?.cancel()
-        heartbeatTimeoutJob = null
-        waitingForPong = false
-    }
-
-    private fun sendPing() {
-        try {
-            val pingJson = gson.toJson(mapOf("type" to "ping", "data" to "tribios"))
-            val sent = webSocket?.send(pingJson) ?: false
-            if (sent) {
-                Log.v(TAG, "Sent ping: tribios")
-                waitingForPong = true
-
-                // Start timeout timer
-                heartbeatTimeoutJob?.cancel()
-                heartbeatTimeoutJob = scope.launch {
-                    delay(HEARTBEAT_TIMEOUT_MS)
-                    if (waitingForPong) {
-                        Log.w(TAG, "Heartbeat timeout, reconnecting...")
-                        waitingForPong = false
-                        disconnect(sendEvent = false)
-                        scheduleReconnect()
-                    }
-                }
-            } else {
-                Log.w(TAG, "Failed to send ping, connection may be lost")
+            "message_edited" -> {
+                val messageId = json.get("message_id").asLong
+                val content = json.get("content").asString
+                val editedAt = json.get("edited_at").asString
+                Log.d(TAG, "Message edited: $messageId")
+                WebSocketEvent.MessageEdited(messageId, content, editedAt)
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error sending ping", e)
-        }
-    }
-
-    private fun scheduleReconnect() {
-        if (!shouldReconnect) {
-            Log.d(TAG, "Reconnect disabled, not scheduling")
-            return
-        }
-
-        if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
-            Log.w(TAG, "Max reconnect attempts reached ($MAX_RECONNECT_ATTEMPTS)")
-            shouldReconnect = false
-            telemetryReporter.report(
-                "ws_reconnect_exhausted", "chat",
-                meta = mapOf("ws" to "chat", "attempts" to reconnectAttempts, "reason" to lastDisconnectReason)
-            )
-            _events.tryEmit(WebSocketEvent.Error("Max reconnect attempts reached"))
-            return
-        }
-
-        // Report the start of each outage, not every retry of it.
-        if (reconnectAttempts == 0) {
-            telemetryReporter.report(
-                "ws_reconnect", "chat",
-                meta = mapOf("ws" to "chat", "reason" to lastDisconnectReason)
-            )
-        }
-
-        reconnectJob?.cancel()
-        reconnectJob = scope.launch {
-            val delayMs = calculateReconnectDelay()
-            Log.d(TAG, "Scheduling reconnect in ${delayMs}ms (attempt ${reconnectAttempts + 1}/$MAX_RECONNECT_ATTEMPTS)")
-
-            _connectionState.value = ConnectionState.RECONNECTING
-            delay(delayMs)
-
-            if (shouldReconnect && isActive) {
-                reconnectAttempts++
-                Log.d(TAG, "Attempting reconnect #$reconnectAttempts")
-                doConnect()
+            "reaction_added" -> {
+                val messageId = json.get("message_id").asLong
+                val emoji = json.get("emoji").asString
+                val userId = json.get("user_id").asLong
+                val username = json.get("username").asString
+                Log.d(TAG, "Reaction added: $emoji to message $messageId by $username")
+                WebSocketEvent.ReactionAdded(messageId, emoji, userId, username)
+            }
+            "reaction_removed" -> {
+                val messageId = json.get("message_id").asLong
+                val emoji = json.get("emoji").asString
+                val userId = json.get("user_id").asLong
+                Log.d(TAG, "Reaction removed: $emoji from message $messageId")
+                WebSocketEvent.ReactionRemoved(messageId, emoji, userId)
+            }
+            "error" -> {
+                val errorCode = json.get("code")?.asString
+                val errorMessage = json.get("message")?.asString ?: "Unknown error"
+                Log.w(TAG, "Received error: code=$errorCode, message=$errorMessage")
+                WebSocketEvent.Error(errorMessage, errorCode)
+            }
+            "user_joined" -> {
+                val user = gson.fromJson(json.getAsJsonObject("user"), VoiceUser::class.java)
+                WebSocketEvent.UserJoined(user)
+            }
+            "user_left" -> {
+                val userId = json.get("user_id").asLong
+                WebSocketEvent.UserLeft(userId)
+            }
+            "connected" -> {
+                Log.v(TAG, "Received connected")
+                null
+            }
+            else -> {
+                Log.d(TAG, "Unknown message type: $type")
+                null
             }
         }
-    }
-
-    private fun calculateReconnectDelay(): Long {
-        // Exponential backoff: 1s, 2s, 4s, 8s, ... up to 30s
-        val delay = INITIAL_RECONNECT_DELAY_MS * (1L shl minOf(reconnectAttempts, 5))
-        return minOf(delay, MAX_RECONNECT_DELAY_MS)
     }
 
     fun sendMessage(channelId: Long, content: String, attachmentIds: List<Long> = emptyList(), replyToId: Long? = null): Boolean {
-        if (_connectionState.value != ConnectionState.CONNECTED) {
+        if (connectionState.value != ConnectionState.CONNECTED) {
             Log.w(TAG, "Cannot send message, not connected")
             return false
         }
@@ -409,52 +191,14 @@ class ChatWebSocket @Inject constructor(
             if (replyToId != null) {
                 payload["reply_to_id"] = replyToId
             }
-            val json = gson.toJson(payload)
-            webSocket?.send(json) ?: false
+            webSocket?.send(gson.toJson(payload)) ?: false
         } catch (e: Exception) {
             Log.e(TAG, "Error sending message", e)
             false
         }
     }
 
-    fun disconnect(sendEvent: Boolean = true) {
-        Log.d(TAG, "Disconnecting WebSocket")
-        shouldReconnect = false
-        reconnectJob?.cancel()
-        reconnectJob = null
-        stopHeartbeat()
-
-        webSocket?.close(1000, "User disconnected")
-        webSocket = null
-
-        _connectionState.value = ConnectionState.DISCONNECTED
-        currentToken = null
-
-        if (sendEvent) {
-            _events.tryEmit(WebSocketEvent.Disconnected)
-        }
-    }
-
-    fun reconnect() {
-        val token = currentToken
-        if (token != null) {
-            Log.d(TAG, "Manual reconnect requested")
-            disconnect(sendEvent = false)
-            // Restore token after disconnect cleared it
-            currentToken = token
-            shouldReconnect = true
-            reconnectAttempts = 0
-            doConnect()
-        } else {
-            Log.w(TAG, "Cannot reconnect, no previous connection info")
-        }
-    }
-
-    fun isConnected(): Boolean = _connectionState.value == ConnectionState.CONNECTED
-
-    fun cleanup() {
-        Log.d(TAG, "Cleaning up ChatWebSocket")
-        disconnect(sendEvent = false)
-        scope.cancel()
+    companion object {
+        private const val TAG = "ChatWebSocket"
     }
 }

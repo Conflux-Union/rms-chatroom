@@ -61,7 +61,8 @@ class ChatRepository @Inject constructor(
         private const val MESSAGES_PAGE_SIZE = 50
     }
 
-    // Track if app is in foreground (set by Activity)
+    // Track if app is in foreground (set by Activity, read from IO scopes)
+    @Volatile
     var isAppInForeground: Boolean = true
     private var currentUserId: Long? = null
 
@@ -476,13 +477,15 @@ class ChatRepository @Inject constructor(
     }
 
     fun connectToChannel(channelId: Long) {
-        val token = authRepository.getTokenBlocking() ?: run {
-            Log.e(TAG, "Cannot connect to WebSocket: no token")
-            return
+        scope.launch {
+            val token = authRepository.getToken() ?: run {
+                Log.e(TAG, "Cannot connect to WebSocket: no token")
+                return@launch
+            }
+            Log.d(TAG, "Connecting to global WebSocket for channel $channelId")
+            // Connect to global WebSocket (no channel ID needed)
+            webSocket.connect(token)
         }
-        Log.d(TAG, "Connecting to global WebSocket for channel $channelId")
-        // Connect to global WebSocket (no channel ID needed)
-        webSocket.connect(token)
     }
 
     fun disconnectFromChannel() {

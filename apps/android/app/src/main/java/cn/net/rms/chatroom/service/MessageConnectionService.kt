@@ -154,7 +154,9 @@ class MessageConnectionService : Service() {
 
         chatRepository.isAppInForeground = isAppInForeground()
         chatRepository.loadCurrentUserFromToken()
-        if (!chatRepository.isWebSocketConnected()) {
+        // Only fill in when fully disconnected; CONNECTING/RECONNECTING means
+        // the socket's own retry path is already handling it.
+        if (chatRepository.connectionState.value == ConnectionState.DISCONNECTED) {
             chatRepository.connectToChannel(0)
         }
     }

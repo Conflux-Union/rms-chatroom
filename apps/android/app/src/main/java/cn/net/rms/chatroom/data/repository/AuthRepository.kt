@@ -13,7 +13,6 @@ import cn.net.rms.chatroom.data.model.User
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.runBlocking
 import retrofit2.HttpException
 import java.net.ConnectException
 import java.net.SocketTimeoutException
@@ -46,10 +45,6 @@ class AuthRepository @Inject constructor(
 
     // Backward compat alias
     suspend fun getToken(): String? = getAccessToken()
-
-    fun getTokenBlocking(): String? = runBlocking {
-        getAccessToken()
-    }
 
     suspend fun saveTokens(accessToken: String, refreshToken: String) {
         dataStore.edit { prefs ->
