@@ -263,8 +263,16 @@ export function reportAxiosError(error: unknown): void {
 /**
  * Same classification for fetch-based callers (authFetch): pass the final
  * Response and the card fires only for unexpected non-2xx statuses.
+ * `expectedStatuses` covers conflicts the caller resolves itself (e.g. a
+ * lock held by someone else).
  */
-export function reportFetchError(response: Response): void {
-  if (response.ok || isExpectedStatus(response.status)) return
+export function reportFetchError(response: Response, expectedStatuses?: number[]): void {
+  if (
+    response.ok ||
+    isExpectedStatus(response.status) ||
+    expectedStatuses?.includes(response.status)
+  ) {
+    return
+  }
   reportApiError(response.headers.get('x-request-id'), response.status)
 }

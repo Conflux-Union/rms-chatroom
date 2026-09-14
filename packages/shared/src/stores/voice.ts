@@ -1199,6 +1199,8 @@ export const useVoiceStore = defineStore('voice', () => {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ enabled: !hostModeEnabled.value }),
+          // 409 = host mode already active by another user, handled below.
+          expectedStatuses: [409],
         }
       )
       if (response.ok) {
@@ -1245,7 +1247,8 @@ export const useVoiceStore = defineStore('voice', () => {
     try {
       const response = await authFetch(
         `${API_BASE}/api/voice/${currentVoiceChannel.value.id}/screen-share/lock`,
-        { method: 'POST' }
+        // 409 is resolved below as "held by someone else", not an anomaly.
+        { method: 'POST', expectedStatuses: [409] }
       )
       // 200 = acquired, 409 = held by someone else; both carry the same shape
       if (response.ok || response.status === 409) {
