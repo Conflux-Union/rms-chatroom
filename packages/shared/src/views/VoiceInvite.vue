@@ -31,8 +31,6 @@ const isDeafened = ref(false)
 const hostModeEnabled = ref(false)
 const hostModeHostName = ref<string | null>(null)
 
-// Server-side mute state cache
-const serverMuteState = ref<Map<string, boolean>>(new Map())
 let syncInterval: ReturnType<typeof setInterval> | null = null
 
 interface GuestParticipant {
@@ -90,18 +88,6 @@ async function syncFromServer() {
   if (!channelId.value || pageState.value !== 'connected') return
 
   try {
-    // Sync participants mute state
-    const usersResp = await fetch(`${API_BASE}/api/voice/${channelId.value}/users`)
-    if (usersResp.ok) {
-      const users: Array<{ id: string; is_muted: boolean; is_host: boolean }> = await usersResp.json()
-      const newMuteState = new Map<string, boolean>()
-      for (const user of users) {
-        newMuteState.set(user.id, user.is_muted)
-      }
-      serverMuteState.value = newMuteState
-      updateParticipants()
-    }
-
     // Sync host mode status
     const hostResp = await fetch(`${API_BASE}/api/voice/${channelId.value}/host-mode`)
     if (hostResp.ok) {
@@ -122,28 +108,22 @@ function updateParticipants() {
 
   const list: GuestParticipant[] = []
   const local = room.value.localParticipant
-  
-  // Use server mute state for local participant if available
-  const localServerMuted = serverMuteState.value.get(local.identity)
-  const localMuted = localServerMuted !== undefined ? localServerMuted : !local.isMicrophoneEnabled
-  
+
   list.push({
     id: local.identity,
     name: local.name || local.identity,
-    isMuted: localMuted,
+    isMuted: !local.isMicrophoneEnabled,
     isSpeaking: local.isSpeaking,
     isLocal: true,
   })
 
   room.value.remoteParticipants.forEach((p) => {
-    // Prefer server-side mute state
-    const serverMuted = serverMuteState.value.get(p.identity)
-    const pMuted = serverMuted !== undefined ? serverMuted : !p.isMicrophoneEnabled
-    
+    // LiveKit client state only: TrackMuted/TrackUnmuted fires for local
+    // mutes and server-forced mutes alike, so no server cache is needed.
     list.push({
       id: p.identity,
       name: p.name || p.identity,
-      isMuted: pMuted,
+      isMuted: !p.isMicrophoneEnabled,
       isSpeaking: p.isSpeaking,
       isLocal: false,
     })
@@ -266,7 +246,6 @@ function toggleDeafen() {
 
 function disconnect() {
   stopSyncInterval()
-  serverMuteState.value.clear()
   if (room.value) {
     room.value.disconnect()
     room.value = null

@@ -246,8 +246,6 @@ export const useVoiceStore = defineStore('voice', () => {
     else localStorage.setItem(STORAGE_KEY_ANNOUNCE, 'false')
   }
 
-  // Server-side mute state cache (from API)
-  const serverMuteState = ref<Map<string, boolean>>(new Map())
   // Avatar URL cache (from API)
   const avatarUrlCache = ref<Map<string, string>>(new Map())
 
@@ -428,16 +426,13 @@ export const useVoiceStore = defineStore('voice', () => {
     })
 
     room.value.remoteParticipants.forEach((p) => {
-      // Prefer server-side mute state, fallback to client state
-      const serverMuted = serverMuteState.value.get(p.identity)
-      const clientMuted = !p.isMicrophoneEnabled
-      const isMuted = serverMuted !== undefined ? serverMuted : clientMuted
-
       list.push({
         id: p.identity,
         name: p.name || p.identity,
         avatarUrl: avatarUrlCache.value.get(p.identity),
-        isMuted,
+        // LiveKit client state only: TrackMuted/TrackUnmuted fires for local
+        // mutes and server-forced mutes alike, so no server cache is needed.
+        isMuted: !p.isMicrophoneEnabled,
         isSpeaking: p.isSpeaking,
         isLocal: false,
         volume: userVolumes.value.get(p.identity) ?? 100,
@@ -461,8 +456,9 @@ export const useVoiceStore = defineStore('voice', () => {
   }
 
   /**
-   * Sync participant state from chat store's voice users data (pushed via WebSocket).
-   * This replaces the old polling mechanism.
+   * Sync avatar URLs from chat store's voice users data (pushed via WebSocket).
+   * Mute state intentionally not synced: LiveKit TrackMuted/TrackUnmuted
+   * events already drive in-room UI, and the pushed list could be staler.
    */
   function syncParticipantsFromChatStore(): void {
     if (!currentVoiceChannel.value || !isConnected.value) return
@@ -470,16 +466,16 @@ export const useVoiceStore = defineStore('voice', () => {
     const chat = useChatStore()
     const users = chat.getVoiceChannelUsers(currentVoiceChannel.value.id)
 
-    const newMuteState = new Map<string, boolean>()
+    let avatarChanged = false
     for (const user of users) {
-      newMuteState.set(user.id, user.is_muted)
-      // Cache avatar URL if available
-      if (user.avatar_url) {
+      if (user.avatar_url && avatarUrlCache.value.get(user.id) !== user.avatar_url) {
         avatarUrlCache.value.set(user.id, user.avatar_url)
+        avatarChanged = true
       }
     }
-    serverMuteState.value = newMuteState
-    updateParticipants()
+    if (avatarChanged) {
+      updateParticipants()
+    }
   }
 
   // Watch chat store's voice channel users for updates
@@ -955,7 +951,6 @@ export const useVoiceStore = defineStore('voice', () => {
   async function disconnect() {
     stopSyncInterval()
     participantAudioMap.clear()
-    serverMuteState.value.clear()
 
     if (audioContext.value) {
       audioContext.value.close()

@@ -52,12 +52,17 @@ func Register(e *echo.Echo, cfg *config.Config, ssoClient *sso.Client, db *sql.D
 	VoiceManager.StartHeartbeat()
 	GlobalStateManager.StartHeartbeat()
 
+	// Periodic voice user resync: no mute webhook exists in LiveKit, so without
+	// this, local mutes would never refresh the voice user list.
+	StartVoiceUsersSync(lk.New(cfg), ssoClient, db)
+
 	registerConnectionGauges()
 }
 
-// Shutdown stops all heartbeat monitors. Call on server shutdown.
+// Shutdown stops all heartbeat monitors. Call before server shutdown.
 func Shutdown() {
 	ChatManager.StopHeartbeat()
 	VoiceManager.StopHeartbeat()
 	GlobalStateManager.StopHeartbeat()
+	StopVoiceUsersSync()
 }

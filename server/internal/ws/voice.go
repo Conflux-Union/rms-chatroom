@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/labstack/echo/v4"
 	"github.com/livekit/protocol/livekit"
@@ -756,4 +757,72 @@ func broadcastVoiceUsersUpdate(lkc *lk.Client, ssoClient *sso.Client, db *sql.DB
 		"users": usersByChannel,
 	})
 	log.Printf("voice: broadcast voice_users_update (%d channels)", len(usersByChannel))
+}
+
+// voiceUsersSyncInterval is how often the periodic resync re-reads LiveKit mute
+// state. LiveKit has no track_muted/track_unmuted webhook, so local mutes would
+// otherwise never refresh the voice user list pushed to clients.
+const voiceUsersSyncInterval = 2 * time.Second
+
+var voiceUsersSync struct {
+	mu     sync.Mutex
+	last   string // JSON digest of the last broadcast payload; empty forces an initial push
+	stopCh chan struct{}
+}
+
+// StartVoiceUsersSync periodically rebroadcasts the voice user list while any
+// global WS connection exists. Skips the LiveKit round-trip entirely when no
+// one is connected, and suppresses broadcasts when nothing changed.
+func StartVoiceUsersSync(lkc *lk.Client, ssoClient *sso.Client, db *sql.DB) {
+	voiceUsersSync.mu.Lock()
+	if voiceUsersSync.stopCh != nil {
+		voiceUsersSync.mu.Unlock()
+		return
+	}
+	stopCh := make(chan struct{})
+	voiceUsersSync.stopCh = stopCh
+	voiceUsersSync.mu.Unlock()
+
+	go func() {
+		ticker := time.NewTicker(voiceUsersSyncInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-stopCh:
+				return
+			case <-ticker.C:
+				if GlobalStateManager.ConnCount() == 0 {
+					continue
+				}
+				usersByChannel := collectAllVoiceUsers(context.Background(), lkc, ssoClient, db)
+				data, err := json.Marshal(usersByChannel)
+				if err != nil {
+					continue
+				}
+				voiceUsersSync.mu.Lock()
+				unchanged := voiceUsersSync.last == string(data)
+				if !unchanged {
+					voiceUsersSync.last = string(data)
+				}
+				voiceUsersSync.mu.Unlock()
+				if unchanged {
+					continue
+				}
+				GlobalStateManager.BroadcastToAllUsers(map[string]interface{}{
+					"type":  "voice_users_update",
+					"users": usersByChannel,
+				})
+			}
+		}
+	}()
+}
+
+// StopVoiceUsersSync stops the periodic resync started by StartVoiceUsersSync.
+func StopVoiceUsersSync() {
+	voiceUsersSync.mu.Lock()
+	defer voiceUsersSync.mu.Unlock()
+	if voiceUsersSync.stopCh != nil {
+		close(voiceUsersSync.stopCh)
+		voiceUsersSync.stopCh = nil
+	}
 }
