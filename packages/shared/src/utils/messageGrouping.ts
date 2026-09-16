@@ -5,13 +5,6 @@ import { parseUTCDateTime } from './datetime'
 const MESSAGE_GROUP_ADJACENT_THRESHOLD_MINUTES = 1
 const MESSAGE_GROUP_TOTAL_THRESHOLD_MINUTES = 7
 
-// Source badge label for forwarded messages: QQ stays QQ, game messages show
-// the ChatBridge origin server name when the backend provided one.
-export function sourceBadgeLabel(msg: Message): string {
-  if (msg.source_platform === 'qq') return 'QQ'
-  return msg.forward_meta?.server || '服务器'
-}
-
 export function shouldGroupWithPrevious(messages: Message[], index: number): boolean {
   if (index === 0) return false
 

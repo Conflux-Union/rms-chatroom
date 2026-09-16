@@ -22,6 +22,7 @@ import android.content.IntentFilter
 import android.os.Environment
 import android.widget.Toast
 import androidx.annotation.OptIn
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
@@ -115,6 +116,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -1011,19 +1013,36 @@ private fun MessageItem(
                         color = Zhimo.ink
                     )
 
-                    // Source badge for forwarded messages (FORWARD channels)
+                    // Source badge for forwarded messages (FORWARD channels):
+                    // QQ shows the official penguin mark only, game messages
+                    // pair the official grass block render with the origin
+                    // server name.
                     if (message.sourcePlatform != null) {
-                        Text(
-                            text = if (message.sourcePlatform == "qq") "QQ"
-                                   else message.forwardMeta?.server ?: "服务器",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = Zhimo.inkFaint,
-                            modifier = Modifier
-                                .align(Alignment.CenterVertically)
-                                .clip(RoundedCornerShape(4.dp))
-                                .background(Zhimo.paperSubtle)
-                                .padding(horizontal = 4.dp, vertical = 1.dp)
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(3.dp),
+                            modifier = Modifier.align(Alignment.CenterVertically)
+                        ) {
+                            if (message.sourcePlatform == "qq") {
+                                Icon(
+                                    painter = painterResource(R.drawable.ic_source_qq),
+                                    contentDescription = "QQ",
+                                    tint = Zhimo.inkFaint,
+                                    modifier = Modifier.size(12.dp)
+                                )
+                            } else {
+                                Image(
+                                    painter = painterResource(R.drawable.grass_block_icon),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(12.dp)
+                                )
+                                Text(
+                                    text = message.forwardMeta?.server ?: "服务器",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Zhimo.inkFaint
+                                )
+                            }
+                        }
                     }
 
                     Text(

@@ -9,7 +9,6 @@ import { formatDateTime, isWithinMinutes } from '../utils/datetime'
 import {
   shouldGroupWithPrevious as shouldGroupWithPreviousIn,
   getGroupLatestEditedAt as getGroupLatestEditedAtIn,
-  sourceBadgeLabel,
 } from '../utils/messageGrouping'
 import {
   ZmDropdown,
@@ -27,6 +26,7 @@ import {
 import { Paperclip, Send, Upload, X, Image, MoreVertical, Reply, CornerUpLeft, SmilePlus, Radio } from 'lucide-vue-next'
 import FilePreview from './FilePreview.vue'
 import ForwardQuoteCard from './ForwardQuoteCard.vue'
+import SourceBadge from './SourceBadge.vue'
 import type { Message } from '../types'
 import { isTauri } from '../index'
 import { useMessageViewport } from '../composables/useMessageViewport'
@@ -373,7 +373,7 @@ onUnmounted(() => {
           <!-- Header: hidden for grouped messages -->
           <div v-if="!shouldGroupWithPrevious(index)" class="message-header">
             <span class="message-author">{{ msg.username }}</span>
-            <span v-if="msg.source_platform" class="source-badge">{{ sourceBadgeLabel(msg) }}</span>
+            <SourceBadge v-if="msg.source_platform" :msg="msg" />
             <span class="message-time">
               {{ formatDateTime(msg.created_at) }}
               <span v-if="getGroupLatestEditedAt(index)" class="edited-indicator">(已编辑于 {{ formatDateTime(getGroupLatestEditedAt(index)!) }})</span>
@@ -1353,17 +1353,8 @@ onUnmounted(() => {
 /* Forwarded-message quote cards live in ForwardQuoteCard.vue (their styles
    must scope to the recursive component, not to ChatArea). */
 
-/* Source badge next to forwarded message authors (FORWARD channels) */
-.source-badge {
-  flex-shrink: 0;
-  padding: 1px 5px;
-  font-size: 10px;
-  line-height: 14px;
-  color: var(--color-text-muted);
-  background: var(--zhimo-surface-bg);
-  border: 1px solid var(--zhimo-seal-hover);
-  border-radius: var(--zhimo-radius);
-}
+/* Source badges for forwarded messages live in SourceBadge.vue (their styles
+   must scope to the badge component, not to ChatArea). */
 
 /* Sync channel header icon (replaces the # hash in FORWARD channels) */
 .channel-hash-icon {
