@@ -211,63 +211,108 @@ class UpdateRepository @Inject constructor(
         }
     }
 
-    fun installApk() {
+    /**
+     * Open the downloaded APK with the system installer. Returns true when the
+     * install intent was dispatched. Package-renaming sandboxes (e.g. the
+     * HarmonyOS ANCO compat layer) may not register the FileProvider under the
+     * compile-time authority and may have no installer at all, so any failure
+     * falls back to opening the download URL in a browser.
+     */
+    fun installApk(): Boolean {
         val apkFile = File(
             context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS),
             APK_FILE_NAME
         )
-        
+
         if (!apkFile.exists()) {
             Log.e(TAG, "APK file not found")
-            return
+            openDownloadInBrowser()
+            return false
         }
 
-        val intent = Intent(Intent.ACTION_VIEW).apply {
+        val installIntent = try {
             val uri = FileProvider.getUriForFile(
                 context,
-                "${BuildConfig.APPLICATION_ID}.fileprovider",
+                "${context.packageName}.fileprovider",
                 apkFile
             )
-            setDataAndType(uri, "application/vnd.android.package-archive")
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, "application/vnd.android.package-archive")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to resolve install uri, falling back to browser", e)
+            openDownloadInBrowser()
+            return false
         }
-        context.startActivity(intent)
+
+        return try {
+            context.startActivity(installIntent)
+            true
+        } catch (e: Exception) {
+            Log.w(TAG, "No installer activity, falling back to browser", e)
+            openDownloadInBrowser()
+            false
+        }
+    }
+
+    private fun openDownloadInBrowser() {
+        val original = originalDownloadUrl ?: return
+        val mirror = GHPROXY_MIRRORS.getOrNull(mirrorIndex)
+        val url = if (mirror != null) "$mirror/$original" else original
+        try {
+            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            })
+        } catch (e: Exception) {
+            Log.e(TAG, "Browser fallback failed", e)
+        }
     }
 
     fun registerDownloadReceiver(onComplete: (Boolean) -> Unit): BroadcastReceiver {
         downloadCompleteCallback = onComplete
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(ctx: Context?, intent: Intent?) {
-                val id = intent?.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1)
-                if (id != downloadId) return
+                // Anything thrown out of onReceive kills the whole process.
+                try {
+                    val id = intent?.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1)
+                    if (id != downloadId) return
 
-                val downloadManager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-                val cursor = downloadManager.query(DownloadManager.Query().setFilterById(downloadId))
-                if (!cursor.moveToFirst()) {
+                    val downloadManager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+                    val cursor = downloadManager.query(DownloadManager.Query().setFilterById(downloadId))
+                    if (!cursor.moveToFirst()) {
+                        cursor.close()
+                        downloadCompleteCallback?.invoke(false)
+                        return
+                    }
+
+                    val status = cursor.getInt(cursor.getColumnIndex(DownloadManager.COLUMN_STATUS))
                     cursor.close()
-                    downloadCompleteCallback?.invoke(false)
-                    return
-                }
 
-                val status = cursor.getInt(cursor.getColumnIndex(DownloadManager.COLUMN_STATUS))
-                cursor.close()
-
-                when (status) {
-                    DownloadManager.STATUS_SUCCESSFUL -> {
-                        downloadCompleteCallback?.invoke(true)
-                    }
-                    DownloadManager.STATUS_FAILED -> {
-                        mirrorIndex++
-                        if (mirrorIndex < GHPROXY_MIRRORS.size) {
-                            Log.w(TAG, "Mirror failed, retrying with ${GHPROXY_MIRRORS[mirrorIndex]}")
-                            enqueueMirrorDownload(mirrorIndex)
-                        } else {
-                            Log.e(TAG, "All download mirrors failed")
-                            downloadCompleteCallback?.invoke(false)
+                    when (status) {
+                        DownloadManager.STATUS_SUCCESSFUL -> {
+                            downloadCompleteCallback?.invoke(true)
                         }
+                        DownloadManager.STATUS_FAILED -> {
+                            mirrorIndex++
+                            if (mirrorIndex < GHPROXY_MIRRORS.size) {
+                                Log.w(TAG, "Mirror failed, retrying with ${GHPROXY_MIRRORS[mirrorIndex]}")
+                                enqueueMirrorDownload(mirrorIndex)
+                            } else {
+                                Log.e(TAG, "All download mirrors failed")
+                                downloadCompleteCallback?.invoke(false)
+                            }
+                        }
+                        // PENDING / RUNNING: wait for the completion broadcast
                     }
-                    // PENDING / RUNNING: wait for the completion broadcast
+                } catch (e: Exception) {
+                    Log.e(TAG, "Download-complete handling failed", e)
+                    try {
+                        downloadCompleteCallback?.invoke(false)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Download-complete callback failed", e)
+                    }
                 }
             }
         }

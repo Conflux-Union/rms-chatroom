@@ -619,8 +619,10 @@ class MainViewModel @Inject constructor(
             downloadComplete = success,
             downloadSpeedBps = 0L
         )
-        if (success) {
-            updateRepository.installApk()
+        if (success && !updateRepository.installApk()) {
+            _state.value = _state.value.copy(
+                error = "无法启动安装，已改为浏览器下载；如未跳转请手动下载更新"
+            )
         }
     }
 

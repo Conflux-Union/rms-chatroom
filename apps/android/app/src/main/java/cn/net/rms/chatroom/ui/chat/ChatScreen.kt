@@ -134,6 +134,7 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import me.saket.telephoto.zoomable.coil.ZoomableAsyncImage
 import me.saket.telephoto.zoomable.rememberZoomableImageState
+import android.util.Log
 import cn.net.rms.chatroom.BuildConfig
 import cn.net.rms.chatroom.R
 import cn.net.rms.chatroom.data.api.ChannelMember
@@ -1425,22 +1426,27 @@ private fun downloadAndOpenAttachment(context: Context, attachment: Attachment, 
                 return
             }
 
-            val uri = FileProvider.getUriForFile(
-                context,
-                "${BuildConfig.APPLICATION_ID}.fileprovider",
-                file
-            )
-
-            val openIntent = Intent(Intent.ACTION_VIEW).apply {
-                setDataAndType(uri, attachment.contentType.ifBlank { "application/octet-stream" })
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
-
+            // Sandboxes that rename the package (e.g. HarmonyOS ANCO) may not
+            // register the FileProvider under the compile-time authority.
             try {
+                val uri = FileProvider.getUriForFile(
+                    context,
+                    "${context.packageName}.fileprovider",
+                    file
+                )
+
+                val openIntent = Intent(Intent.ACTION_VIEW).apply {
+                    setDataAndType(uri, attachment.contentType.ifBlank { "application/octet-stream" })
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+
                 context.startActivity(openIntent)
             } catch (e: ActivityNotFoundException) {
                 Toast.makeText(context, "Downloaded to app storage", Toast.LENGTH_LONG).show()
+            } catch (e: Exception) {
+                Log.e("ChatScreen", "Failed to open downloaded file", e)
+                Toast.makeText(context, "Failed to open downloaded file", Toast.LENGTH_SHORT).show()
             }
         }
     }
