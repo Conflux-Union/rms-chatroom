@@ -33,6 +33,10 @@ export function useMessageViewport(options: {
   const isWheelScrolling = ref(false)
   const isScrollActive = ref(false)
   let wheelScrollTimeout: ReturnType<typeof setTimeout> | null = null
+  // True while the viewport sits away from the tail (or the loaded window
+  // itself is mid-history): shows the jump-to-latest pill and gates the
+  // new-message auto-follow.
+  const isFarFromLatest = ref(false)
   const latestVisibleMessageId = ref<number | null>(null)
   const messageIndexMap = new Map<number, number>()
   const visibleMessageIndices = new Set<number>()
@@ -137,6 +141,7 @@ export function useMessageViewport(options: {
             entryPositioning = false
             isFetchingOlder.value = false
             flushPositionSave()
+            updateLatestVisibility()
           }, 250)
         }
 
@@ -190,10 +195,18 @@ export function useMessageViewport(options: {
   // Skip while hasMoreNewer: a pane that starts mid-history (message deep link)
   // must not yank the user to the bottom on every incoming message; follow
   // resumes once the pane is caught up to the tail.
+  // Also skip when the user has scrolled away from the tail: a tail append
+  // grows content below the viewport without firing a scroll event, so
+  // re-measure before deciding; the jump-to-latest pill covers catching up.
   watch(
     () => chat.messages.length,
     async () => {
       if (isFetchingOlder.value || isFetchingNewer.value || chat.hasMoreNewer) return
+      updateLatestVisibility()
+      if (isFarFromLatest.value) {
+        refreshMessageObserver()
+        return
+      }
       await nextTick()
       scrollToBottom()
       refreshMessageObserver()
@@ -212,6 +225,54 @@ export function useMessageViewport(options: {
         messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
       }
     })
+  }
+
+  // Whether the jump-to-latest pill should show: either the viewport sits away
+  // from the bottom of the loaded window, or the window itself starts
+  // mid-history (message deep link) with newer pages below it.
+  function updateLatestVisibility() {
+    const container = messagesContainer.value
+    if (!container || chat.messages.length === 0) {
+      isFarFromLatest.value = false
+      return
+    }
+    const distance = container.scrollHeight - container.scrollTop - container.clientHeight
+    isFarFromLatest.value = chat.hasMoreNewer || distance > 100
+  }
+
+  // One-click catch-up: land on the newest message and mark everything above
+  // it read, regardless of what the viewport observer has settled on so far.
+  async function jumpToLatest() {
+    const channel = chat.currentChannel
+    if (!channel) return
+
+    if (chat.hasMoreNewer) {
+      // The pane starts mid-history; scrolling can only page through what is
+      // loaded. Reload the newest page instead of paging down one by one.
+      isFetchingNewer.value = true
+      try {
+        await chat.fetchMessages(channel.id)
+      } finally {
+        isFetchingNewer.value = false
+      }
+    }
+
+    await nextTick()
+    scrollToBottom()
+    refreshMessageObserver()
+
+    const tailId = chat.messages.length > 0 ? chat.messages[chat.messages.length - 1].id : null
+    if (tailId != null) {
+      // A mention above the tail is passed by the jump, so clear it here
+      // instead of waiting for the viewport to physically scroll past it.
+      if (getChannelMention(channel.id)?.hasMention) {
+        clearChannelMention(channel.id)
+      }
+      saveReadPosition(channel.id, tailId)
+    }
+    firstUnreadId.value = null
+    entryTailId.value = null
+    updateLatestVisibility()
   }
 
   // Load one page of older messages and keep the user's viewport steady.
@@ -343,6 +404,7 @@ export function useMessageViewport(options: {
     }
 
     schedulePositionSave()
+    updateLatestVisibility()
   }
 
   function handleWheelScroll() {
@@ -481,9 +543,11 @@ export function useMessageViewport(options: {
   return {
     isScrollActive,
     isWheelScrolling,
+    isFarFromLatest,
     firstUnreadId,
     handleMessagesScroll,
     handleWheelScroll,
     scrollToMessage,
+    jumpToLatest,
   }
 }

@@ -23,7 +23,7 @@ import {
   ZmProgress,
   dialog,
 } from './ui'
-import { Paperclip, Send, Upload, X, Image, MoreVertical, Reply, CornerUpLeft, SmilePlus, Radio } from 'lucide-vue-next'
+import { Paperclip, Send, Upload, X, Image, MoreVertical, Reply, CornerUpLeft, SmilePlus, Radio, ChevronDown } from 'lucide-vue-next'
 import FilePreview from './FilePreview.vue'
 import ForwardQuoteCard from './ForwardQuoteCard.vue'
 import SourceBadge from './SourceBadge.vue'
@@ -62,10 +62,12 @@ const composer = useMessageComposer({ attachments, replyingTo: actions.replyingT
 
 const {
   isScrollActive,
+  isFarFromLatest,
   firstUnreadId,
   handleMessagesScroll,
   handleWheelScroll,
   scrollToMessage,
+  jumpToLatest,
 } = viewport
 const {
   fileInput,
@@ -515,6 +517,15 @@ onUnmounted(() => {
         </div>
       </div>
       </template>
+      <!-- Jump-to-latest pill: pinned to the scrollport bottom while the
+           viewport is away from the tail; one click lands on the newest
+           message and marks everything above it read. -->
+      <Transition name="jump-pill">
+        <button v-if="isFarFromLatest" class="jump-to-latest" @click="jumpToLatest">
+          <ChevronDown :size="14" />
+          <span>跳到最新</span>
+        </button>
+      </Transition>
     </div>
 
     <!-- Pending files preview -->
@@ -1635,6 +1646,42 @@ onUnmounted(() => {
   box-shadow: var(--zhimo-shadow-sm);
   color: var(--color-text-main);
   font-size: 0.85rem;
+}
+
+/* Sticky pill pinned to the bottom of the scrollport while the viewport is
+   away from the tail; click jumps to the newest message and marks all read. */
+.jump-to-latest {
+  position: sticky;
+  bottom: 12px;
+  margin: 8px auto 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 14px;
+  font-size: 13px;
+  color: var(--color-text-main);
+  background: var(--surface-glass);
+  border: 1px solid rgba(128, 128, 128, 0.4);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  z-index: 5;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+
+.jump-to-latest:hover {
+  background: var(--surface-glass-input);
+  border-color: var(--color-text-muted);
+}
+
+.jump-pill-enter-active,
+.jump-pill-leave-active {
+  transition: opacity var(--transition-fast), transform var(--transition-fast);
+}
+
+.jump-pill-enter-from,
+.jump-pill-leave-to {
+  opacity: 0;
+  transform: translateY(6px);
 }
 
 .copy-toast-enter-active,
