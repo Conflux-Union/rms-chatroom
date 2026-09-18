@@ -45,13 +45,22 @@ type forwardQuoteReq struct {
 	Content         string `json:"content"`
 }
 
+// forwardMentionReq is one @-mention in a forwarded QQ message. QQ is the
+// mentioned user's QQ number; Name is the @text as it appears in Content
+// (e.g. the QQ nickname), used to locate the mention for rewriting.
+type forwardMentionReq struct {
+	QQ   int64  `json:"qq"`
+	Name string `json:"name"`
+}
+
 type forwardMessageReq struct {
-	Source          string           `json:"source"` // "qq" (game arrives via ChatBridge)
-	Sender          forwardSenderReq `json:"sender"`
-	Content         string           `json:"content"`
-	SourceMessageID string           `json:"source_message_id"`
-	Reply           *forwardQuoteReq `json:"reply"`
-	AttachmentIDs   []int64          `json:"attachment_ids"`
+	Source          string              `json:"source"` // "qq" (game arrives via ChatBridge)
+	Sender          forwardSenderReq    `json:"sender"`
+	Content         string              `json:"content"`
+	SourceMessageID string              `json:"source_message_id"`
+	Reply           *forwardQuoteReq    `json:"reply"`
+	AttachmentIDs   []int64             `json:"attachment_ids"`
+	Mentions        []forwardMentionReq `json:"mentions"`
 }
 
 // forwardQuoteMeta is the degraded quote block shown when the quoted source
@@ -77,6 +86,7 @@ type forwardedMessage struct {
 	SourceMessageID string
 	Reply           *forwardQuoteReq
 	AttachmentIDs   []int64
+	Mentions        []forwardMentionReq
 	Server          string // ChatBridge origin server name (game only)
 }
 
@@ -126,6 +136,39 @@ func (h *ForwardHandler) resolveAuthor(source string, sender forwardSenderReq) (
 
 var errNotForwardChannel = errors.New("not a forward channel")
 
+// resolveMentions maps @-mentions of a forwarded message to platform accounts
+// the same way resolveAuthor maps the sender: the SSO account email is
+// <qq>@qq.com. Matched mentions are rewritten in the content (@QQ昵称 ->
+// @platform name) so the highlighted text carries the platform identity, and
+// the returned entries carry real user IDs for the message_mentions records
+// and the live broadcast. Mentions whose QQ number has no SSO account are
+// left untouched — same treatment as unmatched senders.
+func (h *ForwardHandler) resolveMentions(content string, mentions []forwardMentionReq) (string, []mentionResp) {
+	resolved := make([]mentionResp, 0, len(mentions))
+	seen := map[int64]bool{}
+	for _, m := range mentions {
+		if m.QQ == 0 {
+			continue
+		}
+		user, _ := h.sso.GetUserByEmail(fmt.Sprintf("%d@qq.com", m.QQ))
+		if user == nil {
+			continue
+		}
+		display := user.Nickname
+		if display == "" {
+			display = user.Username
+		}
+		if m.Name != "" && m.Name != display {
+			content = strings.Replace(content, "@"+m.Name, "@"+display, 1)
+		}
+		if !seen[int64(user.ID)] {
+			seen[int64(user.ID)] = true
+			resolved = append(resolved, mentionResp{ID: int64(user.ID), Username: display})
+		}
+	}
+	return content, resolved
+}
+
 // verifyForwardChannel checks that channelID exists and is a FORWARD channel.
 // Returns sql.ErrNoRows when the channel does not exist.
 func verifyForwardChannel(db *sql.DB, channelID int64) error {
@@ -169,6 +212,7 @@ func (h *ForwardHandler) PostMessage(c echo.Context) error {
 		SourceMessageID: req.SourceMessageID,
 		Reply:           req.Reply,
 		AttachmentIDs:   req.AttachmentIDs,
+		Mentions:        req.Mentions,
 	})
 	if errors.Is(err, sql.ErrNoRows) {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "channel not found"})
@@ -212,6 +256,7 @@ func (h *ForwardHandler) postForwarded(channelID int64, m forwardedMessage) (*me
 	}
 
 	authorID, username, avatarURL := h.resolveAuthor(m.Source, m.Sender)
+	content, mentions := h.resolveMentions(m.Content, m.Mentions)
 	nickname := m.Sender.Nickname
 	if nickname == "" {
 		nickname = m.Sender.Username
@@ -243,12 +288,18 @@ func (h *ForwardHandler) postForwarded(channelID int64, m forwardedMessage) (*me
 	res, err := h.db.Exec(
 		`INSERT INTO messages (channel_id, user_id, username, content, reply_to_id, source_platform, source_message_id, forward_meta)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		channelID, authorID, username, m.Content, replyToID, m.Source, m.SourceMessageID, metaJSON,
+		channelID, authorID, username, content, replyToID, m.Source, m.SourceMessageID, metaJSON,
 	)
 	if err != nil {
 		return nil, err
 	}
 	msgID, _ := res.LastInsertId()
+
+	// Record resolved mentions for the mentioned platform users. Same table
+	// and id semantics as the text-channel mention paths.
+	for _, mt := range mentions {
+		h.db.Exec("INSERT IGNORE INTO message_mentions (message_id, user_id) VALUES (?, ?)", msgID, mt.ID)
+	}
 
 	// Attachments were uploaded through the bot route, so they belong to the
 	// ghost user regardless of which user the message is posted as.
@@ -275,12 +326,12 @@ func (h *ForwardHandler) postForwarded(channelID int64, m forwardedMessage) (*me
 		UserID:         authorID,
 		Username:       username,
 		AvatarURL:      nil,
-		Content:        m.Content,
+		Content:        content,
 		CreatedAt:      createdAt.UTC().Format("2006-01-02T15:04:05Z"),
 		Attachments:    msgH.loadAttachments(msgID),
 		ReplyToID:      replyToPtr,
 		ReplyTo:        msgH.loadReplyTo(replyToPtr),
-		Mentions:       []mentionResp{},
+		Mentions:       mentions,
 		Reactions:      []reactionGroupResp{},
 		SourcePlatform: m.Source,
 	}
@@ -294,6 +345,8 @@ func (h *ForwardHandler) postForwarded(channelID int64, m forwardedMessage) (*me
 	// REST CreateMessage doesn't broadcast, but forwarded messages must appear
 	// live: neither the QQ bot nor ChatBridge holds a WS connection. Payload
 	// matches the ws chatBroadcast shape plus the forward-specific fields.
+	// Mentions go out as {id, username} objects with real user IDs — both
+	// clients detect "I was mentioned" by comparing those IDs.
 	if BroadcastFunc != nil {
 		payload := map[string]interface{}{
 			"type":            "message",
@@ -301,10 +354,10 @@ func (h *ForwardHandler) postForwarded(channelID int64, m forwardedMessage) (*me
 			"channel_id":      channelID,
 			"user_id":         authorID,
 			"username":        username,
-			"content":         m.Content,
+			"content":         content,
 			"created_at":      resp.CreatedAt,
 			"attachments":     resp.Attachments,
-			"mentions":        []string{},
+			"mentions":        mentions,
 			"source_platform": m.Source,
 		}
 		if resp.ReplyTo != nil {

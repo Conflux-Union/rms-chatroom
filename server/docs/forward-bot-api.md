@@ -63,14 +63,15 @@ Content-Type: application/json
 {
   "source": "qq",
   "sender": { "qq": 123456789, "nickname": "Trirrin" },
-  "content": "text content",
+  "content": "text content @Bob",
   "source_message_id": "qq-message-id-123",
   "reply": {
     "source_message_id": "qq-message-id-100",
     "nickname": "重华",
     "content": "quoted text preview"
   },
-  "attachment_ids": [123]
+  "attachment_ids": [123],
+  "mentions": [{ "qq": 234567890, "name": "Bob" }]
 }
 ```
 
@@ -88,6 +89,10 @@ Fields:
   (`reply_to_id`, clickable jump). Otherwise it degrades to a quote block
   rendered from `reply.nickname` / `reply.content`.
 - `attachment_ids` — attachment IDs from the upload endpoint.
+- `mentions` — optional list of @-mentions in the message. Each entry is one
+  @ in `content`: `qq` is the mentioned user's QQ number, `name` is the exact
+  `@text` as it appears in `content` (what the bot rendered for that at
+  segment). See "Mention resolution" below.
 
 Author resolution:
 
@@ -96,6 +101,22 @@ Author resolution:
 - No match → posted under the ghost user (`user_id` 0, no real account;
   avatars fall back to the username's first letter), display name
   `昵称(未知用户)`.
+
+Mention resolution (each `mentions` entry, independent of the sender):
+
+- Matched platform account (same `<qq>@qq.com` lookup as the sender) → the
+  `@name` text in the stored content is rewritten to the platform display
+  name (SSO nickname, falling back to username), a mention record is written
+  for that user, and the response / live WebSocket broadcast carry
+  `mentions: [{id, username}]` with the real user ID — this is what triggers
+  @ notifications (sound and unread badge) on web and Android.
+- No match → the entry is ignored: the content stays exactly as sent and no
+  mention record is written.
+- `name` may be omitted; the mention is still resolved and notified by ID,
+  but the content text cannot be rewritten. Without a rewrite, a
+  non-matching display text renders as plain text (the platform highlighter
+  and history re-extraction only recognize ASCII `@name` patterns; the live
+  notification itself works by ID either way).
 
 Response `201` returns the full message object (same shape as
 `GET /api/channels/:id/messages`), including `source_platform` and
@@ -110,6 +131,9 @@ Errors: `400` (bad body, not a FORWARD channel), `401` (bad token),
 2. `POST /api/forward/channels/{id}/messages` with content + attachment_ids.
 3. To quote a QQ message, include `reply.source_message_id` of the message
    that was forwarded earlier.
+4. To @ a platform user, resolve each at segment (OneBot `[CQ:at,qq=...]`)
+   into a `mentions` entry — keep the rendered `@nickname` in `content` and
+   pass it as the entry's `name`.
 
 ## Channel setup
 
