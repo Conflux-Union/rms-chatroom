@@ -1,5 +1,6 @@
 package cn.net.rms.chatroom.ui.chat
 
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
@@ -25,8 +26,16 @@ import org.junit.Test
 
 class MessageMarkdownTest {
 
+    // Fixed palette for the pure renderer overload; only the mention style is
+    // asserted against, and it mirrors the theme value (seal + medium weight).
+    private val testStyles = MarkdownStyles(
+        border = Color.Transparent,
+        link = SpanStyle(color = Color.Blue, textDecoration = TextDecoration.Underline),
+        mention = SpanStyle(color = SealDark, fontWeight = FontWeight.Medium),
+    )
+
     private fun render(content: String): AnnotatedString =
-        renderMarkdownInlines(parseMessageMarkdown(content).firstChild)
+        renderMarkdownInlines(parseMessageMarkdown(content).firstChild, testStyles)
 
     private fun AnnotatedString.linkUrls(): List<String> =
         getLinkAnnotations(0, length).map { (it.item as LinkAnnotation.Url).url }
@@ -160,7 +169,7 @@ class MessageMarkdownTest {
     @Test
     fun `empty content renders empty`() {
         assertEquals("", render("").text)
-        assertEquals("", renderMarkdownInlines(null).text)
+        assertEquals("", renderMarkdownInlines(null, testStyles).text)
     }
 
     @Test

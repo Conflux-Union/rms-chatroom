@@ -98,8 +98,9 @@ private val MENTION_REGEX = Regex("@(\\w+)")
 
 // Palette-dependent markdown styles, resolved from the active theme at the
 // composable entry points and passed down as plain data: the string-builder
-// recursion below (withLink lambdas included) is not composable.
-private class MarkdownStyles(
+// recursion below (withLink lambdas included) is not composable. Internal so
+// unit tests can render with fixed styles.
+internal class MarkdownStyles(
     val border: Color,
     val link: SpanStyle,
     val mention: SpanStyle,
@@ -414,8 +415,10 @@ private fun MarkdownTable(table: TableBlock) {
 }
 
 @Composable
-internal fun renderMarkdownInlines(block: Node?): AnnotatedString {
-    val styles = markdownStyles()
+internal fun renderMarkdownInlines(block: Node?): AnnotatedString =
+    renderMarkdownInlines(block, markdownStyles())
+
+internal fun renderMarkdownInlines(block: Node?, styles: MarkdownStyles): AnnotatedString {
     val builder = AnnotatedString.Builder()
     renderInlineChildren(block, builder, styles, SpanStyle(), inProtectedText = false)
     return builder.toAnnotatedString()
