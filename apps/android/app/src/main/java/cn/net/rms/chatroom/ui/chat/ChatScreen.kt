@@ -22,6 +22,7 @@ import android.content.IntentFilter
 import android.os.Environment
 import android.widget.Toast
 import androidx.annotation.OptIn
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -71,6 +72,7 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.InsertDriveFile
 import androidx.compose.material.icons.automirrored.filled.InsertDriveFile
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.PictureAsPdf
@@ -611,6 +613,27 @@ fun ChatScreen(
                                     color = Zhimo.seal
                                 )
                             }
+                        }
+                        // Jump-to-latest pill: the viewport left the tail; one
+                        // tap lands on the newest message. Saving the tail read
+                        // position also retires the entry unread divider.
+                        // Fully qualified: the ColumnScope extension higher up
+                        // the receiver chain would otherwise win resolution.
+                        androidx.compose.animation.AnimatedVisibility(
+                            visible = !isAtBottom,
+                            modifier = Modifier.align(Alignment.BottomCenter),
+                            enter = slideInVertically { it } + fadeIn(),
+                            exit = slideOutVertically { it } + fadeOut()
+                        ) {
+                            JumpToLatestButton(
+                                modifier = Modifier.padding(bottom = 12.dp),
+                                onClick = {
+                                    scope.launch {
+                                        listState.animateScrollToItem(messages.size - 1)
+                                        onSaveReadPosition(messages.last().id)
+                                    }
+                                }
+                            )
                         }
                         }
                     }
@@ -2549,6 +2572,37 @@ private fun UnreadDivider() {
             style = MaterialTheme.typography.labelSmall
         )
         HorizontalDivider(modifier = Modifier.weight(1f), thickness = 1.dp, color = Zhimo.inkFaint)
+    }
+}
+
+@Composable
+private fun JumpToLatestButton(modifier: Modifier = Modifier, onClick: () -> Unit) {
+    Surface(
+        modifier = modifier
+            .clip(RoundedCornerShape(8.dp))
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(8.dp),
+        color = Zhimo.paperRaised,
+        border = BorderStroke(1.dp, Zhimo.inkFaint),
+        shadowElevation = 2.dp
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.KeyboardArrowDown,
+                contentDescription = null,
+                tint = Zhimo.inkMuted,
+                modifier = Modifier.size(16.dp)
+            )
+            Text(
+                text = "跳到最新",
+                color = Zhimo.ink,
+                style = MaterialTheme.typography.labelMedium
+            )
+        }
     }
 }
 
