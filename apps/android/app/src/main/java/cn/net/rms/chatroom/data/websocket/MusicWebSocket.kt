@@ -1,20 +1,14 @@
 package cn.net.rms.chatroom.data.websocket
 
 import android.util.Log
-import com.google.gson.Gson
-import com.google.gson.JsonParser
 import cn.net.rms.chatroom.BuildConfig
 import cn.net.rms.chatroom.data.auth.TokenAuthenticator
 import cn.net.rms.chatroom.data.model.Song
+import cn.net.rms.chatroom.data.monitor.NetworkMonitor
 import cn.net.rms.chatroom.data.telemetry.TelemetryReporter
-import kotlinx.coroutines.*
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharedFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asSharedFlow
-import kotlinx.coroutines.flow.asStateFlow
-import okhttp3.*
+import com.google.gson.Gson
+import com.google.gson.JsonObject
+import okhttp3.OkHttpClient
 import java.net.URLEncoder
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -52,236 +46,147 @@ sealed class MusicWebSocketEvent {
 
 @Singleton
 class MusicWebSocket @Inject constructor(
-    private val client: OkHttpClient,
-    private val gson: Gson,
-    private val tokenAuthenticator: TokenAuthenticator,
-    private val telemetryReporter: TelemetryReporter
+    client: OkHttpClient,
+    gson: Gson,
+    tokenAuthenticator: TokenAuthenticator,
+    telemetryReporter: TelemetryReporter,
+    networkMonitor: NetworkMonitor
+) : BaseWebSocket<MusicWebSocketEvent>(
+    client, gson, tokenAuthenticator, telemetryReporter, networkMonitor,
+    tag = TAG, wsName = "music"
 ) {
-    companion object {
-        private const val TAG = "MusicWebSocket"
-        private const val HEARTBEAT_INTERVAL_MS = 5_000L
-        private const val HEARTBEAT_TIMEOUT_MS = 3_000L
-        private const val INITIAL_RECONNECT_DELAY_MS = 1_000L
-        private const val MAX_RECONNECT_DELAY_MS = 30_000L
-        private const val MAX_RECONNECT_ATTEMPTS = 10
+    private var currentRoomName: String? = null
+
+    override fun isReadyToConnect(): Boolean = currentRoomName != null
+
+    override fun onDisconnected() {
+        currentRoomName = null
     }
 
-    private var webSocket: WebSocket? = null
-    private val _events = MutableSharedFlow<MusicWebSocketEvent>(replay = 0, extraBufferCapacity = 64)
-    val events: SharedFlow<MusicWebSocketEvent> = _events.asSharedFlow()
-
-    private val _connectionState = MutableStateFlow(ConnectionState.DISCONNECTED)
-    val connectionState: StateFlow<ConnectionState> = _connectionState.asStateFlow()
-
-    private var currentToken: String? = null
-    private var currentRoomName: String? = null
-    private var reconnectAttempts = 0
-    private var shouldReconnect = false
-    private var waitingForPong = false
-    private var lastDisconnectReason: String? = null
-
-    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-    private var heartbeatJob: Job? = null
-    private var heartbeatTimeoutJob: Job? = null
-    private var reconnectJob: Job? = null
-
     fun connect(token: String, roomName: String) {
-        if (_connectionState.value == ConnectionState.CONNECTED &&
-            currentToken == token && currentRoomName == roomName) {
+        if (connectionState.value == ConnectionState.CONNECTED &&
+            isConnectedWith(token) && currentRoomName == roomName
+        ) {
             Log.d(TAG, "Already connected with same token and room")
             return
         }
 
-        disconnect(sendEvent = false)
-
-        currentToken = token
+        // Set the room before the base connect: doConnect() checks readiness
+        // synchronously, and base connect() never clears subclass state.
         currentRoomName = roomName
-        shouldReconnect = true
-        reconnectAttempts = 0
-
-        doConnect()
+        connect(token)
     }
 
-    private fun doConnect() {
-        if (currentToken == null || currentRoomName == null) return
-
-        if (_connectionState.value == ConnectionState.RECONNECTING) {
-            // Keep reconnecting state
-        } else {
-            _connectionState.value = ConnectionState.CONNECTING
-        }
-
-        scope.launch {
-            if (!shouldReconnect) return@launch
-            // WS auth happens only at handshake; refresh a near-expiry token first
-            tokenAuthenticator.getFreshToken()?.let { currentToken = it }
-            openWebSocket()
-        }
+    override fun buildUrl(token: String): String {
+        val room = currentRoomName ?: return "${BuildConfig.WS_BASE_URL}/ws/music?token=$token"
+        val encodedRoom = URLEncoder.encode(room, "UTF-8")
+        return "${BuildConfig.WS_BASE_URL}/ws/music?token=$token&room_name=$encodedRoom"
     }
 
-    private fun openWebSocket() {
-        val token = currentToken ?: return
-        val roomName = currentRoomName ?: return
+    override fun connectedEvent(): MusicWebSocketEvent = MusicWebSocketEvent.Connected
+    override fun disconnectedEvent(): MusicWebSocketEvent = MusicWebSocketEvent.Disconnected
+    override fun errorEvent(message: String): MusicWebSocketEvent = MusicWebSocketEvent.Error(message)
 
-        val encodedRoom = URLEncoder.encode(roomName, "UTF-8")
-        val url = "${BuildConfig.WS_BASE_URL}/ws/music?token=$token&room_name=$encodedRoom"
-        Log.d(TAG, "Connecting to Music WebSocket for room $roomName")
+    override fun handleMessage(json: JsonObject): MusicWebSocketEvent? {
+        val serverTime = json.get("server_time")?.asDouble
 
-        val request = Request.Builder()
-            .url(url)
-            .build()
+        return when (val type = json.get("type")?.asString) {
+            "play" -> {
+                val roomName = json.get("room_name")?.asString ?: ""
+                val url = json.get("url")?.asString ?: ""
+                val positionMs = json.get("position_ms")?.asLong ?: 0L
+                val song = parseSong(json.getAsJsonObject("song"))
 
-        webSocket = client.newWebSocket(request, object : WebSocketListener() {
-            override fun onOpen(webSocket: WebSocket, response: Response) {
-                Log.d(TAG, "Music WebSocket connected to room $roomName")
-                _connectionState.value = ConnectionState.CONNECTED
-                reconnectAttempts = 0
-                _events.tryEmit(MusicWebSocketEvent.Connected)
-                startHeartbeat()
+                Log.d(TAG, "Play command: room=$roomName, song=${song.name}, url=$url, serverTime=$serverTime")
+                MusicWebSocketEvent.Play(roomName, song, url, positionMs, serverTime)
             }
-
-            override fun onMessage(webSocket: WebSocket, text: String) {
-                handleMessage(text)
+            "pause" -> {
+                val roomName = json.get("room_name")?.asString ?: ""
+                Log.d(TAG, "Pause command: room=$roomName, serverTime=$serverTime")
+                MusicWebSocketEvent.Pause(roomName, serverTime)
             }
-
-            override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                Log.e(TAG, "Music WebSocket failure: ${t.message}", t)
-                lastDisconnectReason = t.message ?: t.toString()
-                _connectionState.value = ConnectionState.DISCONNECTED
-                stopHeartbeat()
-                _events.tryEmit(MusicWebSocketEvent.Error(t.message ?: "WebSocket error"))
-                _events.tryEmit(MusicWebSocketEvent.Disconnected)
-                scheduleReconnect()
+            "resume" -> {
+                val roomName = json.get("room_name")?.asString ?: ""
+                val positionMs = json.get("position_ms")?.asLong ?: 0L
+                Log.d(TAG, "Resume command: room=$roomName, position=$positionMs, serverTime=$serverTime")
+                MusicWebSocketEvent.Resume(roomName, positionMs, serverTime)
             }
-
-            override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-                Log.d(TAG, "Music WebSocket closed: code=$code, reason=$reason")
-                lastDisconnectReason = "closed code=$code $reason"
-                _connectionState.value = ConnectionState.DISCONNECTED
-                stopHeartbeat()
-                _events.tryEmit(MusicWebSocketEvent.Disconnected)
-
-                if (code != 1000) {
-                    scheduleReconnect()
-                }
+            "seek" -> {
+                val roomName = json.get("room_name")?.asString ?: ""
+                val positionMs = json.get("position_ms")?.asLong ?: 0L
+                Log.d(TAG, "Seek command: room=$roomName, position=$positionMs, serverTime=$serverTime")
+                MusicWebSocketEvent.Seek(roomName, positionMs, serverTime)
             }
-
-            override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
-                Log.d(TAG, "Music WebSocket closing: code=$code, reason=$reason")
+            "stop" -> {
+                val roomName = json.get("room_name")?.asString ?: ""
+                Log.d(TAG, "Stop command: room=$roomName")
+                MusicWebSocketEvent.Stop(roomName)
             }
-        })
-    }
-
-    private fun handleMessage(text: String) {
-        try {
-            val json = JsonParser.parseString(text).asJsonObject
-            val type = json.get("type")?.asString
-            val serverTime = json.get("server_time")?.asDouble
-
-            when (type) {
-                "play" -> {
-                    val roomName = json.get("room_name")?.asString ?: ""
-                    val url = json.get("url")?.asString ?: ""
-                    val positionMs = json.get("position_ms")?.asLong ?: 0L
-                    val song = parseSong(json.getAsJsonObject("song"))
-
-                    Log.d(TAG, "Play command: room=$roomName, song=${song.name}, url=$url, serverTime=$serverTime")
-                    _events.tryEmit(MusicWebSocketEvent.Play(roomName, song, url, positionMs, serverTime))
-                }
-                "pause" -> {
-                    val roomName = json.get("room_name")?.asString ?: ""
-                    Log.d(TAG, "Pause command: room=$roomName, serverTime=$serverTime")
-                    _events.tryEmit(MusicWebSocketEvent.Pause(roomName, serverTime))
-                }
-                "resume" -> {
-                    val roomName = json.get("room_name")?.asString ?: ""
-                    val positionMs = json.get("position_ms")?.asLong ?: 0L
-                    Log.d(TAG, "Resume command: room=$roomName, position=$positionMs, serverTime=$serverTime")
-                    _events.tryEmit(MusicWebSocketEvent.Resume(roomName, positionMs, serverTime))
-                }
-                "seek" -> {
-                    val roomName = json.get("room_name")?.asString ?: ""
-                    val positionMs = json.get("position_ms")?.asLong ?: 0L
-                    Log.d(TAG, "Seek command: room=$roomName, position=$positionMs, serverTime=$serverTime")
-                    _events.tryEmit(MusicWebSocketEvent.Seek(roomName, positionMs, serverTime))
-                }
-                "stop" -> {
-                    val roomName = json.get("room_name")?.asString ?: ""
-                    Log.d(TAG, "Stop command: room=$roomName")
-                    _events.tryEmit(MusicWebSocketEvent.Stop(roomName))
-                }
-                "queue_finished" -> {
-                    val roomName = json.get("room_name")?.asString ?: ""
-                    Log.d(TAG, "Queue finished: room=$roomName")
-                    _events.tryEmit(MusicWebSocketEvent.QueueFinished(roomName))
-                }
-                "music_state" -> {
-                    val data = json.getAsJsonObject("data")
-                    val roomName = data.get("room_name")?.asString ?: ""
-                    val state = data.get("state")?.asString ?: "idle"
-                    val positionMs = data.get("position_ms")?.asLong ?: 0L
-                    val durationMs = data.get("duration_ms")?.asLong ?: 0L
-                    val currentIndex = data.get("current_index")?.asInt ?: 0
-                    val queueLength = data.get("queue_length")?.asInt ?: 0
-                    val dataServerTime = data.get("server_time")?.asDouble
-
-                    val currentSong = if (data.has("current_song") && !data.get("current_song").isJsonNull) {
-                        parseSong(data.getAsJsonObject("current_song"))
-                    } else null
-
-                    Log.d(TAG, "Music state update: room=$roomName, state=$state, song=${currentSong?.name}")
-
-                    _events.tryEmit(MusicWebSocketEvent.MusicStateUpdate(
-                        roomName = roomName,
-                        isPlaying = state == "playing",
-                        currentSong = currentSong,
-                        currentIndex = currentIndex,
-                        positionMs = positionMs,
-                        durationMs = durationMs,
-                        state = state,
-                        queueLength = queueLength,
-                        serverTime = dataServerTime
-                    ))
-                }
-                "song_unavailable" -> {
-                    val roomName = json.get("room_name")?.asString ?: ""
-                    // Server sends a "song" object + "error"; older payloads used "song_name"/"reason"
-                    val songName = when {
-                        json.has("song") && json.get("song").isJsonObject ->
-                            json.getAsJsonObject("song").get("name")?.asString ?: ""
-                        else -> json.get("song_name")?.asString ?: ""
-                    }
-                    val reason = json.get("reason")?.asString
-                        ?: json.get("error")?.asString
-                        ?: "Unknown reason"
-                    Log.w(TAG, "Song unavailable: room=$roomName, song=$songName, reason=$reason")
-                    _events.tryEmit(MusicWebSocketEvent.SongUnavailable(roomName, songName, reason))
-                }
-                "music_login_status" -> {
-                    val status = json.get("status")?.asString ?: ""
-                    val platform = json.get("platform")?.asString ?: "qq"
-                    Log.d(TAG, "Music login status: platform=$platform, status=$status")
-                    _events.tryEmit(MusicWebSocketEvent.MusicLoginStatus(status, platform))
-                }
-                "connected" -> {
-                    Log.d(TAG, "Music WebSocket server confirmed connection")
-                }
-                "pong" -> {
-                    if (json.has("data") && json.get("data").asString == "cute") {
-                        Log.v(TAG, "Received pong: cute")
-                        handlePong()
-                    }
-                }
-                else -> {
-                    Log.d(TAG, "Unknown music message type: $type")
-                }
+            "queue_finished" -> {
+                val roomName = json.get("room_name")?.asString ?: ""
+                Log.d(TAG, "Queue finished: room=$roomName")
+                MusicWebSocketEvent.QueueFinished(roomName)
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to parse music message: $text", e)
+            "music_state" -> {
+                val data = json.getAsJsonObject("data")
+                val roomName = data.get("room_name")?.asString ?: ""
+                val state = data.get("state")?.asString ?: "idle"
+                val positionMs = data.get("position_ms")?.asLong ?: 0L
+                val durationMs = data.get("duration_ms")?.asLong ?: 0L
+                val currentIndex = data.get("current_index")?.asInt ?: 0
+                val queueLength = data.get("queue_length")?.asInt ?: 0
+                val dataServerTime = data.get("server_time")?.asDouble
+
+                val currentSong = if (data.has("current_song") && !data.get("current_song").isJsonNull) {
+                    parseSong(data.getAsJsonObject("current_song"))
+                } else null
+
+                Log.d(TAG, "Music state update: room=$roomName, state=$state, song=${currentSong?.name}")
+
+                MusicWebSocketEvent.MusicStateUpdate(
+                    roomName = roomName,
+                    isPlaying = state == "playing",
+                    currentSong = currentSong,
+                    currentIndex = currentIndex,
+                    positionMs = positionMs,
+                    durationMs = durationMs,
+                    state = state,
+                    queueLength = queueLength,
+                    serverTime = dataServerTime
+                )
+            }
+            "song_unavailable" -> {
+                val roomName = json.get("room_name")?.asString ?: ""
+                // Server sends a "song" object + "error"; older payloads used "song_name"/"reason"
+                val songName = when {
+                    json.has("song") && json.get("song").isJsonObject ->
+                        json.getAsJsonObject("song").get("name")?.asString ?: ""
+                    else -> json.get("song_name")?.asString ?: ""
+                }
+                val reason = json.get("reason")?.asString
+                    ?: json.get("error")?.asString
+                    ?: "Unknown reason"
+                Log.w(TAG, "Song unavailable: room=$roomName, song=$songName, reason=$reason")
+                MusicWebSocketEvent.SongUnavailable(roomName, songName, reason)
+            }
+            "music_login_status" -> {
+                val status = json.get("status")?.asString ?: ""
+                val platform = json.get("platform")?.asString ?: "qq"
+                Log.d(TAG, "Music login status: platform=$platform, status=$status")
+                MusicWebSocketEvent.MusicLoginStatus(status, platform)
+            }
+            "connected" -> {
+                Log.d(TAG, "Music WebSocket server confirmed connection")
+                null
+            }
+            else -> {
+                Log.d(TAG, "Unknown music message type: $type")
+                null
+            }
         }
     }
 
-    private fun parseSong(songObj: com.google.gson.JsonObject): Song {
+    private fun parseSong(songObj: JsonObject): Song {
         return Song(
             mid = songObj.get("mid")?.asString ?: "",
             name = songObj.get("name")?.asString ?: "",
@@ -293,119 +198,9 @@ class MusicWebSocket @Inject constructor(
         )
     }
 
-    private fun handlePong() {
-        waitingForPong = false
-        heartbeatTimeoutJob?.cancel()
-        heartbeatTimeoutJob = null
-    }
-
-    private fun startHeartbeat() {
-        stopHeartbeat()
-        heartbeatJob = scope.launch {
-            while (isActive) {
-                delay(HEARTBEAT_INTERVAL_MS)
-                if (_connectionState.value == ConnectionState.CONNECTED && !waitingForPong) {
-                    sendPing()
-                }
-            }
-        }
-    }
-
-    private fun stopHeartbeat() {
-        heartbeatJob?.cancel()
-        heartbeatJob = null
-        heartbeatTimeoutJob?.cancel()
-        heartbeatTimeoutJob = null
-        waitingForPong = false
-    }
-
-    private fun sendPing() {
-        try {
-            val pingJson = gson.toJson(mapOf("type" to "ping", "data" to "tribios"))
-            val sent = webSocket?.send(pingJson) ?: false
-            if (sent) {
-                Log.v(TAG, "Sent ping: tribios")
-                waitingForPong = true
-
-                heartbeatTimeoutJob?.cancel()
-                heartbeatTimeoutJob = scope.launch {
-                    delay(HEARTBEAT_TIMEOUT_MS)
-                    if (waitingForPong) {
-                        Log.w(TAG, "Heartbeat timeout, reconnecting...")
-                        waitingForPong = false
-                        disconnect(sendEvent = false)
-                        scheduleReconnect()
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error sending ping", e)
-        }
-    }
-
-    private fun scheduleReconnect() {
-        if (!shouldReconnect) {
-            return
-        }
-
-        if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
-            Log.w(TAG, "Max reconnect attempts reached")
-            shouldReconnect = false
-            telemetryReporter.report(
-                "ws_reconnect_exhausted", "music",
-                meta = mapOf("ws" to "music", "attempts" to reconnectAttempts, "reason" to lastDisconnectReason)
-            )
-            return
-        }
-
-        // Report the start of each outage, not every retry of it.
-        if (reconnectAttempts == 0) {
-            telemetryReporter.report(
-                "ws_reconnect", "music",
-                meta = mapOf("ws" to "music", "reason" to lastDisconnectReason)
-            )
-        }
-
-        reconnectJob?.cancel()
-        reconnectJob = scope.launch {
-            val delayMs = calculateReconnectDelay()
-            Log.d(TAG, "Scheduling reconnect in ${delayMs}ms (attempt ${reconnectAttempts + 1})")
-
-            _connectionState.value = ConnectionState.RECONNECTING
-            delay(delayMs)
-
-            if (shouldReconnect && isActive) {
-                reconnectAttempts++
-                doConnect()
-            }
-        }
-    }
-
-    private fun calculateReconnectDelay(): Long {
-        val delay = INITIAL_RECONNECT_DELAY_MS * (1L shl minOf(reconnectAttempts, 5))
-        return minOf(delay, MAX_RECONNECT_DELAY_MS)
-    }
-
-    fun disconnect(sendEvent: Boolean = true) {
-        Log.d(TAG, "Disconnecting Music WebSocket")
-        shouldReconnect = false
-        reconnectJob?.cancel()
-        reconnectJob = null
-        stopHeartbeat()
-
-        webSocket?.close(1000, "User disconnected")
-        webSocket = null
-
-        _connectionState.value = ConnectionState.DISCONNECTED
-        currentToken = null
-        currentRoomName = null
-
-        if (sendEvent) {
-            _events.tryEmit(MusicWebSocketEvent.Disconnected)
-        }
-    }
-
-    fun isConnected(): Boolean = _connectionState.value == ConnectionState.CONNECTED
-
     fun getCurrentRoom(): String? = currentRoomName
+
+    companion object {
+        private const val TAG = "MusicWebSocket"
+    }
 }

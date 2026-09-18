@@ -61,7 +61,8 @@ class ChatRepository @Inject constructor(
         private const val MESSAGES_PAGE_SIZE = 50
     }
 
-    // Track if app is in foreground (set by Activity)
+    // Track if app is in foreground (set by Activity, read from IO scopes)
+    @Volatile
     var isAppInForeground: Boolean = true
     private var currentUserId: Long? = null
 
@@ -135,6 +136,7 @@ class ChatRepository @Inject constructor(
                     }
                     is WebSocketEvent.Connected -> {
                         Log.d(TAG, "WebSocket connected (global)")
+                        backfillCurrentChannelAfterReconnect()
                     }
                     is WebSocketEvent.Disconnected -> {
                         Log.d(TAG, "WebSocket disconnected")
@@ -149,6 +151,37 @@ class ChatRepository @Inject constructor(
                         Log.d(TAG, "User left: ${event.userId}")
                     }
                 }
+            }
+        }
+    }
+
+    // WS frames only cover what arrives while connected; on reconnect, pull
+    // everything newer than the newest message already held so the outage
+    // window never shows as a gap. Appending chronologically avoids yanking
+    // the viewport the way a fresh fetchMessages (newest-page replace) would.
+    private fun backfillCurrentChannelAfterReconnect() {
+        val channel = _currentChannel.value ?: return
+        val newest = _messages.value.lastOrNull() ?: return
+        if (newest.channelId != channel.id) return
+        scope.launch {
+            try {
+                val token = authRepository.getToken() ?: return@launch
+                val newer = api.getMessages(
+                    authRepository.getAuthHeader(token),
+                    channel.id,
+                    limit = MESSAGES_PAGE_SIZE,
+                    after = newest.id
+                )
+                if (_currentChannel.value?.id != channel.id) return@launch
+                if (newer.isEmpty()) return@launch
+                val knownIds = _messages.value.mapTo(mutableSetOf()) { it.id }
+                val fresh = newer.filter { it.id !in knownIds }
+                if (fresh.isNotEmpty()) {
+                    _messages.value = _messages.value + fresh
+                }
+                cacheMessages(newer)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to backfill messages after reconnect", e)
             }
         }
     }
@@ -476,13 +509,15 @@ class ChatRepository @Inject constructor(
     }
 
     fun connectToChannel(channelId: Long) {
-        val token = authRepository.getTokenBlocking() ?: run {
-            Log.e(TAG, "Cannot connect to WebSocket: no token")
-            return
+        scope.launch {
+            val token = authRepository.getToken() ?: run {
+                Log.e(TAG, "Cannot connect to WebSocket: no token")
+                return@launch
+            }
+            Log.d(TAG, "Connecting to global WebSocket for channel $channelId")
+            // Connect to global WebSocket (no channel ID needed)
+            webSocket.connect(token)
         }
-        Log.d(TAG, "Connecting to global WebSocket for channel $channelId")
-        // Connect to global WebSocket (no channel ID needed)
-        webSocket.connect(token)
     }
 
     fun disconnectFromChannel() {
