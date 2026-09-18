@@ -59,6 +59,14 @@
             </intent-filter>
         </activity>
 
+        <!-- Crash report screen launched by CrashGuard after an uncaught exception -->
+        <activity
+            android:name=".crash.CrashReportActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:noHistory="true"
+            android:theme="@style/Theme.RMSDiscord" />
+
         <!-- Voice call foreground service -->
         <service
             android:name=".service.VoiceCallService"

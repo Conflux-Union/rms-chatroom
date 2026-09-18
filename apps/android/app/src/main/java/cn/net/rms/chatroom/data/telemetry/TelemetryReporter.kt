@@ -103,8 +103,9 @@ class TelemetryReporter @Inject constructor(
     /**
      * Install the uncaught-exception handler. The crash is persisted to disk
      * synchronously (the process is about to die) and uploaded on next launch
-     * by [uploadPendingCrashes]; the previous handler still runs so the
-     * system crash dialog and process teardown are unaffected.
+     * by [uploadPendingCrashes]; the chained handler (CrashGuard, installed
+     * first in Application.onCreate) then shows the crash report screen and
+     * kills the process instead of the system crash dialog.
      */
     fun installCrashHandler() {
         val previous = Thread.getDefaultUncaughtExceptionHandler()

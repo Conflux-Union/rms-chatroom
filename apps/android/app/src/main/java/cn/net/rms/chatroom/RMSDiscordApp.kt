@@ -7,6 +7,7 @@ import coil.disk.DiskCache
 import coil.memory.MemoryCache
 import coil.request.CachePolicy
 import coil.util.DebugLogger
+import cn.net.rms.chatroom.crash.CrashGuard
 import cn.net.rms.chatroom.data.auth.TokenAuthenticator
 import cn.net.rms.chatroom.data.telemetry.TelemetryReporter
 import cn.net.rms.chatroom.notification.NotificationHelper
@@ -29,6 +30,10 @@ class RMSDiscordApp : Application(), ImageLoaderFactory {
 
     override fun onCreate() {
         super.onCreate()
+        // First, so TelemetryReporter's handler chains onto CrashGuard's
+        // handoff (persist -> show report screen -> kill) rather than the
+        // system crash dialog.
+        CrashGuard.install(this)
         notificationHelper.createNotificationChannels()
         telemetryReporter.installCrashHandler()
         telemetryReporter.uploadPendingCrashes()

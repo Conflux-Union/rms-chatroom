@@ -32,9 +32,12 @@ class BugReportRepository @Inject constructor(
         private const val TAG = "BugReportRepository"
     }
 
-    suspend fun submitBugReport(): Result<String> = withContext(Dispatchers.IO) {
+    // crashLog carries the uncaught-exception report from the crash screen:
+    // by the time the user reports, the logcat buffer may have rotated past
+    // the crash itself.
+    suspend fun submitBugReport(crashLog: String? = null): Result<String> = withContext(Dispatchers.IO) {
         try {
-            val zipFile = createReportZip()
+            val zipFile = createReportZip(crashLog)
             val requestBody = zipFile.asRequestBody("application/zip".toMediaType())
             val part = MultipartBody.Part.createFormData("file", zipFile.name, requestBody)
             
@@ -48,24 +51,30 @@ class BugReportRepository @Inject constructor(
         }
     }
 
-    private fun createReportZip(): File {
+    private fun createReportZip(crashLog: String?): File {
         val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
         val zipFile = File(context.cacheDir, "bug_report_$timestamp.zip")
-        
+
         ZipOutputStream(FileOutputStream(zipFile)).use { zos ->
             // Add system info
             val systemInfo = collectSystemInfo()
             zos.putNextEntry(ZipEntry("system_info.txt"))
             zos.write(systemInfo.toByteArray())
             zos.closeEntry()
-            
+
             // Add logcat logs
             val logs = collectLogs()
             zos.putNextEntry(ZipEntry("logcat.txt"))
             zos.write(logs.toByteArray())
             zos.closeEntry()
+
+            if (!crashLog.isNullOrBlank()) {
+                zos.putNextEntry(ZipEntry("crash_log.txt"))
+                zos.write(crashLog.toByteArray())
+                zos.closeEntry()
+            }
         }
-        
+
         return zipFile
     }
 
