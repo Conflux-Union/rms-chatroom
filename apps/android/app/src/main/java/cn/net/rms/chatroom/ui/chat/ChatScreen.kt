@@ -9,6 +9,8 @@ import androidx.compose.animation.core.EaseOut
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import android.app.DownloadManager
@@ -88,6 +90,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.HorizontalDivider
@@ -1908,14 +1911,19 @@ private fun MessageInput(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            verticalAlignment = Alignment.CenterVertically
+            // Gaps around the TextField live on the neighbor buttons as padding
+            // instead of Arrangement.spacedBy, so the send button's animated
+            // slot width (see expandHorizontally below) hands over space to the
+            // TextField without an unanimated spacing jump.
         ) {
             // Attach button
             IconButton(
                 onClick = onAttachClick,
                 enabled = isConnected && !isUploading,
-                modifier = Modifier.size(40.dp)
+                modifier = Modifier
+                    .padding(end = 8.dp)
+                    .size(40.dp)
             ) {
                 Icon(
                     imageVector = Icons.Default.AttachFile,
@@ -1957,18 +1965,30 @@ private fun MessageInput(
             // Send button
             AnimatedVisibility(
                 visible = value.isNotBlank() || hasAttachments,
-                enter = fadeIn() + slideInVertically(),
-                exit = fadeOut() + slideOutVertically()
+                // expandHorizontally animates the slot width so the weighted
+                // TextField yields space smoothly instead of snapping by 48dp.
+                // clip = false keeps the circle from being cut with straight
+                // edges while the container width is still animating.
+                enter = fadeIn() + slideInVertically() + expandHorizontally(clip = false),
+                exit = fadeOut() + slideOutVertically() + shrinkHorizontally(clip = false)
             ) {
                 IconButton(
                     onClick = onSend,
                     enabled = isConnected && sendingState != SendingState.SENDING && !isUploading,
                     modifier = Modifier
-                        .size(40.dp)
-                        .background(
-                            if (isConnected && !isUploading) Zhimo.seal else Zhimo.seal.copy(alpha = 0.5f),
-                            CircleShape
-                        )
+                        .padding(start = 8.dp)
+                        .size(40.dp),
+                    // Background via containerColor so the circle is drawn on the
+                    // button's own 40dp node (inside minimumInteractiveComponentSize
+                    // and its CircleShape clip). An outer .background would paint at
+                    // 48dp and get clipped square by AnimatedVisibility's transition
+                    // layer during the enter/exit animation.
+                    colors = IconButtonDefaults.iconButtonColors(
+                        containerColor = if (isConnected && !isUploading) Zhimo.seal else Zhimo.seal.copy(alpha = 0.5f),
+                        disabledContainerColor = if (isConnected && !isUploading) Zhimo.seal else Zhimo.seal.copy(alpha = 0.5f),
+                        contentColor = Zhimo.paper,
+                        disabledContentColor = Zhimo.paper
+                    )
                 ) {
                     when {
                         sendingState == SendingState.SENDING || isUploading -> {
