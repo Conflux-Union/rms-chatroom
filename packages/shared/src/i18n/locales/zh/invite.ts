@@ -1,0 +1,30 @@
+// Namespace: voice invite page (VoiceInvite.vue).
+export const messages = {
+  'invite.defaultChannelName': '语音频道',
+  'invite.defaultServerName': '服务器',
+  'invite.invalidLink': '此邀请链接无效或已被使用。',
+  'invite.verifyFailed': '验证邀请链接失败。',
+  'invite.nameRequired': '请输入你的名字',
+  'invite.joinFailed': '加入失败',
+  'invite.connectFailed': '连接失败',
+  'invite.verifying': '正在验证邀请链接...',
+  'invite.invalidTitle': '邀请无效',
+  'invite.joinVoiceChannel': '加入语音频道',
+  'invite.yourName': '你的名字',
+  'invite.displayNamePlaceholder': '请输入你的显示名称',
+  'invite.joinVoice': '加入语音',
+  'invite.oneTimeNote': '此邀请链接仅可使用一次，离开后无法再次加入。',
+  'invite.connectingTo': '正在连接 {name}...',
+  'invite.connected': '已连接',
+  'invite.hosting': '{name} 正在主持',
+  'invite.mute': '静音',
+  'invite.unmute': '取消静音',
+  'invite.muteSpeakers': '关闭扬声器',
+  'invite.unmuteSpeakers': '打开扬声器',
+  'invite.disconnect': '断开连接',
+  'invite.disconnectNote': '断开连接后无法再次加入。',
+  'invite.endedTitle': '会话已结束',
+  'invite.endedNote': '感谢参与，你可以关闭此页面。',
+} as const
+
+export type Keys = keyof typeof messages

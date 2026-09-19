@@ -7,6 +7,7 @@ import { useVoiceStore } from '../stores/voice'
 import { useAuthStore } from '../stores/auth'
 import { authFetch } from '../utils/authFetch'
 import { reportAvatarImgError, reportAvatarMissing } from '../utils/avatarTelemetry'
+import { t } from '../i18n'
 import { Volume2, VolumeX, Mic, MicOff, Phone, Crown, Link, Copy, Check, UserX, Monitor, MonitorOff, Maximize, Minimize } from 'lucide-vue-next'
 
 // Detect iOS devices
@@ -68,10 +69,10 @@ const participantDropdown = ref<{ show: boolean; x: number; y: number; participa
 })
 
 // Dropdown options for participant context menu
-const participantDropdownOptions: ZmDropdownOption[] = [
-  { label: '静音麦克风', key: 'mute' },
-  { label: '踢出频道', key: 'kick', danger: true }
-]
+const participantDropdownOptions = computed<ZmDropdownOption[]>(() => [
+  { label: t('voice.muteMicrophone'), key: 'mute' },
+  { label: t('voice.kickFromChannel'), key: 'kick', danger: true }
+])
 
 // Screen share state
 const screenShareContainer = ref<HTMLElement | null>(null)
@@ -267,13 +268,13 @@ async function createInviteLink() {
 
     if (!response.ok) {
       const err = await response.json()
-      throw new Error(err.detail || '创建邀请失败')
+      throw new Error(err.detail || t('voice.createInviteFailed'))
     }
 
     const data = await response.json()
     inviteUrl.value = `${window.location.origin}/voice/invite/${data.token}`
   } catch (e) {
-    inviteError.value = e instanceof Error ? e.message : '创建邀请失败'
+    inviteError.value = e instanceof Error ? e.message : t('voice.createInviteFailed')
   } finally {
     inviteLoading.value = false
   }
@@ -312,7 +313,7 @@ function closeInviteDialog() {
       <Volume2 class="channel-icon" :size="20" />
       <span class="channel-name">{{ chat.currentChannel?.name }}</span>
       <span v-if="isConnectedHere" class="connection-mode connected">
-        已连接
+        {{ t('voice.connected') }}
       </span>
     </div>
 
@@ -359,15 +360,15 @@ function closeInviteDialog() {
 
       <div v-if="!isConnectedHere" class="voice-connect">
         <p v-if="isConnectedElsewhere">
-          你正在「{{ voice.currentVoiceChannel?.name }}」中，加入后将自动切换到此频道
+          {{ t('voice.switchChannelPrompt', { name: voice.currentVoiceChannel?.name ?? '' }) }}
         </p>
-        <p v-else>点击加入语音频道</p>
+        <p v-else>{{ t('voice.clickToJoin') }}</p>
         <button
           class="join-btn "
           :disabled="voice.isConnecting"
           @click="joinVoice"
         >
-          {{ voice.isConnecting ? '连接中...' : '加入语音' }}
+          {{ voice.isConnecting ? t('voice.connecting') : t('voice.joinVoice') }}
         </button>
       </div>
 
@@ -383,13 +384,13 @@ function closeInviteDialog() {
             <div class="screen-share-header">
               <Monitor :size="16" />
               <span v-if="activeRemoteScreenShare">
-                {{ activeRemoteScreenShare.participantName }} 正在共享屏幕
+                {{ t('voice.screenSharingBy', { name: activeRemoteScreenShare.participantName }) }}
               </span>
-              <span v-else>你正在共享屏幕</span>
+              <span v-else>{{ t('voice.youAreScreenSharing') }}</span>
               <div
                 v-if="activeRemoteScreenShare?.hasAudio"
                 class="screen-share-volume"
-                title="共享声音音量（不影响人声）"
+                :title="t('voice.shareAudioVolumeHint')"
               >
                 <Volume2 class="volume-icon" :size="14" />
                 <input
@@ -406,14 +407,14 @@ function closeInviteDialog() {
                 v-if="activeRemoteScreenShare"
                 class="screen-share-toggle"
                 :class="{ 'watch-off': voice.screenShareIgnored }"
-                :title="voice.screenShareIgnored ? '接收并观看屏幕共享' : '停止接收屏幕共享视频流'"
+                :title="voice.screenShareIgnored ? t('voice.receiveScreenShare') : t('voice.stopReceivingScreenShare')"
                 @click="toggleScreenShareWatch"
               >
-                {{ voice.screenShareIgnored ? '观看' : '忽略' }}
+                {{ voice.screenShareIgnored ? t('voice.watch') : t('voice.ignore') }}
               </button>
               <button
                 class="screen-share-toggle"
-                :title="isVideoFullscreen ? '退出全屏' : '全屏'"
+                :title="isVideoFullscreen ? t('voice.exitFullscreen') : t('voice.fullscreen')"
                 @click="toggleVideoFullscreen"
               >
                 <Minimize v-if="isVideoFullscreen" :size="14" />
@@ -431,18 +432,18 @@ function closeInviteDialog() {
                 ref="localScreenShareContainer"
                 class="video-container local-preview"
               >
-                <div class="local-preview-label">预览</div>
+                <div class="local-preview-label">{{ t('voice.preview') }}</div>
               </div>
               <div v-else-if="activeRemoteScreenShare" class="video-placeholder">
                 <MonitorOff :size="32" />
-                <span>已忽略共享画面</span>
+                <span>{{ t('voice.screenShareIgnoredLabel') }}</span>
               </div>
             </div>
           </div>
 
           <div class="voice-users-container">
             <div class="voice-users-header">
-              <h4>语音用户 ({{ voice.participants.length }})</h4>
+              <h4>{{ t('voice.participantCount', { count: voice.participants.length }) }}</h4>
             </div>
             <div class="voice-users">
               <div
@@ -472,7 +473,7 @@ function closeInviteDialog() {
                     </div>
                     <span class="user-name">
                       {{ participant.name }}
-                      <span v-if="participant.isLocal" class="local-tag">(你)</span>
+                      <span v-if="participant.isLocal" class="local-tag">({{ t('common.you') }})</span>
                     </span>
                     <MicOff v-if="participant.isMuted" class="status-icon" :size="14" />
                     <Mic v-if="participant.isSpeaking" class="speaking-icon" :size="14" />
@@ -513,14 +514,14 @@ function closeInviteDialog() {
                     @click="muteParticipant(participant.id)"
                   >
                     <MicOff :size="18" />
-                    <span>静音</span>
+                    <span>{{ t('voice.mute') }}</span>
                   </button>
                   <button 
                     class="swipe-action-btn kick"
                     @click="kickParticipant(participant.id)"
                   >
                     <UserX :size="18" />
-                    <span>踢出</span>
+                    <span>{{ t('voice.kick') }}</span>
                   </button>
                 </div>
               </div>
@@ -532,7 +533,7 @@ function closeInviteDialog() {
                 class="control-btn"
                 :class="{ active: voice.isMuted }"
                 @click="voice.toggleMute()"
-                :title="voice.isMuted ? '取消静音' : '静音'"
+                :title="voice.isMuted ? t('voice.unmute') : t('voice.mute')"
               >
                 <MicOff v-if="voice.isMuted" :size="20" />
                 <Mic v-else :size="20" />
@@ -541,7 +542,7 @@ function closeInviteDialog() {
                 class="control-btn "
                 :class="{ active: voice.isDeafened }"
                 @click="voice.toggleDeafen()"
-                :title="voice.isDeafened ? '打开扬声器' : '关闭扬声器'"
+                :title="voice.isDeafened ? t('voice.undeafen') : t('voice.deafen')"
               >
                 <VolumeX v-if="voice.isDeafened" :size="20" />
                 <Volume2 v-else :size="20" />
@@ -555,7 +556,7 @@ function closeInviteDialog() {
                 }"
                 :disabled="hostButtonDisabled"
                 @click="voice.toggleHostMode()"
-                :title="hostButtonDisabled ? '其他用户正在主持' : (voice.hostModeEnabled ? '关闭主持人模式' : '开启主持人模式')"
+                :title="hostButtonDisabled ? t('voice.someoneElseHosting') : (voice.hostModeEnabled ? t('voice.disableHostMode') : t('voice.enableHostMode'))"
               >
                 <Crown :size="20" />
               </button>
@@ -563,7 +564,7 @@ function closeInviteDialog() {
                 v-if="auth.isAdmin"
                 class="control-btn  invite-btn"
                 @click="createInviteLink"
-                title="创建邀请链接"
+                :title="t('voice.createInviteLink')"
               >
                 <Link :size="20" />
               </button>
@@ -571,7 +572,7 @@ function closeInviteDialog() {
                 class="control-btn "
                 :class="{ 'screen-share-active': voice.isScreenSharing }"
                 @click="voice.toggleScreenShare()"
-                :title="voice.isScreenSharing ? '停止共享屏幕' : '共享屏幕'"
+                :title="voice.isScreenSharing ? t('voice.stopScreenShare') : t('voice.shareScreen')"
               >
                 <MonitorOff v-if="voice.isScreenSharing" :size="20" />
                 <Monitor v-else :size="20" />
@@ -579,7 +580,7 @@ function closeInviteDialog() {
               <button
                 class="control-btn disconnect "
                 @click="voice.disconnect()"
-                title="断开连接"
+                :title="t('voice.disconnect')"
               >
                 <Phone :size="20" />
               </button>
@@ -590,7 +591,7 @@ function closeInviteDialog() {
         <!-- Host mode banner -->
         <div v-if="voice.hostModeEnabled" class="host-mode-banner">
           <Crown :size="14" />
-          <span>{{ voice.hostModeHostName }} 正在主持</span>
+          <span>{{ t('voice.hostingBy', { name: voice.hostModeHostName ?? '' }) }}</span>
         </div>
       </div>
     </div>
@@ -599,13 +600,13 @@ function closeInviteDialog() {
     <ZmModal
       v-model:show="showInviteDialog"
       preset="card"
-      title="邀请访客"
+      :title="t('voice.inviteGuest')"
       style="width: 440px"
       :segmented="{ content: true, footer: 'soft' }"
     >
       <div v-if="inviteLoading" class="invite-loading">
         <ZmSpin />
-        <p>正在生成链接...</p>
+        <p>{{ t('voice.generatingLink') }}</p>
       </div>
 
       <div v-else-if="inviteError" class="invite-error">
@@ -613,7 +614,7 @@ function closeInviteDialog() {
       </div>
 
       <div v-else-if="inviteUrl" class="invite-content">
-        <p class="invite-note">此链接仅可使用一次，访客离开后无法再次加入。</p>
+        <p class="invite-note">{{ t('voice.inviteNote') }}</p>
         <ZmSpace>
           <ZmInput :value="inviteUrl" style="flex: 1; font-family: monospace;" />
           <ZmButton @click="copyInviteLink" :type="inviteCopied ? 'success' : 'primary'">
@@ -625,7 +626,7 @@ function closeInviteDialog() {
 
       <template #footer>
         <ZmSpace justify="end">
-          <ZmButton @click="closeInviteDialog">关闭</ZmButton>
+          <ZmButton @click="closeInviteDialog">{{ t('common.close') }}</ZmButton>
         </ZmSpace>
       </template>
     </ZmModal>
@@ -634,18 +635,18 @@ function closeInviteDialog() {
     <ZmModal
       v-model:show="showVolumeWarning"
       preset="card"
-      title="高音量警告"
+      :title="t('voice.volumeWarningTitle')"
       style="width: 400px"
       :segmented="{ content: true, footer: 'soft' }"
     >
       <p class="warning-message">
-        高音量可能损害您的听力和音频设备。
+        {{ t('voice.volumeWarningMessage') }}
       </p>
 
       <template #footer>
         <ZmSpace justify="end">
-          <ZmButton @click="closeVolumeWarning">取消</ZmButton>
-          <ZmButton type="warning" @click="confirmVolumeWarning">我已了解</ZmButton>
+          <ZmButton @click="closeVolumeWarning">{{ t('common.cancel') }}</ZmButton>
+          <ZmButton type="warning" @click="confirmVolumeWarning">{{ t('voice.understood') }}</ZmButton>
         </ZmSpace>
       </template>
     </ZmModal>

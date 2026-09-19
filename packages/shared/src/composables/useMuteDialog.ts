@@ -4,6 +4,7 @@ import type { Message } from '../types'
 import { dialog } from '../components/ui'
 import { useChatStore } from '../stores/chat'
 import { useAuthStore } from '../stores/auth'
+import { t } from '../i18n'
 
 const API_BASE = import.meta.env.VITE_API_BASE || ''
 
@@ -34,19 +35,19 @@ export function useMuteDialog() {
     reason: '',
   })
 
-  const scopeOptions = [
-    { label: '当前频道', value: 'channel' },
-    { label: '当前服务器', value: 'server' },
-    { label: '全局', value: 'global' },
-  ]
+  const scopeOptions = computed(() => [
+    { label: t('voice.muteScopeChannel'), value: 'channel' },
+    { label: t('voice.muteScopeServer'), value: 'server' },
+    { label: t('voice.muteScopeGlobal'), value: 'global' },
+  ])
 
-  const durationOptions = [
-    { label: '永久', value: 'permanent' },
-    { label: '10 分钟', value: '10m' },
-    { label: '1 小时', value: '1h' },
-    { label: '1 天', value: '1d' },
-    { label: '自定义', value: 'custom' },
-  ]
+  const durationOptions = computed(() => [
+    { label: t('voice.muteDurationPermanent'), value: 'permanent' },
+    { label: t('voice.muteDuration10m'), value: '10m' },
+    { label: t('voice.muteDuration1h'), value: '1h' },
+    { label: t('voice.muteDuration1d'), value: '1d' },
+    { label: t('voice.muteDurationCustom'), value: 'custom' },
+  ])
 
   // Mute status - combine local check with WebSocket error
   const localMuted = ref(false)
@@ -106,12 +107,12 @@ export function useMuteDialog() {
       await axios.post(`${API_BASE}/api/mute`, payload, {
         headers: { Authorization: `Bearer ${auth.token}` },
       })
-      dialog.success({ title: '成功', content: '用户已被禁言' })
+      dialog.success({ title: t('voice.muteSuccessTitle'), content: t('voice.muteSuccess') })
       hideMuteDialog()
     } catch (error: any) {
       dialog.error({
-        title: '错误',
-        content: error.response?.data?.detail || '禁言用户失败',
+        title: t('voice.errorTitle'),
+        content: error.response?.data?.detail || t('voice.muteFailed'),
       })
     }
   }
@@ -139,7 +140,7 @@ export function useMuteDialog() {
 
       if (activeMute) {
         localMuted.value = true
-        localMuteReason.value = activeMute.reason || '你已被禁言'
+        localMuteReason.value = activeMute.reason || t('voice.youAreMuted')
       } else {
         localMuted.value = false
         localMuteReason.value = ''

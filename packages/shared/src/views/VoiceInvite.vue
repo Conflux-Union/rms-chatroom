@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, shallowRef } from 'vue'
 import { useRoute } from 'vue-router'
+import { t } from '../i18n'
 import { Room, RoomEvent, Track, RemoteParticipant, AudioPresets } from 'livekit-client'
 import { Volume2, VolumeX, Mic, MicOff, Phone, AlertCircle, UserPlus, Crown } from 'lucide-vue-next'
 
@@ -49,16 +50,16 @@ onMounted(async () => {
     const data = await resp.json()
     
     if (data.valid) {
-      channelName.value = data.channel_name || '语音频道'
-      serverName.value = data.server_name || '服务器'
+      channelName.value = data.channel_name || t('invite.defaultChannelName')
+      serverName.value = data.server_name || t('invite.defaultServerName')
       pageState.value = 'form'
     } else {
       pageState.value = 'invalid'
-      errorMessage.value = '此邀请链接无效或已被使用。'
+      errorMessage.value = t('invite.invalidLink')
     }
   } catch {
     pageState.value = 'invalid'
-    errorMessage.value = '验证邀请链接失败。'
+    errorMessage.value = t('invite.verifyFailed')
   }
 })
 
@@ -134,7 +135,7 @@ function updateParticipants() {
 
 async function joinVoice() {
   if (!username.value.trim()) {
-    errorMessage.value = '请输入你的名字'
+    errorMessage.value = t('invite.nameRequired')
     return
   }
 
@@ -150,7 +151,7 @@ async function joinVoice() {
 
     if (!resp.ok) {
       const err = await resp.json()
-      throw new Error(err.detail || '加入失败')
+      throw new Error(err.detail || t('invite.joinFailed'))
     }
 
     const data = await resp.json()
@@ -224,7 +225,7 @@ async function joinVoice() {
     startSyncInterval()
   } catch (e) {
     pageState.value = 'form'
-    errorMessage.value = e instanceof Error ? e.message : '连接失败'
+    errorMessage.value = e instanceof Error ? e.message : t('invite.connectFailed')
   }
 }
 
@@ -261,31 +262,31 @@ function disconnect() {
         <!-- Loading -->
         <div v-if="pageState === 'loading'" class="page-content">
           <div class="loading-spinner"></div>
-          <p class="subtitle">正在验证邀请链接...</p>
+          <p class="subtitle">{{ t('invite.verifying') }}</p>
         </div>
 
         <!-- Invalid invite -->
         <div v-else-if="pageState === 'invalid'" class="page-content">
           <AlertCircle class="error-icon" :size="64" />
-          <h1 class="title">邀请无效</h1>
+          <h1 class="title">{{ t('invite.invalidTitle') }}</h1>
           <p class="subtitle">{{ errorMessage }}</p>
         </div>
 
         <!-- Username form -->
         <div v-else-if="pageState === 'form'" class="page-content">
           <UserPlus class="header-icon" :size="48" />
-          <h1 class="title">加入语音频道</h1>
+          <h1 class="title">{{ t('invite.joinVoiceChannel') }}</h1>
           <p class="subtitle">
             <strong>{{ serverName }}</strong> / {{ channelName }}
           </p>
           
           <div class="form-group">
-            <label class="form-label">你的名字</label>
+            <label class="form-label">{{ t('invite.yourName') }}</label>
             <input
               v-model="username"
               type="text"
               class="form-input"
-              placeholder="请输入你的显示名称"
+              :placeholder="t('invite.displayNamePlaceholder')"
               maxlength="50"
               @keyup.enter="joinVoice"
             />
@@ -294,16 +295,16 @@ function disconnect() {
           <p v-if="errorMessage" class="error-text">{{ errorMessage }}</p>
 
           <button class="btn " @click="joinVoice">
-            加入语音
+            {{ t('invite.joinVoice') }}
           </button>
 
-          <p class="note">此邀请链接仅可使用一次，离开后无法再次加入。</p>
+          <p class="note">{{ t('invite.oneTimeNote') }}</p>
         </div>
 
         <!-- Connecting -->
         <div v-else-if="pageState === 'connecting'" class="page-content">
           <div class="loading-spinner"></div>
-          <p class="subtitle">正在连接 {{ channelName }}...</p>
+          <p class="subtitle">{{ t('invite.connectingTo', { name: channelName }) }}</p>
         </div>
 
         <!-- Connected -->
@@ -311,7 +312,7 @@ function disconnect() {
           <div class="voice-header">
             <Volume2 class="channel-icon" :size="20" />
             <span class="channel-name">{{ channelName }}</span>
-            <span class="connection-badge">已连接</span>
+            <span class="connection-badge">{{ t('invite.connected') }}</span>
           </div>
 
           <div class="voice-users">
@@ -326,7 +327,7 @@ function disconnect() {
               </div>
               <span class="user-name">
                 {{ participant.name }}
-                <span v-if="participant.isLocal" class="local-tag">(你)</span>
+                <span v-if="participant.isLocal" class="local-tag">({{ t('common.you') }})</span>
               </span>
               <MicOff v-if="participant.isMuted" class="status-icon" :size="14" />
               <Mic v-if="participant.isSpeaking" class="speaking-icon" :size="14" />
@@ -336,7 +337,7 @@ function disconnect() {
           <!-- Host mode banner -->
           <div v-if="hostModeEnabled" class="host-mode-banner">
             <Crown :size="14" />
-            <span>{{ hostModeHostName }} 正在主持</span>
+            <span>{{ t('invite.hosting', { name: hostModeHostName || '' }) }}</span>
           </div>
 
           <div class="voice-controls">
@@ -344,7 +345,7 @@ function disconnect() {
               class="control-btn "
               :class="{ active: isMuted }"
               @click="toggleMute"
-              :title="isMuted ? '取消静音' : '静音'"
+              :title="isMuted ? t('invite.unmute') : t('invite.mute')"
             >
               <MicOff v-if="isMuted" :size="20" />
               <Mic v-else :size="20" />
@@ -353,7 +354,7 @@ function disconnect() {
               class="control-btn "
               :class="{ active: isDeafened }"
               @click="toggleDeafen"
-              :title="isDeafened ? '打开扬声器' : '关闭扬声器'"
+              :title="isDeafened ? t('invite.unmuteSpeakers') : t('invite.muteSpeakers')"
             >
               <VolumeX v-if="isDeafened" :size="20" />
               <Volume2 v-else :size="20" />
@@ -361,20 +362,20 @@ function disconnect() {
             <button
               class="control-btn disconnect "
               @click="disconnect"
-              title="断开连接"
+              :title="t('invite.disconnect')"
             >
               <Phone :size="20" />
             </button>
           </div>
 
-          <p class="note">断开连接后无法再次加入。</p>
+          <p class="note">{{ t('invite.disconnectNote') }}</p>
         </div>
 
         <!-- Session ended -->
         <div v-else-if="pageState === 'ended'" class="page-content">
           <AlertCircle class="info-icon" :size="64" />
-          <h1 class="title">会话已结束</h1>
-          <p class="subtitle">感谢参与，你可以关闭此页面。</p>
+          <h1 class="title">{{ t('invite.endedTitle') }}</h1>
+          <p class="subtitle">{{ t('invite.endedNote') }}</p>
         </div>
       </div>
     </div>

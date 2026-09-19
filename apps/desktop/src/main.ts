@@ -5,7 +5,9 @@ import App from './App.vue'
 import 'zhimo-ui/tokens.css'
 import 'zhimo-ui'
 import '@rms-discord/shared/style.css'
-import { installTelemetry } from '@rms-discord/shared'
+import { initI18n, installTelemetry } from '@rms-discord/shared'
+
+initI18n()
 
 const app = createApp(App)
 

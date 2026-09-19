@@ -3,9 +3,11 @@ import { onMounted, onUnmounted, ref, computed } from 'vue'
 import { useVoiceStore } from '../stores/voice'
 import { ZmModal, ZmSelect, ZmButton, ZmSpace, ZmProgress } from './ui'
 import type { ZmSelectOption } from './ui'
-import { Mic, Volume2, Activity, Bell } from 'lucide-vue-next'
+import { Mic, Volume2, Activity, Bell, Globe } from 'lucide-vue-next'
 import { isTauri } from '../index'
 import { isTelemetryEnabled, setTelemetryEnabled } from '../utils/telemetry'
+import { t, getLocalePreference, setLocalePreference } from '../i18n'
+import type { LocalePreference } from '../i18n'
 
 const emit = defineEmits<{ (e: 'close'): void }>()
 
@@ -28,6 +30,18 @@ function toggleTelemetry() {
   telemetryEnabled.value = !telemetryEnabled.value
   setTelemetryEnabled(telemetryEnabled.value)
 }
+
+// Language preference. Option labels for the concrete languages stay in their
+// own language regardless of the active locale.
+const languageOptions = computed(() => [
+  { value: 'system', label: t('settings.languageSystem') },
+  { value: 'zh', label: '简体中文' },
+  { value: 'en', label: 'English' },
+])
+const selectedLanguage = computed({
+  get: () => getLocalePreference(),
+  set: (v) => setLocalePreference(v as LocalePreference),
+})
 
 // Voice join TTS announcement
 function toggleVoiceAnnounce() {
@@ -116,11 +130,11 @@ async function save(key: 'toggleWindow' | 'toggleMic') {
   const { invoke } = await import('@tauri-apps/api/core')
   const val = (key === 'toggleWindow' ? toggleWindow.value : toggleMic.value).trim()
   const r = await invoke<Record<string, boolean>>('set_shortcut', { key, accelerator: val })
-  tip.value = r?.ok ? '已保存' : '保存失败'
+  tip.value = r?.ok ? t('common.saved') : t('common.saveFailed')
 }
 
 function startCapture(key: 'toggleWindow' | 'toggleMic') {
-  tip.value = '请按下你想要的快捷键组合（例如 Ctrl + Alt + M）'
+  tip.value = t('settings.hotkeyTip')
   capturing.value = key
 }
 
@@ -139,7 +153,7 @@ function onKeyDown(e: KeyboardEvent) {
   if (capturing.value === 'toggleWindow') toggleWindow.value = acc
   if (capturing.value === 'toggleMic') toggleMic.value = acc
 
-  tip.value = `检测到: ${acc}（点击保存以应用）`
+  tip.value = t('settings.hotkeyDetected', { acc })
   capturing.value = null
 }
 
@@ -288,16 +302,31 @@ function stopOutputTest() {
 <template>
   <ZmModal
     :show="true"
-    title="设置"
+    :title="t('settings.title')"
     style="width: 520px; max-width: 90vw"
     @update:show="(v: boolean) => { if (!v) handleClose() }"
   >
     <ZmSpace vertical :size="20">
+      <!-- Language -->
+      <div class="setting-row">
+        <div class="setting-label">
+          <Globe :size="16" />
+          <span>{{ t('settings.language') }}</span>
+        </div>
+        <div class="setting-ctrl">
+          <ZmSelect
+            v-model:value="selectedLanguage"
+            :options="languageOptions"
+            style="flex: 1"
+          />
+        </div>
+      </div>
+
       <!-- Input Device -->
       <div class="setting-row">
         <div class="setting-label">
           <Mic :size="16" />
-          <span>输入设备</span>
+          <span>{{ t('settings.inputDevice') }}</span>
         </div>
         <div class="setting-ctrl">
           <ZmSelect
@@ -310,7 +339,7 @@ function stopOutputTest() {
             :type="micTestActive ? 'error' : 'default'"
             @click="micTestActive ? stopMicTest() : startMicTest()"
           >
-            {{ micTestActive ? '停止' : '测试' }}
+            {{ micTestActive ? t('common.stop') : t('common.test') }}
           </ZmButton>
         </div>
         <ZmProgress
@@ -324,7 +353,7 @@ function stopOutputTest() {
       <div v-if="supportsAudioOutput" class="setting-row">
         <div class="setting-label">
           <Volume2 :size="16" />
-          <span>输出设备</span>
+          <span>{{ t('settings.outputDevice') }}</span>
         </div>
         <div class="setting-ctrl">
           <ZmSelect
@@ -337,7 +366,7 @@ function stopOutputTest() {
             :type="outputTestPlaying ? 'error' : 'default'"
             @click="outputTestPlaying ? stopOutputTest() : startOutputTest()"
           >
-            {{ outputTestPlaying ? '停止' : '播放' }}
+            {{ outputTestPlaying ? t('common.stop') : t('settings.play') }}
           </ZmButton>
         </div>
       </div>
@@ -346,23 +375,23 @@ function stopOutputTest() {
       <div class="setting-row">
         <div class="setting-label">
           <Bell :size="16" />
-          <span>进入语音提醒</span>
+          <span>{{ t('settings.voiceAnnounce') }}</span>
         </div>
         <div class="setting-ctrl">
-          <span class="telemetry-desc">有人加入或离开当前语音频道时播报其昵称</span>
+          <span class="telemetry-desc">{{ t('settings.voiceAnnounceDesc') }}</span>
           <ZmButton
             size="small"
             :type="voice.voiceAnnounceEnabled ? 'primary' : 'default'"
             @click="toggleVoiceAnnounce"
           >
-            {{ voice.voiceAnnounceEnabled ? '已开启' : '已关闭' }}
+            {{ voice.voiceAnnounceEnabled ? t('common.enabled') : t('common.disabled') }}
           </ZmButton>
         </div>
       </div>
 
       <!-- Hotkey: Toggle Window -->
       <div v-if="isTauri" class="setting-row">
-        <div class="setting-label">显示/隐藏窗口（全局快捷键）</div>
+        <div class="setting-label">{{ t('settings.hotkeyWindow') }}</div>
         <div class="setting-ctrl">
           <input
             class="hotkey-input"
@@ -370,15 +399,15 @@ function stopOutputTest() {
             v-model="toggleWindow"
             readonly
             @click="startCapture('toggleWindow')"
-            placeholder="点击后按下快捷键"
+            :placeholder="t('settings.hotkeyPlaceholder')"
           />
-          <ZmButton size="small" @click="save('toggleWindow')">保存</ZmButton>
+          <ZmButton size="small" @click="save('toggleWindow')">{{ t('common.save') }}</ZmButton>
         </div>
       </div>
 
       <!-- Hotkey: Toggle Mic -->
       <div v-if="isTauri" class="setting-row">
-        <div class="setting-label">切换麦克风（全局快捷键）</div>
+        <div class="setting-label">{{ t('settings.hotkeyMic') }}</div>
         <div class="setting-ctrl">
           <input
             class="hotkey-input"
@@ -386,9 +415,9 @@ function stopOutputTest() {
             v-model="toggleMic"
             readonly
             @click="startCapture('toggleMic')"
-            placeholder="点击后按下快捷键"
+            :placeholder="t('settings.hotkeyPlaceholder')"
           />
-          <ZmButton size="small" @click="save('toggleMic')">保存</ZmButton>
+          <ZmButton size="small" @click="save('toggleMic')">{{ t('common.save') }}</ZmButton>
         </div>
       </div>
 
@@ -396,16 +425,16 @@ function stopOutputTest() {
       <div class="setting-row">
         <div class="setting-label">
           <Activity :size="16" />
-          <span>匿名错误报告</span>
+          <span>{{ t('settings.telemetry') }}</span>
         </div>
         <div class="setting-ctrl">
-          <span class="telemetry-desc">上报崩溃和连接质量数据帮助改进，不含任何消息内容</span>
+          <span class="telemetry-desc">{{ t('settings.telemetryDesc') }}</span>
           <ZmButton
             size="small"
             :type="telemetryEnabled ? 'primary' : 'default'"
             @click="toggleTelemetry"
           >
-            {{ telemetryEnabled ? '已开启' : '已关闭' }}
+            {{ telemetryEnabled ? t('common.enabled') : t('common.disabled') }}
           </ZmButton>
         </div>
       </div>
@@ -416,7 +445,7 @@ function stopOutputTest() {
 
     <template #footer>
       <ZmSpace justify="end">
-        <ZmButton @click="stopCapture(); handleClose()">关闭</ZmButton>
+        <ZmButton @click="stopCapture(); handleClose()">{{ t('common.close') }}</ZmButton>
       </ZmSpace>
     </template>
   </ZmModal>

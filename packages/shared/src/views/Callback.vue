@@ -3,6 +3,7 @@ import { onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { ZmSpin } from '../components/ui'
+import { t } from '../i18n'
 
 const router = useRouter()
 const route = useRoute()
@@ -49,7 +50,7 @@ onMounted(async () => {
   <div class="callback-shell">
     <div class="loading">
       <ZmSpin size="large" />
-      <p class="hint">正在登录，请稍候...</p>
+      <p class="hint">{{ t('app.loggingInWait') }}</p>
     </div>
   </div>
 </template>

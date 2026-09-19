@@ -5,7 +5,7 @@
   <div v-if="isOpen" class="modal-overlay" @click.self="handleClose">
     <div class="modal-content">
       <div class="modal-header">
-        <h2>{{ serverName }} - 服务器权限设置</h2>
+        <h2>{{ t('channels.serverPermissionTitle', { name: serverName }) }}</h2>
         <button class="close-btn" @click="handleClose">&times;</button>
       </div>
 
@@ -14,8 +14,8 @@
           v-model:permLevel="serverPermMinLevel"
           v-model:groupLevel="serverMinLevel"
           v-model:logicOperator="serverLogicOperator"
-          title="最低权限要求"
-          description="用户需满足此权限要求才能访问此服务器"
+          :title="t('channels.minPermissionRequired')"
+          :description="t('channels.accessDescServer')"
           :maxLevel="userMaxLevel"
           :serverPermLevel="initialPermMinLevel"
           :serverGroupLevel="initialMinLevel"
@@ -24,9 +24,9 @@
       </div>
 
       <div class="modal-footer">
-        <button class="btn btn-secondary" @click="handleClose">取消</button>
+        <button class="btn btn-secondary" @click="handleClose">{{ t('common.cancel') }}</button>
         <button class="btn btn-primary" @click="handleSave" :disabled="isSaving">
-          {{ isSaving ? '保存中...' : '保存' }}
+          {{ isSaving ? t('channels.saving') : t('common.save') }}
         </button>
       </div>
     </div>
@@ -39,6 +39,7 @@ import { ref, watch, computed } from 'vue'
 import { useAuthStore } from '../stores/auth'
 import DualPermissionSettings from './DualPermissionSettings.vue'
 import axios from 'axios'
+import { t } from '../i18n'
 
 interface Props {
   isOpen: boolean
@@ -102,7 +103,7 @@ const handleSave = async () => {
     emit('close')
   } catch (error) {
     console.error('Failed to save server permissions:', error)
-    alert('保存权限设置失败')
+    alert(t('channels.saveFailedAlert'))
   } finally {
     isSaving.value = false
   }

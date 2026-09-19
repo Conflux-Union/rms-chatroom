@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { t } from '../i18n'
 
 /**
  * Global API error feedback card.
@@ -14,6 +15,8 @@ interface CardRefs {
   root: HTMLElement
   statusEl: HTMLElement
   idEl: HTMLElement
+  titleEl: HTMLElement
+  msgEl: HTMLElement
   copyBtn: HTMLButtonElement
 }
 
@@ -144,7 +147,6 @@ function ensureMounted(): CardRefs {
   seal.className = 'cxu-req-seal'
   const title = document.createElement('span')
   title.className = 'cxu-req-title'
-  title.textContent = '操作出现问题'
   const statusEl = document.createElement('span')
   statusEl.className = 'cxu-req-status'
   const closeBtn = document.createElement('button')
@@ -156,7 +158,6 @@ function ensureMounted(): CardRefs {
 
   const msg = document.createElement('div')
   msg.className = 'cxu-req-msg'
-  msg.textContent = '请稍后重试；若持续出现，可复制下方 ID 发给管理员排查。'
 
   const idrow = document.createElement('div')
   idrow.className = 'cxu-req-idrow'
@@ -165,24 +166,24 @@ function ensureMounted(): CardRefs {
   const copyBtn = document.createElement('button')
   copyBtn.className = 'cxu-req-copy'
   copyBtn.type = 'button'
-  copyBtn.textContent = '复制 ID'
+  copyBtn.textContent = t('feedback.copyId')
   copyBtn.addEventListener('click', () => copyRequestId(copyBtn, idEl))
   idrow.append(idEl, copyBtn)
 
   root.append(head, msg, idrow)
   document.body.appendChild(root)
 
-  card = { root, statusEl, idEl, copyBtn }
+  card = { root, statusEl, idEl, titleEl: title, msgEl: msg, copyBtn }
   return card
 }
 
 function copyRequestId(btn: HTMLButtonElement, idEl: HTMLElement): void {
   const text = idEl.textContent ?? ''
   const done = () => {
-    btn.textContent = '已复制'
+    btn.textContent = t('common.copied')
     clearTimeout(copyResetTimer)
     copyResetTimer = setTimeout(() => {
-      btn.textContent = '复制 ID'
+      btn.textContent = t('feedback.copyId')
     }, 1200)
   }
   navigator.clipboard
@@ -224,12 +225,14 @@ export function reportApiError(requestId: string | null | undefined, status?: nu
   currentKey = key
 
   const refs = ensureMounted()
+  refs.titleEl.textContent = t('feedback.title')
+  refs.msgEl.textContent = t('feedback.retryHint')
   refs.statusEl.textContent = status !== undefined ? `HTTP ${status}` : ''
   if (id) {
     refs.idEl.textContent = id
     refs.copyBtn.disabled = false
   } else {
-    refs.idEl.textContent = '(本次响应未返回 ID)'
+    refs.idEl.textContent = t('feedback.noRequestId')
     refs.copyBtn.disabled = true
   }
   // Restart the entry transition when the card is already visible.

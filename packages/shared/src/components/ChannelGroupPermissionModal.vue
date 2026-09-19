@@ -5,7 +5,7 @@
   <div v-if="isOpen" class="modal-overlay" @click.self="handleClose">
     <div class="modal-content">
       <div class="modal-header">
-        <h2>{{ groupName }} - 频道组权限设置</h2>
+        <h2>{{ t('channels.groupPermissionTitle', { name: groupName }) }}</h2>
         <button class="close-btn" @click="handleClose">&times;</button>
       </div>
 
@@ -14,8 +14,8 @@
           v-model:permLevel="groupPermMinLevel"
           v-model:groupLevel="groupMinLevel"
           v-model:logicOperator="groupLogicOperator"
-          title="可见性权限"
-          description="用户需满足此权限要求才能看到此频道组"
+          :title="t('channels.visibilityPermission')"
+          :description="t('channels.visibilityDescGroup')"
           :maxLevel="userMaxLevel"
           :serverPermLevel="initialPermMinLevel"
           :serverGroupLevel="initialMinLevel"
@@ -24,9 +24,9 @@
       </div>
 
       <div class="modal-footer">
-        <button class="btn btn-secondary" @click="handleClose">取消</button>
+        <button class="btn btn-secondary" @click="handleClose">{{ t('common.cancel') }}</button>
         <button class="btn btn-primary" @click="handleSave" :disabled="isSaving">
-          {{ isSaving ? '保存中...' : '保存' }}
+          {{ isSaving ? t('channels.saving') : t('common.save') }}
         </button>
       </div>
     </div>
@@ -39,6 +39,7 @@ import { ref, watch, computed } from 'vue'
 import { useAuthStore } from '../stores/auth'
 import DualPermissionSettings from './DualPermissionSettings.vue'
 import axios from 'axios'
+import { t } from '../i18n'
 
 interface Props {
   isOpen: boolean
@@ -107,9 +108,9 @@ async function handleSave() {
     console.error('Failed to update channel group permissions:', error)
     if (axios.isAxiosError(error)) {
       const message = error.response?.data?.detail || error.message
-      alert(`保存失败：${message}`)
+      alert(t('channels.saveFailedWithReason', { message }))
     } else {
-      alert('保存失败，请重试')
+      alert(t('channels.saveFailedRetry'))
     }
   } finally {
     isSaving.value = false

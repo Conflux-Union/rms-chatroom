@@ -3,6 +3,8 @@
  * No dependencies, runs entirely in the browser.
  */
 
+import { t, currentLocaleTag } from '../i18n'
+
 function isSpeechSupported(): boolean {
   return typeof window !== 'undefined' && 'speechSynthesis' in window
 }
@@ -22,16 +24,16 @@ function speak(
   if (options?.enabled === false) return
   if (!isSpeechSupported()) return
 
-  const displayName = (name || '有人').trim() || '有人'
+  const displayName = (name || t('common.someone')).trim() || t('common.someone')
   const text = action === 'joined'
-    ? `${displayName}进入了语音`
-    : `${displayName}离开了语音`
+    ? t('voice.announceJoined', { name: displayName })
+    : t('voice.announceLeft', { name: displayName })
 
   const synth = window.speechSynthesis
   synth.cancel()
 
   const utterance = new SpeechSynthesisUtterance(text)
-  utterance.lang = 'zh-CN'
+  utterance.lang = currentLocaleTag()
   utterance.rate = 0.95
   utterance.volume = 1
 

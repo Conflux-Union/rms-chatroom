@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useRouter } from 'vue-router'
 import { Compass } from 'lucide-vue-next'
+import { t } from '../i18n'
 
 const router = useRouter()
 </script>
@@ -10,9 +11,9 @@ const router = useRouter()
     <div class="notfound-card">
       <Compass class="notfound-icon" :size="52" />
       <h1 class="code">404</h1>
-      <p class="title">页面不存在</p>
-      <p class="hint">链接无效，或目标服务器 / 频道 / 消息已删除、无权访问。</p>
-      <button class="home-btn" @click="router.push('/')">返回首页</button>
+      <p class="title">{{ t('app.pageNotFound') }}</p>
+      <p class="hint">{{ t('app.notFoundHint') }}</p>
+      <button class="home-btn" @click="router.push('/')">{{ t('app.backToHome') }}</button>
     </div>
   </div>
 </template>

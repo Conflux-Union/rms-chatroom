@@ -10,6 +10,7 @@ import { useChatWebSocket } from '../composables/useChatWebSocket'
 import { useMentionNotification } from '../composables/useMentionNotification'
 import { useDesktopNotifications } from '../composables/useDesktopNotifications'
 import { printConsoleEasterEgg } from '../utils/consoleArt'
+import { t } from '../i18n'
 import ServerList from '../components/ServerList.vue'
 import ChannelList from '../components/ChannelList.vue'
 import ChatArea from '../components/ChatArea.vue'
@@ -36,7 +37,7 @@ function findChannelName(channelId: number): string {
     const channel = server.channels?.find(c => c.id === channelId)
     if (channel) return channel.name
   }
-  return '新消息'
+  return t('app.newMessage')
 }
 
 // The window counts as "attended" only when it is both visible and focused.
@@ -87,7 +88,7 @@ chatWs.onMessage((data) => {
         const channelName = findChannelName(messageChannelId)
         const preview = data.content
           ? `${data.username}: ${data.content}`
-          : `${data.username} 发送了附件`
+          : t('app.sentAttachment', { name: data.username })
         showMessageNotification(channelName, preview)
       }
     }
@@ -158,7 +159,7 @@ chatWs.onMessage((data) => {
     }
   } else if (data.type === 'error' && data.code === 'muted') {
     // User is muted - update store so ChatArea can display it
-    chat.setMutedByWs(true, data.message || '你已被禁言')
+    chat.setMutedByWs(true, data.message || t('app.youAreMuted'))
   }
 })
 
@@ -366,7 +367,7 @@ watch(
         <X v-if="showMobileSidebar" :size="24" />
         <Menu v-else :size="24" />
       </button>
-      <span class="mobile-title">{{ chat.currentChannel?.name || '选择频道' }}</span>
+      <span class="mobile-title">{{ chat.currentChannel?.name || t('app.selectChannel') }}</span>
     </div>
 
     <!-- Mobile Sidebar Overlay -->
@@ -393,7 +394,7 @@ watch(
       <ChatArea v-if="chat.currentChannel?.type === 'TEXT' || chat.currentChannel?.type === 'FORWARD'" />
       <VoicePanel v-else-if="chat.currentChannel?.type === 'VOICE'" />
       <div v-else class="no-channel">
-        <p>选择一个频道开始聊天</p>
+        <p>{{ t('app.noChannelPrompt') }}</p>
       </div>
     </div>
     

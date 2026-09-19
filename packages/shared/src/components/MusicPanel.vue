@@ -3,6 +3,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useMusicStore, type Song } from '../stores/music'
 import { useVoiceStore } from '../stores/voice'
 import { formatDuration } from '../utils/datetime'
+import { t } from '../i18n'
 import { ZmSlider, ZmSelect, ZmModal, ZmButton, ZmSpace, ZmInput } from './ui'
 import { Music, Disc3, SkipBack, Pause, Play, SkipForward, Plus, Trash2, X, Search, Loader2, Volume2 } from 'lucide-vue-next'
 
@@ -131,20 +132,20 @@ async function handleStopPlayback() {
   <div class="music-panel">
     <div class="music-header">
       <Music class="header-icon" :size="20" />
-      <span class="header-title">音乐播放器</span>
+      <span class="header-title">{{ t('music.player') }}</span>
       <span
         v-if="music.playbackActive"
         class="playback-status active"
         @click="handleStopPlayback"
-        title="房间播放中 - 点击停止"
+        :title="t('music.playingClickToStop')"
       >
-        <Disc3 :size="14" /> 播放中
+        <Disc3 :size="14" /> {{ t('music.playing') }}
       </span>
       <span 
         v-if="music.platformLoginStatus.qq.logged_in" 
         class="login-status logged-in qq"
         @click="music.logout('qq')"
-        title="QQ音乐已登录 - 点击退出"
+        :title="t('music.qqLoggedInQuit')"
       >
         QQ
       </span>
@@ -152,16 +153,16 @@ async function handleStopPlayback() {
         v-if="music.platformLoginStatus.netease.logged_in" 
         class="login-status logged-in netease"
         @click="music.logout('netease')"
-        title="网易云已登录 - 点击退出"
+        :title="t('music.neteaseLoggedInQuit')"
       >
-        网易云
+        {{ t('music.netease') }}
       </span>
       <span 
         v-if="!music.platformLoginStatus.qq.logged_in || !music.platformLoginStatus.netease.logged_in"
         class="login-status"
         @click="showLoginSelect = true"
       >
-        登录
+        {{ t('music.login') }}
       </span>
     </div>
 
@@ -169,7 +170,7 @@ async function handleStopPlayback() {
       <!-- Login Platform Select Dialog -->
       <ZmModal
         v-model:show="showLoginSelect"
-        title="选择登录平台"
+        :title="t('music.selectLoginPlatform')"
         style="width: 360px"
       >
         <ZmSpace vertical size="large">
@@ -180,7 +181,7 @@ async function handleStopPlayback() {
             type="success"
             @click="startLogin('qq', 'qq')"
           >
-            QQ 音乐 (QQ 登录)
+            {{ t('music.qqLoginQQ') }}
           </ZmButton>
           <ZmButton
             v-if="!music.platformLoginStatus.qq.logged_in"
@@ -189,7 +190,7 @@ async function handleStopPlayback() {
             type="success"
             @click="startLogin('qq', 'wx')"
           >
-            QQ 音乐 (微信登录)
+            {{ t('music.qqLoginWeChat') }}
           </ZmButton>
           <ZmButton
             v-if="!music.platformLoginStatus.netease.logged_in"
@@ -198,7 +199,7 @@ async function handleStopPlayback() {
             type="error"
             @click="startLogin('netease')"
           >
-            网易云音乐
+            {{ t('music.neteaseCloudMusic') }}
           </ZmButton>
         </ZmSpace>
       </ZmModal>
@@ -206,27 +207,27 @@ async function handleStopPlayback() {
       <!-- QR Code Login Dialog -->
       <ZmModal
         :show="!!music.qrCodeUrl"
-        :title="'扫码登录 ' + (music.loginPlatform === 'qq' ? 'QQ 音乐' : '网易云音乐')"
+        :title="t('music.scanToLogin', { platform: music.loginPlatform === 'qq' ? t('music.qqMusic') : t('music.neteaseCloudMusic') })"
         style="width: 320px"
         @update:show="(v: boolean) => { if (!v) music.qrCodeUrl = null }"
       >
         <div class="qr-login-content">
           <img :src="music.qrCodeUrl || ''" alt="QR Code" class="qr-code" />
           <p class="login-hint">
-            {{ music.loginStatus === 'waiting' ? '等待扫码...' :
-               music.loginStatus === 'scanned' ? '扫码成功！请在手机上确认...' :
-               music.loginStatus === 'expired' ? '二维码已过期' :
-               music.loginStatus === 'refused' ? '登录被拒绝' :
-               music.loginStatus === 'error' ? '登录出错' :
-               '加载中...' }}
+            {{ music.loginStatus === 'waiting' ? t('music.qrWaiting') :
+               music.loginStatus === 'scanned' ? t('music.qrScanned') :
+               music.loginStatus === 'expired' ? t('music.qrExpired') :
+               music.loginStatus === 'refused' ? t('music.qrRefused') :
+               music.loginStatus === 'error' ? t('music.qrError') :
+               t('common.loading') }}
           </p>
         </div>
         <template #footer>
           <ZmSpace justify="center">
             <ZmButton v-if="music.loginStatus === 'expired'" type="primary" @click="startLogin(music.loginPlatform, music.loginType)">
-              刷新二维码
+              {{ t('music.refreshQr') }}
             </ZmButton>
-            <ZmButton @click="music.qrCodeUrl = null">关闭</ZmButton>
+            <ZmButton @click="music.qrCodeUrl = null">{{ t('common.close') }}</ZmButton>
           </ZmSpace>
         </template>
       </ZmModal>
@@ -240,18 +241,18 @@ async function handleStopPlayback() {
             <div class="song-artist">{{ music.currentSong.artist }}</div>
           </div>
           <div class="playback-controls">
-            <button class="control-btn" @click="handleSkipPrevious" title="上一首"><SkipBack :size="18" /></button>
+            <button class="control-btn" @click="handleSkipPrevious" :title="t('music.previous')"><SkipBack :size="18" /></button>
             <button
               class="control-btn play-btn"
               @click="handlePlayPause"
               :disabled="!voice.isConnected && music.playbackState !== 'paused' || isProcessingPlayback"
-              :title="voice.isConnected || music.playbackState === 'paused' ? '' : '请先加入语音频道'"
+              :title="voice.isConnected || music.playbackState === 'paused' ? '' : t('music.joinVoiceFirst')"
             >
               <Loader2 v-if="music.playbackState === 'loading' || isProcessingPlayback" :size="22" class="spin" />
               <Pause v-else-if="music.isPlaying" :size="22" />
               <Play v-else :size="22" />
             </button>
-            <button class="control-btn" @click="handleSkipNext" title="下一首"><SkipForward :size="18" /></button>
+            <button class="control-btn" @click="handleSkipNext" :title="t('music.next')"><SkipForward :size="18" /></button>
           </div>
         </div>
         <!-- Progress Bar - Full Width -->
@@ -284,23 +285,23 @@ async function handleStopPlayback() {
       <!-- Empty State -->
       <div v-else class="empty-state">
         <Music class="empty-icon" :size="48" />
-        <p>暂无播放</p>
+        <p>{{ t('music.nothingPlaying') }}</p>
         <button class="add-song-btn " @click="showSearch = true">
-          添加歌曲
+          {{ t('music.addSong') }}
         </button>
       </div>
 
       <!-- Queue -->
       <div class="queue-section">
         <div class="queue-header">
-          <span>播放队列 ({{ music.queue.length }})</span>
+          <span>{{ t('music.queueCount', { count: music.queue.length }) }}</span>
           <div class="queue-actions">
-            <button class="icon-btn" @click="showSearch = true" title="添加歌曲"><Plus :size="16" /></button>
+            <button class="icon-btn" @click="showSearch = true" :title="t('music.addSong')"><Plus :size="16" /></button>
             <button 
               v-if="music.queue.length > 0" 
               class="icon-btn" 
               @click="handleClearQueue" 
-              title="清空队列"
+              :title="t('music.clearQueue')"
             ><Trash2 :size="16" /></button>
           </div>
         </div>
@@ -320,7 +321,7 @@ async function handleStopPlayback() {
             <button class="remove-btn" @click="handleRemoveFromQueue(index)"><X :size="14" /></button>
           </div>
           <div v-if="music.queue.length === 0" class="queue-empty">
-            队列为空
+            {{ t('music.queueEmpty') }}
           </div>
         </div>
       </div>
@@ -328,7 +329,7 @@ async function handleStopPlayback() {
       <!-- Search Dialog -->
       <ZmModal
         v-model:show="showSearch"
-        title="搜索歌曲"
+        :title="t('music.searchSongs')"
         style="width: 500px; max-height: 80vh"
       >
         <ZmSpace vertical>
@@ -336,15 +337,15 @@ async function handleStopPlayback() {
             <ZmSelect
               v-model:value="music.searchPlatform"
               :options="[
-                { label: '全部', value: 'all' },
-                { label: 'QQ 音乐', value: 'qq' },
-                { label: '网易云', value: 'netease' },
+                { label: t('music.all'), value: 'all' },
+                { label: t('music.qqMusic'), value: 'qq' },
+                { label: t('music.netease'), value: 'netease' },
               ]"
               style="width: 100px"
             />
             <ZmInput
               v-model:value="searchInput"
-              placeholder="搜索歌曲..."
+              :placeholder="t('music.searchPlaceholder')"
               @keyup.enter="handleSearch"
               style="flex: 1"
             />
@@ -365,7 +366,7 @@ async function handleStopPlayback() {
                 <div class="search-song-name">
                   {{ song.name }}
                   <span class="platform-tag" :class="song.platform">
-                    {{ song.platform === 'qq' ? 'QQ' : '网易云' }}
+                    {{ song.platform === 'qq' ? 'QQ' : t('music.netease') }}
                   </span>
                 </div>
                 <div class="search-song-artist">{{ song.artist }} · {{ song.album }}</div>
@@ -373,14 +374,14 @@ async function handleStopPlayback() {
               <span class="search-duration">{{ music.formatDuration(song.duration) }}</span>
             </div>
             <div v-if="music.searchResults.length === 0 && searchInput" class="search-empty">
-              {{ music.isSearching ? '搜索中...' : '未找到结果' }}
+              {{ music.isSearching ? t('music.searching') : t('music.noResults') }}
             </div>
           </div>
         </ZmSpace>
 
         <template #footer>
           <ZmSpace justify="end">
-            <ZmButton @click="showSearch = false">关闭</ZmButton>
+            <ZmButton @click="showSearch = false">{{ t('common.close') }}</ZmButton>
           </ZmSpace>
         </template>
       </ZmModal>

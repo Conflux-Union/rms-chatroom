@@ -8,6 +8,7 @@ import { useRouter } from 'vue-router'
 import axios from 'axios'
 import { useAuthStore } from '../stores/auth'
 import { isTauri } from '../index'
+import { t } from '../i18n'
 import { renderMessageHtml } from '../utils/markdown'
 import {
   parseMessagePermalink,
@@ -52,7 +53,7 @@ function quoteFor(link: MessagePermalink): ForwardQuote {
   if (cached) return cached
   if (!quoteInFlight.has(key)) {
     quoteInFlight.add(key)
-    const quote = reactive<ForwardQuote>({ status: 'loading', note: '加载原消息…' })
+    const quote = reactive<ForwardQuote>({ status: 'loading', note: t('chat.loadingQuote') })
     quoteCache.set(key, quote)
     fetchQuote(link, key, quote)
   }
@@ -70,7 +71,7 @@ async function fetchQuote(link: MessagePermalink, key: string, quote: ForwardQuo
       // The list endpoint filters deleted messages, so a 200 without the
       // target means the source message no longer exists.
       quote.status = 'unavailable'
-      quote.note = '原消息已被删除'
+      quote.note = t('chat.quoteDeleted')
       return
     }
     quote.status = 'ready'
@@ -80,7 +81,7 @@ async function fetchQuote(link: MessagePermalink, key: string, quote: ForwardQuo
     quote.hasAttachments = (source.attachments?.length ?? 0) > 0
   } catch (error: any) {
     quote.status = 'unavailable'
-    quote.note = error.response?.status === 403 ? '没有权限查看原消息' : '原消息无法加载'
+    quote.note = error.response?.status === 403 ? t('chat.quoteNoPermission') : t('chat.quoteUnavailable')
   } finally {
     quoteInFlight.delete(key)
   }
@@ -147,7 +148,7 @@ async function handleBodyClick(event: MouseEvent) {
     @click.stop="openForwardedMessage(link)"
     @keydown.enter.stop="openForwardedMessage(link)"
   >
-    <span class="forward-quote-label">转发的消息</span>
+    <span class="forward-quote-label">{{ t('chat.forwardedMessage') }}</span>
     <span v-if="quote.status !== 'ready'" class="forward-quote-note">{{ quote.note }}</span>
     <template v-else>
       <span class="forward-quote-author">{{ quote.author }}</span>
@@ -176,7 +177,7 @@ async function handleBodyClick(event: MouseEvent) {
         v-else
         class="forward-quote-body"
         @click="handleBodyClick"
-        v-html="renderMessageHtml(quote.content || (quote.hasAttachments ? '[附件]' : ''))"
+        v-html="renderMessageHtml(quote.content || (quote.hasAttachments ? `[${t('chat.attachmentTag')}]` : ''))"
       ></div>
     </template>
   </div>

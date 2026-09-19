@@ -29,6 +29,7 @@ import ForwardQuoteCard from './ForwardQuoteCard.vue'
 import SourceBadge from './SourceBadge.vue'
 import type { Message } from '../types'
 import { isTauri } from '../index'
+import { t } from '../i18n'
 import { useMessageViewport } from '../composables/useMessageViewport'
 import { useMessageAttachments } from '../composables/useMessageAttachments'
 import { useMessageComposer } from '../composables/useMessageComposer'
@@ -167,12 +168,12 @@ const contextMenuOptions = computed(() => {
   const msg = contextMenu.value.message
   if (!msg) return []
   const opts: Array<{ label: string; key: string }> = []
-  opts.push({ label: '添加表情', key: 'reaction' })
-  opts.push({ label: '回复', key: 'reply' })
-  if (!msg.is_deleted) opts.push({ label: '复制消息链接', key: 'copy_link' })
-  if (canEdit(msg)) opts.push({ label: '编辑', key: 'edit' })
-  if (canDelete(msg)) opts.push({ label: '删除', key: 'delete' })
-  if (canMute(msg)) opts.push({ label: '禁言用户', key: 'mute' })
+  opts.push({ label: t('chat.addReaction'), key: 'reaction' })
+  opts.push({ label: t('chat.reply'), key: 'reply' })
+  if (!msg.is_deleted) opts.push({ label: t('chat.copyMessageLink'), key: 'copy_link' })
+  if (canEdit(msg)) opts.push({ label: t('common.edit'), key: 'edit' })
+  if (canDelete(msg)) opts.push({ label: t('common.delete'), key: 'delete' })
+  if (canMute(msg)) opts.push({ label: t('chat.muteUser'), key: 'mute' })
   return opts
 })
 
@@ -287,7 +288,7 @@ async function handleMessageLinkClick(event: MouseEvent) {
     const { invoke } = await import('@tauri-apps/api/core')
     await invoke('open_external', { url: href })
   } catch {
-    dialog.error({ title: '错误', content: '打开链接失败' })
+    dialog.error({ title: t('chat.error'), content: t('chat.openLinkFailed') })
   }
 }
 
@@ -323,7 +324,7 @@ onUnmounted(() => {
     <div v-if="isDragging" class="drag-overlay">
       <div class="drag-content">
         <Upload class="drag-icon" :size="48" />
-        <span class="drag-text">拖放文件到这里上传</span>
+        <span class="drag-text">{{ t('chat.dropToUpload') }}</span>
       </div>
     </div>
 
@@ -342,12 +343,12 @@ onUnmounted(() => {
       @touchmove.passive="handleWheelScroll"
     >
       <div v-if="chat.isLoadingOlder" class="loading-more-indicator">
-        加载更早的消息…
+        {{ t('chat.loadingOlder') }}
       </div>
       <template v-for="(msg, index) in chat.messages" :key="msg.id">
         <div v-if="msg.id === firstUnreadId" class="unread-divider">
           <span class="unread-divider-line"></span>
-          <span class="unread-divider-label">新消息</span>
+          <span class="unread-divider-label">{{ t('chat.newMessages') }}</span>
           <span class="unread-divider-line"></span>
         </div>
         <div
@@ -378,13 +379,13 @@ onUnmounted(() => {
             <SourceBadge v-if="msg.source_platform" :msg="msg" />
             <span class="message-time">
               {{ formatDateTime(msg.created_at) }}
-              <span v-if="getGroupLatestEditedAt(index)" class="edited-indicator">(已编辑于 {{ formatDateTime(getGroupLatestEditedAt(index)!) }})</span>
+              <span v-if="getGroupLatestEditedAt(index)" class="edited-indicator">{{ t('chat.editedAt', { time: formatDateTime(getGroupLatestEditedAt(index)!) }) }}</span>
             </span>
             <button
               v-if="!msg.is_deleted"
               class="message-menu-btn"
               @click="showContextMenu($event, msg)"
-              title="更多选项"
+              :title="t('chat.moreOptions')"
             >
               <MoreVertical :size="16" />
             </button>
@@ -394,16 +395,16 @@ onUnmounted(() => {
             v-else-if="!msg.is_deleted"
             class="message-menu-btn grouped-menu-btn"
             @click="showContextMenu($event, msg)"
-            title="更多选项"
+            :title="t('chat.moreOptions')"
           >
             <MoreVertical :size="16" />
           </button>
 
           <!-- Deleted message placeholder -->
           <div v-if="msg.is_deleted" class="message-deleted">
-            <span v-if="msg.deleted_by === auth.user?.id">你撤回了一条消息</span>
-            <span v-else-if="msg.deleted_by_username">{{ msg.deleted_by_username }}撤回了一条消息</span>
-            <span v-else>管理员撤回了一条消息</span>
+            <span v-if="msg.deleted_by === auth.user?.id">{{ t('chat.youRecalled') }}</span>
+            <span v-else-if="msg.deleted_by_username">{{ t('chat.xRecalled', { name: msg.deleted_by_username }) }}</span>
+            <span v-else>{{ t('chat.adminRecalled') }}</span>
           </div>
 
           <!-- Edit mode -->
@@ -416,9 +417,9 @@ onUnmounted(() => {
               @keydown.esc="cancelEdit"
             />
             <ZmSpace size="small" style="margin-top: 8px">
-              <ZmButton size="small" type="primary" @click="saveEdit">保存</ZmButton>
-              <ZmButton size="small" @click="cancelEdit">取消</ZmButton>
-              <span class="edit-hint">回车保存，Esc 取消</span>
+              <ZmButton size="small" type="primary" @click="saveEdit">{{ t('common.save') }}</ZmButton>
+              <ZmButton size="small" @click="cancelEdit">{{ t('common.cancel') }}</ZmButton>
+              <span class="edit-hint">{{ t('chat.editHint') }}</span>
             </ZmSpace>
           </div>
 
@@ -444,10 +445,10 @@ onUnmounted(() => {
                     class="reply-thumbnail"
                     alt="image"
                   />
-                  <span v-else-if="getReplyOriginalMessage(msg.reply_to.id)!.attachments![0].content_type.startsWith('image/')" class="reply-content">[图片]</span>
-                  <span v-else class="reply-content">[附件]</span>
+                  <span v-else-if="getReplyOriginalMessage(msg.reply_to.id)!.attachments![0].content_type.startsWith('image/')" class="reply-content">[{{ t('chat.imageTag') }}]</span>
+                  <span v-else class="reply-content">[{{ t('chat.attachmentTag') }}]</span>
                 </template>
-                <span v-else class="reply-content">[附件]</span>
+                <span v-else class="reply-content">[{{ t('chat.attachmentTag') }}]</span>
               </template>
             </div>
             <!-- Degraded quote: the quoted source message was never forwarded
@@ -498,7 +499,7 @@ onUnmounted(() => {
               <button
                 class="reaction-add-btn"
                 @click="showReactionPicker($event, msg.id)"
-                title="添加表情"
+                :title="t('chat.addReaction')"
               >
                 <SmilePlus :size="16" />
               </button>
@@ -508,7 +509,7 @@ onUnmounted(() => {
               <button
                 class="reaction-add-btn"
                 @click="showReactionPicker($event, msg.id)"
-                title="添加表情"
+                :title="t('chat.addReaction')"
               >
                 <SmilePlus :size="16" />
               </button>
@@ -523,7 +524,7 @@ onUnmounted(() => {
       <Transition name="jump-pill">
         <button v-if="isFarFromLatest" class="jump-to-latest" @click="jumpToLatest">
           <ChevronDown :size="14" />
-          <span>跳到最新</span>
+          <span>{{ t('chat.jumpToLatest') }}</span>
         </button>
       </Transition>
     </div>
@@ -563,13 +564,13 @@ onUnmounted(() => {
     <div v-if="replyingTo" class="reply-preview-bar">
       <div class="reply-preview-content">
         <Reply :size="16" class="reply-preview-icon" />
-        <span class="reply-preview-label">回复</span>
+        <span class="reply-preview-label">{{ t('chat.reply') }}</span>
         <span class="reply-preview-author">{{ replyingTo.username }}</span>
         <span class="reply-preview-text">
           <template v-if="replyingTo.content">{{ replyingTo.content.slice(0, 100) }}{{ replyingTo.content.length > 100 ? '...' : '' }}</template>
           <template v-else-if="replyingTo.attachments?.length">
             <Image v-if="replyingTo.attachments[0].content_type.startsWith('image/')" :size="14" style="vertical-align: middle; margin-right: 4px;" />
-            <span>[{{ replyingTo.attachments[0].content_type.startsWith('image/') ? '图片' : '附件' }}]</span>
+            <span>[{{ replyingTo.attachments[0].content_type.startsWith('image/') ? t('chat.imageTag') : t('chat.attachmentTag') }}]</span>
           </template>
         </span>
       </div>
@@ -580,7 +581,7 @@ onUnmounted(() => {
 
     <div class="chat-input">
       <input type="file" ref="fileInput" @change="handleFileSelect" multiple hidden />
-      <button class="attach-btn" @click="triggerFileSelect" title="添加附件" :disabled="isMuted">
+      <button class="attach-btn" @click="triggerFileSelect" :title="t('chat.addAttachment')" :disabled="isMuted">
         <Paperclip :size="20" />
       </button>
       <div class="input-wrapper">
@@ -588,7 +589,7 @@ onUnmounted(() => {
           ref="messageInputRef"
           v-model="messageInput"
           rows="1"
-          :placeholder="isMuted ? muteReason : `发送消息到 #${chat.currentChannel?.name || ''}`"
+          :placeholder="isMuted ? muteReason : t('chat.sendMessageTo', { name: chat.currentChannel?.name || '' })"
           @keydown="handleInputKeydown"
           @input="handleInputChange"
           class="message-input"
@@ -664,30 +665,30 @@ onUnmounted(() => {
     <!-- Mute Dialog -->
     <ZmModal
       v-model:show="muteDialog.visible"
-      :title="`禁言用户: ${muteDialog.username}`"
+      :title="t('chat.muteUserTitle', { name: muteDialog.username })"
       style="width: 420px; max-width: 90vw"
     >
       <ZmForm>
-        <ZmFormItem label="范围">
+        <ZmFormItem :label="t('chat.muteScope')">
           <ZmSelect v-model:value="muteDialog.scope" :options="scopeOptions" />
         </ZmFormItem>
 
-        <ZmFormItem label="时长">
+        <ZmFormItem :label="t('chat.muteDuration')">
           <ZmSelect v-model:value="muteDialog.duration" :options="durationOptions" />
         </ZmFormItem>
 
-        <ZmFormItem v-if="muteDialog.duration === 'custom'" label="自定义时长（分钟）">
+        <ZmFormItem v-if="muteDialog.duration === 'custom'" :label="t('chat.customDuration')">
           <ZmInputNumber
             v-model:value="muteDialog.customMinutes"
             :min="1"
           />
         </ZmFormItem>
 
-        <ZmFormItem label="原因（可选）">
+        <ZmFormItem :label="t('chat.muteReasonLabel')">
           <ZmInput
             v-model:value="muteDialog.reason"
             type="textarea"
-            placeholder="输入禁言原因..."
+            :placeholder="t('chat.muteReasonPlaceholder')"
             :rows="3"
           />
         </ZmFormItem>
@@ -695,15 +696,15 @@ onUnmounted(() => {
 
       <template #footer>
         <ZmSpace justify="end">
-          <ZmButton @click="hideMuteDialog">取消</ZmButton>
-          <ZmButton type="primary" @click="confirmMute">确认</ZmButton>
+          <ZmButton @click="hideMuteDialog">{{ t('common.cancel') }}</ZmButton>
+          <ZmButton type="primary" @click="confirmMute">{{ t('common.confirm') }}</ZmButton>
         </ZmSpace>
       </template>
     </ZmModal>
 
     <!-- Copied-permalink confirmation -->
     <Transition name="copy-toast">
-      <div v-if="showLinkCopied" class="copy-link-toast">消息链接已复制</div>
+      <div v-if="showLinkCopied" class="copy-link-toast">{{ t('chat.linkCopied') }}</div>
     </Transition>
   </div>
 </template>

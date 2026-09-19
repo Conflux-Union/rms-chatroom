@@ -26,6 +26,16 @@ export {
 } from './utils/datetime'
 export { initTheme, getThemeMode, setThemeMode } from './utils/theme'
 export {
+  t,
+  locale,
+  initI18n,
+  useI18n,
+  getLocalePreference,
+  setLocalePreference,
+  currentLocaleTag,
+} from './i18n'
+export type { Locale, LocalePreference } from './i18n'
+export {
   installTelemetry,
   reportTelemetryEvent,
   isTelemetryEnabled,

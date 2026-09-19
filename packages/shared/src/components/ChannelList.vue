@@ -14,6 +14,7 @@ import VoiceControls from '../components/VoiceControls.vue'
 import ChannelPermissionModal from '../components/ChannelPermissionModal.vue'
 import ChannelGroupPermissionModal from '../components/ChannelGroupPermissionModal.vue'
 import { VueDraggable } from 'vue-draggable-plus'
+import { t } from '../i18n'
 
 const chat = useChatStore()
 const auth = useAuthStore()
@@ -66,32 +67,32 @@ const selectedChannelForPermission = ref<Channel | null>(null)
 // Dropdown options - computed to include dynamic group options
 const channelDropdownOptions = computed((): ZmDropdownOption[] => {
   const options: ZmDropdownOption[] = [
-    { label: '权限设置', key: 'permissions' }
+    { label: t('channels.permissionSettings'), key: 'permissions' }
   ]
   // Type conversion is only offered between TEXT and FORWARD
   const channel = chat.currentServer?.channels?.find(c => c.id === channelDropdown.value.channelId)
   if (channel?.type === 'TEXT' || channel?.type === 'FORWARD') {
     options.push({
-      label: channel.type === 'TEXT' ? '转为同步频道' : '转为文字频道',
+      label: channel.type === 'TEXT' ? t('channels.convertToForward') : t('channels.convertToText'),
       key: 'toggleType'
     })
   }
   options.push(
-    { label: '移动到频道组', key: 'move' },
-    { label: '删除频道', key: 'delete', danger: true }
+    { label: t('channels.moveToGroup'), key: 'move' },
+    { label: t('channels.deleteChannel'), key: 'delete', danger: true }
   )
   return options
 })
 
-const groupDropdownOptions: ZmDropdownOption[] = [
-  { label: '权限设置', key: 'permissions' },
-  { label: '删除频道组', key: 'delete', danger: true }
-]
+const groupDropdownOptions = computed((): ZmDropdownOption[] => [
+  { label: t('channels.permissionSettings'), key: 'permissions' },
+  { label: t('channels.deleteGroup'), key: 'delete', danger: true }
+])
 
-const userDropdownOptions: ZmDropdownOption[] = [
-  { label: '静音麦克风', key: 'mute' },
-  { label: '踢出频道', key: 'kick', danger: true }
-]
+const userDropdownOptions = computed((): ZmDropdownOption[] => [
+  { label: t('channels.muteMic'), key: 'mute' },
+  { label: t('channels.kickFromChannel'), key: 'kick', danger: true }
+])
 
 // Listen to voice_users_update from global WebSocket
 globalWs.onMessage((data) => {
@@ -189,7 +190,7 @@ function toggleGroupCollapse(groupId: number) {
 
 // Group select options for create channel modal
 const groupSelectOptions = computed((): ZmSelectOption[] => {
-  const options: ZmSelectOption[] = [{ label: '无 (独立频道)', value: 'none' }]
+  const options: ZmSelectOption[] = [{ label: t('channels.noGroup'), value: 'none' }]
   for (const group of channelGroups.value) {
     options.push({ label: group.name, value: group.id })
   }
@@ -197,12 +198,12 @@ const groupSelectOptions = computed((): ZmSelectOption[] => {
 })
 
 // Create type options
-const createTypeOptions: ZmSelectOption[] = [
-  { label: '文字频道', value: 'text' },
-  { label: '语音频道', value: 'voice' },
-  { label: '同步频道', value: 'forward' },
-  { label: '频道组', value: 'group' }
-]
+const createTypeOptions = computed((): ZmSelectOption[] => [
+  { label: t('channels.textChannel'), value: 'text' },
+  { label: t('channels.voiceChannel'), value: 'voice' },
+  { label: t('channels.syncChannel'), value: 'forward' },
+  { label: t('channels.channelGroup'), value: 'group' }
+])
 
 const textChannels = computed(() => 
   chat.currentServer?.channels?.filter((c) => c.type === 'TEXT') || []
@@ -263,7 +264,7 @@ function showGroupPermissionSettings() {
 
 async function deleteChannelGroup() {
   if (!groupDropdown.value.groupId || !chat.currentServer) return
-  if (confirm('确定要删除此频道组吗？组内的频道将变为独立频道。')) {
+  if (confirm(t('channels.deleteGroupConfirm'))) {
     await chat.deleteChannelGroup(chat.currentServer.id, groupDropdown.value.groupId)
   }
 }
@@ -581,7 +582,7 @@ async function kickVoiceUser() {
 
 async function deleteChannel() {
   if (!channelDropdown.value.channelId || !chat.currentServer) return
-  if (confirm('确定要删除此频道吗？')) {
+  if (confirm(t('channels.deleteChannelConfirm'))) {
     await chat.deleteChannel(chat.currentServer.id, channelDropdown.value.channelId)
   }
   hideAllDropdowns()
@@ -592,29 +593,29 @@ async function deleteChannel() {
   <div class="channel-list" @click="hideAllDropdowns" :style="{ width: width + 'px' }">
     <div class="channel-list-content">
       <!-- Right-edge resizer covers full height of the channel-list -->
-      <div class="resizer" @mousedown.stop.prevent="startResizing" title="拖拽调整侧栏宽度"></div>
+      <div class="resizer" @mousedown.stop.prevent="startResizing" :title="t('channels.resizeSidebar')"></div>
 
       <div class="server-header">
         <div class="server-name-section">
-          <h2 class="server-title">{{ chat.currentServer?.name || '选择服务器' }}</h2>
+          <h2 class="server-title">{{ chat.currentServer?.name || t('channels.selectServer') }}</h2>
           <button 
             v-if="auth.isAdmin && editMode" 
             class="rename-server-btn"
             @click.stop="openRenameServerDialog"
           >
-            重命名
+            {{ t('channels.rename') }}
           </button>
         </div>
         <div class="server-controls">
-          <button v-if="auth.isAdmin" class="edit-toggle" @click.stop="editMode = !editMode">{{ editMode ? '退出编辑' : '编辑' }}</button>
+          <button v-if="auth.isAdmin" class="edit-toggle" @click.stop="editMode = !editMode">{{ editMode ? t('channels.exitEdit') : t('common.edit') }}</button>
         </div>
       </div>
 
       <div class="channels" :class="{ 'is-dragging': isDragging }">
         <!-- Header with add button -->
         <div class="channel-category">
-          <span class="category-name">频道</span>
-          <button v-if="auth.isAdmin" class="add-channel-btn" @click.stop="showCreate = true; newCreateType = 'text'; newChannelGroupId = 'none'" title="创建频道/频道组">+</button>
+          <span class="category-name">{{ t('channels.channels') }}</span>
+          <button v-if="auth.isAdmin" class="add-channel-btn" @click.stop="showCreate = true; newCreateType = 'text'; newChannelGroupId = 'none'" :title="t('channels.createChannelOrGroup')">+</button>
         </div>
 
         <!-- Draggable mixed list of channel groups and ungrouped channels -->
@@ -643,7 +644,7 @@ async function deleteChannel() {
               <ChevronRight v-else :size="14" class="collapse-icon" />
               <span class="group-name">{{ item.data.name }}</span>
               <span class="channel-count">({{ getGroupChannels(item.data.id).length }})</span>
-              <button v-if="auth.isAdmin && editMode" class="rename-group-btn" @click.stop="openRenameGroupDialog(item.data.id)">重命名</button>
+              <button v-if="auth.isAdmin && editMode" class="rename-group-btn" @click.stop="openRenameGroupDialog(item.data.id)">{{ t('channels.rename') }}</button>
               <span v-if="editMode" class="drag-handle drag-handle-group" @click.stop>☰</span>
             </div>
             
@@ -696,7 +697,7 @@ async function deleteChannel() {
                     class="unread-badge"
                   >{{ unreadCounts[channel.id] > 99 ? '99+' : unreadCounts[channel.id] }}</span>
                   <div v-if="editMode" class="edit-actions" @click.stop>
-                    <button v-if="editingChannelId !== channel.id" class="small" @click="renameChannel(channel)">重命名</button>
+                    <button v-if="editingChannelId !== channel.id" class="small" @click="renameChannel(channel)">{{ t('channels.rename') }}</button>
                     <span class="drag-handle drag-handle-channel">☰</span>
                   </div>
                 </div>
@@ -728,7 +729,7 @@ async function deleteChannel() {
                       {{ chat.getVoiceChannelUsers(channel.id).length }}
                     </span>
                     <div v-if="editMode" class="edit-actions" @click.stop>
-                      <button v-if="editingChannelId !== channel.id" class="small" @click="renameChannel(channel)">重命名</button>
+                      <button v-if="editingChannelId !== channel.id" class="small" @click="renameChannel(channel)">{{ t('channels.rename') }}</button>
                       <span class="drag-handle drag-handle-channel">☰</span>
                     </div>
                   </div>
@@ -793,7 +794,7 @@ async function deleteChannel() {
               class="unread-badge"
             >{{ unreadCounts[item.data.id] > 99 ? '99+' : unreadCounts[item.data.id] }}</span>
             <div v-if="editMode" class="edit-actions" @click.stop>
-              <button v-if="editingChannelId !== item.data.id" class="small" @click="renameChannel(item.data)">重命名</button>
+              <button v-if="editingChannelId !== item.data.id" class="small" @click="renameChannel(item.data)">{{ t('channels.rename') }}</button>
               <span class="drag-handle drag-handle-group">☰</span>
             </div>
           </div>
@@ -825,7 +826,7 @@ async function deleteChannel() {
                 {{ chat.getVoiceChannelUsers(item.data.id).length }}
               </span>
               <div v-if="editMode" class="edit-actions" @click.stop>
-                <button v-if="editingChannelId !== item.data.id" class="small" @click="renameChannel(item.data)">重命名</button>
+                <button v-if="editingChannelId !== item.data.id" class="small" @click="renameChannel(item.data)">{{ t('channels.rename') }}</button>
                 <span class="drag-handle drag-handle-group">☰</span>
               </div>
             </div>
@@ -860,11 +861,11 @@ async function deleteChannel() {
       </div>
       
       <div class="user-panel">
-        <span v-if="editMode" class="drag-hint">提示：可拖拽改变顺序</span>
+        <span v-if="editMode" class="drag-hint">{{ t('channels.dragHint') }}</span>
         <VoiceControls />
         <div class="user-info">
           <span class="username">{{ auth.user?.nickname || auth.user?.username }}</span>
-          <button class="logout-btn" @click="auth.logout({ manual: true })">退出</button>
+          <button class="logout-btn" @click="auth.logout({ manual: true })">{{ t('channels.logout') }}</button>
         </div>
       </div>
     </div>
@@ -908,32 +909,32 @@ async function deleteChannel() {
     <!-- Create Channel/Group Modal -->
     <ZmModal
       v-model:show="showCreate"
-      title="创建频道/频道组"
+      :title="t('channels.createChannelOrGroup')"
       style="width: 360px"
     >
       <ZmSpace vertical>
         <ZmSelect
           v-model:value="newCreateType"
           :options="createTypeOptions"
-          placeholder="选择类型"
+          :placeholder="t('channels.selectType')"
         />
         <ZmInput
           v-model:value="newItemName"
-          :placeholder="newCreateType === 'group' ? '频道组名称' : '频道名称'"
+          :placeholder="newCreateType === 'group' ? t('channels.groupNamePlaceholder') : t('channels.channelNamePlaceholder')"
           @keyup.enter="createItem"
         />
         <ZmSelect
           v-if="newCreateType !== 'group' && channelGroups.length > 0"
           v-model:value="newChannelGroupId"
           :options="groupSelectOptions"
-          placeholder="选择频道组（可选）"
+          :placeholder="t('channels.selectGroupOptional')"
           clearable
         />
       </ZmSpace>
       <template #footer>
         <ZmSpace justify="end">
-          <ZmButton @click="showCreate = false">取消</ZmButton>
-          <ZmButton type="primary" @click="createItem">创建</ZmButton>
+          <ZmButton @click="showCreate = false">{{ t('common.cancel') }}</ZmButton>
+          <ZmButton type="primary" @click="createItem">{{ t('channels.create') }}</ZmButton>
         </ZmSpace>
       </template>
     </ZmModal>
@@ -941,18 +942,18 @@ async function deleteChannel() {
     <!-- Rename Channel Group Modal -->
     <ZmModal
       v-model:show="showRenameGroupDialog"
-      title="重命名频道组"
+      :title="t('channels.renameGroup')"
       style="width: 360px"
     >
       <ZmInput
         v-model:value="renameGroupName"
-        placeholder="新名称"
+        :placeholder="t('channels.newName')"
         @keyup.enter="confirmRenameGroup"
       />
       <template #footer>
         <ZmSpace justify="end">
-          <ZmButton @click="showRenameGroupDialog = false">取消</ZmButton>
-          <ZmButton type="primary" @click="confirmRenameGroup">确定</ZmButton>
+          <ZmButton @click="showRenameGroupDialog = false">{{ t('common.cancel') }}</ZmButton>
+          <ZmButton type="primary" @click="confirmRenameGroup">{{ t('common.ok') }}</ZmButton>
         </ZmSpace>
       </template>
     </ZmModal>
@@ -960,18 +961,18 @@ async function deleteChannel() {
     <!-- Rename Server Modal -->
     <ZmModal
       v-model:show="showRenameServerDialog"
-      title="重命名服务器"
+      :title="t('channels.renameServer')"
       style="width: 360px"
     >
       <ZmInput
         v-model:value="renameServerName"
-        placeholder="新名称"
+        :placeholder="t('channels.newName')"
         @keyup.enter="confirmRenameServer"
       />
       <template #footer>
         <ZmSpace justify="end">
-          <ZmButton @click="showRenameServerDialog = false">取消</ZmButton>
-          <ZmButton type="primary" @click="confirmRenameServer">确定</ZmButton>
+          <ZmButton @click="showRenameServerDialog = false">{{ t('common.cancel') }}</ZmButton>
+          <ZmButton type="primary" @click="confirmRenameServer">{{ t('common.ok') }}</ZmButton>
         </ZmSpace>
       </template>
     </ZmModal>
@@ -979,18 +980,18 @@ async function deleteChannel() {
     <!-- Move Channel to Group Modal -->
     <ZmModal
       v-model:show="showMoveChannelDialog"
-      title="移动频道到频道组"
+      :title="t('channels.moveChannelToGroup')"
       style="width: 360px"
     >
       <ZmSelect
         v-model:value="moveToGroupId"
         :options="groupSelectOptions"
-        placeholder="选择目标频道组"
+        :placeholder="t('channels.selectTargetGroup')"
       />
       <template #footer>
         <ZmSpace justify="end">
-          <ZmButton @click="showMoveChannelDialog = false">取消</ZmButton>
-          <ZmButton type="primary" @click="confirmMoveChannel">确定</ZmButton>
+          <ZmButton @click="showMoveChannelDialog = false">{{ t('common.cancel') }}</ZmButton>
+          <ZmButton type="primary" @click="confirmMoveChannel">{{ t('common.ok') }}</ZmButton>
         </ZmSpace>
       </template>
     </ZmModal>

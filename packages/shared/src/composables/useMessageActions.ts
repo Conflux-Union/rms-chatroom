@@ -4,6 +4,7 @@ import type { Message } from '../types'
 import { dialog } from '../components/ui'
 import { useChatStore } from '../stores/chat'
 import { useAuthStore } from '../stores/auth'
+import { t } from '../i18n'
 
 const API_BASE = import.meta.env.VITE_API_BASE || ''
 
@@ -46,7 +47,7 @@ export function useMessageActions() {
 
     const content = editingMessage.value.content.trim()
     if (!content) {
-      dialog.warning({ title: '警告', content: '消息内容不能为空' })
+      dialog.warning({ title: t('chat.warning'), content: t('chat.emptyMessage') })
       return
     }
 
@@ -59,18 +60,18 @@ export function useMessageActions() {
       editingMessage.value = null
     } catch (error: any) {
       dialog.error({
-        title: '错误',
-        content: error.response?.data?.detail || '编辑消息失败',
+        title: t('chat.error'),
+        content: error.response?.data?.detail || t('chat.editFailed'),
       })
     }
   }
 
   function confirmDeleteMessage(message: Message) {
     dialog.warning({
-      title: '删除消息',
-      content: '确定要删除这条消息吗？',
-      positiveText: '删除',
-      negativeText: '取消',
+      title: t('chat.deleteMessageTitle'),
+      content: t('chat.deleteMessageConfirm'),
+      positiveText: t('common.delete'),
+      negativeText: t('common.cancel'),
       onPositiveClick: () => deleteMessage(message),
     })
   }
@@ -85,8 +86,8 @@ export function useMessageActions() {
       )
     } catch (error: any) {
       dialog.error({
-        title: '错误',
-        content: error.response?.data?.detail || '删除消息失败',
+        title: t('chat.error'),
+        content: error.response?.data?.detail || t('chat.deleteFailed'),
       })
     }
   }

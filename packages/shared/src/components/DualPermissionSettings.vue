@@ -8,7 +8,7 @@
       <div class="permission-controls">
         <!-- Logic operator toggle -->
         <div class="permission-group">
-          <label class="permission-label">逻辑运算符</label>
+          <label class="permission-label">{{ t('channels.logicOperator') }}</label>
           <div class="operator-selector">
             <button
               class="operator-btn"
@@ -16,7 +16,7 @@
               @click="$emit('update:logicOperator', 'AND')"
             >
               <span class="operator-text">AND</span>
-              <span class="operator-desc">需同时满足两个条件</span>
+              <span class="operator-desc">{{ t('channels.matchAll') }}</span>
             </button>
             <button
               class="operator-btn"
@@ -24,7 +24,7 @@
               @click="$emit('update:logicOperator', 'OR')"
             >
               <span class="operator-text">OR</span>
-              <span class="operator-desc">满足任一条件即可</span>
+              <span class="operator-desc">{{ t('channels.matchAny') }}</span>
             </button>
           </div>
         </div>
@@ -33,7 +33,7 @@
         <div class="dual-selectors">
           <!-- Permission Level -->
           <div class="permission-group">
-            <label class="permission-label">权限等级</label>
+            <label class="permission-label">{{ t('channels.permissionLevel') }}</label>
             <div class="level-selector">
               <button
                 v-for="level in levels"
@@ -51,7 +51,7 @@
 
           <!-- Group Level -->
           <div class="permission-group">
-            <label class="permission-label">组等级</label>
+            <label class="permission-label">{{ t('channels.groupLevel') }}</label>
             <div class="level-selector">
               <button
                 v-for="level in levels"
@@ -70,14 +70,14 @@
 
         <!-- Expression preview -->
         <div class="expression-preview">
-          <span class="expression-label">规则：</span>
+          <span class="expression-label">{{ t('channels.ruleLabel') }}</span>
           <code class="expression-code">{{ expressionText }}</code>
         </div>
 
         <!-- Current server values -->
         <div v-if="hasServerValues" class="current-selection">
           <span class="check-icon">&#10003;</span>
-          <span class="selection-text">当前值：<strong>{{ serverExpressionText }}</strong></span>
+          <span class="selection-text">{{ t('channels.currentValue') }}<strong>{{ serverExpressionText }}</strong></span>
         </div>
       </div>
     </div>
@@ -86,6 +86,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { t } from '../i18n'
 
 interface Props {
   permLevel: number
@@ -100,8 +101,8 @@ interface Props {
 }
 
 const props = withDefaults(defineProps<Props>(), {
-  title: '权限设置',
-  description: '配置双维度权限要求',
+  title: t('channels.permissionSettings'),
+  description: t('channels.dualPermissionDefaultDesc'),
   maxLevel: 4,
   serverPermLevel: undefined,
   serverGroupLevel: undefined,
@@ -123,8 +124,8 @@ const levels = computed(() => {
 })
 
 const getLevelLabel = (level: number): string => {
-  if (level === 0) return '无限制'
-  if (level === 4) return 'Lv4 (管理员)'
+  if (level === 0) return t('channels.unrestricted')
+  if (level === 4) return t('channels.lv4Admin')
   return `Lv${level}+`
 }
 
@@ -134,7 +135,7 @@ const formatExpression = (perm: number, group: number, op: string): string => {
   if (permPart && groupPart) return `${permPart} ${op} ${groupPart}`
   if (permPart) return permPart
   if (groupPart) return groupPart
-  return '无限制'
+  return t('channels.unrestricted')
 }
 
 const expressionText = computed(() =>

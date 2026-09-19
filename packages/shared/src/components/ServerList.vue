@@ -3,6 +3,7 @@ import { ref, computed } from 'vue'
 import { useChatStore } from '../stores/chat'
 import { useAuthStore } from '../stores/auth'
 import { isTauri } from '../index'
+import { t } from '../i18n'
 import { ZmModal, ZmInput, ZmButton, ZmSpace, ZmDropdown } from './ui'
 import type { ZmDropdownOption } from './ui'
 import Settings from './Setting.vue'
@@ -29,8 +30,8 @@ const serverDropdown = ref<{ show: boolean; x: number; y: number; serverId: numb
 // Dropdown options - 根据用户权限动态生成
 const serverDropdownOptions = computed((): ZmDropdownOption[] => {
   const options: ZmDropdownOption[] = [
-    { label: '权限设置', key: 'permissions' },
-    { label: '删除服务器', key: 'delete', danger: true }
+    { label: t('app.serverMenuPermissions'), key: 'permissions' },
+    { label: t('app.serverMenuDelete'), key: 'delete', danger: true }
   ]
   return options
 })
@@ -122,7 +123,7 @@ function onServerPermissionSaved(val: { minLevel: number; permMinLevel: number; 
         {{ server.name.charAt(0).toUpperCase() }}
       </div>
 
-      <div v-if="auth.isAdmin" class="server-icon add-server " @click="showCreate = true" title="创建服务器">
+      <div v-if="auth.isAdmin" class="server-icon add-server " @click="showCreate = true" :title="t('app.createServer')">
         +
       </div>
     </div>
@@ -130,7 +131,7 @@ function onServerPermissionSaved(val: { minLevel: number; permMinLevel: number; 
     <div class="bottom-area">
       <div
         class="server-icon github-btn"
-        title="GitHub 仓库"
+        :title="t('app.githubRepo')"
         @click.stop="openGitHub"
       >
         <!-- Official GitHub mark (Simple Icons), same path as the Android drawable -->
@@ -140,7 +141,7 @@ function onServerPermissionSaved(val: { minLevel: number; permMinLevel: number; 
       </div>
       <div
         class="server-icon  settings-btn"
-        title="设置"
+        :title="t('app.settings')"
         @click.stop="showSettings = true"
       >
         ⚙
@@ -163,19 +164,19 @@ function onServerPermissionSaved(val: { minLevel: number; permMinLevel: number; 
     <ZmModal
       v-model:show="showCreate"
       preset="card"
-      title="创建服务器"
+      :title="t('app.createServer')"
       style="width: 360px"
       :segmented="{ content: true, footer: 'soft' }"
     >
       <ZmInput
         v-model:value="newServerName"
-        placeholder="服务器名称"
+        :placeholder="t('app.serverNamePlaceholder')"
         @keyup.enter="createServer"
       />
       <template #footer>
         <ZmSpace justify="end">
-          <ZmButton @click="showCreate = false">取消</ZmButton>
-          <ZmButton type="primary" @click="createServer">创建</ZmButton>
+          <ZmButton @click="showCreate = false">{{ t('common.cancel') }}</ZmButton>
+          <ZmButton type="primary" @click="createServer">{{ t('app.create') }}</ZmButton>
         </ZmSpace>
       </template>
     </ZmModal>

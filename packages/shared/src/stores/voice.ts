@@ -21,6 +21,7 @@ import { authFetch } from '../utils/authFetch'
 import { reportTelemetryEvent } from '../utils/telemetry'
 import { reportAvatarMissing } from '../utils/avatarTelemetry'
 import { announceParticipantJoined, announceParticipantLeft } from '../composables/voiceAnnounce'
+import { t } from '../i18n'
 
 const API_BASE = import.meta.env.VITE_API_BASE || ''
 
@@ -1296,7 +1297,7 @@ export const useVoiceStore = defineStore('voice', () => {
         // Start screen sharing: first acquire lock, then start
         const lockResult = await lockScreenShare()
         if (!lockResult.success) {
-          error.value = `${lockResult.sharerName || '其他用户'} 正在共享屏幕`
+          error.value = t('voice.screenSharingBy', { name: lockResult.sharerName || t('common.someone') })
           return false
         }
         // Browser/Tauri: use native getDisplayMedia via LiveKit.

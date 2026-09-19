@@ -7,7 +7,7 @@
       </div>
       <div class="permission-controls">
         <div class="permission-group">
-          <label class="permission-label">选择权限等级</label>
+          <label class="permission-label">{{ t('channels.selectPermissionLevel') }}</label>
           <div class="level-selector">
             <button
               v-for="level in serverLevels"
@@ -15,7 +15,7 @@
               class="level-btn"
               :class="{ active: modelValue === level }"
               @click="updateLevel(level)"
-              :title="`选择权限等级 ${level}: ${getLevelLabel(level)}`"
+              :title="t('channels.selectLevelTitle', { level, label: getLevelLabel(level) })"
             >
               <span class="level-number">{{ level }}</span>
               <span class="level-name">{{ getLevelLabel(level) }}</span>
@@ -24,7 +24,7 @@
           </div>
           <div v-if="serverValue !== undefined" class="current-selection">
             <span class="check-icon">✓</span>
-            <span class="selection-text">当前设置: <strong>{{ getLevelLabel(serverValue) }}</strong></span>
+            <span class="selection-text">{{ t('channels.currentSetting') }}<strong>{{ getLevelLabel(serverValue) }}</strong></span>
           </div>
         </div>
       </div>
@@ -34,6 +34,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { t } from '../i18n'
 interface Props {
   modelValue: number
   title?: string
@@ -43,8 +44,8 @@ interface Props {
 }
 
 const props = withDefaults(defineProps<Props>(), {
-  title: '权限等级设置',
-  description: '用户权限等级必须达到此等级才能访问',
+  title: t('channels.levelSettingsTitle'),
+  description: t('channels.levelSettingsDesc'),
   maxLevel: 4,
   serverValue: undefined
 })
@@ -64,20 +65,20 @@ const serverLevels = computed(() => {
 
 const getLevelLabel = (level: number): string => {
   const labels: { [key: number]: string } = {
-    1: '所有人',
-    2: '权限2+',
-    3: '权限3+',
-    4: '权限4(管理员)'
+    1: t('channels.everyone'),
+    2: t('channels.perm2Plus'),
+    3: t('channels.perm3Plus'),
+    4: t('channels.perm4Admin')
   }
-  return labels[level] || '未知'
+  return labels[level] || t('channels.unknown')
 }
 
 const getLevelDescription = (level: number): string => {
   const descriptions: { [key: number]: string } = {
-    1: '无限制',
-    2: '需要权限',
-    3: '需要高权限',
-    4: '仅管理员'
+    1: t('channels.unrestricted'),
+    2: t('channels.requiresPermission'),
+    3: t('channels.requiresHighPermission'),
+    4: t('channels.adminOnly')
   }
   return descriptions[level] || ''
 }

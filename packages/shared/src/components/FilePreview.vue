@@ -3,6 +3,7 @@ import { computed, ref, onMounted, onUnmounted, watch } from 'vue'
 import type { Attachment } from '../types'
 import { useAuthStore } from '../stores/auth'
 import { authFetch } from '../utils/authFetch'
+import { t } from '../i18n'
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'https://chatroom.rms.net.cn'
 
@@ -99,17 +100,16 @@ const openPdf = () => {
   <div class="file-preview">
     <!-- Image preview -->
     <div v-if="isImage" class="image-preview">
-      <div v-if="isLoading" class="loading-placeholder">加载中...</div>
+      <div v-if="isLoading" class="loading-placeholder">{{ t('common.loading') }}</div>
       <img v-else-if="blobUrl" :src="blobUrl" :alt="attachment.filename" @click="showLightbox = true" />
     </div>
 
     <!-- Video preview -->
     <div v-else-if="isVideo" class="video-preview">
-      <div v-if="isLoading" class="loading-placeholder">加载中...</div>
+      <div v-if="isLoading" class="loading-placeholder">{{ t('common.loading') }}</div>
       <video v-else-if="blobUrl" controls preload="metadata">
         <source :src="blobUrl" :type="attachment.content_type" />
-        Your browser does not support video playback.
-        你的浏览器不支持视频播放。
+        {{ t('chat.videoUnsupported') }}
       </video>
     </div>
 
@@ -119,11 +119,10 @@ const openPdf = () => {
         <span class="file-icon">{{ fileIcon }}</span>
         <span class="file-name">{{ attachment.filename }}</span>
       </div>
-      <div v-if="isLoading" class="loading-placeholder">加载中...</div>
+      <div v-if="isLoading" class="loading-placeholder">{{ t('common.loading') }}</div>
       <audio v-else-if="blobUrl" controls preload="metadata">
         <source :src="blobUrl" :type="attachment.content_type" />
-        Your browser does not support audio playback.
-        你的浏览器不支持音频播放。
+        {{ t('chat.audioUnsupported') }}
       </audio>
     </div>
 
@@ -134,7 +133,7 @@ const openPdf = () => {
         <span class="file-name">{{ attachment.filename }}</span>
         <span class="file-size">{{ formatSize(attachment.size) }}</span>
       </div>
-      <span class="open-hint">点击在新窗口打开</span>
+      <span class="open-hint">{{ t('chat.openInNewWindow') }}</span>
     </div>
 
     <!-- Other files -->
@@ -144,7 +143,7 @@ const openPdf = () => {
         <span class="file-name">{{ attachment.filename }}</span>
         <span class="file-size">{{ formatSize(attachment.size) }}</span>
       </div>
-      <span class="download-hint">点击下载</span>
+      <span class="download-hint">{{ t('chat.clickToDownload') }}</span>
     </div>
 
     <!-- Image lightbox -->
@@ -152,7 +151,7 @@ const openPdf = () => {
       <div v-if="showLightbox && isImage && blobUrl" class="lightbox" @click="showLightbox = false">
         <img :src="blobUrl" :alt="attachment.filename" />
         <button class="close-btn" @click.stop="showLightbox = false">×</button>
-        <button class="download-btn" @click.stop="downloadFile">下载</button>
+        <button class="download-btn" @click.stop="downloadFile">{{ t('chat.download') }}</button>
       </div>
     </Teleport>
   </div>

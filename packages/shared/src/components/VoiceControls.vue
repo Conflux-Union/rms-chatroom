@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import { useVoiceStore } from '../stores/voice'
 import { useAuthStore } from '../stores/auth'
+import { t } from '../i18n'
 import { Volume2, VolumeX, Mic, MicOff, Phone, Crown, Monitor, MonitorOff } from 'lucide-vue-next'
 
 const voice = useVoiceStore()
@@ -39,9 +40,9 @@ const screenShareButtonDisabled = computed(() =>
 
 // Screen share button tooltip
 const screenShareTooltip = computed(() => {
-  if (voice.isScreenSharing) return '停止共享屏幕'
-  if (screenShareButtonDisabled.value) return `${voice.screenSharerName || '其他用户'} 正在共享屏幕`
-  return '共享屏幕'
+  if (voice.isScreenSharing) return t('voice.stopScreenShare')
+  if (screenShareButtonDisabled.value) return t('voice.screenSharingBy', { name: voice.screenSharerName || t('common.someone') })
+  return t('voice.shareScreen')
 })
 </script>
 
@@ -51,7 +52,7 @@ const screenShareTooltip = computed(() => {
       <div class="status-info">
         <Volume2 class="status-icon" :size="16" />
         <div class="status-text">
-          <span class="status-label">通话中</span>
+          <span class="status-label">{{ t('voice.inCall') }}</span>
           <span class="channel-name">{{ voice.currentVoiceChannel?.name }}</span>
         </div>
       </div>
@@ -61,7 +62,7 @@ const screenShareTooltip = computed(() => {
         class="control-btn"
         :class="{ active: voice.isMuted }"
         @click="voice.toggleMute()"
-        :title="voice.isMuted ? '取消静音' : '静音'"
+        :title="voice.isMuted ? t('voice.unmute') : t('voice.mute')"
       >
         <MicOff v-if="voice.isMuted" :size="16" />
         <Mic v-else :size="16" />
@@ -70,7 +71,7 @@ const screenShareTooltip = computed(() => {
         class="control-btn"
         :class="{ active: voice.isDeafened }"
         @click="voice.toggleDeafen()"
-        :title="voice.isDeafened ? '打开扬声器' : '关闭扬声器'"
+        :title="voice.isDeafened ? t('voice.undeafen') : t('voice.deafen')"
       >
         <VolumeX v-if="voice.isDeafened" :size="16" />
         <Volume2 v-else :size="16" />
@@ -84,7 +85,7 @@ const screenShareTooltip = computed(() => {
         }"
         :disabled="hostButtonDisabled"
         @click="voice.toggleHostMode()"
-        :title="hostButtonDisabled ? '其他用户正在主持' : (voice.hostModeEnabled ? '关闭主持人模式' : '开启主持人模式')"
+        :title="hostButtonDisabled ? t('voice.someoneElseHosting') : (voice.hostModeEnabled ? t('voice.disableHostMode') : t('voice.enableHostMode'))"
       >
         <Crown :size="16" />
       </button>
@@ -104,14 +105,14 @@ const screenShareTooltip = computed(() => {
       <button
         class="control-btn disconnect"
         @click="voice.disconnect()"
-        title="离开语音"
+        :title="t('voice.leaveVoice')"
       >
         <Phone :size="16" />
       </button>
     </div>
     <div v-if="voice.hostModeEnabled" class="host-mode-banner">
       <Crown :size="12" />
-      <span>{{ voice.hostModeHostName }} 正在主持</span>
+      <span>{{ t('voice.hostingBy', { name: voice.hostModeHostName ?? '' }) }}</span>
     </div>
   </div>
 </template>

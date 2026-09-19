@@ -3,6 +3,7 @@ import { onMounted, onBeforeUnmount, ref } from 'vue'
 import { useAuthStore } from '../stores/auth'
 import { useRouter } from 'vue-router'
 import { isTauri } from '../index'
+import { t } from '../i18n'
 
 const auth = useAuthStore()
 const router = useRouter()
@@ -78,14 +79,14 @@ onMounted(async () => {
     <zhimo-card class="login-card">
       <div class="login-content">
         <h1 class="title">RMS ChatRoom</h1>
-        <p class="subtitle">{{ isTryingSilentLogin ? '正在尝试无感登录...' : '欢迎！请使用 RMS 账号登录' }}</p>
+        <p class="subtitle">{{ isTryingSilentLogin ? t('app.tryingSilentLogin') : t('app.welcomeLogin') }}</p>
         <zhimo-button
           size="lg"
           block
           :loading="isTryingSilentLogin || undefined"
           @click="handleLogin"
         >
-          {{ isTryingSilentLogin ? '请稍候...' : 'RMS 账号登录' }}
+          {{ isTryingSilentLogin ? t('app.pleaseWait') : t('app.rmsAccountLogin') }}
         </zhimo-button>
       </div>
     </zhimo-card>

@@ -1,6 +1,8 @@
 /* Imperative confirm/alert dialogs on top of zhimo-modal.
    Drop-in for the naive-ui useDialog() subset this app uses. */
 
+import { t } from '../../i18n'
+
 export interface DialogOptions {
   title?: string
   content?: string
@@ -14,7 +16,7 @@ type ZhimoModalElement = HTMLElement & { show: () => void; close: () => void }
 
 function openDialog(opts: DialogOptions) {
   const modal = document.createElement('zhimo-modal') as ZhimoModalElement
-  modal.setAttribute('heading', opts.title ?? '提示')
+  modal.setAttribute('heading', opts.title ?? t('common.notice'))
   modal.append(document.createTextNode(opts.content ?? ''))
 
   const addButton = (text: string, variant: string | null, onClick?: () => void) => {
@@ -31,7 +33,7 @@ function openDialog(opts: DialogOptions) {
   }
 
   if (opts.negativeText) addButton(opts.negativeText, 'secondary', opts.onNegativeClick)
-  addButton(opts.positiveText ?? '确定', null, opts.onPositiveClick)
+  addButton(opts.positiveText ?? t('common.ok'), null, opts.onPositiveClick)
 
   modal.addEventListener('close', () => modal.remove())
   document.body.append(modal)

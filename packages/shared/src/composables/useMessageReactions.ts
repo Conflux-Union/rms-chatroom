@@ -4,6 +4,7 @@ import axios from 'axios'
 import type { Message, ReactionGroup } from '../types'
 import { useChatStore } from '../stores/chat'
 import { useAuthStore } from '../stores/auth'
+import { t } from '../i18n'
 
 const API_BASE = import.meta.env.VITE_API_BASE || ''
 
@@ -142,7 +143,7 @@ export function useMessageReactions(options: {
   function getReactionTooltip(reaction: ReactionGroup): string {
     const names = reaction.users.map(u => u.username).slice(0, 5)
     if (reaction.users.length > 5) {
-      names.push(`还有 ${reaction.users.length - 5} 人`)
+      names.push(t('chat.moreUsers', { n: reaction.users.length - 5 }))
     }
     return names.join(', ')
   }

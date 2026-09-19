@@ -6,27 +6,27 @@
     <div v-if="visible" class="mask">
     <div class="box">
       <div class="title">
-        {{ forced ? "需要更新才能继续使用" : "发现新版本" }}
+        {{ forced ? t('app.updateRequired') : t('app.updateAvailable') }}
       </div>
 
       <div class="info">
-        <div>状态：{{ stateText }}</div>
-        <div v-if="versionText">版本：{{ versionText }}</div>
+        <div>{{ t('app.statusLabel', { value: stateText }) }}</div>
+        <div v-if="versionText">{{ t('app.versionLabel', { value: versionText }) }}</div>
       </div>
 
       <div v-if="state === 'downloading'" class="progress">
         <div class="progress-row">
-          <span>下载中{{ total > 0 ? `：${percent.toFixed(1)}%` : '' }}</span>
+          <span>{{ total > 0 ? t('app.downloadingPercent', { percent: percent.toFixed(1) }) : t('app.downloading') }}</span>
           <span class="speed">{{ formatBytes(speed) }}/s</span>
         </div>
         <div class="bar" :class="{ indeterminate: total <= 0 }">
           <div class="bar-fill" :style="total > 0 ? { width: `${percent}%` } : undefined"></div>
         </div>
-        <div class="sub">{{ formatBytes(transferred) }} / {{ total > 0 ? formatBytes(total) : '未知大小' }}</div>
+        <div class="sub">{{ formatBytes(transferred) }} / {{ total > 0 ? formatBytes(total) : t('app.unknownSize') }}</div>
       </div>
 
       <div v-if="state === 'error'" class="error">
-        更新出错：{{ message }}
+        {{ t('app.updateError', { message }) }}
       </div>
 
       <div class="actions">
@@ -34,7 +34,7 @@
           <button class="btn primary" :disabled="btnDisabled" @click="forceUpdateAction">
             {{ forceBtnText }}
           </button>
-          <button class="btn danger" @click="quit">退出</button>
+          <button class="btn danger" @click="quit">{{ t('app.quit') }}</button>
         </template>
 
         <template v-else>
@@ -44,7 +44,7 @@
             :disabled="btnDisabled"
             @click="download"
           >
-            下载更新
+            {{ t('app.downloadUpdate') }}
           </button>
 
           <button
@@ -53,11 +53,11 @@
             :disabled="btnDisabled"
             @click="install"
           >
-            安装并重启
+            {{ t('app.installAndRestart') }}
           </button>
 
-          <button class="btn" @click="later">稍后</button>
-          <button class="btn" @click="visible = false">关闭</button>
+          <button class="btn" @click="later">{{ t('app.later') }}</button>
+          <button class="btn" @click="visible = false">{{ t('common.close') }}</button>
         </template>
       </div>
     </div>
@@ -68,6 +68,7 @@
 <script setup lang="ts">
 import { onMounted, ref, computed } from 'vue'
 import { isTauri } from '../index'
+import { t } from '../i18n'
 
 const visible = ref(false)
 const state = ref<'idle' | 'checking' | 'available' | 'none' | 'downloading' | 'downloaded' | 'error'>('idle')
@@ -83,13 +84,13 @@ let updateObj: any = null
 
 const stateText = computed(() => {
   const map: Record<string, string> = {
-    idle: '空闲',
-    checking: '检查更新中',
-    available: '有新版本（待下载）',
-    none: '已是最新版本',
-    downloading: '正在下载',
-    downloaded: '下载完成',
-    error: '错误',
+    idle: t('app.stateIdle'),
+    checking: t('app.stateChecking'),
+    available: t('app.stateAvailable'),
+    none: t('app.stateUpToDate'),
+    downloading: t('app.stateDownloading'),
+    downloaded: t('app.stateDownloaded'),
+    error: t('app.stateError'),
   }
   return map[state.value] || state.value
 })
@@ -97,10 +98,10 @@ const stateText = computed(() => {
 const btnDisabled = computed(() => state.value === 'checking' || state.value === 'downloading')
 
 const forceBtnText = computed(() => {
-  if (state.value === 'downloaded') return '安装并重启'
-  if (state.value === 'downloading') return '下载中…'
-  if (state.value === 'available') return '更新（开始下载）'
-  return '更新'
+  if (state.value === 'downloaded') return t('app.installAndRestart')
+  if (state.value === 'downloading') return t('app.downloadingEllipsis')
+  if (state.value === 'available') return t('app.updateStartDownload')
+  return t('app.update')
 })
 
 function formatBytes(n: number) {

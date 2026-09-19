@@ -6,6 +6,8 @@
  * in the user's local timezone (Beijing time for this application).
  */
 
+import { currentLocaleTag, t } from '../i18n'
+
 /**
  * Parse a UTC datetime string from the backend.
  * Handles both ISO 8601 with Z suffix and without.
@@ -37,13 +39,23 @@ export function formatDateTime(dateStr: string): string {
   const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
   const daysApart = Math.round((startOfDay(now) - startOfDay(date)) / 86400000)
 
-  if (daysApart === 0) return time
-  if (daysApart === 1) return `昨天 ${time}`
-  if (daysApart === 2) return `前天 ${time}`
-  if (date.getFullYear() === now.getFullYear()) {
-    return `${date.getMonth() + 1}月${date.getDate()}日 ${time}`
+  // en-US parts for the English date shapes; zh ignores them.
+  const enFormat = new Intl.DateTimeFormat('en-US', { month: 'short', weekday: 'short' })
+  const parts = {
+    m: String(date.getMonth() + 1),
+    d: String(date.getDate()),
+    y: String(date.getFullYear()),
+    month: enFormat.formatToParts(date).find((p) => p.type === 'month')?.value ?? '',
+    weekday: enFormat.formatToParts(date).find((p) => p.type === 'weekday')?.value ?? '',
   }
-  return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日 ${time}`
+
+  if (daysApart === 0) return time
+  if (daysApart === 1) return `${t('time.yesterday')} ${time}`
+  if (daysApart === 2) return `${t('time.dayBeforeYesterday', parts)} ${time}`
+  if (date.getFullYear() === now.getFullYear()) {
+    return `${t('time.monthDay', parts)} ${time}`
+  }
+  return `${t('time.yearMonthDay', parts)} ${time}`
 }
 
 /**
@@ -55,7 +67,7 @@ export function formatDateTime(dateStr: string): string {
  */
 export function formatTime(dateStr: string): string {
   const date = parseUTCDateTime(dateStr)
-  return date.toLocaleTimeString('zh-CN', {
+  return date.toLocaleTimeString(currentLocaleTag(), {
     hour12: false,
     hour: '2-digit',
     minute: '2-digit',
@@ -71,7 +83,7 @@ export function formatTime(dateStr: string): string {
  * @returns Formatted time string
  */
 export function formatTimeFromDate(date: Date): string {
-  return date.toLocaleTimeString('zh-CN', {
+  return date.toLocaleTimeString(currentLocaleTag(), {
     hour12: false,
     hour: '2-digit',
     minute: '2-digit',

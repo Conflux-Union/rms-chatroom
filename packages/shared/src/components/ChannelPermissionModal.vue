@@ -5,7 +5,7 @@
   <div v-if="isOpen" class="modal-overlay" @click.self="handleClose">
     <div class="modal-content">
       <div class="modal-header">
-        <h2>{{ channelName }} - 频道权限设置</h2>
+        <h2>{{ t('channels.channelPermissionTitle', { name: channelName }) }}</h2>
         <button class="close-btn" @click="handleClose">&times;</button>
       </div>
 
@@ -14,8 +14,8 @@
           v-model:permLevel="channelPermMinLevel"
           v-model:groupLevel="channelMinLevel"
           v-model:logicOperator="channelLogicOperator"
-          title="可见性权限"
-          description="用户需满足此权限要求才能看到此频道"
+          :title="t('channels.visibilityPermission')"
+          :description="t('channels.visibilityDescChannel')"
           :maxLevel="userMaxLevel"
           :serverPermLevel="initialPermissions?.permMinLevel"
           :serverGroupLevel="initialPermissions?.minLevel"
@@ -25,8 +25,8 @@
           v-model:permLevel="channelSpeakPermMinLevel"
           v-model:groupLevel="channelSpeakMinLevel"
           v-model:logicOperator="channelSpeakLogicOperator"
-          title="发言权限"
-          description="用户需满足此权限要求才能在此频道发言"
+          :title="t('channels.speakPermission')"
+          :description="t('channels.speakDescChannel')"
           :maxLevel="userMaxLevel"
           :serverPermLevel="initialPermissions?.speakPermMinLevel"
           :serverGroupLevel="initialPermissions?.speakMinLevel"
@@ -35,9 +35,9 @@
       </div>
 
       <div class="modal-footer">
-        <button class="btn btn-secondary" @click="handleClose">取消</button>
+        <button class="btn btn-secondary" @click="handleClose">{{ t('common.cancel') }}</button>
         <button class="btn btn-primary" @click="handleSave" :disabled="isSaving">
-          {{ isSaving ? '保存中...' : '保存' }}
+          {{ isSaving ? t('channels.saving') : t('common.save') }}
         </button>
       </div>
     </div>
@@ -50,6 +50,7 @@ import { ref, watch, computed } from 'vue'
 import { useAuthStore } from '../stores/auth'
 import DualPermissionSettings from './DualPermissionSettings.vue'
 import axios from 'axios'
+import { t } from '../i18n'
 
 interface ChannelPermissions {
   minLevel: number
@@ -141,7 +142,7 @@ const handleSave = async () => {
     emit('close')
   } catch (error) {
     console.error('Failed to save channel permissions:', error)
-    alert('保存权限设置失败')
+    alert(t('channels.saveFailedAlert'))
   } finally {
     isSaving.value = false
   }
