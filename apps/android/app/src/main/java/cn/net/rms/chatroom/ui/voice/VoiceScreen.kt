@@ -1,5 +1,6 @@
 package cn.net.rms.chatroom.ui.voice
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -7,6 +8,8 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -87,6 +90,7 @@ fun VoiceScreen(
     var showPlatformSelectDialog by remember { mutableStateOf(false) }
     var selectedLoginPlatform by remember { mutableStateOf("qq") }
     var showAudioDeviceSelector by remember { mutableStateOf(false) }
+    var moreControlsExpanded by remember { mutableStateOf(false) }
     var selectedParticipant by remember { mutableStateOf<ParticipantInfo?>(null) }
     var showInviteDialog by remember { mutableStateOf(false) }
     var participantToMute by remember { mutableStateOf<ParticipantInfo?>(null) }
@@ -316,101 +320,100 @@ fun VoiceScreen(
         )
     }
 
+    // MainScreen's Scaffold already consumes the system-bar insets; this
+    // Scaffold is an embedded pane and must not count them again, or the
+    // docked controls end up floating above an empty strip.
     Scaffold(
-        floatingActionButton = {
-            // Music FAB - only show when connected to voice
-            if (state.isConnected) {
-                FloatingActionButton(
-                    onClick = { showMusicPanel = true },
-                    containerColor = Zhimo.seal
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.MusicNote,
-                        contentDescription = "音乐",
-                        tint = Zhimo.paper
-                    )
-                }
-            }
-        },
-        containerColor = Color.Transparent
+        containerColor = Color.Transparent,
+        contentWindowInsets = WindowInsets(0.dp)
     ) { paddingValues ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .padding(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Connection status banner
-            ConnectionStatusBanner(
-                connectionState = state.connectionState,
-                error = state.error,
-                onDismissError = { viewModel.clearError() }
-            )
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                // Connection status banner
+                ConnectionStatusBanner(
+                    connectionState = state.connectionState,
+                    error = state.error,
+                    onDismissError = { viewModel.clearError() }
+                )
 
-            // Host mode banner
-            if (state.hostModeEnabled && state.isConnected) {
-                HostModeBanner(hostName = state.hostModeHostName ?: "Unknown")
-            }
-
-            // Remote screen share video
-            val activeScreenShare = state.remoteScreenShares.values.firstOrNull()
-            if (activeScreenShare != null && state.isConnected) {
-                key(activeScreenShare.participantId) {
-                    RemoteScreenShareView(
-                        screenShare = activeScreenShare,
-                        ignored = state.screenShareIgnored,
-                        onToggleWatch = { viewModel.toggleScreenShareWatch() },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .aspectRatio(16f / 9f)
-                            .padding(bottom = 8.dp)
-                    )
+                // Host mode banner
+                if (state.hostModeEnabled && state.isConnected) {
+                    HostModeBanner(hostName = state.hostModeHostName ?: "Unknown")
                 }
-            }
 
-            // Voice users grid
-            if (state.participants.isNotEmpty()) {
-                LazyVerticalGrid(
-                    columns = GridCells.Adaptive(minSize = 100.dp),
-                    modifier = Modifier.weight(1f),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
-                    contentPadding = PaddingValues(16.dp)
-                ) {
-                    items(state.participants, key = { it.identity }) { participant ->
-                        VoiceUserItem(
-                            participant = participant,
-                            onClick = {
-                                if (!participant.isLocal) {
-                                    selectedParticipant = participant
+                // Remote screen share video
+                val activeScreenShare = state.remoteScreenShares.values.firstOrNull()
+                if (activeScreenShare != null && state.isConnected) {
+                    key(activeScreenShare.participantId) {
+                        RemoteScreenShareView(
+                            screenShare = activeScreenShare,
+                            ignored = state.screenShareIgnored,
+                            onToggleWatch = { viewModel.toggleScreenShareWatch() },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .aspectRatio(16f / 9f)
+                                .padding(bottom = 8.dp)
+                        )
+                    }
+                }
+
+                // Voice users grid
+                if (state.participants.isNotEmpty()) {
+                    LazyVerticalGrid(
+                        columns = GridCells.Adaptive(minSize = 100.dp),
+                        modifier = Modifier.weight(1f),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                        contentPadding = PaddingValues(16.dp)
+                    ) {
+                        items(state.participants, key = { it.identity }) { participant ->
+                            VoiceUserItem(
+                                participant = participant,
+                                onClick = {
+                                    if (!participant.isLocal) {
+                                        selectedParticipant = participant
+                                    }
                                 }
-                            }
-                        )
+                            )
+                        }
                     }
-                }
-            } else {
-                Box(
-                    modifier = Modifier.weight(1f),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.VolumeUp,
-                            contentDescription = null,
-                            modifier = Modifier.size(64.dp),
-                            tint = Zhimo.inkFaint
-                        )
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Text(
-                            text = if (state.isConnected) "等待其他人加入..." else "点击下方按钮加入语音",
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = Zhimo.inkFaint,
-                            textAlign = TextAlign.Center
-                        )
+                } else {
+                    Box(
+                        modifier = Modifier.weight(1f),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.VolumeUp,
+                                contentDescription = null,
+                                modifier = Modifier.size(64.dp),
+                                tint = Zhimo.inkFaint
+                            )
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text(
+                                text = if (state.isConnected) "等待其他人加入..." else "点击下方按钮加入语音",
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = Zhimo.inkFaint,
+                                textAlign = TextAlign.Center
+                            )
+                        }
                     }
                 }
             }
+
+            // Docked controls: hairline marks the top edge of the bar against
+            // the page background
+            HorizontalDivider(thickness = 1.dp, color = Zhimo.border)
 
             // Voice controls
             VoiceControls(
@@ -426,6 +429,7 @@ fun VoiceScreen(
                 isScreenSharing = state.isScreenSharing,
                 screenShareButtonDisabled = state.screenShareButtonDisabled,
                 screenSharerName = state.screenSharerName,
+                moreExpanded = moreControlsExpanded,
                 onJoin = onJoinWithPermission,
                 onLeave = { viewModel.leaveVoice() },
                 onToggleMute = { viewModel.toggleMute() },
@@ -449,7 +453,9 @@ fun VoiceScreen(
                         // Request MediaProjection permission
                         screenShareLauncher.launch(mediaProjectionManager.createScreenCaptureIntent())
                     }
-                }
+                },
+                onShowMusicPanel = { showMusicPanel = true },
+                onToggleMore = { moreControlsExpanded = !moreControlsExpanded }
             )
         }
     }
@@ -1031,6 +1037,7 @@ private fun ParticipantSettingsSheet(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun VoiceControls(
     isConnected: Boolean,
@@ -1045,6 +1052,7 @@ private fun VoiceControls(
     isScreenSharing: Boolean,
     screenShareButtonDisabled: Boolean,
     screenSharerName: String?,
+    moreExpanded: Boolean,
     onJoin: () -> Unit,
     onLeave: () -> Unit,
     onToggleMute: () -> Unit,
@@ -1052,98 +1060,142 @@ private fun VoiceControls(
     onOpenDeviceSelector: () -> Unit,
     onToggleHostMode: () -> Unit,
     onCreateInvite: () -> Unit,
-    onToggleScreenShare: () -> Unit
+    onToggleScreenShare: () -> Unit,
+    onShowMusicPanel: () -> Unit,
+    onToggleMore: () -> Unit
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        color = Zhimo.paper,
-        shape = RoundedCornerShape(8.dp)
+        color = Zhimo.paperSubtle
     ) {
         if (isConnected) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState())
-                    .padding(16.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Mute button
-                VoiceControlButton(
-                    icon = if (isMuted) Icons.Default.MicOff else Icons.Default.Mic,
-                    label = if (isMuted) stringResource(R.string.unmute) else stringResource(R.string.mute),
-                    isActive = isMuted,
-                    activeColor = Zhimo.danger,
-                    onClick = onToggleMute
-                )
+            Column {
+                // Secondary controls, revealed by the "more" button
+                AnimatedVisibility(
+                    visible = moreExpanded,
+                    enter = expandVertically(),
+                    exit = shrinkVertically()
+                ) {
+                    Column {
+                        FlowRow(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(start = 16.dp, end = 16.dp, top = 16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
+                            maxItemsInEachRow = 4
+                        ) {
+                            // Music button
+                            VoiceControlButton(
+                                icon = Icons.Default.MusicNote,
+                                label = "音乐",
+                                isActive = true,
+                                activeColor = Zhimo.seal,
+                                onClick = onShowMusicPanel
+                            )
 
-                // Deafen button
-                VoiceControlButton(
-                    icon = if (isDeafened) Icons.AutoMirrored.Filled.VolumeOff else Icons.AutoMirrored.Filled.VolumeUp,
-                    label = if (isDeafened) stringResource(R.string.undeafen) else stringResource(R.string.deafen),
-                    isActive = isDeafened,
-                    activeColor = Zhimo.danger,
-                    onClick = onToggleDeafen
-                )
+                            // Audio device selector button
+                            VoiceControlButton(
+                                icon = when (selectedDevice?.type) {
+                                    AudioDeviceType.SPEAKERPHONE -> Icons.Default.Speaker
+                                    AudioDeviceType.EARPIECE -> Icons.Default.PhoneAndroid
+                                    AudioDeviceType.WIRED_HEADSET -> Icons.Default.Headphones
+                                    AudioDeviceType.BLUETOOTH -> Icons.Default.Bluetooth
+                                    else -> Icons.Default.Speaker
+                                },
+                                label = selectedDevice?.name?.take(6) ?: "音频",
+                                isActive = true,
+                                activeColor = Zhimo.success,
+                                onClick = onOpenDeviceSelector
+                            )
 
-                // Audio device selector button
-                VoiceControlButton(
-                    icon = when (selectedDevice?.type) {
-                        AudioDeviceType.SPEAKERPHONE -> Icons.Default.Speaker
-                        AudioDeviceType.EARPIECE -> Icons.Default.PhoneAndroid
-                        AudioDeviceType.WIRED_HEADSET -> Icons.Default.Headphones
-                        AudioDeviceType.BLUETOOTH -> Icons.Default.Bluetooth
-                        else -> Icons.Default.Speaker
-                    },
-                    label = selectedDevice?.name?.take(6) ?: "音频",
-                    isActive = true,
-                    activeColor = Zhimo.success,
-                    onClick = onOpenDeviceSelector
-                )
+                            // Screen share button
+                            VoiceControlButton(
+                                icon = if (isScreenSharing) Icons.Default.DesktopAccessDisabled else Icons.Default.DesktopWindows,
+                                label = if (isScreenSharing) "停止共享"
+                                        else if (screenShareButtonDisabled) "${screenSharerName ?: "其他用户"}共享中"
+                                        else "共享屏幕",
+                                isActive = isScreenSharing,
+                                activeColor = Zhimo.success,
+                                enabled = !screenShareButtonDisabled,
+                                onClick = onToggleScreenShare
+                            )
 
-                // Admin: Host mode button
-                if (isAdmin) {
-                    VoiceControlButton(
-                        icon = Icons.Default.Star,
-                        label = if (hostModeEnabled && isCurrentUserHost) "停止主持" 
-                                else if (hostButtonDisabled) "主持中" 
-                                else "主持模式",
-                        isActive = hostModeEnabled && isCurrentUserHost,
-                        activeColor = Zhimo.warning,
-                        enabled = !hostButtonDisabled,
-                        onClick = onToggleHostMode
-                    )
+                            if (isAdmin) {
+                                // Admin: Host mode button
+                                VoiceControlButton(
+                                    icon = Icons.Default.Star,
+                                    label = if (hostModeEnabled && isCurrentUserHost) "停止主持"
+                                            else if (hostButtonDisabled) "主持中"
+                                            else "主持模式",
+                                    isActive = hostModeEnabled && isCurrentUserHost,
+                                    activeColor = Zhimo.warning,
+                                    enabled = !hostButtonDisabled,
+                                    onClick = onToggleHostMode
+                                )
 
-                    // Admin: Create invite button
-                    VoiceControlButton(
-                        icon = Icons.Default.Link,
-                        label = "邀请访客",
-                        isActive = true,
-                        activeColor = Zhimo.success,
-                        onClick = onCreateInvite
-                    )
+                                // Admin: Create invite button
+                                VoiceControlButton(
+                                    icon = Icons.Default.Link,
+                                    label = "邀请访客",
+                                    isActive = true,
+                                    activeColor = Zhimo.success,
+                                    onClick = onCreateInvite
+                                )
+                            }
+                        }
+
+                        HorizontalDivider(
+                            modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp),
+                            thickness = 1.dp,
+                            color = Zhimo.paperHover
+                        )
+                    }
                 }
 
-                // Screen share button
-                VoiceControlButton(
-                    icon = if (isScreenSharing) Icons.Default.DesktopAccessDisabled else Icons.Default.DesktopWindows,
-                    label = if (isScreenSharing) "停止共享" 
-                            else if (screenShareButtonDisabled) "${screenSharerName ?: "其他用户"}共享中"
-                            else "共享屏幕",
-                    isActive = isScreenSharing,
-                    activeColor = Zhimo.success,
-                    enabled = !screenShareButtonDisabled,
-                    onClick = onToggleScreenShare
-                )
+                // Primary controls: mic, deafen, hang up, more
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Mute button
+                    VoiceControlButton(
+                        icon = if (isMuted) Icons.Default.MicOff else Icons.Default.Mic,
+                        label = if (isMuted) stringResource(R.string.unmute) else stringResource(R.string.mute),
+                        isActive = isMuted,
+                        activeColor = Zhimo.danger,
+                        onClick = onToggleMute
+                    )
 
-                // Leave button
-                VoiceControlButton(
-                    icon = Icons.Default.CallEnd,
-                    label = stringResource(R.string.leave_voice),
-                    isActive = true,
-                    activeColor = Zhimo.danger,
-                    onClick = onLeave
-                )
+                    // Deafen button
+                    VoiceControlButton(
+                        icon = if (isDeafened) Icons.AutoMirrored.Filled.VolumeOff else Icons.AutoMirrored.Filled.VolumeUp,
+                        label = if (isDeafened) stringResource(R.string.undeafen) else stringResource(R.string.deafen),
+                        isActive = isDeafened,
+                        activeColor = Zhimo.danger,
+                        onClick = onToggleDeafen
+                    )
+
+                    // Hang up button
+                    VoiceControlButton(
+                        icon = Icons.Default.CallEnd,
+                        label = "挂断",
+                        isActive = true,
+                        activeColor = Zhimo.danger,
+                        onClick = onLeave
+                    )
+
+                    // Expand-more button
+                    VoiceControlButton(
+                        icon = if (moreExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                        label = if (moreExpanded) "收起" else "更多",
+                        isActive = moreExpanded,
+                        activeColor = Zhimo.seal,
+                        onClick = onToggleMore
+                    )
+                }
             }
         } else {
             Row(
