@@ -58,6 +58,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
@@ -66,6 +67,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.AttachFile
@@ -94,6 +96,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.LocalMinimumInteractiveComponentEnforcement
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.HorizontalDivider
@@ -126,7 +129,9 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -1735,7 +1740,7 @@ private fun PendingFilesPreview(
         LazyRow(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
+                .padding(horizontal = 12.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             // Pending files (not yet uploaded)
@@ -1783,59 +1788,14 @@ private fun PendingFileItem(
         name ?: uri.lastPathSegment ?: "file"
     }
 
-    Surface(
-        modifier = Modifier.width(120.dp),
-        shape = RoundedCornerShape(8.dp),
-        color = Zhimo.paperRaised
-    ) {
-        Column(
-            modifier = Modifier.padding(8.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Box(modifier = Modifier.fillMaxWidth()) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.InsertDriveFile,
-                    contentDescription = null,
-                    tint = Zhimo.seal,
-                    modifier = Modifier
-                        .size(32.dp)
-                        .align(Alignment.Center)
-                )
-                if (!isUploading) {
-                    IconButton(
-                        onClick = onRemove,
-                        modifier = Modifier
-                            .size(20.dp)
-                            .align(Alignment.TopEnd)
-                            .background(Color.Black.copy(alpha = 0.5f), CircleShape)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Close,
-                            contentDescription = "Remove",
-                            tint = Color.White,
-                            modifier = Modifier.size(12.dp)
-                        )
-                    }
-                }
-            }
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = fileName,
-                style = MaterialTheme.typography.labelSmall,
-                color = Zhimo.ink,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            if (progress != null) {
-                Spacer(modifier = Modifier.height(4.dp))
-                LinearProgressIndicator(
-                    progress = { progress },
-                    modifier = Modifier.fillMaxWidth(),
-                    color = Zhimo.seal
-                )
-            }
-        }
-    }
+    PendingFileChip(
+        icon = Icons.AutoMirrored.Filled.InsertDriveFile,
+        fileName = fileName,
+        fileSize = null,
+        progress = progress,
+        isUploading = isUploading,
+        onRemove = onRemove
+    )
 }
 
 @Composable
@@ -1851,52 +1811,90 @@ private fun UploadedAttachmentItem(
         else -> Icons.AutoMirrored.Filled.InsertDriveFile
     }
 
+    PendingFileChip(
+        icon = icon,
+        fileName = attachment.filename,
+        fileSize = formatFileSize(attachment.size),
+        progress = null,
+        isUploading = false,
+        onRemove = onRemove,
+        // Uploaded files are ready to send; green tint mirrors web's
+        // pending-file.uploaded state.
+        containerColor = Zhimo.success.copy(alpha = 0.15f)
+    )
+}
+
+/**
+ * Compact horizontal attachment chip above the composer, mirroring web's
+ * .pending-file: small file icon, stacked name/size, bare X remove button.
+ * Keeps the strip slim so it never outweighs the input row below it.
+ */
+@Composable
+private fun PendingFileChip(
+    icon: ImageVector,
+    fileName: String,
+    fileSize: String?,
+    progress: Float?,
+    isUploading: Boolean,
+    onRemove: () -> Unit,
+    containerColor: Color = Zhimo.paperRaised
+) {
     Surface(
-        modifier = Modifier.width(120.dp),
+        modifier = Modifier.widthIn(max = 250.dp),
         shape = RoundedCornerShape(8.dp),
-        color = Zhimo.paperRaised
+        color = containerColor
     ) {
-        Column(
-            modifier = Modifier.padding(8.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+        Row(
+            modifier = Modifier.padding(start = 12.dp, top = 8.dp, bottom = 8.dp, end = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Box(modifier = Modifier.fillMaxWidth()) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    tint = Zhimo.seal,
-                    modifier = Modifier
-                        .size(32.dp)
-                        .align(Alignment.Center)
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = Zhimo.seal,
+                modifier = Modifier.size(20.dp)
+            )
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(horizontal = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                Text(
+                    text = fileName,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = Zhimo.ink,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
-                IconButton(
-                    onClick = onRemove,
-                    modifier = Modifier
-                        .size(20.dp)
-                        .align(Alignment.TopEnd)
-                        .background(Color.Black.copy(alpha = 0.5f), CircleShape)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Close,
-                        contentDescription = "Remove",
-                        tint = Color.White,
-                        modifier = Modifier.size(12.dp)
+                if (fileSize != null) {
+                    Text(
+                        text = fileSize,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Zhimo.inkFaint,
+                        maxLines = 1
+                    )
+                }
+                if (progress != null) {
+                    LinearProgressIndicator(
+                        progress = { progress },
+                        modifier = Modifier.fillMaxWidth(),
+                        color = Zhimo.seal
                     )
                 }
             }
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = attachment.filename,
-                style = MaterialTheme.typography.labelSmall,
-                color = Zhimo.ink,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                text = formatFileSize(attachment.size),
-                style = MaterialTheme.typography.labelSmall,
-                color = Zhimo.inkFaint
-            )
+            IconButton(
+                onClick = onRemove,
+                enabled = !isUploading,
+                modifier = Modifier.size(32.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = "移除",
+                    tint = Zhimo.inkMuted,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
         }
     }
 }
@@ -1919,8 +1917,10 @@ private fun MessageInput(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            // Bottom-align so attach/send stay put while the field grows,
+            // matching web's flex-end composer.
+            verticalAlignment = Alignment.Bottom
             // Gaps around the TextField live on the neighbor buttons as padding
             // instead of Arrangement.spacedBy, so the send button's animated
             // slot width (see expandHorizontally below) hands over space to the
@@ -1931,7 +1931,7 @@ private fun MessageInput(
                 onClick = onAttachClick,
                 enabled = isConnected && !isUploading,
                 modifier = Modifier
-                    .padding(end = 8.dp)
+                    .padding(end = 12.dp)
                     .size(40.dp)
             ) {
                 Icon(
@@ -1941,41 +1941,54 @@ private fun MessageInput(
                 )
             }
 
-            TextField(
+            // Compact chat field: BasicTextField instead of the material
+            // TextField, whose internal content padding forces a 56dp minimum
+            // and made the whole composer too tall. 44dp matches web's
+            // single-line input height; grows with content up to 4 lines.
+            BasicTextField(
                 value = value,
                 onValueChange = onValueChange,
                 modifier = Modifier.weight(1f),
                 enabled = isConnected,
-                placeholder = {
-                    Text(
-                        text = if (isConnected) stringResource(R.string.send_message) else "连接断开，无法发送",
-                        color = Zhimo.inkFaint
-                    )
-                },
-                colors = TextFieldDefaults.colors(
-                    focusedContainerColor = Zhimo.paperRaised,
-                    unfocusedContainerColor = Zhimo.paperRaised,
-                    disabledContainerColor = Zhimo.paperRaised.copy(alpha = 0.5f),
-                    focusedIndicatorColor = Color.Transparent,
-                    unfocusedIndicatorColor = Color.Transparent,
-                    disabledIndicatorColor = Color.Transparent,
-                    cursorColor = Zhimo.seal,
-                    focusedTextColor = Zhimo.ink,
-                    unfocusedTextColor = Zhimo.ink,
-                    disabledTextColor = Zhimo.inkFaint
+                textStyle = LocalTextStyle.current.copy(
+                    color = if (isConnected) Zhimo.ink else Zhimo.inkFaint
                 ),
-                shape = RoundedCornerShape(8.dp),
+                cursorBrush = SolidColor(Zhimo.seal),
                 // Multiline input: Enter inserts a newline (markdown-capable
                 // messages, Discord/Telegram mobile convention), send via button
                 singleLine = false,
-                maxLines = 4
+                maxLines = 4,
+                decorationBox = { innerTextField ->
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(
+                                if (isConnected) Zhimo.paperRaised
+                                else Zhimo.paperRaised.copy(alpha = 0.5f),
+                                RoundedCornerShape(8.dp)
+                            )
+                            .heightIn(min = 44.dp)
+                            .padding(horizontal = 16.dp),
+                        contentAlignment = Alignment.CenterStart
+                    ) {
+                        if (value.isEmpty()) {
+                            Text(
+                                text = if (isConnected) stringResource(R.string.send_message) else "连接断开，无法发送",
+                                color = Zhimo.inkFaint,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        innerTextField()
+                    }
+                }
             )
 
             // Send button
             AnimatedVisibility(
                 visible = value.isNotBlank() || hasAttachments,
                 // expandHorizontally animates the slot width so the weighted
-                // TextField yields space smoothly instead of snapping by 48dp.
+                // TextField yields space smoothly instead of snapping by 52dp.
                 // clip = false keeps the circle from being cut with straight
                 // edges while the container width is still animating.
                 enter = fadeIn() + slideInVertically() + expandHorizontally(clip = false),
@@ -1985,7 +1998,7 @@ private fun MessageInput(
                     onClick = onSend,
                     enabled = isConnected && sendingState != SendingState.SENDING && !isUploading,
                     modifier = Modifier
-                        .padding(start = 8.dp)
+                        .padding(start = 12.dp)
                         .size(40.dp),
                     // Background via containerColor so the circle is drawn on the
                     // button's own 40dp node (inside minimumInteractiveComponentSize
