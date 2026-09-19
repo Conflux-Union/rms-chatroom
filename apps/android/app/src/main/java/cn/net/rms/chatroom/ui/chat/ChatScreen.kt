@@ -2,6 +2,7 @@ package cn.net.rms.chatroom.ui.chat
 
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
@@ -10,7 +11,9 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import android.app.DownloadManager
@@ -30,6 +33,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.rememberScrollState
 import androidx.media3.common.MediaItem
 import androidx.media3.common.util.UnstableApi
@@ -70,7 +77,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
-import androidx.compose.material.icons.filled.AttachFile
+import androidx.compose.material.icons.filled.AddCircle
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Download
@@ -132,8 +139,13 @@ import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerInputChange
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontStyle
@@ -303,6 +315,8 @@ fun ChatScreen(
     channelId: Long
 ) {
     val context = LocalContext.current
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val focusManager = LocalFocusManager.current
     val listState = rememberLazyListState()
     var messageText by remember { mutableStateOf("") }
     var sendingState by remember { mutableStateOf(SendingState.IDLE) }
@@ -311,6 +325,7 @@ fun ChatScreen(
     var attachmentPreview by remember { mutableStateOf<AttachmentPreview?>(null) }
     var selectedMessage by remember { mutableStateOf<Message?>(null) }
     var showMessageMenu by remember { mutableStateOf(false) }
+    var showAttachMenu by remember { mutableStateOf(false) }
     var showEditDialog by remember { mutableStateOf(false) }
     var showMuteDialog by remember { mutableStateOf(false) }
     var showEmojiPicker by remember { mutableStateOf(false) }
@@ -336,12 +351,39 @@ fun ChatScreen(
         onFetchChannelMembers()
     }
 
-    // File picker launcher
+    // Attachment pickers, one per source in the attach menu. Visual media goes
+    // through the system photo picker (gallery); documents go through SAF.
+    // All results land in the same pendingFiles upload queue.
     val filePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenMultipleDocuments()
     ) { uris ->
         if (uris.isNotEmpty()) {
             pendingFiles = pendingFiles + uris
+        }
+    }
+    val imagePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickMultipleVisualMedia(maxItems = 9)
+    ) { uris ->
+        if (uris.isNotEmpty()) {
+            pendingFiles = pendingFiles + uris
+        }
+    }
+    val videoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickMultipleVisualMedia(maxItems = 9)
+    ) { uris ->
+        if (uris.isNotEmpty()) {
+            pendingFiles = pendingFiles + uris
+        }
+    }
+
+    // Attach panel <-> keyboard swap, WeChat-style: tapping the input while
+    // the panel is up dismisses the panel so the keyboard can come back.
+    val inputInteractionSource = remember { MutableInteractionSource() }
+    LaunchedEffect(Unit) {
+        inputInteractionSource.interactions.collect { interaction ->
+            if (interaction is PressInteraction.Press && showAttachMenu) {
+                showAttachMenu = false
+            }
         }
     }
 
@@ -533,6 +575,13 @@ fun ChatScreen(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
+                    // Tapping the chat area (message bubbles included) swaps
+                    // the attach panel / keyboard away, WeChat-style.
+                    .chatAreaDismissTap {
+                        showAttachMenu = false
+                        keyboardController?.hide()
+                        focusManager.clearFocus()
+                    }
             ) {
                 when {
                     isLoading && messages.isEmpty() -> {
@@ -733,8 +782,15 @@ fun ChatScreen(
                 isConnected = connectionState == ConnectionState.CONNECTED,
                 hasAttachments = pendingFiles.isNotEmpty() || uploadedAttachments.isNotEmpty(),
                 isUploading = isUploading,
+                inputInteractionSource = inputInteractionSource,
                 onAttachClick = {
-                    filePickerLauncher.launch(arrayOf("*/*"))
+                    if (!showAttachMenu) {
+                        // Opening the panel replaces the keyboard in place, so
+                        // drop focus and hide the IME first (WeChat behavior).
+                        keyboardController?.hide()
+                        focusManager.clearFocus()
+                    }
+                    showAttachMenu = !showAttachMenu
                 },
                 onSend = {
                     val hasContent = messageText.isNotBlank()
@@ -773,6 +829,28 @@ fun ChatScreen(
                             sendingState = SendingState.SENT
                         }
                     }
+                }
+            )
+
+            // WeChat-style attach panel: expands in place below the composer,
+            // pushing it (and the message list) up instead of overlaying.
+            AttachSourcePanel(
+                expanded = showAttachMenu,
+                onPickImages = {
+                    showAttachMenu = false
+                    imagePickerLauncher.launch(
+                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                    )
+                },
+                onPickVideos = {
+                    showAttachMenu = false
+                    videoPickerLauncher.launch(
+                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)
+                    )
+                },
+                onPickFiles = {
+                    showAttachMenu = false
+                    filePickerLauncher.launch(arrayOf("*/*"))
                 }
             )
         }
@@ -1740,7 +1818,7 @@ private fun PendingFilesPreview(
         LazyRow(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 8.dp),
+                .padding(horizontal = 12.dp, vertical = 6.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             // Pending files (not yet uploaded)
@@ -1840,29 +1918,29 @@ private fun PendingFileChip(
     containerColor: Color = Zhimo.paperRaised
 ) {
     Surface(
-        modifier = Modifier.widthIn(max = 250.dp),
+        modifier = Modifier.widthIn(max = 220.dp),
         shape = RoundedCornerShape(8.dp),
         color = containerColor
     ) {
         Row(
-            modifier = Modifier.padding(start = 12.dp, top = 8.dp, bottom = 8.dp, end = 4.dp),
+            modifier = Modifier.padding(start = 10.dp, top = 4.dp, bottom = 4.dp, end = 2.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = null,
                 tint = Zhimo.seal,
-                modifier = Modifier.size(20.dp)
+                modifier = Modifier.size(16.dp)
             )
             Column(
                 modifier = Modifier
                     .weight(1f)
-                    .padding(horizontal = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(2.dp)
+                    .padding(horizontal = 6.dp),
+                verticalArrangement = Arrangement.spacedBy(1.dp)
             ) {
                 Text(
                     text = fileName,
-                    style = MaterialTheme.typography.labelMedium,
+                    style = MaterialTheme.typography.labelSmall,
                     color = Zhimo.ink,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -1883,16 +1961,20 @@ private fun PendingFileChip(
                     )
                 }
             }
-            IconButton(
-                onClick = onRemove,
-                enabled = !isUploading,
-                modifier = Modifier.size(32.dp)
+            // Bare clickable box instead of IconButton: M3's minimum
+            // interactive-size enforcement would pad the slot back out.
+            Box(
+                modifier = Modifier
+                    .size(28.dp)
+                    .clip(CircleShape)
+                    .clickable(enabled = !isUploading, onClick = onRemove),
+                contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = Icons.Default.Close,
                     contentDescription = "移除",
                     tint = Zhimo.inkMuted,
-                    modifier = Modifier.size(16.dp)
+                    modifier = Modifier.size(14.dp)
                 )
             }
         }
@@ -1907,6 +1989,7 @@ private fun MessageInput(
     isConnected: Boolean,
     hasAttachments: Boolean,
     isUploading: Boolean,
+    inputInteractionSource: MutableInteractionSource,
     onAttachClick: () -> Unit,
     onSend: () -> Unit
 ) {
@@ -1926,16 +2009,18 @@ private fun MessageInput(
             // slot width (see expandHorizontally below) hands over space to the
             // TextField without an unanimated spacing jump.
         ) {
-            // Attach button
+            // Attach button. The 2dp bottom padding lifts this 40dp button's
+            // center to 22dp — level with the 44dp field's center above the
+            // row's bottom edge (bottom-aligned Row).
             IconButton(
                 onClick = onAttachClick,
                 enabled = isConnected && !isUploading,
                 modifier = Modifier
-                    .padding(end = 12.dp)
+                    .padding(end = 12.dp, bottom = 2.dp)
                     .size(40.dp)
             ) {
                 Icon(
-                    imageVector = Icons.Default.AttachFile,
+                    imageVector = Icons.Default.AddCircle,
                     contentDescription = "添加附件",
                     tint = if (isConnected && !isUploading) Zhimo.seal else Zhimo.inkFaint
                 )
@@ -1958,6 +2043,8 @@ private fun MessageInput(
                 // messages, Discord/Telegram mobile convention), send via button
                 singleLine = false,
                 maxLines = 4,
+                // Feeds the attach panel <-> keyboard swap watcher upstream.
+                interactionSource = inputInteractionSource,
                 decorationBox = { innerTextField ->
                     Box(
                         modifier = Modifier
@@ -1997,8 +2084,10 @@ private fun MessageInput(
                 IconButton(
                     onClick = onSend,
                     enabled = isConnected && sendingState != SendingState.SENDING && !isUploading,
+                    // bottom = 2dp centers the 40dp button on the 44dp field,
+                    // same as the attach button's lift.
                     modifier = Modifier
-                        .padding(start = 12.dp)
+                        .padding(start = 12.dp, bottom = 2.dp)
                         .size(40.dp),
                     // Background via containerColor so the circle is drawn on the
                     // button's own 40dp node (inside minimumInteractiveComponentSize
@@ -2275,6 +2364,125 @@ private fun MenuOption(
             text = text,
             style = MaterialTheme.typography.bodyLarge,
             color = if (isDestructive) Zhimo.danger else Zhimo.ink
+        )
+    }
+}
+
+/**
+ * Fires [onTap] for taps anywhere over this node — including over children —
+ * by observing the Initial pointer pass without consuming anything, so normal
+ * child click / long-press / scroll handling is unaffected. A release counts
+ * as a tap when it stayed single-pointer and within touch slop.
+ */
+private fun Modifier.chatAreaDismissTap(onTap: () -> Unit): Modifier =
+    pointerInput(Unit) {
+        awaitEachGesture {
+            val down = awaitFirstDown(requireUnconsumed = false)
+            var up: PointerInputChange? = null
+            var multiTouch = false
+            while (up == null) {
+                val event = awaitPointerEvent(PointerEventPass.Initial)
+                if (event.changes.size > 1) multiTouch = true
+                val tracked = event.changes.firstOrNull { it.id == down.id }
+                if (tracked != null && !tracked.pressed) {
+                    up = tracked
+                } else if (event.changes.none { it.pressed }) {
+                    // Pointer stream ended without a clean up; bail out.
+                    return@awaitEachGesture
+                }
+            }
+            val isTap = !multiTouch &&
+                (up.position - down.position).getDistance() < viewConfiguration.touchSlop
+            if (isTap) onTap()
+        }
+    }
+
+/**
+ * WeChat-style attach panel: expands in place below the composer, pushing it
+ * and the message list up, instead of overlaying the screen like a modal
+ * sheet. The keyboard must be hidden when opening it (done at the attach
+ * click site), so the panel simply occupies the space the IME vacated.
+ * Each tile opens the system picker matching its category: photo picker for
+ * images/videos (falls back to ACTION_GET_CONTENT without one), SAF for files.
+ */
+@Composable
+private fun AttachSourcePanel(
+    expanded: Boolean,
+    onPickImages: () -> Unit,
+    onPickVideos: () -> Unit,
+    onPickFiles: () -> Unit
+) {
+    AnimatedVisibility(
+        visible = expanded,
+        enter = expandVertically(animationSpec = tween(250)) + fadeIn(tween(250)),
+        exit = shrinkVertically(animationSpec = tween(250)) + fadeOut(tween(250))
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Zhimo.paper)
+        ) {
+            HorizontalDivider(color = Zhimo.border)
+            // Keyboard-comparable height so swapping panel <-> keyboard does
+            // not jolt the composer; tiles sit at the top like WeChat's grid.
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 260.dp)
+                    .padding(horizontal = 28.dp, vertical = 20.dp),
+                horizontalArrangement = Arrangement.spacedBy(28.dp)
+            ) {
+                AttachTile(
+                    label = "图片",
+                    icon = Icons.Default.Image,
+                    onClick = onPickImages
+                )
+                AttachTile(
+                    label = "视频",
+                    icon = Icons.Default.Movie,
+                    onClick = onPickVideos
+                )
+                AttachTile(
+                    label = "文件",
+                    icon = Icons.AutoMirrored.Filled.InsertDriveFile,
+                    onClick = onPickFiles
+                )
+            }
+        }
+    }
+}
+
+/** One WeChat panel tile: rounded-square icon container with a label below. */
+@Composable
+private fun AttachTile(
+    label: String,
+    icon: ImageVector,
+    onClick: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .width(64.dp)
+            .clickable(onClick = onClick),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Box(
+            modifier = Modifier
+                .size(56.dp)
+                .background(Zhimo.paperRaised, RoundedCornerShape(14.dp)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = label,
+                tint = Zhimo.seal,
+                modifier = Modifier.size(28.dp)
+            )
+        }
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            color = Zhimo.inkMuted,
+            modifier = Modifier.padding(top = 8.dp)
         )
     }
 }
