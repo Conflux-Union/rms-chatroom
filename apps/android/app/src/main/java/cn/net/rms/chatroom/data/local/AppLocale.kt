@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.res.Configuration
 import android.os.Build
 import android.os.LocaleList
+import androidx.compose.runtime.mutableLongStateOf
 
 /** Languages the in-app setting can select. */
 enum class AppLanguage { SYSTEM, ZH, EN }
@@ -19,6 +20,15 @@ enum class AppLanguage { SYSTEM, ZH, EN }
 object AppLocale {
     private const val PREFS_NAME = "app_locale"
     private const val KEY_LANGUAGE = "language"
+
+    /**
+     * Bumped whenever the effective locale changes in place (apply() below,
+     * or an onConfigurationChanged delivery). Composition reads it to derive a
+     * fresh locale context so stringResource call sites re-resolve without an
+     * activity relaunch — the relaunch gap is what used to flash pure black
+     * on language switch (old window destroyed, new window not yet drawn).
+     */
+    val tick = mutableLongStateOf(0L)
 
     private fun languageTag(language: AppLanguage): String = when (language) {
         AppLanguage.ZH -> "zh"
@@ -55,14 +65,23 @@ object AppLocale {
         return getStored(context)
     }
 
+    private fun localesFor(language: AppLanguage): LocaleList = when (language) {
+        AppLanguage.ZH -> LocaleList.forLanguageTags("zh")
+        AppLanguage.EN -> LocaleList.forLanguageTags("en")
+        AppLanguage.SYSTEM -> LocaleList.getDefault()
+    }
+
     /**
      * Persist the choice. On API 33+ this also writes LocaleManager
-     * .applicationLocales, which makes the framework apply (and recreate
-     * activities) automatically. Pre-33 the caller must recreate the activity
-     * for the change to take effect; the application-level Resources
-     * configuration is updated here so @ApplicationContext consumers
-     * (ViewModels, repositories, services, notifications) pick up the new
-     * locale immediately instead of keeping the attach-time one.
+     * .applicationLocales; with configChanges=locale declared the change
+     * arrives as onConfigurationChanged instead of an activity relaunch.
+     * Pre-33 the application-level Resources configuration is updated here so
+     * @ApplicationContext consumers (ViewModels, repositories, services,
+     * notifications) pick up the new locale immediately, and the caller's own
+     * Resources (the activity's wrapped instance — a different object from
+     * the application's) is reconfigured in place so composition re-resolves
+     * strings from it. [tick] is bumped either way so the shadowed
+     * LocalConfiguration swaps to a fresh instance.
      */
     fun apply(context: Context, language: AppLanguage) {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -77,17 +96,18 @@ object AppLocale {
                     AppLanguage.SYSTEM -> LocaleList.getEmptyLocaleList()
                 }
         } else {
+            val locales = localesFor(language)
             val appRes = context.applicationContext.resources
-            val config = Configuration(appRes.configuration)
-            config.setLocales(
-                when (language) {
-                    AppLanguage.ZH -> LocaleList.forLanguageTags("zh")
-                    AppLanguage.EN -> LocaleList.forLanguageTags("en")
-                    AppLanguage.SYSTEM -> LocaleList.getDefault()
-                }
-            )
-            appRes.updateConfiguration(config, appRes.displayMetrics)
+            val appConfig = Configuration(appRes.configuration)
+            appConfig.setLocales(locales)
+            appRes.updateConfiguration(appConfig, appRes.displayMetrics)
+            if (context.resources !== appRes) {
+                val config = Configuration(context.resources.configuration)
+                config.setLocales(locales)
+                context.resources.updateConfiguration(config, context.resources.displayMetrics)
+            }
         }
+        tick.longValue++
     }
 
     /**
@@ -105,3 +125,4 @@ object AppLocale {
         return base.createConfigurationContext(config)
     }
 }
+

@@ -1,9 +1,7 @@
 package cn.net.rms.chatroom.ui.settings
 
-import android.app.Activity
 import android.content.Intent
 import android.net.Uri
-import android.os.Build
 import android.provider.Settings
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -46,9 +44,10 @@ fun SettingsScreen(
     val hasOverlayPermission by viewModel.hasOverlayPermission.collectAsState()
     val isIgnoringBatteryOptimization by viewModel.isIgnoringBatteryOptimization.collectAsState()
     // Not routed through DataStore: the effective language is owned by
-    // AppLocale (SharedPreferences + LocaleManager) and re-read after the
-    // activity recreation that applies a change.
-    val language = remember { AppLocale.current(context) }
+    // AppLocale (SharedPreferences + Locale Manager). The switch applies in
+    // place (no activity relaunch), so key the read on AppLocale.tick to pick
+    // up a change made on this very screen.
+    val language = remember(AppLocale.tick.longValue) { AppLocale.current(context) }
 
     // Refresh overlay permission when screen resumes
     DisposableEffect(lifecycleOwner) {
@@ -102,11 +101,11 @@ fun SettingsScreen(
             LanguageItem(
                 current = language,
                 onChange = { selected ->
+                    // Applies in place: apply() bumps AppLocale.tick, which
+                    // swaps the composition's locale context (and, on API 33+,
+                    // the framework keeps LocaleManager in sync for the system
+                    // per-app language UI). No activity relaunch, no black gap.
                     AppLocale.apply(context, selected)
-                    // API 33+ recreates automatically via applicationLocales.
-                    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-                        (context as? Activity)?.recreate()
-                    }
                 }
             )
 
@@ -289,9 +288,9 @@ private fun ThemeModeItem(
 }
 
 // In-app language picker. Mirrors the theme picker; the change is applied by
-// AppLocale (persisted + LocaleManager on API 33+) and the caller recreates
-// the activity pre-33. The zh and en option labels stay in their own language
-// in every locale.
+// AppLocale (persisted + LocaleManager on API 33+) and lands in place via the
+// composition's locale context instead of an activity relaunch. The zh and en
+// option labels stay in their own language in every locale.
 @Composable
 private fun LanguageItem(
     current: AppLanguage,

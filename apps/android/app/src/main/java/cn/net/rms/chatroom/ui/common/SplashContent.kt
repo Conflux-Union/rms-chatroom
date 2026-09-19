@@ -22,7 +22,9 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
+import cn.net.rms.chatroom.ui.theme.InkLight
 import cn.net.rms.chatroom.ui.theme.PaperDarkSubtle
+import cn.net.rms.chatroom.ui.theme.PaperLightSubtle
 import kotlinx.coroutines.delay
 import kotlin.math.min
 import kotlin.math.sin
@@ -54,12 +56,15 @@ private const val COLLAPSE_STAGGER_MS = 40f
 private const val COLLAPSE_BAR_MS = 300f
 private const val FADE_MS = 350f
 
-private val SplashColor = Color.White
-
 /**
  * Animated splash: the soundwave logo plays an equalizer-style rhythm while
  * auth restores, springs back into the exact static logo, holds briefly,
  * collapses bar by bar, then fades out to reveal the screen composed beneath.
+ *
+ * The paper and ink follow [darkTheme]: dark paper with white bars at night,
+ * light paper with ink bars by day, matching the day-night window/splash
+ * backgrounds so cold start, system splash and this overlay read as one
+ * continuous surface.
  *
  * [settled] flips true once the startup auth state has resolved; [onExitFinished]
  * is invoked after the fade completes so the caller can drop this overlay.
@@ -67,6 +72,7 @@ private val SplashColor = Color.White
 @Composable
 fun SplashContent(
     modifier: Modifier = Modifier,
+    darkTheme: Boolean = true,
     settled: Boolean = false,
     onExitFinished: (() -> Unit)? = null,
 ) {
@@ -143,11 +149,13 @@ fun SplashContent(
         exitCallback?.invoke()
     }
 
+    val splashInk = if (darkTheme) Color.White else InkLight
+
     Box(
         modifier = modifier
             .fillMaxSize()
             .graphicsLayer { alpha = layerAlpha.value }
-            .background(PaperDarkSubtle)
+            .background(if (darkTheme) PaperDarkSubtle else PaperLightSubtle)
     ) {
         Canvas(
             modifier = Modifier
@@ -159,7 +167,7 @@ fun SplashContent(
                 val heightPx = BAR_HEIGHT[i] * scales[i].coerceAtLeast(0f) * s
                 if (heightPx < 0.5f) continue
                 drawRoundRect(
-                    color = SplashColor,
+                    color = splashInk,
                     topLeft = Offset(
                         BAR_LEFT_X[i] * s,
                         BAR_CENTER_Y[i] * s - heightPx / 2f

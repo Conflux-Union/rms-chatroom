@@ -16,6 +16,7 @@ import javax.inject.Singleton
 
 @Singleton
 class SettingsPreferences @Inject constructor(
+    @ApplicationContext private val appContext: Context,
     private val dataStore: DataStore<Preferences>
 ) {
     companion object {
@@ -61,6 +62,10 @@ class SettingsPreferences @Inject constructor(
     }
 
     suspend fun setThemeMode(mode: ThemeMode) {
+        // Push to the platform (per-app night mode on API 31+, mirrored
+        // SharedPreferences everywhere) so splash/window resources and the
+        // first composition frame see the choice without awaiting DataStore.
+        AppThemeMode.apply(appContext, mode)
         dataStore.edit { prefs ->
             prefs[THEME_MODE] = mode.name
         }
