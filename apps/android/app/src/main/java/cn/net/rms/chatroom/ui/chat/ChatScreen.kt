@@ -50,6 +50,7 @@ import androidx.compose.foundation.layout.exclude
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.isImeVisible
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -85,6 +86,7 @@ import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.material.icons.filled.EmojiEmotions
+import androidx.compose.material.icons.outlined.AddReaction
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -92,6 +94,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.LocalMinimumInteractiveComponentEnforcement
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Surface
@@ -102,6 +105,7 @@ import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -117,8 +121,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -128,6 +136,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -2468,7 +2477,12 @@ private fun ReplyPreviewBar(
     }
 }
 
-// Reactions bar below message
+// Reactions bar below message. Mirrors the web reaction row in ChatArea.vue
+// (.reaction-badge / .reaction-add-btn): 28dp card height, 4dp gap, 12dp
+// corner radius, dashed outline on the add card. M3's 48dp minimum
+// interactive size is disabled for this row — it pads sub-48dp clickable
+// Surfaces with invisible space, which inflated the visible gap to ~14dp.
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ReactionsBar(
     reactions: List<ReactionGroup>,
@@ -2476,52 +2490,79 @@ private fun ReactionsBar(
     onReactionClick: (String, Boolean) -> Unit,
     onAddReactionClick: () -> Unit
 ) {
-    LazyRow(
-        horizontalArrangement = Arrangement.spacedBy(4.dp)
-    ) {
-        items(reactions) { reaction ->
-            val hasReacted = reaction.users.any { it.id == currentUserId }
-            Surface(
-                onClick = { onReactionClick(reaction.emoji, hasReacted) },
-                shape = RoundedCornerShape(8.dp),
-                color = if (hasReacted) Zhimo.seal.copy(alpha = 0.2f) else Zhimo.paperRaised,
-                border = if (hasReacted) {
-                    androidx.compose.foundation.BorderStroke(1.dp, Zhimo.seal)
-                } else null
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+    CompositionLocalProvider(LocalMinimumInteractiveComponentEnforcement provides false) {
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            items(reactions) { reaction ->
+                val hasReacted = reaction.users.any { it.id == currentUserId }
+                Surface(
+                    onClick = { onReactionClick(reaction.emoji, hasReacted) },
+                    shape = RoundedCornerShape(12.dp),
+                    color = if (hasReacted) Zhimo.seal.copy(alpha = 0.2f) else Zhimo.paperRaised,
+                    border = if (hasReacted) {
+                        BorderStroke(1.dp, Zhimo.seal)
+                    } else null,
+                    modifier = Modifier.height(28.dp)
                 ) {
-                    Text(
-                        text = reaction.emoji,
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                    Text(
-                        text = reaction.count.toString(),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = if (hasReacted) Zhimo.seal else Zhimo.inkFaint
-                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxHeight()
+                            .padding(horizontal = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            text = reaction.emoji,
+                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 16.sp)
+                        )
+                        Text(
+                            text = reaction.count.toString(),
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 12.sp),
+                            color = if (hasReacted) Zhimo.seal else Zhimo.inkFaint
+                        )
+                    }
                 }
             }
-        }
-        
-        // Add reaction button
-        item {
-            Surface(
-                onClick = onAddReactionClick,
-                shape = RoundedCornerShape(8.dp),
-                color = Zhimo.paperRaised
-            ) {
-                Icon(
-                    imageVector = Icons.Default.EmojiEmotions,
-                    contentDescription = "添加表情",
-                    tint = Zhimo.inkFaint,
-                    modifier = Modifier
-                        .padding(horizontal = 8.dp, vertical = 4.dp)
-                        .size(16.dp)
-                )
+
+            // Add reaction card
+            item {
+                val dashColor = Zhimo.inkFaint.copy(alpha = 0.35f)
+                Surface(
+                    onClick = onAddReactionClick,
+                    shape = RoundedCornerShape(12.dp),
+                    color = Zhimo.paperRaised,
+                    modifier = Modifier.size(28.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .drawBehind {
+                                val stroke = 1.dp.toPx()
+                                val half = stroke / 2
+                                drawRoundRect(
+                                    color = dashColor,
+                                    topLeft = Offset(half, half),
+                                    size = Size(size.width - stroke, size.height - stroke),
+                                    cornerRadius = CornerRadius(12.dp.toPx() - half),
+                                    style = Stroke(
+                                        width = stroke,
+                                        pathEffect = PathEffect.dashPathEffect(
+                                            floatArrayOf(4.dp.toPx(), 3.dp.toPx())
+                                        )
+                                    )
+                                )
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.AddReaction,
+                            contentDescription = "添加表情",
+                            tint = Zhimo.inkFaint,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
             }
         }
     }
