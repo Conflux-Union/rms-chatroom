@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import android.content.Intent
 import cn.net.rms.chatroom.BuildConfig
+import cn.net.rms.chatroom.R
 import cn.net.rms.chatroom.data.livekit.AudioDeviceInfo
 import cn.net.rms.chatroom.data.livekit.ConnectionState
 import cn.net.rms.chatroom.data.livekit.ParticipantInfo
@@ -150,7 +151,7 @@ class VoiceViewModel @Inject constructor(
                 // Start foreground service on first successful connection
                 // This ensures RECORD_AUDIO permission is already granted
                 if (newState.connectionState == ConnectionState.CONNECTED && !serviceStarted) {
-                    VoiceCallService.start(context, newState.channelName.ifEmpty { "语音通话" })
+                    VoiceCallService.start(context, newState.channelName.ifEmpty { context.getString(R.string.voice_call) })
                     serviceStarted = true
                     fetchHostMode()
                     fetchScreenShareStatus()
@@ -386,7 +387,7 @@ class VoiceViewModel @Inject constructor(
                 if (serviceStarted) {
                     VoiceCallService.start(
                         context,
-                        _channelName.value.ifEmpty { "语音通话" },
+                        _channelName.value.ifEmpty { context.getString(R.string.voice_call) },
                         enableScreenShare = true
                     )
                 }

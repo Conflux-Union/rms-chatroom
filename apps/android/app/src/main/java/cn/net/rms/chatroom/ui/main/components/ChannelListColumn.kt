@@ -33,11 +33,13 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
+import cn.net.rms.chatroom.R
 import cn.net.rms.chatroom.data.api.ReorderTopLevelItem
 import cn.net.rms.chatroom.data.model.Channel
 import cn.net.rms.chatroom.data.model.ChannelGroup
@@ -143,7 +145,7 @@ fun ChannelListColumn(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = server?.name ?: "选择服务器",
+                text = server?.name ?: stringResource(R.string.channel_list_select_server),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 color = Zhimo.ink,
@@ -151,7 +153,7 @@ fun ChannelListColumn(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f)
             )
-            
+
             // Edit mode toggle button (admin only)
             if (isAdmin) {
                 IconButton(
@@ -160,7 +162,7 @@ fun ChannelListColumn(
                 ) {
                     Icon(
                         imageVector = if (editMode) Icons.Default.Check else Icons.Default.Edit,
-                        contentDescription = if (editMode) "完成编辑" else "编辑频道",
+                        contentDescription = if (editMode) stringResource(R.string.action_done_editing) else stringResource(R.string.action_edit_channels),
                         tint = if (editMode) Zhimo.seal else Zhimo.inkFaint,
                         modifier = Modifier.size(18.dp)
                     )
@@ -327,7 +329,7 @@ fun ChannelListColumn(
                 item {
                     Spacer(modifier = Modifier.height(8.dp))
                     AddChannelButton(
-                        label = "添加频道",
+                        label = stringResource(R.string.action_add_channel),
                         onClick = {
                             createChannelGroupId = null
                             createChannelType = "text"
@@ -380,8 +382,8 @@ fun ChannelListColumn(
                 showDeleteDialog = false
                 channelToDelete = null
             },
-            title = { Text("删除频道") },
-            text = { Text("确定要删除频道「${channelToDelete?.name}」吗？此操作不可撤销。") },
+            title = { Text(stringResource(R.string.channel_delete_title)) },
+            text = { Text(stringResource(R.string.channel_delete_confirm, channelToDelete?.name ?: "")) },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -391,7 +393,7 @@ fun ChannelListColumn(
                     },
                     colors = ButtonDefaults.textButtonColors(contentColor = Zhimo.danger)
                 ) {
-                    Text("删除")
+                    Text(stringResource(R.string.action_delete))
                 }
             },
             dismissButton = {
@@ -399,12 +401,12 @@ fun ChannelListColumn(
                     showDeleteDialog = false
                     channelToDelete = null
                 }) {
-                    Text("取消")
+                    Text(stringResource(R.string.action_cancel))
                 }
             }
         )
     }
-    
+
     // Create Channel Group Dialog
     if (showCreateGroupDialog) {
         CreateChannelGroupDialog(
@@ -423,8 +425,8 @@ fun ChannelListColumn(
                 showDeleteGroupDialog = false
                 groupToDelete = null
             },
-            title = { Text("删除分组") },
-            text = { Text("确定要删除分组「${groupToDelete?.name}」吗？分组内的频道将变为未分组状态。") },
+            title = { Text(stringResource(R.string.group_delete_title)) },
+            text = { Text(stringResource(R.string.group_delete_confirm, groupToDelete?.name ?: "")) },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -434,7 +436,7 @@ fun ChannelListColumn(
                     },
                     colors = ButtonDefaults.textButtonColors(contentColor = Zhimo.danger)
                 ) {
-                    Text("删除")
+                    Text(stringResource(R.string.action_delete))
                 }
             },
             dismissButton = {
@@ -442,7 +444,7 @@ fun ChannelListColumn(
                     showDeleteGroupDialog = false
                     groupToDelete = null
                 }) {
-                    Text("取消")
+                    Text(stringResource(R.string.action_cancel))
                 }
             }
         )
@@ -475,27 +477,27 @@ private fun CreateChannelDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("创建频道") },
+        title = { Text(stringResource(R.string.channel_create_title)) },
         text = {
             Column {
                 OutlinedTextField(
                     value = channelName,
                     onValueChange = { channelName = it },
-                    label = { Text("频道名称") },
+                    label = { Text(stringResource(R.string.channel_name_label)) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
-                
+
                 Spacer(modifier = Modifier.height(16.dp))
-                
+
                 Text(
-                    text = "频道类型",
+                    text = stringResource(R.string.channel_type_label),
                     style = MaterialTheme.typography.labelMedium,
                     color = Zhimo.inkFaint
                 )
-                
+
                 Spacer(modifier = Modifier.height(8.dp))
-                
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -503,7 +505,7 @@ private fun CreateChannelDialog(
                     FilterChip(
                         selected = selectedType == "text",
                         onClick = { selectedType = "text" },
-                        label = { Text("文字") },
+                        label = { Text(stringResource(R.string.channel_type_text)) },
                         leadingIcon = {
                             Icon(
                                 imageVector = Icons.Default.Tag,
@@ -515,7 +517,7 @@ private fun CreateChannelDialog(
                     FilterChip(
                         selected = selectedType == "voice",
                         onClick = { selectedType = "voice" },
-                        label = { Text("语音") },
+                        label = { Text(stringResource(R.string.channel_type_voice)) },
                         leadingIcon = {
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.VolumeUp,
@@ -527,7 +529,7 @@ private fun CreateChannelDialog(
                     FilterChip(
                         selected = selectedType == "forward",
                         onClick = { selectedType = "forward" },
-                        label = { Text("同步") },
+                        label = { Text(stringResource(R.string.channel_type_forward)) },
                         leadingIcon = {
                             Icon(
                                 imageVector = Icons.Default.Radio,
@@ -544,12 +546,12 @@ private fun CreateChannelDialog(
                 onClick = { if (channelName.isNotBlank()) onCreate(channelName.trim(), selectedType) },
                 enabled = channelName.isNotBlank()
             ) {
-                Text("创建")
+                Text(stringResource(R.string.action_create))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("取消")
+                Text(stringResource(R.string.action_cancel))
             }
         }
     )
@@ -564,12 +566,12 @@ private fun CreateChannelGroupDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("创建分组") },
+        title = { Text(stringResource(R.string.group_create_title)) },
         text = {
             OutlinedTextField(
                 value = groupName,
                 onValueChange = { groupName = it },
-                label = { Text("分组名称") },
+                label = { Text(stringResource(R.string.group_name_label)) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )
@@ -579,12 +581,12 @@ private fun CreateChannelGroupDialog(
                 onClick = { if (groupName.isNotBlank()) onCreate(groupName.trim()) },
                 enabled = groupName.isNotBlank()
             ) {
-                Text("创建")
+                Text(stringResource(R.string.action_create))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("取消")
+                Text(stringResource(R.string.action_cancel))
             }
         }
     )
@@ -613,7 +615,7 @@ private fun ChannelGroupHeader(
         // Collapse/expand icon
         Icon(
             imageVector = if (isCollapsed) Icons.Default.ChevronRight else Icons.Default.ExpandMore,
-            contentDescription = if (isCollapsed) "展开" else "折叠",
+            contentDescription = if (isCollapsed) stringResource(R.string.action_expand_group) else stringResource(R.string.action_collapse_group),
             modifier = Modifier.size(16.dp),
             tint = Zhimo.inkFaint
         )
@@ -637,7 +639,7 @@ private fun ChannelGroupHeader(
                 ) {
                     Icon(
                         imageVector = Icons.Default.KeyboardArrowUp,
-                        contentDescription = "上移",
+                        contentDescription = stringResource(R.string.action_move_up),
                         tint = Zhimo.inkFaint,
                         modifier = Modifier.size(16.dp)
                     )
@@ -652,7 +654,7 @@ private fun ChannelGroupHeader(
                 ) {
                     Icon(
                         imageVector = Icons.Default.KeyboardArrowDown,
-                        contentDescription = "下移",
+                        contentDescription = stringResource(R.string.action_move_down),
                         tint = Zhimo.inkFaint,
                         modifier = Modifier.size(16.dp)
                     )
@@ -666,7 +668,7 @@ private fun ChannelGroupHeader(
             ) {
                 Icon(
                     imageVector = Icons.Default.Add,
-                    contentDescription = "添加频道",
+                    contentDescription = stringResource(R.string.action_add_channel),
                     tint = Zhimo.inkFaint,
                     modifier = Modifier.size(16.dp)
                 )
@@ -679,7 +681,7 @@ private fun ChannelGroupHeader(
             ) {
                 Icon(
                     imageVector = Icons.Default.Delete,
-                    contentDescription = "删除分组",
+                    contentDescription = stringResource(R.string.group_delete_title),
                     tint = Zhimo.danger,
                     modifier = Modifier.size(16.dp)
                 )
@@ -692,7 +694,7 @@ private fun ChannelGroupHeader(
             ) {
                 Icon(
                     imageVector = Icons.Default.Add,
-                    contentDescription = "添加频道",
+                    contentDescription = stringResource(R.string.action_add_channel),
                     tint = Zhimo.inkFaint,
                     modifier = Modifier.size(16.dp)
                 )
@@ -720,7 +722,7 @@ private fun AddGroupButton(onClick: () -> Unit) {
         )
         Spacer(modifier = Modifier.width(8.dp))
         Text(
-            text = "添加分组",
+            text = stringResource(R.string.action_add_group),
             style = MaterialTheme.typography.bodyMedium,
             color = Zhimo.seal
         )
@@ -875,7 +877,7 @@ private fun GroupedChannelItem(
                     ) {
                         Icon(
                             imageVector = Icons.Default.KeyboardArrowUp,
-                            contentDescription = "上移",
+                            contentDescription = stringResource(R.string.action_move_up),
                             tint = Zhimo.inkFaint,
                             modifier = Modifier.size(16.dp)
                         )
@@ -888,7 +890,7 @@ private fun GroupedChannelItem(
                     ) {
                         Icon(
                             imageVector = Icons.Default.KeyboardArrowDown,
-                            contentDescription = "下移",
+                            contentDescription = stringResource(R.string.action_move_down),
                             tint = Zhimo.inkFaint,
                             modifier = Modifier.size(16.dp)
                         )
@@ -1033,7 +1035,7 @@ private fun UngroupedChannelItem(
                     ) {
                         Icon(
                             imageVector = Icons.Default.KeyboardArrowUp,
-                            contentDescription = "上移",
+                            contentDescription = stringResource(R.string.action_move_up),
                             tint = Zhimo.inkFaint,
                             modifier = Modifier.size(16.dp)
                         )
@@ -1046,7 +1048,7 @@ private fun UngroupedChannelItem(
                     ) {
                         Icon(
                             imageVector = Icons.Default.KeyboardArrowDown,
-                            contentDescription = "下移",
+                            contentDescription = stringResource(R.string.action_move_down),
                             tint = Zhimo.inkFaint,
                             modifier = Modifier.size(16.dp)
                         )
@@ -1116,7 +1118,7 @@ private fun VoiceUserItem(user: VoiceUser) {
         if (user.isHost) {
             Icon(
                 imageVector = Icons.Default.Star,
-                contentDescription = "主持人",
+                contentDescription = stringResource(R.string.host_badge_desc),
                 modifier = Modifier
                     .padding(start = 2.dp)
                     .size(10.dp),
@@ -1140,7 +1142,7 @@ private fun VoiceUserItem(user: VoiceUser) {
         if (user.isMuted) {
             Icon(
                 imageVector = Icons.Default.MicOff,
-                contentDescription = "已静音",
+                contentDescription = stringResource(R.string.voice_muted_label),
                 modifier = Modifier.size(12.dp),
                 tint = Zhimo.danger
             )
@@ -1213,7 +1215,7 @@ private fun UserPanel(
             ) {
                 Icon(
                     imageVector = Icons.Default.Settings,
-                    contentDescription = "设置",
+                    contentDescription = stringResource(R.string.settings_title),
                     tint = Zhimo.inkFaint,
                     modifier = Modifier.size(18.dp)
                 )
@@ -1226,7 +1228,7 @@ private fun UserPanel(
             ) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.Logout,
-                    contentDescription = "退出登录",
+                    contentDescription = stringResource(R.string.logout),
                     tint = Zhimo.inkFaint,
                     modifier = Modifier.size(18.dp)
                 )
@@ -1272,7 +1274,7 @@ private fun VoiceStatusWidget(
                     Spacer(modifier = Modifier.width(8.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "通话中",
+                            text = stringResource(R.string.voice_status_calling),
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.SemiBold,
                             color = Zhimo.success
@@ -1305,7 +1307,7 @@ private fun VoiceStatusWidget(
                     ) {
                         Icon(
                             imageVector = if (isMuted) Icons.Default.MicOff else Icons.Default.Mic,
-                            contentDescription = if (isMuted) "取消静音" else "静音",
+                            contentDescription = if (isMuted) stringResource(R.string.unmute) else stringResource(R.string.mute),
                             modifier = Modifier.size(20.dp),
                             tint = if (isMuted) Zhimo.paper else Zhimo.ink
                         )
@@ -1321,7 +1323,7 @@ private fun VoiceStatusWidget(
                     ) {
                         Icon(
                             imageVector = Icons.Default.Phone,
-                            contentDescription = "离开语音",
+                            contentDescription = stringResource(R.string.leave_voice),
                             modifier = Modifier
                                 .size(20.dp)
                                 .rotate(135f),

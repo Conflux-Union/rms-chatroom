@@ -1,15 +1,18 @@
 package cn.net.rms.chatroom.data.repository
 
+import android.content.Context
 import android.util.Log
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
+import cn.net.rms.chatroom.R
 import cn.net.rms.chatroom.data.auth.TokenKeys
 import cn.net.rms.chatroom.data.api.ApiService
 import cn.net.rms.chatroom.data.api.RefreshTokenRequest
 import cn.net.rms.chatroom.data.api.RefreshTokenResponse
 import cn.net.rms.chatroom.data.api.LogoutRequest
 import cn.net.rms.chatroom.data.model.User
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -22,6 +25,7 @@ import javax.inject.Singleton
 
 @Singleton
 class AuthRepository @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val api: ApiService,
     private val dataStore: DataStore<Preferences>
 ) {
@@ -110,7 +114,7 @@ class AuthRepository @Inject constructor(
             Result.success(response)
         } catch (e: Exception) {
             Log.e(TAG, "Token refresh failed", e)
-            Result.failure(e.toAuthException())
+            Result.failure(e.toAuthException(context))
         }
     }
 
@@ -125,7 +129,7 @@ class AuthRepository @Inject constructor(
             Result.success(Unit)
         } catch (e: Exception) {
             Log.e(TAG, "Server-side token revocation failed (best-effort)", e)
-            Result.failure(e.toAuthException())
+            Result.failure(e.toAuthException(context))
         }
     }
 
@@ -137,11 +141,11 @@ class AuthRepository @Inject constructor(
             if (response.success && response.user != null) {
                 Result.success(response.user)
             } else {
-                Result.failure(AuthException("Token验证失败"))
+                Result.failure(AuthException(context.getString(R.string.error_token_verify_failed)))
             }
         } catch (e: Exception) {
             Log.e(TAG, "verifyToken failed", e)
-            Result.failure(e.toAuthException())
+            Result.failure(e.toAuthException(context))
         }
     }
 
@@ -162,19 +166,25 @@ val Throwable.isUnauthorized: Boolean
     get() = (this as? AuthException)?.isUnauthorized == true
             || (this as? HttpException)?.code() == 401
 
-private fun withRequestId(message: String, requestId: String?): String =
-    if (requestId != null) "$message\n请求ID: $requestId" else message
+private fun withRequestId(context: Context, message: String, requestId: String?): String =
+    if (requestId != null) "$message\n${context.getString(R.string.error_request_id_line).format(requestId)}" else message
 
-fun Exception.toAuthException(): AuthException {
+/**
+ * Maps a network failure to a user-visible AuthException. [context] is the
+ * application context: the messages are localized at failure time. Formats
+ * are applied with String.format over the plain resource so the lookup stays
+ * a single-arg getString.
+ */
+fun Exception.toAuthException(context: Context): AuthException {
     val requestId = (this as? HttpException)?.response()?.raw()?.header("X-Request-Id")
     return when (this) {
-        is UnknownHostException -> AuthException(withRequestId("无法连接服务器，请检查网络", requestId), requestId = requestId)
-        is ConnectException -> AuthException(withRequestId("连接服务器失败，请稍后重试", requestId), requestId = requestId)
-        is SocketTimeoutException -> AuthException(withRequestId("连接超时，请检查网络", requestId), requestId = requestId)
+        is UnknownHostException -> AuthException(withRequestId(context, context.getString(R.string.error_connect_server), requestId), requestId = requestId)
+        is ConnectException -> AuthException(withRequestId(context, context.getString(R.string.error_connect_server_retry), requestId), requestId = requestId)
+        is SocketTimeoutException -> AuthException(withRequestId(context, context.getString(R.string.error_connect_timeout), requestId), requestId = requestId)
         is HttpException -> {
             val isUnauthorized = code() == 401
-            AuthException(withRequestId("服务器错误 (${code()}): ${message()}", requestId), isUnauthorized = isUnauthorized, requestId = requestId)
+            AuthException(withRequestId(context, context.getString(R.string.error_server).format(code(), message()), requestId), isUnauthorized = isUnauthorized, requestId = requestId)
         }
-        else -> AuthException(withRequestId("未知错误: ${this.message ?: this.javaClass.simpleName}", requestId), requestId = requestId)
+        else -> AuthException(withRequestId(context, context.getString(R.string.error_unknown).format(this.message ?: this.javaClass.simpleName), requestId), requestId = requestId)
     }
 }

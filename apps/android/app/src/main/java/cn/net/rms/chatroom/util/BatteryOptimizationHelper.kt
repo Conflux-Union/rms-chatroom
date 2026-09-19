@@ -8,6 +8,7 @@ import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
 import android.util.Log
+import cn.net.rms.chatroom.R
 
 /**
  * Helper class for managing battery optimization settings.
@@ -75,7 +76,7 @@ object BatteryOptimizationHelper {
     /**
      * Get user-friendly description of required settings
      */
-    fun getSettingsDescription(): String {
-        return "请在弹出的设置页面中选择「不优化」或「无限制」"
+    fun getSettingsDescription(context: Context): String {
+        return context.getString(R.string.battery_settings_description)
     }
 }

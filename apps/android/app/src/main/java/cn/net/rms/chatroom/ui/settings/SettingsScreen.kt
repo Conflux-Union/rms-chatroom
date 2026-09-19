@@ -1,7 +1,9 @@
 package cn.net.rms.chatroom.ui.settings
 
+import android.app.Activity
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.provider.Settings
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -15,12 +17,16 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import cn.net.rms.chatroom.R
+import cn.net.rms.chatroom.data.local.AppLanguage
+import cn.net.rms.chatroom.data.local.AppLocale
 import cn.net.rms.chatroom.data.local.ThemeMode
 import cn.net.rms.chatroom.ui.theme.Zhimo
 
@@ -39,6 +45,10 @@ fun SettingsScreen(
     val themeMode by viewModel.themeMode.collectAsState()
     val hasOverlayPermission by viewModel.hasOverlayPermission.collectAsState()
     val isIgnoringBatteryOptimization by viewModel.isIgnoringBatteryOptimization.collectAsState()
+    // Not routed through DataStore: the effective language is owned by
+    // AppLocale (SharedPreferences + LocaleManager) and re-read after the
+    // activity recreation that applies a change.
+    val language = remember { AppLocale.current(context) }
 
     // Refresh overlay permission when screen resumes
     DisposableEffect(lifecycleOwner) {
@@ -56,12 +66,12 @@ fun SettingsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("设置") },
+                title = { Text(stringResource(R.string.settings_title)) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "返回"
+                            contentDescription = stringResource(R.string.action_back)
                         )
                     }
                 },
@@ -77,7 +87,7 @@ fun SettingsScreen(
                 .verticalScroll(rememberScrollState())
         ) {
             // Appearance section
-            SettingsSectionHeader(title = "外观")
+            SettingsSectionHeader(title = stringResource(R.string.settings_section_appearance))
 
             ThemeModeItem(
                 mode = themeMode,
@@ -86,17 +96,33 @@ fun SettingsScreen(
 
             HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
 
+            // Language section
+            SettingsSectionHeader(title = stringResource(R.string.settings_section_language))
+
+            LanguageItem(
+                current = language,
+                onChange = { selected ->
+                    AppLocale.apply(context, selected)
+                    // API 33+ recreates automatically via applicationLocales.
+                    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+                        (context as? Activity)?.recreate()
+                    }
+                }
+            )
+
+            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+
             // Voice call section
-            SettingsSectionHeader(title = "语音通话")
+            SettingsSectionHeader(title = stringResource(R.string.settings_section_voice))
 
             // Floating window toggle
             SettingsItem(
                 icon = Icons.Default.PictureInPicture,
-                title = "通话悬浮窗",
+                title = stringResource(R.string.settings_floating_window_title),
                 subtitle = if (hasOverlayPermission) {
-                    "应用在后台时显示当前发言用户"
+                    stringResource(R.string.settings_floating_window_desc_on)
                 } else {
-                    "需要授予悬浮窗权限"
+                    stringResource(R.string.settings_floating_window_desc_off)
                 },
                 trailing = {
                     Switch(
@@ -120,15 +146,15 @@ fun SettingsScreen(
 
             HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
 
-            SettingsSectionHeader(title = "消息通知")
+            SettingsSectionHeader(title = stringResource(R.string.settings_section_notifications))
 
             SettingsItem(
                 icon = Icons.Default.NotificationsActive,
-                title = "后台消息驻留",
+                title = stringResource(R.string.settings_background_service_title),
                 subtitle = if (backgroundMessageServiceEnabled) {
-                    "显示常驻通知并尽量保持消息连接"
+                    stringResource(R.string.settings_background_service_desc_on)
                 } else {
-                    "关闭后仅在应用存活时接收后台提醒"
+                    stringResource(R.string.settings_background_service_desc_off)
                 },
                 trailing = {
                     Switch(
@@ -144,23 +170,23 @@ fun SettingsScreen(
             if (backgroundMessageServiceEnabled && !isIgnoringBatteryOptimization) {
                 SettingsItem(
                     icon = Icons.Default.BatterySaver,
-                    title = "电池优化",
-                    subtitle = "建议设为不优化，否则系统仍可能杀掉后台连接",
+                    title = stringResource(R.string.settings_battery_title),
+                    subtitle = stringResource(R.string.settings_battery_desc),
                     onClick = { viewModel.openBatteryOptimizationSettings() }
                 )
             }
 
             HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
 
-            SettingsSectionHeader(title = "隐私")
+            SettingsSectionHeader(title = stringResource(R.string.settings_section_privacy))
 
             SettingsItem(
                 icon = Icons.Default.BugReport,
-                title = "匿名错误报告",
+                title = stringResource(R.string.settings_telemetry_title),
                 subtitle = if (telemetryEnabled) {
-                    "上报崩溃和连接质量数据帮助改进，不含任何消息内容"
+                    stringResource(R.string.settings_telemetry_desc_on)
                 } else {
-                    "已关闭，不会上报任何数据"
+                    stringResource(R.string.settings_telemetry_desc_off)
                 },
                 trailing = {
                     Switch(
@@ -176,13 +202,13 @@ fun SettingsScreen(
             HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
 
             // About section
-            SettingsSectionHeader(title = "关于")
+            SettingsSectionHeader(title = stringResource(R.string.settings_section_about))
 
             // About app
             SettingsItem(
                 icon = Icons.Default.Info,
-                title = "关于应用",
-                subtitle = "版本、版权和开源许可",
+                title = stringResource(R.string.settings_about_title),
+                subtitle = stringResource(R.string.settings_about_desc),
                 onClick = onNavigateToAbout
             )
 
@@ -210,9 +236,9 @@ private fun ThemeModeItem(
     onChange: (ThemeMode) -> Unit
 ) {
     val options = listOf(
-        ThemeMode.SYSTEM to "跟随系统",
-        ThemeMode.LIGHT to "浅色",
-        ThemeMode.DARK to "深色"
+        ThemeMode.SYSTEM to stringResource(R.string.theme_follow_system),
+        ThemeMode.LIGHT to stringResource(R.string.theme_light),
+        ThemeMode.DARK to stringResource(R.string.theme_dark)
     )
 
     Row(
@@ -232,12 +258,12 @@ private fun ThemeModeItem(
 
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = "主题外观",
+                text = stringResource(R.string.settings_theme_title),
                 style = MaterialTheme.typography.bodyLarge,
                 color = Zhimo.ink
             )
             Text(
-                text = "选择应用的配色，切换后立即生效",
+                text = stringResource(R.string.settings_theme_desc),
                 style = MaterialTheme.typography.bodySmall,
                 color = Zhimo.inkFaint
             )
@@ -248,6 +274,68 @@ private fun ThemeModeItem(
                 options.forEachIndexed { index, (value, text) ->
                     SegmentedButton(
                         selected = mode == value,
+                        onClick = { onChange(value) },
+                        shape = SegmentedButtonDefaults.itemShape(
+                            index = index,
+                            count = options.size
+                        )
+                    ) {
+                        Text(text)
+                    }
+                }
+            }
+        }
+    }
+}
+
+// In-app language picker. Mirrors the theme picker; the change is applied by
+// AppLocale (persisted + LocaleManager on API 33+) and the caller recreates
+// the activity pre-33. The zh and en option labels stay in their own language
+// in every locale.
+@Composable
+private fun LanguageItem(
+    current: AppLanguage,
+    onChange: (AppLanguage) -> Unit
+) {
+    val options = listOf(
+        AppLanguage.SYSTEM to stringResource(R.string.language_system),
+        AppLanguage.ZH to stringResource(R.string.language_zh),
+        AppLanguage.EN to stringResource(R.string.language_en)
+    )
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = Icons.Default.Language,
+            contentDescription = null,
+            tint = Zhimo.inkFaint,
+            modifier = Modifier.size(24.dp)
+        )
+
+        Spacer(modifier = Modifier.width(16.dp))
+
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = stringResource(R.string.settings_language_title),
+                style = MaterialTheme.typography.bodyLarge,
+                color = Zhimo.ink
+            )
+            Text(
+                text = stringResource(R.string.settings_language_desc),
+                style = MaterialTheme.typography.bodySmall,
+                color = Zhimo.inkFaint
+            )
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                options.forEachIndexed { index, (value, text) ->
+                    SegmentedButton(
+                        selected = current == value,
                         onClick = { onChange(value) },
                         shape = SegmentedButtonDefaults.itemShape(
                             index = index,

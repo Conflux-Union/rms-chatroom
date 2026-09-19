@@ -2,6 +2,7 @@ package cn.net.rms.chatroom.ui
 
 import android.Manifest
 import android.app.Activity
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -24,11 +25,14 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.res.stringResource
 import androidx.core.content.ContextCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.view.WindowCompat
 import androidx.navigation.compose.rememberNavController
 import cn.net.rms.chatroom.BuildConfig
+import cn.net.rms.chatroom.R
+import cn.net.rms.chatroom.data.local.AppLocale
 import cn.net.rms.chatroom.data.local.SettingsPreferences
 import cn.net.rms.chatroom.data.local.ThemeMode
 import cn.net.rms.chatroom.data.repository.ChatRepository
@@ -53,12 +57,16 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var settingsPreferences: SettingsPreferences
 
+    override fun attachBaseContext(newBase: Context) {
+        super.attachBaseContext(AppLocale.wrapContext(newBase))
+    }
+
     private val notificationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
         Log.d("MainActivity", "Notification permission granted: $granted")
         if (!granted) {
-            Toast.makeText(this, "需要通知权限才能接收消息提醒", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, R.string.main_notification_permission_required, Toast.LENGTH_LONG).show()
         }
     }
 
@@ -235,16 +243,16 @@ class MainActivity : ComponentActivity() {
     
     private fun showNotificationPermissionDialog() {
         android.app.AlertDialog.Builder(this)
-            .setTitle("开启通知")
-            .setMessage("开启通知权限后，您可以及时收到新消息提醒，不错过重要信息。")
-            .setPositiveButton("去设置") { _, _ ->
+            .setTitle(R.string.main_open_notification_settings)
+            .setMessage(R.string.main_notification_permission_rationale)
+            .setPositiveButton(R.string.main_go_to_settings) { _, _ ->
                 val intent = Intent().apply {
                     action = Settings.ACTION_APP_NOTIFICATION_SETTINGS
                     putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
                 }
                 startActivity(intent)
             }
-            .setNegativeButton("稍后再说", null)
+            .setNegativeButton(R.string.main_later, null)
             .show()
     }
 

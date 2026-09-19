@@ -79,11 +79,11 @@ fun VoiceInviteScreen(
     if (showPermissionDeniedDialog) {
         AlertDialog(
             onDismissRequest = { showPermissionDeniedDialog = false },
-            title = { Text("需要麦克风权限") },
-            text = { Text("加入语音通话需要麦克风权限。请在系统设置中授予权限。") },
+            title = { Text(stringResource(R.string.voice_mic_permission_title)) },
+            text = { Text(stringResource(R.string.voice_mic_permission_body)) },
             confirmButton = {
                 TextButton(onClick = { showPermissionDeniedDialog = false }) {
-                    Text("确定")
+                    Text(stringResource(R.string.action_ok))
                 }
             }
         )
@@ -105,10 +105,10 @@ fun VoiceInviteScreen(
         topBar = {
             if (!state.isConnected) {
                 TopAppBar(
-                    title = { Text("语音邀请") },
+                    title = { Text(stringResource(R.string.voice_invite_screen_title)) },
                     navigationIcon = {
                         IconButton(onClick = onNavigateBack) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
@@ -185,13 +185,13 @@ private fun InvalidInviteContent(
             )
             Spacer(modifier = Modifier.height(16.dp))
             Text(
-                text = "邀请链接无效",
+                text = stringResource(R.string.voice_invalid_invite),
                 style = MaterialTheme.typography.titleLarge,
                 color = Zhimo.ink
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = "该邀请链接可能已过期或已被使用",
+                text = stringResource(R.string.voice_invalid_invite_body),
                 style = MaterialTheme.typography.bodyMedium,
                 color = Zhimo.inkFaint,
                 textAlign = TextAlign.Center
@@ -201,7 +201,7 @@ private fun InvalidInviteContent(
                 onClick = onNavigateBack,
                 colors = ButtonDefaults.buttonColors(containerColor = Zhimo.seal)
             ) {
-                Text("返回")
+                Text(stringResource(R.string.action_back))
             }
         }
     }
@@ -239,7 +239,7 @@ private fun JoinFormContent(
                     )
                     Spacer(modifier = Modifier.height(12.dp))
                     Text(
-                        text = "语音邀请",
+                        text = stringResource(R.string.voice_invite_screen_title),
                         style = MaterialTheme.typography.titleMedium,
                         color = Zhimo.ink
                     )
@@ -292,7 +292,7 @@ private fun JoinFormContent(
                     IconButton(onClick = onClearError, modifier = Modifier.size(24.dp)) {
                         Icon(
                             imageVector = Icons.Default.Close,
-                            contentDescription = "关闭",
+                            contentDescription = stringResource(R.string.action_close),
                             tint = Zhimo.danger,
                             modifier = Modifier.size(16.dp)
                         )
@@ -306,7 +306,7 @@ private fun JoinFormContent(
         OutlinedTextField(
             value = state.username,
             onValueChange = onUsernameChange,
-            label = { Text("输入你的名字") },
+            label = { Text(stringResource(R.string.voice_input_name_label)) },
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
             colors = OutlinedTextFieldDefaults.colors(
@@ -342,7 +342,7 @@ private fun JoinFormContent(
                     modifier = Modifier.size(20.dp)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("加入语音")
+                Text(stringResource(R.string.join_voice))
             }
         }
     }
@@ -361,7 +361,7 @@ private fun VoiceRoomContent(
     ) {
         // Header
         Text(
-            text = state.inviteInfo?.channelName?.let { "# $it" } ?: "语音通话",
+            text = state.inviteInfo?.channelName?.let { "# $it" } ?: stringResource(R.string.voice_call),
             style = MaterialTheme.typography.titleLarge,
             color = Zhimo.ink
         )
@@ -395,7 +395,7 @@ private fun VoiceRoomContent(
                     )
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(
-                        text = "等待其他人加入...",
+                        text = stringResource(R.string.voice_waiting_others),
                         style = MaterialTheme.typography.bodyLarge,
                         color = Zhimo.inkFaint
                     )
@@ -525,7 +525,7 @@ private fun GuestVoiceUserItem(participant: ParticipantInfo) {
             Spacer(modifier = Modifier.height(4.dp))
             Icon(
                 imageVector = Icons.Default.MicOff,
-                contentDescription = "静音",
+                contentDescription = stringResource(R.string.mute),
                 modifier = Modifier.size(14.dp),
                 tint = Zhimo.danger
             )

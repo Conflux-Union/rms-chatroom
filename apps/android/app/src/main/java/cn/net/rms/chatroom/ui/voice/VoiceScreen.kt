@@ -133,11 +133,11 @@ fun VoiceScreen(
     if (showPermissionDeniedDialog) {
         AlertDialog(
             onDismissRequest = { showPermissionDeniedDialog = false },
-            title = { Text("需要麦克风权限") },
-            text = { Text("加入语音通话需要麦克风权限。请在系统设置中授予权限。") },
+            title = { Text(stringResource(R.string.voice_mic_permission_title)) },
+            text = { Text(stringResource(R.string.voice_mic_permission_body)) },
             confirmButton = {
                 TextButton(onClick = { showPermissionDeniedDialog = false }) {
-                    Text("确定")
+                    Text(stringResource(R.string.action_ok))
                 }
             }
         )
@@ -401,7 +401,7 @@ fun VoiceScreen(
                             )
                             Spacer(modifier = Modifier.height(16.dp))
                             Text(
-                                text = if (state.isConnected) "等待其他人加入..." else "点击下方按钮加入语音",
+                                text = if (state.isConnected) stringResource(R.string.voice_waiting_others) else stringResource(R.string.voice_tap_to_join),
                                 style = MaterialTheme.typography.bodyLarge,
                                 color = Zhimo.inkFaint,
                                 textAlign = TextAlign.Center
@@ -496,7 +496,7 @@ private fun ConnectionStatusBanner(
                 IconButton(onClick = onDismissError, modifier = Modifier.size(24.dp)) {
                     Icon(
                         imageVector = Icons.Default.Close,
-                        contentDescription = "关闭",
+                        contentDescription = stringResource(R.string.action_close),
                         tint = Zhimo.danger,
                         modifier = Modifier.size(16.dp)
                     )
@@ -525,7 +525,7 @@ private fun ConnectionStatusBanner(
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "正在重新连接...",
+                    text = stringResource(R.string.connection_reconnecting),
                     style = MaterialTheme.typography.bodySmall,
                     color = Zhimo.warning
                 )
@@ -637,7 +637,7 @@ private fun VoiceUserItem(
             if (participant.isMuted) {
                 Icon(
                     imageVector = Icons.Default.MicOff,
-                    contentDescription = "静音",
+                    contentDescription = stringResource(R.string.mute),
                     modifier = Modifier.size(14.dp),
                     tint = Zhimo.danger
                 )
@@ -677,7 +677,7 @@ private fun HostModeBanner(hostName: String) {
             )
             Spacer(modifier = Modifier.width(8.dp))
             Text(
-                text = "$hostName 正在主持",
+                text = stringResource(R.string.voice_hosting, hostName),
                 style = MaterialTheme.typography.bodySmall,
                 color = Zhimo.warning,
                 fontWeight = FontWeight.Medium
@@ -709,7 +709,7 @@ private fun InviteDialog(
         },
         title = {
             Text(
-                text = "邀请访客",
+                text = stringResource(R.string.voice_invite_title),
                 fontWeight = FontWeight.Bold,
                 color = Zhimo.ink
             )
@@ -726,14 +726,14 @@ private fun InviteDialog(
                             color = Zhimo.success
                         )
                         Spacer(modifier = Modifier.height(8.dp))
-                        Text("正在生成链接...", color = Zhimo.inkFaint)
+                        Text(stringResource(R.string.voice_invite_generating), color = Zhimo.inkFaint)
                     }
                     error != null -> {
                         Text(error, color = Zhimo.danger)
                     }
                     inviteUrl != null -> {
                         Text(
-                            text = "此链接仅可使用一次，访客离开后无法再次加入。",
+                            text = stringResource(R.string.voice_invite_once_hint),
                             style = MaterialTheme.typography.bodySmall,
                             color = Zhimo.inkFaint,
                             textAlign = TextAlign.Center
@@ -780,7 +780,7 @@ private fun InviteDialog(
                                         modifier = Modifier.size(18.dp)
                                     )
                                     Spacer(modifier = Modifier.width(8.dp))
-                                    Text(if (copied) "已复制" else "复制链接")
+                                    Text(if (copied) stringResource(R.string.action_copied) else stringResource(R.string.action_copy_link))
                                 }
                             }
                         }
@@ -790,7 +790,7 @@ private fun InviteDialog(
         },
         confirmButton = {
             TextButton(onClick = onDismiss) {
-                Text("关闭", color = Zhimo.ink)
+                Text(stringResource(R.string.action_close), color = Zhimo.ink)
             }
         }
     )
@@ -866,7 +866,7 @@ private fun ParticipantSettingsSheet(
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            text = "已静音",
+                            text = stringResource(R.string.voice_muted_label),
                             style = MaterialTheme.typography.bodySmall,
                             color = Zhimo.danger
                         )
@@ -893,7 +893,7 @@ private fun ParticipantSettingsSheet(
                     modifier = Modifier.size(18.dp)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("静音麦克风")
+                Text(stringResource(R.string.action_mute_mic))
             }
             Spacer(modifier = Modifier.height(8.dp))
             Button(
@@ -910,14 +910,14 @@ private fun ParticipantSettingsSheet(
                     modifier = Modifier.size(18.dp)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("踢出频道")
+                Text(stringResource(R.string.action_kick_user))
             }
             Spacer(modifier = Modifier.height(16.dp))
         }
 
         // Volume section
         Text(
-            text = "用户音量",
+            text = stringResource(R.string.voice_user_volume),
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Medium,
             color = Zhimo.ink
@@ -1009,7 +1009,7 @@ private fun ParticipantSettingsSheet(
                         tint = Zhimo.warning
                     )
                     Text(
-                        text = "音量增益可能导致音频失真",
+                        text = stringResource(R.string.voice_boost_warning),
                         style = MaterialTheme.typography.bodySmall,
                         color = Zhimo.warning
                     )
@@ -1031,7 +1031,7 @@ private fun ParticipantSettingsSheet(
                     contentColor = Zhimo.ink
                 )
             ) {
-                Text("重置为 100%")
+                Text(stringResource(R.string.action_reset_volume))
             }
         }
     }
@@ -1087,7 +1087,7 @@ private fun VoiceControls(
                             // Music button
                             VoiceControlButton(
                                 icon = Icons.Default.MusicNote,
-                                label = "音乐",
+                                label = stringResource(R.string.music),
                                 isActive = true,
                                 activeColor = Zhimo.seal,
                                 onClick = onShowMusicPanel
@@ -1102,7 +1102,7 @@ private fun VoiceControls(
                                     AudioDeviceType.BLUETOOTH -> Icons.Default.Bluetooth
                                     else -> Icons.Default.Speaker
                                 },
-                                label = selectedDevice?.name?.take(6) ?: "音频",
+                                label = selectedDevice?.name?.take(6) ?: stringResource(R.string.voice_audio_label),
                                 isActive = true,
                                 activeColor = Zhimo.success,
                                 onClick = onOpenDeviceSelector
@@ -1111,9 +1111,14 @@ private fun VoiceControls(
                             // Screen share button
                             VoiceControlButton(
                                 icon = if (isScreenSharing) Icons.Default.DesktopAccessDisabled else Icons.Default.DesktopWindows,
-                                label = if (isScreenSharing) "停止共享"
-                                        else if (screenShareButtonDisabled) "${screenSharerName ?: "其他用户"}共享中"
-                                        else "共享屏幕",
+                                label = when {
+                                    isScreenSharing -> stringResource(R.string.action_stop_sharing)
+                                    screenShareButtonDisabled -> stringResource(
+                                        R.string.voice_sharing_badge,
+                                        screenSharerName ?: stringResource(R.string.voice_other_user)
+                                    )
+                                    else -> stringResource(R.string.action_share_screen)
+                                },
                                 isActive = isScreenSharing,
                                 activeColor = Zhimo.success,
                                 enabled = !screenShareButtonDisabled,
@@ -1121,26 +1126,28 @@ private fun VoiceControls(
                             )
 
                             if (isAdmin) {
-                                // Admin: Host mode button
-                                VoiceControlButton(
-                                    icon = Icons.Default.Star,
-                                    label = if (hostModeEnabled && isCurrentUserHost) "停止主持"
-                                            else if (hostButtonDisabled) "主持中"
-                                            else "主持模式",
-                                    isActive = hostModeEnabled && isCurrentUserHost,
-                                    activeColor = Zhimo.warning,
-                                    enabled = !hostButtonDisabled,
-                                    onClick = onToggleHostMode
-                                )
+                            // Admin: Host mode button
+                            VoiceControlButton(
+                                icon = Icons.Default.Star,
+                                label = when {
+                                    hostModeEnabled && isCurrentUserHost -> stringResource(R.string.action_stop_hosting)
+                                    hostButtonDisabled -> stringResource(R.string.voice_hosting_active)
+                                    else -> stringResource(R.string.voice_host_mode)
+                                },
+                                isActive = hostModeEnabled && isCurrentUserHost,
+                                activeColor = Zhimo.warning,
+                                enabled = !hostButtonDisabled,
+                                onClick = onToggleHostMode
+                            )
 
-                                // Admin: Create invite button
-                                VoiceControlButton(
-                                    icon = Icons.Default.Link,
-                                    label = "邀请访客",
-                                    isActive = true,
-                                    activeColor = Zhimo.success,
-                                    onClick = onCreateInvite
-                                )
+                            // Admin: Create invite button
+                            VoiceControlButton(
+                                icon = Icons.Default.Link,
+                                label = stringResource(R.string.voice_invite_title),
+                                isActive = true,
+                                activeColor = Zhimo.success,
+                                onClick = onCreateInvite
+                            )
                             }
                         }
 
@@ -1181,7 +1188,7 @@ private fun VoiceControls(
                     // Hang up button
                     VoiceControlButton(
                         icon = Icons.Default.CallEnd,
-                        label = "挂断",
+                        label = stringResource(R.string.action_hang_up),
                         isActive = true,
                         activeColor = Zhimo.danger,
                         onClick = onLeave
@@ -1190,7 +1197,7 @@ private fun VoiceControls(
                     // Expand-more button
                     VoiceControlButton(
                         icon = if (moreExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                        label = if (moreExpanded) "收起" else "更多",
+                        label = if (moreExpanded) stringResource(R.string.action_collapse) else stringResource(R.string.action_more),
                         isActive = moreExpanded,
                         activeColor = Zhimo.seal,
                         onClick = onToggleMore
@@ -1305,7 +1312,7 @@ private fun AudioDeviceSelectorSheet(
             .padding(bottom = 32.dp)
     ) {
         Text(
-            text = "选择音频设备",
+            text = stringResource(R.string.voice_select_device),
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.Bold,
             color = Zhimo.ink,
@@ -1314,7 +1321,7 @@ private fun AudioDeviceSelectorSheet(
 
         if (availableDevices.isEmpty()) {
             Text(
-                text = "没有可用的音频设备",
+                text = stringResource(R.string.voice_no_devices),
                 style = MaterialTheme.typography.bodyMedium,
                 color = Zhimo.inkFaint,
                 modifier = Modifier.padding(vertical = 24.dp)
@@ -1387,7 +1394,7 @@ private fun AudioDeviceItem(
             if (isSelected) {
                 Icon(
                     imageVector = Icons.Default.Check,
-                    contentDescription = "已选择",
+                    contentDescription = stringResource(R.string.voice_device_selected),
                     modifier = Modifier.size(24.dp),
                     tint = Zhimo.seal
                 )
@@ -1433,18 +1440,18 @@ private fun RemoteScreenShareView(
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "${screenShare.participantName} 正在共享屏幕",
+                    text = stringResource(R.string.voice_sharing_by, screenShare.participantName),
                     style = MaterialTheme.typography.bodyMedium,
                     color = Zhimo.ink
                 )
                 if (ignored) {
                     Spacer(modifier = Modifier.height(8.dp))
                     OutlinedButton(onClick = onToggleWatch) {
-                        Text("观看")
+                        Text(stringResource(R.string.action_watch))
                     }
                 } else {
                     Text(
-                        text = "正在接入视频流...",
+                        text = stringResource(R.string.voice_connecting_stream),
                         style = MaterialTheme.typography.bodySmall,
                         color = Zhimo.inkFaint,
                         textAlign = TextAlign.Center
@@ -1490,7 +1497,7 @@ private fun RemoteScreenShareView(
                 shape = RoundedCornerShape(4.dp)
             ) {
                 Text(
-                    text = "忽略",
+                    text = stringResource(R.string.action_ignore),
                     style = MaterialTheme.typography.labelSmall,
                     color = Zhimo.ink,
                     modifier = Modifier

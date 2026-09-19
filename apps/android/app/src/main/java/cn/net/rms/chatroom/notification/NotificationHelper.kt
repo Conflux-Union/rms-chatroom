@@ -106,7 +106,7 @@ class NotificationHelper @Inject constructor(
         val summaryNotification = NotificationCompat.Builder(context, CHANNEL_ID_MESSAGES)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(context.getString(R.string.app_name))
-            .setContentText("新消息")
+            .setContentText(context.getString(R.string.notification_new_message))
             .setGroup(NOTIFICATION_GROUP_MESSAGES)
             .setGroupSummary(true)
             .setAutoCancel(true)

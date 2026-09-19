@@ -12,7 +12,7 @@
         android:id="@+id/floating_title"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="通话中"
+        android:text="@string/voice_status_calling"
         android:textColor="#FFFFFF"
         android:textSize="14sp"
         android:textStyle="bold" />
@@ -39,7 +39,7 @@
             android:background="@drawable/floating_icon_button_background"
             android:src="@drawable/ic_mic"
             android:padding="8dp"
-            android:contentDescription="静音"
+            android:contentDescription="@string/mute"
             android:clickable="true"
             android:focusable="true" />
 
@@ -51,7 +51,7 @@
             android:background="@drawable/floating_icon_button_hangup_background"
             android:src="@drawable/ic_call_end"
             android:padding="8dp"
-            android:contentDescription="挂断"
+            android:contentDescription="@string/action_hang_up"
             android:clickable="true"
             android:focusable="true" />
 

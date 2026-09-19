@@ -1,10 +1,12 @@
 package cn.net.rms.chatroom.ui.main
 
+import android.content.Context
 import android.net.Uri
 import android.os.SystemClock
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import cn.net.rms.chatroom.R
 import cn.net.rms.chatroom.data.api.ChannelMember
 import cn.net.rms.chatroom.data.api.ReorderTopLevelItem
 import cn.net.rms.chatroom.data.model.Channel
@@ -28,6 +30,7 @@ import cn.net.rms.chatroom.data.websocket.GlobalWebSocket
 import cn.net.rms.chatroom.data.websocket.GlobalWebSocketEvent
 import cn.net.rms.chatroom.data.websocket.WebSocketEvent
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -77,6 +80,7 @@ data class ForwardQuoteUi(
 
 @HiltViewModel
 class MainViewModel @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val chatRepository: ChatRepository,
     private val bugReportRepository: BugReportRepository,
     private val updateRepository: UpdateRepository,
@@ -401,14 +405,14 @@ class MainViewModel @Inject constructor(
                     }
                     .onFailure { e ->
                         if (!e.isUnauthorized) {
-                            _state.value = _state.value.copy(error = "无法打开原消息所在的服务器")
+                            _state.value = _state.value.copy(error = context.getString(R.string.error_open_server_failed))
                         }
                         return@launch
                     }
             }
             val channel = _state.value.currentServer?.channels?.firstOrNull { it.id == channelId }
             if (channel == null) {
-                _state.value = _state.value.copy(error = "无法打开原消息所在的频道")
+                _state.value = _state.value.copy(error = context.getString(R.string.error_open_channel_failed))
                 return@launch
             }
             _state.value = _state.value.copy(jumpTargetMessageId = messageId)
@@ -500,14 +504,14 @@ class MainViewModel @Inject constructor(
         viewModelScope.launch {
             chatRepository.sendMessage(channelId, content, attachmentIds, replyToId)
                 .onFailure { e ->
-                    if (!e.isUnauthorized) _state.value = _state.value.copy(error = "发送失败: ${e.message}")
+                    if (!e.isUnauthorized) _state.value = _state.value.copy(error = context.getString(R.string.error_send_failed, e.message ?: ""))
                 }
         }
     }
 
     suspend fun uploadFile(uri: Uri): Result<AttachmentResponse> {
         val channelId = _state.value.currentChannel?.id
-            ?: return Result.failure(Exception("未选择频道"))
+            ?: return Result.failure(Exception(context.getString(R.string.error_no_channel)))
         return chatRepository.uploadFile(channelId, uri)
     }
 
@@ -548,7 +552,7 @@ class MainViewModel @Inject constructor(
                 .onFailure { e ->
                     _state.value = _state.value.copy(
                         bugReportSubmitting = false,
-                        error = "上报失败: ${e.message}"
+                        error = context.getString(R.string.error_bug_report_failed, e.message ?: "")
                     )
                 }
         }
@@ -621,7 +625,7 @@ class MainViewModel @Inject constructor(
         )
         if (success && !updateRepository.installApk()) {
             _state.value = _state.value.copy(
-                error = "无法启动安装，已改为浏览器下载；如未跳转请手动下载更新"
+                error = context.getString(R.string.error_install_fallback)
             )
         }
     }
@@ -637,7 +641,7 @@ class MainViewModel @Inject constructor(
                     selectServer(serverId)
                 }
                 .onFailure { e ->
-                    if (!e.isUnauthorized) _state.value = _state.value.copy(error = "创建频道失败: ${e.message}")
+                    if (!e.isUnauthorized) _state.value = _state.value.copy(error = context.getString(R.string.error_create_channel, e.message ?: ""))
                 }
         }
     }
@@ -657,7 +661,7 @@ class MainViewModel @Inject constructor(
                     selectServer(serverId)
                 }
                 .onFailure { e ->
-                    if (!e.isUnauthorized) _state.value = _state.value.copy(error = "删除频道失败: ${e.message}")
+                    if (!e.isUnauthorized) _state.value = _state.value.copy(error = context.getString(R.string.error_delete_channel, e.message ?: ""))
                 }
         }
     }
@@ -670,7 +674,7 @@ class MainViewModel @Inject constructor(
                     loadServers()
                 }
                 .onFailure { e ->
-                    if (!e.isUnauthorized) _state.value = _state.value.copy(error = "创建服务器失败: ${e.message}")
+                    if (!e.isUnauthorized) _state.value = _state.value.copy(error = context.getString(R.string.error_create_server, e.message ?: ""))
                 }
         }
     }
@@ -692,7 +696,7 @@ class MainViewModel @Inject constructor(
                     loadServers()
                 }
                 .onFailure { e ->
-                    if (!e.isUnauthorized) _state.value = _state.value.copy(error = "删除服务器失败: ${e.message}")
+                    if (!e.isUnauthorized) _state.value = _state.value.copy(error = context.getString(R.string.error_delete_server, e.message ?: ""))
                 }
         }
     }
@@ -715,7 +719,7 @@ class MainViewModel @Inject constructor(
                     selectServer(serverId)
                 }
                 .onFailure { e ->
-                    if (!e.isUnauthorized) _state.value = _state.value.copy(error = "排序失败: ${e.message}")
+                    if (!e.isUnauthorized) _state.value = _state.value.copy(error = context.getString(R.string.error_reorder, e.message ?: ""))
                 }
         }
     }
@@ -729,7 +733,7 @@ class MainViewModel @Inject constructor(
                     selectServer(serverId)
                 }
                 .onFailure { e ->
-                    if (!e.isUnauthorized) _state.value = _state.value.copy(error = "排序失败: ${e.message}")
+                    if (!e.isUnauthorized) _state.value = _state.value.copy(error = context.getString(R.string.error_reorder, e.message ?: ""))
                 }
         }
     }
@@ -743,7 +747,7 @@ class MainViewModel @Inject constructor(
                     selectServer(serverId)
                 }
                 .onFailure { e ->
-                    if (!e.isUnauthorized) _state.value = _state.value.copy(error = "创建分组失败: ${e.message}")
+                    if (!e.isUnauthorized) _state.value = _state.value.copy(error = context.getString(R.string.error_create_group, e.message ?: ""))
                 }
         }
     }
@@ -757,7 +761,7 @@ class MainViewModel @Inject constructor(
                     selectServer(serverId)
                 }
                 .onFailure { e ->
-                    if (!e.isUnauthorized) _state.value = _state.value.copy(error = "删除分组失败: ${e.message}")
+                    if (!e.isUnauthorized) _state.value = _state.value.copy(error = context.getString(R.string.error_delete_group, e.message ?: ""))
                 }
         }
     }
@@ -768,7 +772,7 @@ class MainViewModel @Inject constructor(
         viewModelScope.launch {
             chatRepository.editMessage(channelId, messageId, content)
                 .onFailure { e ->
-                    if (!e.isUnauthorized) _state.value = _state.value.copy(error = "编辑失败: ${e.message}")
+                    if (!e.isUnauthorized) _state.value = _state.value.copy(error = context.getString(R.string.error_edit_failed, e.message ?: ""))
                 }
         }
     }
@@ -778,7 +782,7 @@ class MainViewModel @Inject constructor(
         viewModelScope.launch {
             chatRepository.deleteMessage(channelId, messageId)
                 .onFailure { e ->
-                    if (!e.isUnauthorized) _state.value = _state.value.copy(error = "撤回失败: ${e.message}")
+                    if (!e.isUnauthorized) _state.value = _state.value.copy(error = context.getString(R.string.error_recall_failed, e.message ?: ""))
                 }
         }
     }
@@ -794,10 +798,10 @@ class MainViewModel @Inject constructor(
         viewModelScope.launch {
             chatRepository.createMute(userId, scope, durationMinutes, serverId, channelId, reason)
                 .onSuccess {
-                    _state.value = _state.value.copy(error = "禁言成功")
+                    _state.value = _state.value.copy(error = context.getString(R.string.success_muted))
                 }
                 .onFailure { e ->
-                    if (!e.isUnauthorized) _state.value = _state.value.copy(error = "禁言失败: ${e.message}")
+                    if (!e.isUnauthorized) _state.value = _state.value.copy(error = context.getString(R.string.error_mute_failed, e.message ?: ""))
                 }
         }
     }
@@ -817,7 +821,7 @@ class MainViewModel @Inject constructor(
         viewModelScope.launch {
             chatRepository.addReaction(messageId, emoji)
                 .onFailure { e ->
-                    if (!e.isUnauthorized) _state.value = _state.value.copy(error = "添加表情失败: ${e.message}")
+                    if (!e.isUnauthorized) _state.value = _state.value.copy(error = context.getString(R.string.error_add_reaction, e.message ?: ""))
                 }
         }
     }
@@ -826,7 +830,7 @@ class MainViewModel @Inject constructor(
         viewModelScope.launch {
             chatRepository.removeReaction(messageId, emoji)
                 .onFailure { e ->
-                    if (!e.isUnauthorized) _state.value = _state.value.copy(error = "移除表情失败: ${e.message}")
+                    if (!e.isUnauthorized) _state.value = _state.value.copy(error = context.getString(R.string.error_remove_reaction, e.message ?: ""))
                 }
         }
     }

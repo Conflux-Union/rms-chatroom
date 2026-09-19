@@ -179,10 +179,10 @@ class MessageConnectionService : Service() {
 
         val channel = NotificationChannel(
             CHANNEL_ID,
-            "后台消息连接",
+            getString(R.string.service_background_connection_name),
             NotificationManager.IMPORTANCE_LOW
         ).apply {
-            description = "保持消息连接以便后台接收提醒"
+            description = getString(R.string.service_background_connection_desc)
             setShowBadge(false)
         }
 
@@ -209,13 +209,13 @@ class MessageConnectionService : Service() {
 
         val stopAction = NotificationCompat.Action.Builder(
             R.drawable.ic_notification,
-            "停止驻留",
+            getString(R.string.service_stop_background),
             stopPendingIntent
         ).build()
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("RMS ChatRoom")
-            .setContentText("正在保持后台消息连接")
+            .setContentText(getString(R.string.service_background_connection_text))
             .setSmallIcon(R.drawable.ic_notification)
             .setOngoing(true)
             .setContentIntent(contentIntent)

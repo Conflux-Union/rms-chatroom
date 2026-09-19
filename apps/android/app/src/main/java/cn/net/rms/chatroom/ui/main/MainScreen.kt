@@ -191,7 +191,7 @@ fun MainScreen(
                             } else {
                                 Icon(
                                     imageVector = Icons.Default.BugReport,
-                                    contentDescription = "Bug Report"
+                                    contentDescription = stringResource(R.string.bug_report_title)
                                 )
                             }
                         }
@@ -298,14 +298,14 @@ fun MainScreen(
                                 TextButton(
                                     onClick = {
                                         clipboardManager.setText(AnnotatedString(requestId))
-                                        Toast.makeText(context, "请求ID已复制", Toast.LENGTH_SHORT).show()
+                                        Toast.makeText(context, context.getString(R.string.error_request_id_copied), Toast.LENGTH_SHORT).show()
                                     }
                                 ) {
-                                    Text("复制ID")
+                                    Text(stringResource(R.string.action_copy_id))
                                 }
                             }
                             TextButton(onClick = { mainViewModel.clearError() }) {
-                                Text("关闭")
+                                Text(stringResource(R.string.action_close))
                             }
                         }
                     ) {
@@ -320,8 +320,8 @@ fun MainScreen(
     if (showBugReportDialog) {
         AlertDialog(
             onDismissRequest = { showBugReportDialog = false },
-            title = { Text("上报Bug") },
-            text = { Text("将收集设备信息和应用日志并上传，是否继续？") },
+            title = { Text(stringResource(R.string.bug_report_title)) },
+            text = { Text(stringResource(R.string.bug_report_body)) },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -329,12 +329,12 @@ fun MainScreen(
                         mainViewModel.submitBugReport()
                     }
                 ) {
-                    Text("确认上报")
+                    Text(stringResource(R.string.bug_report_confirm))
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showBugReportDialog = false }) {
-                    Text("取消")
+                    Text(stringResource(R.string.action_cancel))
                 }
             }
         )
@@ -344,11 +344,11 @@ fun MainScreen(
     mainState.bugReportId?.let { reportId ->
         AlertDialog(
             onDismissRequest = { mainViewModel.clearBugReportId() },
-            title = { Text("上报成功") },
-            text = { Text("Report ID:\n$reportId") },
+            title = { Text(stringResource(R.string.bug_report_success)) },
+            text = { Text(stringResource(R.string.bug_report_success_id, reportId)) },
             confirmButton = {
                 TextButton(onClick = { mainViewModel.clearBugReportId() }) {
-                    Text("确定")
+                    Text(stringResource(R.string.action_ok))
                 }
             },
             dismissButton = {
@@ -357,7 +357,7 @@ fun MainScreen(
                         clipboardManager.setText(AnnotatedString(reportId))
                     }
                 ) {
-                    Text("复制ID")
+                    Text(stringResource(R.string.action_copy_id))
                 }
             }
         )
@@ -368,10 +368,10 @@ fun MainScreen(
     mainState.updateInfo?.takeIf { splashSettled }?.let { updateInfo ->
         AlertDialog(
             onDismissRequest = { if (!updateInfo.forceUpdate) mainViewModel.dismissUpdate() },
-            title = { Text("发现新版本") },
+            title = { Text(stringResource(R.string.update_available)) },
             text = {
                 Column {
-                    Text("版本: ${updateInfo.versionName}")
+                    Text(stringResource(R.string.update_version_label, updateInfo.versionName))
                     if (mainState.isDownloading) {
                         Spacer(modifier = Modifier.height(12.dp))
                         val totalBytes = mainState.downloadTotalBytes
@@ -402,13 +402,13 @@ fun MainScreen(
                     onClick = { mainViewModel.downloadUpdate() },
                     enabled = !mainState.isDownloading
                 ) {
-                    Text(if (mainState.isDownloading) "下载中..." else "下载更新")
+                    Text(if (mainState.isDownloading) stringResource(R.string.update_downloading) else stringResource(R.string.update_download))
                 }
             },
             dismissButton = {
                 if (!updateInfo.forceUpdate) {
                     TextButton(onClick = { mainViewModel.dismissUpdate() }) {
-                        Text("稍后再说")
+                        Text(stringResource(R.string.main_later))
                     }
                 }
             }

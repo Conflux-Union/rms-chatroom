@@ -253,16 +253,16 @@ class FloatingWindowService : Service() {
         container.removeAllViews()
         
         if (speakingUsers.isEmpty()) {
-            titleText.text = "通话中"
+            titleText.text = getString(R.string.voice_status_calling)
             val noSpeakerView = TextView(this).apply {
-                text = "暂无人发言"
+                text = getString(R.string.floating_no_speakers)
                 setTextColor(0xFFB5BAC1.toInt())
                 textSize = 12f
                 setPadding(0, 4, 0, 0)
             }
             container.addView(noSpeakerView)
         } else {
-            titleText.text = "正在发言"
+            titleText.text = getString(R.string.floating_speaking_title)
             speakingUsers.take(3).forEach { user ->
                 val userView = TextView(this).apply {
                     text = "● ${user.name}"
@@ -272,10 +272,11 @@ class FloatingWindowService : Service() {
                 }
                 container.addView(userView)
             }
-            
+
             if (speakingUsers.size > 3) {
+                val extra = speakingUsers.size - 3
                 val moreView = TextView(this).apply {
-                    text = "还有 ${speakingUsers.size - 3} 人..."
+                    text = resources.getQuantityString(R.plurals.floating_more_speakers, extra, extra)
                     setTextColor(0xFFB5BAC1.toInt())
                     textSize = 11f
                     setPadding(0, 4, 0, 0)

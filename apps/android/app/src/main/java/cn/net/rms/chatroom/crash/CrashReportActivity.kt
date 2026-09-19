@@ -30,10 +30,12 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import cn.net.rms.chatroom.R
 import cn.net.rms.chatroom.data.local.SettingsPreferences
 import cn.net.rms.chatroom.data.local.ThemeMode
 import cn.net.rms.chatroom.ui.MainActivity
@@ -84,7 +86,7 @@ class CrashReportActivity : ComponentActivity() {
                         onSubmit = viewModel::submitReport,
                         onCopyReportId = { reportId ->
                             clipboardManager.setText(AnnotatedString(reportId))
-                            Toast.makeText(this, "Report ID已复制", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(this, getString(R.string.crash_report_id_copied), Toast.LENGTH_SHORT).show()
                         },
                         onRestart = ::restartApp,
                         onExit = ::finishAffinity
@@ -127,13 +129,13 @@ private fun CrashReportDialog(
     if (state is CrashReportState.Success) {
         AlertDialog(
             onDismissRequest = {},
-            title = { Text("上报成功") },
-            text = { Text("Report ID:\n${state.reportId}") },
+            title = { Text(stringResource(R.string.bug_report_success)) },
+            text = { Text(stringResource(R.string.bug_report_success_id, state.reportId)) },
             confirmButton = {
-                TextButton(onClick = onRestart) { Text("重启应用") }
+                TextButton(onClick = onRestart) { Text(stringResource(R.string.action_restart_app)) }
             },
             dismissButton = {
-                TextButton(onClick = { onCopyReportId(state.reportId) }) { Text("复制ID") }
+                TextButton(onClick = { onCopyReportId(state.reportId) }) { Text(stringResource(R.string.action_copy_id)) }
             }
         )
         return
@@ -141,13 +143,13 @@ private fun CrashReportDialog(
 
     AlertDialog(
         onDismissRequest = {},
-        title = { Text("应用崩溃了") },
+        title = { Text(stringResource(R.string.crash_title)) },
         text = {
             Column {
-                Text("应用遇到了未处理的错误，已自动退出以保护数据。")
+                Text(stringResource(R.string.crash_body))
                 val hint = when (telemetryEnabled) {
-                    true -> "遥测已开启，崩溃信息将自动匿名上传。"
-                    false -> "遥测未开启，可点击“反馈Bug”手动上报。"
+                    true -> stringResource(R.string.crash_telemetry_on)
+                    false -> stringResource(R.string.crash_telemetry_off)
                     null -> null
                 }
                 hint?.let {
@@ -179,7 +181,7 @@ private fun CrashReportDialog(
                 }
                 if (state is CrashReportState.Failed) {
                     Text(
-                        text = "上报失败：${state.reason}",
+                        text = stringResource(R.string.crash_report_failed, state.reason),
                         modifier = Modifier.padding(top = 8.dp),
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.error
@@ -197,16 +199,16 @@ private fun CrashReportDialog(
                         modifier = Modifier.size(14.dp),
                         strokeWidth = 2.dp
                     )
-                    Text(text = "上报中…", modifier = Modifier.padding(start = 6.dp))
+                    Text(text = stringResource(R.string.crash_submitting), modifier = Modifier.padding(start = 6.dp))
                 } else {
-                    Text("反馈Bug")
+                    Text(stringResource(R.string.crash_report_action))
                 }
             }
         },
         dismissButton = {
             Row {
-                TextButton(onClick = onRestart) { Text("重启应用") }
-                TextButton(onClick = onExit) { Text("退出") }
+                TextButton(onClick = onRestart) { Text(stringResource(R.string.action_restart_app)) }
+                TextButton(onClick = onExit) { Text(stringResource(R.string.action_exit)) }
             }
         }
     )

@@ -8,8 +8,10 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import cn.net.rms.chatroom.R
 import cn.net.rms.chatroom.ui.theme.Zhimo
 
 data class LicenseInfo(
@@ -89,12 +91,12 @@ fun OpenSourceLicensesScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("开放源代码许可") },
+                title = { Text(stringResource(R.string.about_licenses)) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "返回"
+                            contentDescription = stringResource(R.string.action_back)
                         )
                     }
                 },
@@ -112,7 +114,7 @@ fun OpenSourceLicensesScreen(
         ) {
             item {
                 Text(
-                    text = "本应用使用了以下开源软件:",
+                    text = stringResource(R.string.licenses_intro),
                     style = MaterialTheme.typography.bodyMedium,
                     color = Zhimo.inkFaint,
                     modifier = Modifier.padding(bottom = 8.dp)

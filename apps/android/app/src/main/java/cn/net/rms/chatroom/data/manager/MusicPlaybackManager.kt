@@ -7,6 +7,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
+import cn.net.rms.chatroom.R
 import cn.net.rms.chatroom.data.api.ApiService
 import cn.net.rms.chatroom.data.model.MusicQueueAddRequest
 import cn.net.rms.chatroom.data.model.MusicRoomRequest
@@ -116,7 +117,7 @@ class MusicPlaybackManager @Inject constructor(
                 override fun onPlayerError(error: PlaybackException) {
                     Log.e(TAG, "ExoPlayer error: ${error.message}", error)
                     _state.value = _state.value.copy(
-                        error = "播放失败: ${error.message}",
+                        error = context.getString(R.string.music_play_failed, error.message ?: ""),
                         playbackState = "error"
                     )
                 }
@@ -249,7 +250,7 @@ class MusicPlaybackManager @Inject constructor(
                         if (currentRoom != null && event.roomName == currentRoom) {
                             Log.w(TAG, "Song unavailable: ${event.songName} - ${event.reason}")
                             _state.value = _state.value.copy(
-                                error = "歌曲不可用: ${event.songName}"
+                                error = context.getString(R.string.music_song_unavailable, event.songName)
                             )
                         }
                     }
@@ -296,7 +297,7 @@ class MusicPlaybackManager @Inject constructor(
         } catch (e: Exception) {
             Log.e(TAG, "Failed to play song", e)
             _state.value = _state.value.copy(
-                error = "播放失败: ${e.message}",
+                error = context.getString(R.string.music_play_failed, e.message ?: ""),
                 playbackState = "error"
             )
         }
@@ -419,7 +420,7 @@ class MusicPlaybackManager @Inject constructor(
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     loginStatus = "error",
-                    error = "获取二维码失败: ${e.message}"
+                    error = context.getString(R.string.music_qrcode_failed, e.message ?: "")
                 )
             }
         }
@@ -441,7 +442,7 @@ class MusicPlaybackManager @Inject constructor(
                     )
                 }
             } catch (e: Exception) {
-                if (!e.isUnauthorized) _state.value = _state.value.copy(error = "退出登录失败")
+                if (!e.isUnauthorized) _state.value = _state.value.copy(error = context.getString(R.string.music_logout_failed))
             }
         }
     }
@@ -474,7 +475,7 @@ class MusicPlaybackManager @Inject constructor(
                 _state.value = _state.value.copy(
                     searchResults = emptyList(),
                     isSearching = false,
-                    error = if (e.isUnauthorized) null else "搜索失败: ${e.message}"
+                    error = if (e.isUnauthorized) null else context.getString(R.string.music_search_failed, e.message ?: "")
                 )
             }
         }
@@ -510,7 +511,7 @@ class MusicPlaybackManager @Inject constructor(
                 api.addToMusicQueue(getAuthHeader(), MusicQueueAddRequest(roomName, song))
                 refreshQueue(roomName)
             } catch (e: Exception) {
-                if (!e.isUnauthorized) _state.value = _state.value.copy(error = "添加失败: ${e.message}")
+                if (!e.isUnauthorized) _state.value = _state.value.copy(error = context.getString(R.string.music_add_failed, e.message ?: ""))
             }
         }
     }
@@ -522,7 +523,7 @@ class MusicPlaybackManager @Inject constructor(
                 api.removeFromMusicQueue(getAuthHeader(), roomName, index)
                 refreshQueue(roomName)
             } catch (e: Exception) {
-                if (!e.isUnauthorized) _state.value = _state.value.copy(error = "删除失败: ${e.message}")
+                if (!e.isUnauthorized) _state.value = _state.value.copy(error = context.getString(R.string.music_remove_failed, e.message ?: ""))
             }
         }
     }
@@ -534,7 +535,7 @@ class MusicPlaybackManager @Inject constructor(
                 api.clearMusicQueue(getAuthHeader(), MusicRoomRequest(roomName))
                 refreshQueue(roomName)
             } catch (e: Exception) {
-                if (!e.isUnauthorized) _state.value = _state.value.copy(error = "清空失败: ${e.message}")
+                if (!e.isUnauthorized) _state.value = _state.value.copy(error = context.getString(R.string.music_clear_failed, e.message ?: ""))
             }
         }
     }
@@ -574,7 +575,7 @@ class MusicPlaybackManager @Inject constructor(
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     playbackState = "idle",
-                    error = if (e.isUnauthorized) null else "播放失败: ${e.message}"
+                    error = if (e.isUnauthorized) null else context.getString(R.string.music_play_failed, e.message ?: "")
                 )
             }
         }
@@ -590,7 +591,7 @@ class MusicPlaybackManager @Inject constructor(
                     playbackState = "paused"
                 )
             } catch (e: Exception) {
-                if (!e.isUnauthorized) _state.value = _state.value.copy(error = "暂停失败")
+                if (!e.isUnauthorized) _state.value = _state.value.copy(error = context.getString(R.string.music_pause_failed))
             }
         }
     }
@@ -607,7 +608,7 @@ class MusicPlaybackManager @Inject constructor(
                     )
                 }
             } catch (e: Exception) {
-                if (!e.isUnauthorized) _state.value = _state.value.copy(error = "恢复播放失败")
+                if (!e.isUnauthorized) _state.value = _state.value.copy(error = context.getString(R.string.music_resume_failed))
             }
         }
     }
@@ -619,7 +620,7 @@ class MusicPlaybackManager @Inject constructor(
                 api.musicPlaybackSkip(getAuthHeader(), MusicRoomRequest(roomName))
                 refreshQueue(roomName)
             } catch (e: Exception) {
-                if (!e.isUnauthorized) _state.value = _state.value.copy(error = "跳过失败")
+                if (!e.isUnauthorized) _state.value = _state.value.copy(error = context.getString(R.string.music_skip_failed))
             }
         }
     }
@@ -631,7 +632,7 @@ class MusicPlaybackManager @Inject constructor(
                 api.musicPlaybackPrevious(getAuthHeader(), MusicRoomRequest(roomName))
                 refreshQueue(roomName)
             } catch (e: Exception) {
-                if (!e.isUnauthorized) _state.value = _state.value.copy(error = "上一首失败")
+                if (!e.isUnauthorized) _state.value = _state.value.copy(error = context.getString(R.string.music_previous_failed))
             }
         }
     }
@@ -662,7 +663,7 @@ class MusicPlaybackManager @Inject constructor(
                     playbackState = "idle"
                 )
             } catch (e: Exception) {
-                if (!e.isUnauthorized) _state.value = _state.value.copy(error = "停止播放失败")
+                if (!e.isUnauthorized) _state.value = _state.value.copy(error = context.getString(R.string.music_stop_failed))
             }
         }
     }

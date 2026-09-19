@@ -16,8 +16,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import cn.net.rms.chatroom.R
 import cn.net.rms.chatroom.ui.theme.Zhimo
 
 /**
@@ -26,7 +28,7 @@ import cn.net.rms.chatroom.ui.theme.Zhimo
 @Composable
 fun LoadingContent(
     modifier: Modifier = Modifier,
-    message: String = "加载中..."
+    message: String = stringResource(R.string.loading)
 ) {
     val infiniteTransition = rememberInfiniteTransition(label = "loading")
     val scale by infiniteTransition.animateFloat(
@@ -144,7 +146,7 @@ fun ErrorContent(
                 tint = MaterialTheme.colorScheme.error
             )
             Text(
-                text = "出错了",
+                text = stringResource(R.string.error_content_title),
                 style = MaterialTheme.typography.titleMedium,
                 color = Zhimo.inkMuted
             )
@@ -168,7 +170,7 @@ fun ErrorContent(
                         modifier = Modifier.size(18.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("重试")
+                    Text(stringResource(R.string.action_retry))
                 }
             }
         }
@@ -199,12 +201,12 @@ fun NetworkErrorContent(
                 tint = Zhimo.inkFaint
             )
             Text(
-                text = "网络连接失败",
+                text = stringResource(R.string.network_error_title),
                 style = MaterialTheme.typography.titleMedium,
                 color = Zhimo.inkMuted
             )
             Text(
-                text = "请检查网络连接后重试",
+                text = stringResource(R.string.network_error_body),
                 style = MaterialTheme.typography.bodyMedium,
                 color = Zhimo.inkFaint,
                 textAlign = TextAlign.Center
@@ -223,7 +225,7 @@ fun NetworkErrorContent(
                         modifier = Modifier.size(18.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("重试")
+                    Text(stringResource(R.string.action_retry))
                 }
             }
         }
@@ -276,16 +278,16 @@ fun BatteryOptimizationDialog(
             )
         },
         title = {
-            Text("推荐关闭电池优化")
+            Text(stringResource(R.string.battery_dialog_title))
         },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
-                    text = "系统的电池优化功能可能会限制应用的后台网络连接。",
+                    text = stringResource(R.string.battery_dialog_body_1),
                     style = MaterialTheme.typography.bodyMedium
                 )
                 Text(
-                    text = "请在弹出的页面中找到「电池优化」或「省电策略」，设为「不优化」或「无限制」",
+                    text = stringResource(R.string.battery_dialog_body_2),
                     style = MaterialTheme.typography.bodySmall,
                     color = Zhimo.inkMuted
                 )
@@ -296,16 +298,16 @@ fun BatteryOptimizationDialog(
                 onClick = onOpenSettings,
                 colors = ButtonDefaults.buttonColors(containerColor = Zhimo.seal)
             ) {
-                Text("前往设置")
+                Text(stringResource(R.string.battery_dialog_open_settings))
             }
         },
         dismissButton = {
             Row {
                 TextButton(onClick = onNeverShowAgain) {
-                    Text("不再提示", color = Zhimo.inkFaint)
+                    Text(stringResource(R.string.battery_dialog_never), color = Zhimo.inkFaint)
                 }
                 TextButton(onClick = onDismiss) {
-                    Text("稍后")
+                    Text(stringResource(R.string.action_later))
                 }
             }
         }

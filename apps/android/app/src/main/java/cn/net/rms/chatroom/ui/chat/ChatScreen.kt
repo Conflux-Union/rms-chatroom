@@ -493,7 +493,7 @@ fun ChatScreen(
             jumpHighlightPulse.animateTo(0f, tween(durationMillis = 2000, easing = EaseOut))
             jumpHighlightId = null
         } else {
-            Toast.makeText(context, "原消息不在已加载的历史中", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, context.getString(R.string.chat_original_not_loaded), Toast.LENGTH_SHORT).show()
         }
         onJumpHandled()
     }
@@ -598,7 +598,7 @@ fun ChatScreen(
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                text = "暂无消息\n发送第一条消息吧！",
+                                text = stringResource(R.string.chat_empty_state),
                                 color = Zhimo.inkFaint,
                                 textAlign = TextAlign.Center
                             )
@@ -807,7 +807,7 @@ fun ChatScreen(
                                     result.onSuccess { attachment ->
                                         uploadedAttachments = uploadedAttachments + attachment
                                     }.onFailure { e ->
-                                        Toast.makeText(context, "上传失败: ${e.message}", Toast.LENGTH_SHORT).show()
+                                        Toast.makeText(context, context.getString(R.string.chat_upload_failed, e.message ?: ""), Toast.LENGTH_SHORT).show()
                                     }
                                 }
                                 pendingFiles = emptyList()
@@ -885,7 +885,7 @@ fun ChatScreen(
                         val url = buildMessagePermalink(BuildConfig.API_BASE_URL, serverId, channelId, msg.id)
                         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                         clipboard.setPrimaryClip(ClipData.newPlainText("message link", url))
-                        Toast.makeText(context, "消息链接已复制", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, context.getString(R.string.chat_link_copied), Toast.LENGTH_SHORT).show()
                     }
                     selectedMessage = null
                 },
@@ -968,17 +968,17 @@ private fun ConnectionBanner(
         val (backgroundColor, text, showReconnect) = when (connectionState) {
             ConnectionState.CONNECTING -> Triple(
                 Zhimo.warning.copy(alpha = 0.9f),
-                "正在连接...",
+                stringResource(R.string.connection_connecting),
                 false
             )
             ConnectionState.RECONNECTING -> Triple(
                 Zhimo.warning.copy(alpha = 0.9f),
-                "正在重新连接...",
+                stringResource(R.string.connection_reconnecting),
                 false
             )
             ConnectionState.DISCONNECTED -> Triple(
                 Zhimo.danger.copy(alpha = 0.9f),
-                "连接已断开",
+                stringResource(R.string.connection_disconnected),
                 true
             )
             else -> Triple(Color.Transparent, "", false)
@@ -1034,7 +1034,7 @@ private fun ConnectionBanner(
                             modifier = Modifier.size(16.dp)
                         )
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("重连", style = MaterialTheme.typography.bodySmall)
+                        Text(stringResource(R.string.action_reconnect), style = MaterialTheme.typography.bodySmall)
                     }
                 }
             }
@@ -1064,6 +1064,7 @@ private fun MessageItem(
     // mirroring the web .message-highlight keyframe pulse. The pulse value is
     // owned by the jump coroutine in ChatScreen.
     val highlightColor = Zhimo.seal.copy(alpha = 0.3f * highlightPulse)
+    val context = LocalContext.current
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -1156,7 +1157,7 @@ private fun MessageItem(
                                     modifier = Modifier.size(12.dp)
                                 )
                                 Text(
-                                    text = message.forwardMeta?.server ?: "服务器",
+                                    text = message.forwardMeta?.server ?: stringResource(R.string.forward_server_fallback),
                                     style = MaterialTheme.typography.labelSmall,
                                     color = Zhimo.inkFaint
                                 )
@@ -1165,7 +1166,7 @@ private fun MessageItem(
                     }
 
                     Text(
-                        text = formatTimestamp(message.createdAt),
+                        text = formatTimestamp(context, message.createdAt),
                         style = MaterialTheme.typography.labelSmall,
                         color = Zhimo.inkFaint,
                         modifier = Modifier.align(Alignment.CenterVertically)
@@ -1175,7 +1176,7 @@ private fun MessageItem(
                 // Edited indicator - show latest edited_at from the group
                 if (groupLatestEditedAt != null) {
                     Text(
-                        text = "(已编辑于 ${formatTimestamp(groupLatestEditedAt)})",
+                        text = stringResource(R.string.chat_edited_at, formatTimestamp(context, groupLatestEditedAt)),
                         style = MaterialTheme.typography.labelSmall,
                         color = Zhimo.inkFaint
                     )
@@ -1250,9 +1251,9 @@ private fun MessageItem(
             if (message.isDeleted) {
                 Text(
                     text = when {
-                        message.deletedBy == currentUserId -> "你撤回了一条消息"
-                        message.deletedByUsername != null -> "${message.deletedByUsername}撤回了一条消息"
-                        else -> "管理员撤回了一条消息"
+                        message.deletedBy == currentUserId -> stringResource(R.string.chat_recalled_by_you)
+                        message.deletedByUsername != null -> stringResource(R.string.chat_recalled_by, message.deletedByUsername)
+                        else -> stringResource(R.string.chat_recalled_by_admin)
                     },
                     style = MaterialTheme.typography.bodyMedium,
                     color = Zhimo.inkFaint,
@@ -1390,7 +1391,7 @@ private fun AttachmentItem(
 
                 Icon(
                     imageVector = Icons.Default.Download,
-                    contentDescription = "下载",
+                    contentDescription = stringResource(R.string.attachment_download),
                     tint = Zhimo.inkFaint,
                     modifier = Modifier.size(20.dp)
                 )
@@ -1972,7 +1973,7 @@ private fun PendingFileChip(
             ) {
                 Icon(
                     imageVector = Icons.Default.Close,
-                    contentDescription = "移除",
+                    contentDescription = stringResource(R.string.action_remove),
                     tint = Zhimo.inkMuted,
                     modifier = Modifier.size(14.dp)
                 )
@@ -2021,7 +2022,7 @@ private fun MessageInput(
             ) {
                 Icon(
                     imageVector = Icons.Default.AddCircle,
-                    contentDescription = "添加附件",
+                    contentDescription = stringResource(R.string.action_add_attachment),
                     tint = if (isConnected && !isUploading) Zhimo.seal else Zhimo.inkFaint
                 )
             }
@@ -2060,7 +2061,7 @@ private fun MessageInput(
                     ) {
                         if (value.isEmpty()) {
                             Text(
-                                text = if (isConnected) stringResource(R.string.send_message) else "连接断开，无法发送",
+                                text = if (isConnected) stringResource(R.string.send_message) else stringResource(R.string.chat_disconnected_cannot_send),
                                 color = Zhimo.inkFaint,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
@@ -2112,7 +2113,7 @@ private fun MessageInput(
                         else -> {
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.Send,
-                                contentDescription = "发送",
+                                contentDescription = stringResource(R.string.action_send),
                                 tint = Zhimo.paper,
                                 modifier = Modifier.size(20.dp)
                             )
@@ -2124,7 +2125,7 @@ private fun MessageInput(
     }
 }
 
-private fun formatTimestamp(timestamp: String): String {
+private fun formatTimestamp(context: Context, timestamp: String): String {
     return try {
         // Backend always returns UTC ISO 8601 with Z suffix
         val normalizedTimestamp = if (timestamp.endsWith("Z")) timestamp else "${timestamp}Z"
@@ -2134,18 +2135,45 @@ private fun formatTimestamp(timestamp: String): String {
         val dateTime = instant.atZone(zone)
         val time = DateTimeFormatter.ofPattern("HH:mm").format(dateTime)
         val today = LocalDate.now(zone)
+        val locale = context.resources.configuration.locales[0]
         when (ChronoUnit.DAYS.between(dateTime.toLocalDate(), today)) {
             0L -> time
-            1L -> "昨天 $time"
-            2L -> "前天 $time"
+            1L -> "${context.getString(R.string.date_yesterday)} $time"
+            2L -> "${context.getString(R.string.date_day_before_yesterday)} $time"
             else ->
-                if (dateTime.year == today.year) "${dateTime.monthValue}月${dateTime.dayOfMonth}日 $time"
-                else "${dateTime.year}年${dateTime.monthValue}月${dateTime.dayOfMonth}日 $time"
+                if (dateTime.year == today.year) "${formatMonthDay(context, locale, dateTime)} $time"
+                else "${formatYearMonthDay(context, locale, dateTime)} $time"
         }
     } catch (e: Exception) {
         timestamp
     }
 }
+
+// Month/day rendering. zh keeps the original numeric month/day output
+// byte-identical; other locales render the short month name from the active
+// locale (e.g. "Sep 19").
+private fun formatMonthDay(context: Context, locale: java.util.Locale, dateTime: java.time.ZonedDateTime): String =
+    if (locale.language == "zh") {
+        context.getString(R.string.date_month_day, dateTime.monthValue, dateTime.dayOfMonth)
+    } else {
+        context.getString(
+            R.string.date_month_day,
+            DateTimeFormatter.ofPattern("MMM", locale).format(dateTime),
+            dateTime.dayOfMonth
+        )
+    }
+
+private fun formatYearMonthDay(context: Context, locale: java.util.Locale, dateTime: java.time.ZonedDateTime): String =
+    if (locale.language == "zh") {
+        context.getString(R.string.date_year_month_day, dateTime.year, dateTime.monthValue, dateTime.dayOfMonth)
+    } else {
+        context.getString(
+            R.string.date_year_month_day,
+            DateTimeFormatter.ofPattern("MMM", locale).format(dateTime),
+            dateTime.dayOfMonth,
+            dateTime.year
+        )
+    }
 
 // Message grouping: Discord-style consecutive message merging
 private const val MESSAGE_GROUP_ADJACENT_THRESHOLD_MINUTES = 1L
@@ -2279,7 +2307,7 @@ private fun MessageContextMenu(
         ) {
             if (canReply) {
                 MenuOption(
-                    text = "回复",
+                    text = stringResource(R.string.menu_reply),
                     icon = Icons.AutoMirrored.Filled.Reply,
                     onClick = onReply
                 )
@@ -2287,7 +2315,7 @@ private fun MessageContextMenu(
 
             if (canReact) {
                 MenuOption(
-                    text = "添加表情",
+                    text = stringResource(R.string.menu_add_reaction),
                     icon = Icons.Default.EmojiEmotions,
                     onClick = onAddReaction
                 )
@@ -2295,7 +2323,7 @@ private fun MessageContextMenu(
 
             if (canCopyLink) {
                 MenuOption(
-                    text = "复制消息链接",
+                    text = stringResource(R.string.menu_copy_link),
                     icon = Icons.Default.Link,
                     onClick = onCopyLink
                 )
@@ -2303,7 +2331,7 @@ private fun MessageContextMenu(
 
             if (canEdit) {
                 MenuOption(
-                    text = "编辑消息",
+                    text = stringResource(R.string.chat_edit_message),
                     icon = androidx.compose.material.icons.Icons.Default.Edit,
                     onClick = onEdit
                 )
@@ -2311,7 +2339,7 @@ private fun MessageContextMenu(
 
             if (canDelete) {
                 MenuOption(
-                    text = "撤回消息",
+                    text = stringResource(R.string.menu_recall_message),
                     icon = androidx.compose.material.icons.Icons.Default.Delete,
                     onClick = onDelete,
                     isDestructive = true
@@ -2320,7 +2348,7 @@ private fun MessageContextMenu(
 
             if (canMute) {
                 MenuOption(
-                    text = "禁言用户",
+                    text = stringResource(R.string.menu_mute_user),
                     icon = androidx.compose.material.icons.Icons.Default.Block,
                     onClick = onMute,
                     isDestructive = true
@@ -2329,7 +2357,7 @@ private fun MessageContextMenu(
 
             if (!canReply && !canReact && !canEdit && !canDelete && !canMute) {
                 Text(
-                    text = "无可用操作",
+                    text = stringResource(R.string.menu_no_actions),
                     modifier = Modifier.padding(16.dp),
                     color = Zhimo.inkFaint,
                     style = MaterialTheme.typography.bodyMedium
@@ -2433,17 +2461,17 @@ private fun AttachSourcePanel(
                 horizontalArrangement = Arrangement.spacedBy(28.dp)
             ) {
                 AttachTile(
-                    label = "图片",
+                    label = stringResource(R.string.attach_image),
                     icon = Icons.Default.Image,
                     onClick = onPickImages
                 )
                 AttachTile(
-                    label = "视频",
+                    label = stringResource(R.string.attach_video),
                     icon = Icons.Default.Movie,
                     onClick = onPickVideos
                 )
                 AttachTile(
-                    label = "文件",
+                    label = stringResource(R.string.attach_file),
                     icon = Icons.AutoMirrored.Filled.InsertDriveFile,
                     onClick = onPickFiles
                 )
@@ -2497,13 +2525,13 @@ private fun EditMessageDialog(
 
     androidx.compose.material3.AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("编辑消息") },
+        title = { Text(stringResource(R.string.chat_edit_message)) },
         text = {
             TextField(
                 value = editedContent,
                 onValueChange = { editedContent = it },
                 modifier = Modifier.fillMaxWidth(),
-                placeholder = { Text("输入消息内容") },
+                placeholder = { Text(stringResource(R.string.chat_input_placeholder)) },
                 colors = TextFieldDefaults.colors(
                     focusedContainerColor = Zhimo.paperRaised,
                     unfocusedContainerColor = Zhimo.paperRaised,
@@ -2521,12 +2549,12 @@ private fun EditMessageDialog(
                 onClick = { if (editedContent.isNotBlank()) onConfirm(editedContent.trim()) },
                 enabled = editedContent.isNotBlank() && editedContent.trim() != message.content
             ) {
-                Text("保存", color = Zhimo.seal)
+                Text(stringResource(R.string.action_save), color = Zhimo.seal)
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("取消", color = Zhimo.inkFaint)
+                Text(stringResource(R.string.action_cancel), color = Zhimo.inkFaint)
             }
         },
         containerColor = Zhimo.paper
@@ -2546,7 +2574,7 @@ private fun MuteUserDialog(
 
     androidx.compose.material3.AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("禁言用户: $username") },
+        title = { Text(stringResource(R.string.mute_user_title, username)) },
         text = {
             Column(
                 modifier = Modifier
@@ -2555,29 +2583,29 @@ private fun MuteUserDialog(
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 // Scope selection
-                Text("禁言范围", style = MaterialTheme.typography.labelLarge, color = Zhimo.ink)
+                Text(stringResource(R.string.mute_scope_label), style = MaterialTheme.typography.labelLarge, color = Zhimo.ink)
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    RadioOption("当前频道", "channel", selectedScope) { selectedScope = it }
-                    RadioOption("当前服务器", "server", selectedScope) { selectedScope = it }
-                    RadioOption("全局", "global", selectedScope) { selectedScope = it }
+                    RadioOption(stringResource(R.string.mute_scope_channel), "channel", selectedScope) { selectedScope = it }
+                    RadioOption(stringResource(R.string.mute_scope_server), "server", selectedScope) { selectedScope = it }
+                    RadioOption(stringResource(R.string.mute_scope_global), "global", selectedScope) { selectedScope = it }
                 }
 
                 // Duration selection
-                Text("禁言时长", style = MaterialTheme.typography.labelLarge, color = Zhimo.ink)
+                Text(stringResource(R.string.mute_duration_label), style = MaterialTheme.typography.labelLarge, color = Zhimo.ink)
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    RadioOption("10分钟", "10m", selectedDuration) { selectedDuration = it }
-                    RadioOption("1小时", "1h", selectedDuration) { selectedDuration = it }
-                    RadioOption("1天", "1d", selectedDuration) { selectedDuration = it }
-                    RadioOption("永久", "permanent", selectedDuration) { selectedDuration = it }
+                    RadioOption(stringResource(R.string.mute_duration_10m), "10m", selectedDuration) { selectedDuration = it }
+                    RadioOption(stringResource(R.string.mute_duration_1h), "1h", selectedDuration) { selectedDuration = it }
+                    RadioOption(stringResource(R.string.mute_duration_1d), "1d", selectedDuration) { selectedDuration = it }
+                    RadioOption(stringResource(R.string.mute_duration_permanent), "permanent", selectedDuration) { selectedDuration = it }
                 }
 
                 // Reason input
-                Text("原因（可选）", style = MaterialTheme.typography.labelLarge, color = Zhimo.ink)
+                Text(stringResource(R.string.mute_reason_label), style = MaterialTheme.typography.labelLarge, color = Zhimo.ink)
                 TextField(
                     value = reason,
                     onValueChange = { reason = it },
                     modifier = Modifier.fillMaxWidth(),
-                    placeholder = { Text("输入禁言原因") },
+                    placeholder = { Text(stringResource(R.string.mute_reason_placeholder)) },
                     colors = TextFieldDefaults.colors(
                         focusedContainerColor = Zhimo.paperRaised,
                         unfocusedContainerColor = Zhimo.paperRaised,
@@ -2602,12 +2630,12 @@ private fun MuteUserDialog(
                     onConfirm(selectedScope, durationMinutes, null, null, reason.ifBlank { null })
                 }
             ) {
-                Text("确认", color = Zhimo.danger)
+                Text(stringResource(R.string.action_confirm), color = Zhimo.danger)
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("取消", color = Zhimo.inkFaint)
+                Text(stringResource(R.string.action_cancel), color = Zhimo.inkFaint)
             }
         },
         containerColor = Zhimo.paper
@@ -2670,7 +2698,7 @@ private fun ReplyPreviewBar(
             )
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "回复 ${replyingTo.username}",
+                    text = stringResource(R.string.reply_to_user, replyingTo.username),
                     style = MaterialTheme.typography.labelSmall,
                     color = Zhimo.seal,
                     fontWeight = FontWeight.Medium
@@ -2689,7 +2717,7 @@ private fun ReplyPreviewBar(
             ) {
                 Icon(
                     imageVector = Icons.Default.Close,
-                    contentDescription = "取消回复",
+                    contentDescription = stringResource(R.string.action_cancel_reply),
                     tint = Zhimo.inkFaint,
                     modifier = Modifier.size(16.dp)
                 )
@@ -2778,7 +2806,7 @@ private fun ReactionsBar(
                     ) {
                         Icon(
                             imageVector = Icons.Outlined.AddReaction,
-                            contentDescription = "添加表情",
+                            contentDescription = stringResource(R.string.menu_add_reaction),
                             tint = Zhimo.inkFaint,
                             modifier = Modifier.size(16.dp)
                         )
@@ -2806,7 +2834,7 @@ private fun EmojiPickerDialog(
                 modifier = Modifier.padding(16.dp)
             ) {
                 Text(
-                    text = "选择表情",
+                    text = stringResource(R.string.emoji_picker_title),
                     style = MaterialTheme.typography.titleMedium,
                     color = Zhimo.ink,
                     modifier = Modifier.padding(bottom = 12.dp)
@@ -2855,7 +2883,7 @@ private fun UnreadDivider() {
     ) {
         HorizontalDivider(modifier = Modifier.weight(1f), thickness = 1.dp, color = Zhimo.inkFaint)
         Text(
-            text = "新消息",
+            text = stringResource(R.string.chat_new_messages),
             color = Zhimo.seal,
             style = MaterialTheme.typography.labelSmall
         )
@@ -2886,7 +2914,7 @@ private fun JumpToLatestButton(modifier: Modifier = Modifier, onClick: () -> Uni
                 modifier = Modifier.size(16.dp)
             )
             Text(
-                text = "跳到最新",
+                text = stringResource(R.string.action_jump_to_latest),
                 color = Zhimo.ink,
                 style = MaterialTheme.typography.labelMedium
             )
@@ -2963,7 +2991,7 @@ private fun MentionAutocomplete(
 private const val MAX_NESTING_DEPTH = 3
 
 // Forwarded-message quote card: renders the source message content for a
-// message permalink, labeled 转发的消息. Inner permalinks in the source
+// message permalink, labeled as a forwarded message. Inner permalinks in the source
 // content render as nested cards recursively — including a pure forward
 // (content that is exactly one permalink), so every forward level keeps its
 // own sender shown. Clicking opens that level's source.
@@ -3010,14 +3038,14 @@ private fun ForwardedMessageQuote(
             .padding(horizontal = 10.dp, vertical = 6.dp)
     ) {
         Text(
-            text = "转发的消息",
+            text = stringResource(R.string.forward_quote_label),
             style = MaterialTheme.typography.labelSmall,
             color = Zhimo.inkFaint
         )
         Spacer(modifier = Modifier.height(2.dp))
         when {
             quote == null -> Text(
-                text = "加载原消息…",
+                text = stringResource(R.string.forward_quote_loading),
                 style = MaterialTheme.typography.bodySmall,
                 color = Zhimo.inkFaint
             )
@@ -3029,7 +3057,7 @@ private fun ForwardedMessageQuote(
                     color = Zhimo.seal
                 )
                 val body = quote!!.content?.takeIf { it.isNotBlank() }
-                    ?: if (quote!!.hasAttachments) "[附件]" else ""
+                    ?: if (quote!!.hasAttachments) stringResource(R.string.forward_quote_attachment) else ""
                 if (body.isNotEmpty()) {
                     // Source content renders with the same markdown pipeline
                     // as a regular message; inner permalinks become nested
@@ -3068,19 +3096,19 @@ private fun ForwardedMessageQuote(
                 }
             }
             quote!!.status == ForwardQuoteStatus.DELETED -> Text(
-                text = "原消息已被删除",
+                text = stringResource(R.string.forward_quote_deleted),
                 style = MaterialTheme.typography.bodySmall,
                 color = Zhimo.inkFaint,
                 fontStyle = FontStyle.Italic
             )
             quote!!.status == ForwardQuoteStatus.DENIED -> Text(
-                text = "没有权限查看原消息",
+                text = stringResource(R.string.forward_quote_denied),
                 style = MaterialTheme.typography.bodySmall,
                 color = Zhimo.inkFaint,
                 fontStyle = FontStyle.Italic
             )
             else -> Text(
-                text = "原消息无法加载",
+                text = stringResource(R.string.forward_quote_unavailable),
                 style = MaterialTheme.typography.bodySmall,
                 color = Zhimo.inkFaint,
                 fontStyle = FontStyle.Italic

@@ -1,12 +1,15 @@
 package cn.net.rms.chatroom.ui.auth
 
+import android.content.Context
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import cn.net.rms.chatroom.R
 import cn.net.rms.chatroom.data.model.User
 import cn.net.rms.chatroom.data.repository.AuthException
 import cn.net.rms.chatroom.data.repository.AuthRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -23,6 +26,7 @@ data class AuthState(
 
 @HiltViewModel
 class AuthViewModel @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val authRepository: AuthRepository
 ) : ViewModel() {
 
@@ -174,7 +178,7 @@ class AuthViewModel @Inject constructor(
                         isLoading = false,
                         isAuthenticated = false,
                         token = null,
-                        error = "登录失败: ${e.message}"
+                        error = context.getString(R.string.error_login_failed, e.message ?: "")
                     )
                 }
         }

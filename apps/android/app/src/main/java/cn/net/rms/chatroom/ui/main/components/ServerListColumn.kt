@@ -21,10 +21,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import cn.net.rms.chatroom.R
 import cn.net.rms.chatroom.ui.theme.Zhimo
 import coil.compose.AsyncImage
 import cn.net.rms.chatroom.data.model.Server
@@ -104,8 +106,8 @@ fun ServerListColumn(
                 showDeleteDialog = false
                 serverToDelete = null
             },
-            title = { Text("删除服务器") },
-            text = { Text("确定要删除服务器「${serverToDelete?.name}」吗？所有频道和消息都将被删除，此操作不可撤销。") },
+            title = { Text(stringResource(R.string.server_delete_title)) },
+            text = { Text(stringResource(R.string.server_delete_confirm, serverToDelete?.name ?: "")) },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -115,7 +117,7 @@ fun ServerListColumn(
                     },
                     colors = ButtonDefaults.textButtonColors(contentColor = Zhimo.danger)
                 ) {
-                    Text("删除")
+                    Text(stringResource(R.string.action_delete))
                 }
             },
             dismissButton = {
@@ -123,7 +125,7 @@ fun ServerListColumn(
                     showDeleteDialog = false
                     serverToDelete = null
                 }) {
-                    Text("取消")
+                    Text(stringResource(R.string.action_cancel))
                 }
             }
         )
@@ -139,12 +141,12 @@ private fun CreateServerDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("创建服务器") },
+        title = { Text(stringResource(R.string.server_create_title)) },
         text = {
             OutlinedTextField(
                 value = serverName,
                 onValueChange = { serverName = it },
-                label = { Text("服务器名称") },
+                label = { Text(stringResource(R.string.server_name_label)) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )
@@ -154,12 +156,12 @@ private fun CreateServerDialog(
                 onClick = { if (serverName.isNotBlank()) onCreate(serverName.trim()) },
                 enabled = serverName.isNotBlank()
             ) {
-                Text("创建")
+                Text(stringResource(R.string.action_create))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("取消")
+                Text(stringResource(R.string.action_cancel))
             }
         }
     )
@@ -177,7 +179,7 @@ private fun AddServerButton(onClick: () -> Unit) {
     ) {
         Icon(
             imageVector = Icons.Default.Add,
-            contentDescription = "添加服务器",
+            contentDescription = stringResource(R.string.action_add_server),
             tint = Zhimo.seal,
             modifier = Modifier.size(24.dp)
         )

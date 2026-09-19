@@ -1,0 +1,362 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">RMS ChatRoom</string>
+    <string name="login_title">Log in</string>
+    <string name="login_with_sso">Log in with RMSSSO</string>
+    <string name="logout">Log out</string>
+    <string name="select_channel">Select a channel to start chatting</string>
+    <string name="send_message">Send a message</string>
+    <string name="voice_channel">Voice channel</string>
+    <string name="text_channel">Text channel</string>
+    <string name="join_voice">Join voice</string>
+    <string name="leave_voice">Leave voice</string>
+    <string name="mute">Mute</string>
+    <string name="unmute">Unmute</string>
+    <string name="deafen">Deafen</string>
+    <string name="undeafen">Undeafen</string>
+    <string name="music">Music</string>
+    <string name="loading">Loading...</string>
+    <string name="error_network">Network error, please retry</string>
+    <string name="error_auth">Authentication failed, please log in again</string>
+
+    <!-- Notification channels -->
+    <string name="notification_channel_messages">Messages</string>
+    <string name="notification_channel_messages_desc">New message alerts</string>
+    <string name="notification_channel_voice">Voice calls</string>
+    <string name="notification_channel_voice_desc">Voice call status</string>
+
+    <!-- Common actions -->
+    <string name="action_ok">OK</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="action_confirm">Confirm</string>
+    <string name="action_save">Save</string>
+    <string name="action_close">Close</string>
+    <string name="action_back">Back</string>
+    <string name="action_delete">Delete</string>
+    <string name="action_create">Create</string>
+    <string name="action_add">Add</string>
+    <string name="action_clear">Clear</string>
+    <string name="action_retry">Retry</string>
+    <string name="action_copied">Copied</string>
+    <string name="action_copy_id">Copy ID</string>
+    <string name="action_copy_link">Copy link</string>
+    <string name="action_search">Search</string>
+    <string name="action_more">More</string>
+    <string name="action_collapse">Collapse</string>
+    <string name="action_ignore">Ignore</string>
+    <string name="action_watch">Watch</string>
+    <string name="action_remove">Remove</string>
+    <string name="action_move_up">Move up</string>
+    <string name="action_move_down">Move down</string>
+    <string name="action_expand_group">Expand</string>
+    <string name="action_collapse_group">Collapse</string>
+    <string name="action_done_editing">Done</string>
+    <string name="action_edit_channels">Edit channels</string>
+    <string name="action_restart_app">Restart app</string>
+    <string name="action_exit">Exit</string>
+    <string name="action_later">Later</string>
+    <string name="action_login">Log in</string>
+
+    <!-- Login -->
+    <string name="login_tagline">Stay connected with your team</string>
+    <string name="error_login_failed">Log in failed: %1$s</string>
+
+    <!-- Connection banner -->
+    <string name="connection_connecting">Connecting...</string>
+    <string name="connection_reconnecting">Reconnecting...</string>
+    <string name="connection_disconnected">Disconnected</string>
+    <string name="action_reconnect">Reconnect</string>
+
+    <!-- Chat -->
+    <string name="chat_empty_state">No messages yet\nBe the first to send one!</string>
+    <string name="chat_disconnected_cannot_send">Disconnected, cannot send</string>
+    <string name="chat_upload_failed">Upload failed: %1$s</string>
+    <string name="chat_link_copied">Message link copied</string>
+    <string name="chat_original_not_loaded">The original message is not in the loaded history</string>
+    <string name="chat_edited_at">(edited %1$s)</string>
+    <string name="chat_recalled_by_you">You recalled a message</string>
+    <string name="chat_recalled_by">%1$s recalled a message</string>
+    <string name="chat_recalled_by_admin">An admin recalled a message</string>
+    <string name="chat_new_messages">New messages</string>
+    <string name="chat_unknown_channel">Unknown channel</string>
+    <string name="forward_server_fallback">Server</string>
+    <string name="action_add_attachment">Add attachment</string>
+    <string name="action_send">Send</string>
+    <string name="attachment_download">Download</string>
+    <string name="attach_image">Images</string>
+    <string name="attach_video">Videos</string>
+    <string name="attach_file">Files</string>
+    <string name="action_jump_to_latest">Jump to latest</string>
+    <string name="chat_edit_message">Edit message</string>
+    <string name="chat_input_placeholder">Type a message</string>
+    <string name="menu_reply">Reply</string>
+    <string name="reply_to_user">Replying to %1$s</string>
+    <string name="action_cancel_reply">Cancel reply</string>
+    <string name="menu_add_reaction">Add reaction</string>
+    <string name="emoji_picker_title">Pick an emoji</string>
+    <string name="menu_copy_link">Copy message link</string>
+    <string name="menu_recall_message">Recall message</string>
+    <string name="menu_mute_user">Mute user</string>
+    <string name="menu_no_actions">No actions available</string>
+    <string name="mute_user_title">Mute user: %1$s</string>
+    <string name="mute_scope_label">Scope</string>
+    <string name="mute_scope_channel">Current channel</string>
+    <string name="mute_scope_server">Current server</string>
+    <string name="mute_scope_global">Global</string>
+    <string name="mute_duration_label">Duration</string>
+    <string name="mute_duration_10m">10 minutes</string>
+    <string name="mute_duration_1h">1 hour</string>
+    <string name="mute_duration_1d">1 day</string>
+    <string name="mute_duration_permanent">Permanent</string>
+    <string name="mute_reason_label">Reason (optional)</string>
+    <string name="mute_reason_placeholder">Enter a reason</string>
+    <string name="forward_quote_label">Forwarded message</string>
+    <string name="forward_quote_loading">Loading original message…</string>
+    <string name="forward_quote_attachment">[attachment]</string>
+    <string name="forward_quote_deleted">The original message was deleted</string>
+    <string name="forward_quote_denied">No permission to view the original message</string>
+    <string name="forward_quote_unavailable">The original message could not be loaded</string>
+
+    <!-- Date words (en uses the short month name passed in as %1$s) -->
+    <string name="date_yesterday">Yesterday</string>
+    <string name="date_day_before_yesterday">2 days ago</string>
+    <string name="date_month_day">%1$s %2$d</string>
+    <string name="date_year_month_day">%1$s %2$d, %3$d</string>
+
+    <!-- Voice -->
+    <string name="voice_mic_permission_title">Microphone permission required</string>
+    <string name="voice_mic_permission_body">Joining a voice call requires microphone permission. Please grant it in system settings.</string>
+    <string name="voice_waiting_others">Waiting for others to join...</string>
+    <string name="voice_tap_to_join">Tap the button below to join voice</string>
+    <string name="voice_call">Voice call</string>
+    <string name="voice_hosting">%1$s is hosting</string>
+    <string name="voice_host_mode">Host mode</string>
+    <string name="voice_hosting_active">Hosting</string>
+    <string name="action_stop_hosting">Stop hosting</string>
+    <string name="voice_audio_label">Audio</string>
+    <string name="action_share_screen">Share screen</string>
+    <string name="action_stop_sharing">Stop sharing</string>
+    <string name="voice_sharing_badge">%1$s is sharing</string>
+    <string name="voice_other_user">Another user</string>
+    <string name="voice_sharing_by">%1$s is sharing their screen</string>
+    <string name="voice_connecting_stream">Connecting to the video stream...</string>
+    <string name="action_hang_up">Hang up</string>
+    <string name="voice_invite_title">Invite guest</string>
+    <string name="voice_invite_generating">Generating link...</string>
+    <string name="voice_invite_once_hint">This link works only once; a guest cannot rejoin after leaving.</string>
+    <string name="voice_muted_label">Muted</string>
+    <string name="action_mute_mic">Mute microphone</string>
+    <string name="action_kick_user">Remove from channel</string>
+    <string name="voice_user_volume">User volume</string>
+    <string name="voice_boost_warning">Volume boost may cause audio distortion</string>
+    <string name="action_reset_volume" formatted="false">Reset to 100%</string>
+    <string name="voice_select_device">Select audio device</string>
+    <string name="voice_no_devices">No audio devices available</string>
+    <string name="voice_device_selected">Selected</string>
+    <string name="voice_status_calling">In a call</string>
+    <string name="voice_invite_screen_title">Voice invite</string>
+    <string name="voice_invalid_invite">Invalid invite link</string>
+    <string name="voice_invalid_invite_body">This invite link may have expired or was already used</string>
+    <string name="voice_input_name_label">Enter your name</string>
+    <string name="voice_invite_invalid_or_expired">Invalid or expired invite link</string>
+    <string name="voice_invite_load_failed">Failed to load invite info</string>
+    <string name="voice_invite_username_required">Please enter a username</string>
+    <string name="voice_invite_join_failed">Failed to join</string>
+
+    <!-- Music -->
+    <string name="music_player_title">Music player</string>
+    <string name="music_playing_badge">Playing</string>
+    <string name="music_qq_name">QQ Music</string>
+    <string name="music_netease_name">NetEase Cloud Music</string>
+    <string name="music_platform_qq">QQ Music</string>
+    <string name="music_platform_netease">NetEase</string>
+    <string name="platform_all">All</string>
+    <string name="music_select_platform">Choose a platform</string>
+    <string name="music_scan_login">Scan to log in to %1$s</string>
+    <string name="music_qrcode_failed_load">Failed to load QR code</string>
+    <string name="music_status_waiting">Waiting for scan...</string>
+    <string name="music_status_scanned">Scanned! Confirm on your phone...</string>
+    <string name="music_status_expired">QR code expired</string>
+    <string name="music_status_refused">Log in rejected</string>
+    <string name="music_status_success">Logged in!</string>
+    <string name="music_status_error">Load failed</string>
+    <string name="music_refresh_qrcode">Refresh QR code</string>
+    <string name="music_search_placeholder">Search songs...</string>
+    <string name="music_searching">Searching...</string>
+    <string name="music_no_results">No results</string>
+    <string name="music_search_hint">Type keywords to search songs</string>
+    <string name="action_pause">Pause</string>
+    <string name="action_play">Play</string>
+    <string name="music_next">Next</string>
+    <string name="action_volume_desc">Volume</string>
+    <string name="music_nothing_playing">Nothing playing</string>
+    <string name="music_add_song">Add songs</string>
+    <string name="music_queue_title">Queue (%1$d)</string>
+    <string name="music_queue_empty">Queue is empty</string>
+    <string name="music_play_failed">Playback failed: %1$s</string>
+    <string name="music_song_unavailable">Song unavailable: %1$s</string>
+    <string name="music_qrcode_failed">Failed to get QR code: %1$s</string>
+    <string name="music_logout_failed">Log out failed</string>
+    <string name="music_search_failed">Search failed: %1$s</string>
+    <string name="music_add_failed">Failed to add: %1$s</string>
+    <string name="music_remove_failed">Failed to remove: %1$s</string>
+    <string name="music_clear_failed">Failed to clear: %1$s</string>
+    <string name="music_pause_failed">Pause failed</string>
+    <string name="music_resume_failed">Resume failed</string>
+    <string name="music_skip_failed">Skip failed</string>
+    <string name="music_previous_failed">Previous track failed</string>
+    <string name="music_stop_failed">Stop playback failed</string>
+
+    <!-- Channel / server management -->
+    <string name="channel_list_select_server">Select a server</string>
+    <string name="action_add_channel">Add channel</string>
+    <string name="action_add_group">Add group</string>
+    <string name="action_add_server">Add server</string>
+    <string name="channel_delete_title">Delete channel</string>
+    <string name="channel_delete_confirm">Delete channel \"%1$s\"? This cannot be undone.</string>
+    <string name="group_delete_title">Delete channel group</string>
+    <string name="group_delete_confirm">Delete channel group \"%1$s\"? Channels inside it will become ungrouped.</string>
+    <string name="channel_create_title">Create channel</string>
+    <string name="channel_name_label">Channel name</string>
+    <string name="channel_type_label">Channel type</string>
+    <string name="channel_type_text">Text</string>
+    <string name="channel_type_voice">Voice</string>
+    <string name="channel_type_forward">Sync</string>
+    <string name="group_create_title">Create channel group</string>
+    <string name="group_name_label">Group name</string>
+    <string name="server_delete_title">Delete server</string>
+    <string name="server_delete_confirm">Delete server \"%1$s\"? All channels and messages will be deleted. This cannot be undone.</string>
+    <string name="server_create_title">Create server</string>
+    <string name="server_name_label">Server name</string>
+    <string name="host_badge_desc">Host</string>
+
+    <!-- Common UI states -->
+    <string name="error_content_title">Something went wrong</string>
+    <string name="network_error_title">Network connection failed</string>
+    <string name="network_error_body">Check your network connection and try again</string>
+
+    <!-- Battery optimization -->
+    <string name="battery_dialog_title">Disable battery optimization</string>
+    <string name="battery_dialog_body_1">System battery optimization may restrict the background network connection of this app.</string>
+    <string name="battery_dialog_body_2">In the page that opens, find \"Battery optimization\" or the power-saving policy and set it to \"Unoptimized\" or \"Unrestricted\"</string>
+    <string name="battery_dialog_open_settings">Open settings</string>
+    <string name="battery_dialog_never">Do not ask again</string>
+    <string name="battery_settings_description">In the settings page that opens, choose \"Unoptimized\" or \"Unrestricted\"</string>
+
+    <!-- Settings -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_section_appearance">Appearance</string>
+    <string name="settings_section_voice">Voice call</string>
+    <string name="settings_section_notifications">Notifications</string>
+    <string name="settings_section_privacy">Privacy</string>
+    <string name="settings_section_about">About</string>
+    <string name="settings_section_language">Language</string>
+    <string name="settings_theme_title">Theme</string>
+    <string name="settings_theme_desc">Pick the app color scheme; changes apply immediately</string>
+    <string name="theme_follow_system">Follow system</string>
+    <string name="theme_light">Light</string>
+    <string name="theme_dark">Dark</string>
+    <string name="language_system">Follow system</string>
+    <string name="language_zh">简体中文</string>
+    <string name="language_en">English</string>
+    <string name="settings_language_title">Language</string>
+    <string name="settings_language_desc">Choose the app display language; changes apply immediately</string>
+    <string name="settings_floating_window_title">Call floating window</string>
+    <string name="settings_floating_window_desc_on">Show who is speaking while the app is in the background</string>
+    <string name="settings_floating_window_desc_off">Requires the display-over-other-apps permission</string>
+    <string name="settings_background_service_title">Background connection</string>
+    <string name="settings_background_service_desc_on">Show a persistent notification and keep the message connection alive</string>
+    <string name="settings_background_service_desc_off">When off, background alerts arrive only while the app is alive</string>
+    <string name="settings_battery_title">Battery optimization</string>
+    <string name="settings_battery_desc">Set it to unoptimized, otherwise the system may still kill the background connection</string>
+    <string name="settings_telemetry_title">Anonymous error reports</string>
+    <string name="settings_telemetry_desc_on">Upload crash and connection-quality data to help improve the app; never includes any message content</string>
+    <string name="settings_telemetry_desc_off">Off — no data is uploaded</string>
+    <string name="settings_about_title">About</string>
+    <string name="settings_about_desc">Version, copyright, and open-source licenses</string>
+
+    <!-- About -->
+    <string name="about_version">Version</string>
+    <string name="about_copyright">Copyright</string>
+    <string name="about_copyright_value">Copyright RMS Server</string>
+    <string name="about_github">GitHub repository</string>
+    <string name="about_no_browser">No browser found to open the link</string>
+    <string name="about_licenses">Open-source licenses</string>
+    <string name="about_licenses_desc">View third-party library licenses</string>
+    <string name="licenses_intro">This app uses the following open-source software:</string>
+
+    <!-- Main screen -->
+    <string name="main_notification_permission_required">Notification permission is required to receive message alerts</string>
+    <string name="main_open_notification_settings">Enable notifications</string>
+    <string name="main_notification_permission_rationale">With notification permission you can receive new message alerts and never miss important messages.</string>
+    <string name="main_go_to_settings">Go to settings</string>
+    <string name="main_later">Later</string>
+    <string name="error_request_id_copied">Request ID copied</string>
+    <string name="bug_report_title">Report a bug</string>
+    <string name="bug_report_body">Device info and app logs will be collected and uploaded. Continue?</string>
+    <string name="bug_report_confirm">Report</string>
+    <string name="bug_report_success">Report submitted</string>
+    <string name="bug_report_success_id">Report ID:\n%1$s</string>
+    <string name="update_available">Update available</string>
+    <string name="update_version_label">Version: %1$s</string>
+    <string name="update_downloading">Downloading...</string>
+    <string name="update_download">Download update</string>
+    <string name="error_open_server_failed">Cannot open the server containing the original message</string>
+    <string name="error_open_channel_failed">Cannot open the channel containing the original message</string>
+    <string name="error_send_failed">Send failed: %1$s</string>
+    <string name="error_no_channel">No channel selected</string>
+    <string name="error_bug_report_failed">Report failed: %1$s</string>
+    <string name="error_install_fallback">Could not launch the installer; switched to browser download. If it did not open, download the update manually.</string>
+    <string name="error_create_channel">Failed to create channel: %1$s</string>
+    <string name="error_delete_channel">Failed to delete channel: %1$s</string>
+    <string name="error_create_server">Failed to create server: %1$s</string>
+    <string name="error_delete_server">Failed to delete server: %1$s</string>
+    <string name="error_reorder">Failed to reorder: %1$s</string>
+    <string name="error_create_group">Failed to create channel group: %1$s</string>
+    <string name="error_delete_group">Failed to delete channel group: %1$s</string>
+    <string name="error_edit_failed">Edit failed: %1$s</string>
+    <string name="error_recall_failed">Recall failed: %1$s</string>
+    <string name="success_muted">User muted</string>
+    <string name="error_mute_failed">Mute failed: %1$s</string>
+    <string name="error_add_reaction">Failed to add reaction: %1$s</string>
+    <string name="error_remove_reaction">Failed to remove reaction: %1$s</string>
+
+    <!-- Errors / repositories -->
+    <string name="error_not_logged_in">Not logged in, please log in first</string>
+    <string name="error_read_file_failed">Cannot read the file</string>
+    <string name="error_send_network">Send failed, please check your network connection</string>
+    <string name="error_token_verify_failed">Token verification failed</string>
+    <string name="error_request_id_line">Request ID: %1$s</string>
+    <string name="error_connect_server">Cannot connect to the server, please check your network</string>
+    <string name="error_connect_server_retry">Failed to connect to the server, please try again later</string>
+    <string name="error_connect_timeout">Connection timed out, please check your network</string>
+    <string name="error_server">Server error (%1$d): %2$s</string>
+    <string name="error_unknown">Unknown error: %1$s</string>
+
+    <!-- Crash report -->
+    <string name="crash_report_id_copied">Report ID copied</string>
+    <string name="crash_title">The app crashed</string>
+    <string name="crash_body">The app hit an unhandled error and exited automatically to protect your data.</string>
+    <string name="crash_telemetry_on">Telemetry is on; crash info is uploaded anonymously and automatically.</string>
+    <string name="crash_telemetry_off">Telemetry is off. Tap \"Report a bug\" to report manually.</string>
+    <string name="crash_report_failed">Report failed: %1$s</string>
+    <string name="crash_submitting">Submitting…</string>
+    <string name="crash_report_action">Report a bug</string>
+
+    <!-- Services / notifications -->
+    <string name="service_background_connection_name">Background connection</string>
+    <string name="service_background_connection_desc">Keeps the message connection alive for background alerts</string>
+    <string name="service_stop_background">Stop</string>
+    <string name="service_background_connection_text">Maintaining the background message connection</string>
+    <string name="notification_channel_voice_service_desc">Ongoing voice call</string>
+    <string name="service_voice_calling_in">In a voice call in %1$s</string>
+    <string name="service_voice_calling_in_muted">In a voice call in %1$s (muted)</string>
+    <string name="notification_new_message">New message</string>
+    <string name="floating_no_speakers">Nobody is speaking</string>
+    <string name="floating_speaking_title">Speaking</string>
+
+    <plurals name="floating_more_speakers">
+        <item quantity="one">%1$d more...</item>
+        <item quantity="other">%1$d more...</item>
+    </plurals>
+</resources>

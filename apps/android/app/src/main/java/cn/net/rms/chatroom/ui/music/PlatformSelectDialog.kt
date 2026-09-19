@@ -8,8 +8,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import cn.net.rms.chatroom.R
 import cn.net.rms.chatroom.ui.theme.*
 
 @Composable
@@ -31,7 +33,7 @@ fun PlatformSelectDialog(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
-                    text = "选择登录平台",
+                    text = stringResource(R.string.music_select_platform),
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
                     color = Zhimo.ink
@@ -50,7 +52,7 @@ fun PlatformSelectDialog(
                         shape = RoundedCornerShape(8.dp)
                     ) {
                         Text(
-                            text = "QQ 音乐",
+                            text = stringResource(R.string.music_qq_name),
                             style = MaterialTheme.typography.bodyLarge,
                             fontWeight = FontWeight.SemiBold,
                             modifier = Modifier.padding(vertical = 8.dp)
@@ -71,7 +73,7 @@ fun PlatformSelectDialog(
                         shape = RoundedCornerShape(8.dp)
                     ) {
                         Text(
-                            text = "网易云音乐",
+                            text = stringResource(R.string.music_netease_name),
                             style = MaterialTheme.typography.bodyLarge,
                             fontWeight = FontWeight.SemiBold,
                             modifier = Modifier.padding(vertical = 8.dp)
@@ -83,7 +85,7 @@ fun PlatformSelectDialog(
 
                 // Close button
                 TextButton(onClick = onDismiss) {
-                    Text("取消", color = Zhimo.inkFaint)
+                    Text(stringResource(R.string.action_cancel), color = Zhimo.inkFaint)
                 }
             }
         }

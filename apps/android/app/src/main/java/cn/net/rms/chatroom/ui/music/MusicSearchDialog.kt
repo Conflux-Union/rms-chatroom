@@ -22,12 +22,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import cn.net.rms.chatroom.R
 import cn.net.rms.chatroom.data.model.Song
 import cn.net.rms.chatroom.ui.theme.*
 
@@ -43,7 +45,11 @@ fun MusicSearchDialog(
 ) {
     var searchQuery by remember { mutableStateOf("") }
     val focusRequester = remember { FocusRequester() }
-    val platformOptions = listOf("all" to "全部", "qq" to "QQ音乐", "netease" to "网易云")
+    val platformOptions = listOf(
+        "all" to stringResource(R.string.platform_all),
+        "qq" to stringResource(R.string.music_platform_qq),
+        "netease" to stringResource(R.string.music_platform_netease)
+    )
 
     LaunchedEffect(Unit) {
         focusRequester.requestFocus()
@@ -77,7 +83,7 @@ fun MusicSearchDialog(
                             .weight(1f)
                             .focusRequester(focusRequester),
                         placeholder = {
-                            Text("搜索歌曲...", color = Zhimo.inkFaint)
+                            Text(stringResource(R.string.music_search_placeholder), color = Zhimo.inkFaint)
                         },
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(
@@ -117,7 +123,7 @@ fun MusicSearchDialog(
                         } else {
                             Icon(
                                 imageVector = Icons.Default.Search,
-                                contentDescription = "搜索",
+                                contentDescription = stringResource(R.string.action_search),
                                 tint = Zhimo.paper
                             )
                         }
@@ -157,7 +163,11 @@ fun MusicSearchDialog(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = if (isSearching) "搜索中..." else if (searchQuery.isNotEmpty()) "未找到结果" else "输入关键词搜索歌曲",
+                            text = when {
+                                isSearching -> stringResource(R.string.music_searching)
+                                searchQuery.isNotEmpty() -> stringResource(R.string.music_no_results)
+                                else -> stringResource(R.string.music_search_hint)
+                            },
                             style = MaterialTheme.typography.bodyMedium,
                             color = Zhimo.inkFaint
                         )
@@ -190,7 +200,7 @@ fun MusicSearchDialog(
                     ),
                     shape = RoundedCornerShape(8.dp)
                 ) {
-                    Text("关闭", color = Zhimo.ink)
+                    Text(stringResource(R.string.action_close), color = Zhimo.ink)
                 }
             }
         }
@@ -242,7 +252,7 @@ private fun SearchResultItem(
                     color = if (song.platform == "qq") Color(0xFF10B981) else Color(0xFFE60026)
                 ) {
                     Text(
-                        text = if (song.platform == "qq") "QQ" else "网易云",
+                        text = if (song.platform == "qq") "QQ" else stringResource(R.string.music_platform_netease),
                         style = MaterialTheme.typography.labelSmall,
                         color = Color.White,
                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)

@@ -29,11 +29,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import cn.net.rms.chatroom.R
 import cn.net.rms.chatroom.data.model.QueueItem
 import cn.net.rms.chatroom.data.model.Song
 import cn.net.rms.chatroom.ui.theme.*
@@ -140,7 +142,7 @@ private fun MusicHeader(
             )
             Spacer(modifier = Modifier.width(8.dp))
             Text(
-                text = "音乐播放器",
+                text = stringResource(R.string.music_player_title),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
                 color = Zhimo.ink
@@ -168,7 +170,7 @@ private fun MusicHeader(
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            text = "播放中",
+                            text = stringResource(R.string.music_playing_badge),
                             style = MaterialTheme.typography.labelSmall,
                             color = Zhimo.seal
                         )
@@ -204,7 +206,7 @@ private fun MusicHeader(
                     color = Color(0xFFE60026).copy(alpha = 0.2f)
                 ) {
                     Text(
-                        text = "网易云",
+                        text = stringResource(R.string.music_platform_netease),
                         style = MaterialTheme.typography.labelSmall,
                         color = Color(0xFFE60026),
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
@@ -222,7 +224,7 @@ private fun MusicHeader(
                     color = Zhimo.paperHover
                 ) {
                     Text(
-                        text = "登录",
+                        text = stringResource(R.string.action_login),
                         style = MaterialTheme.typography.labelSmall,
                         color = Zhimo.inkFaint,
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
@@ -325,7 +327,7 @@ private fun NowPlayingSection(
                             )
                             else -> Icon(
                                 imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                                contentDescription = if (isPlaying) "暂停" else "播放",
+                                contentDescription = if (isPlaying) stringResource(R.string.action_pause) else stringResource(R.string.action_play),
                                 tint = Color.White,
                                 modifier = Modifier.size(24.dp)
                             )
@@ -342,7 +344,7 @@ private fun NowPlayingSection(
                     ) {
                         Icon(
                             imageVector = Icons.Default.SkipNext,
-                            contentDescription = "下一首",
+                            contentDescription = stringResource(R.string.music_next),
                             tint = Zhimo.ink,
                             modifier = Modifier.size(20.dp)
                         )
@@ -430,7 +432,7 @@ private fun EmptyPlayingState(onShowSearch: () -> Unit) {
         )
         Spacer(modifier = Modifier.height(12.dp))
         Text(
-            text = "暂无播放",
+            text = stringResource(R.string.music_nothing_playing),
             style = MaterialTheme.typography.bodyLarge,
             color = Zhimo.inkFaint
         )
@@ -442,7 +444,7 @@ private fun EmptyPlayingState(onShowSearch: () -> Unit) {
             ),
             shape = RoundedCornerShape(8.dp)
         ) {
-            Text("添加歌曲")
+            Text(stringResource(R.string.music_add_song))
         }
     }
 }
@@ -469,7 +471,7 @@ private fun QueueSection(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "播放队列 (${queue.size})",
+                    text = stringResource(R.string.music_queue_title, queue.size),
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold,
                     color = Zhimo.ink
@@ -483,7 +485,7 @@ private fun QueueSection(
                 ) {
                     Icon(
                         imageVector = Icons.Default.Add,
-                        contentDescription = "添加",
+                        contentDescription = stringResource(R.string.action_add),
                         tint = Zhimo.inkFaint,
                         modifier = Modifier.size(18.dp)
                     )
@@ -496,7 +498,7 @@ private fun QueueSection(
                     ) {
                         Icon(
                             imageVector = Icons.Default.Delete,
-                            contentDescription = "清空",
+                            contentDescription = stringResource(R.string.action_clear),
                             tint = Zhimo.inkFaint,
                             modifier = Modifier.size(18.dp)
                         )
@@ -515,7 +517,7 @@ private fun QueueSection(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = "队列为空",
+                        text = stringResource(R.string.music_queue_empty),
                         style = MaterialTheme.typography.bodyMedium,
                         color = Zhimo.inkFaint
                     )
@@ -605,7 +607,7 @@ private fun QueueItemRow(
         ) {
             Icon(
                 imageVector = Icons.Default.Close,
-                contentDescription = "删除",
+                contentDescription = stringResource(R.string.action_delete),
                 tint = Zhimo.inkFaint,
                 modifier = Modifier.size(16.dp)
             )
@@ -646,7 +648,7 @@ private fun VolumeControl(
         ) {
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.VolumeUp,
-                contentDescription = "音量",
+                contentDescription = stringResource(R.string.action_volume_desc),
                 tint = Zhimo.inkFaint,
                 modifier = Modifier.size(16.dp)
             )

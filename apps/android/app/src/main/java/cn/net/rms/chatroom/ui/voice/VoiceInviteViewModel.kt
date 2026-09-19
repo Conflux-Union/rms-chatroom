@@ -1,12 +1,15 @@
 package cn.net.rms.chatroom.ui.voice
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import cn.net.rms.chatroom.R
 import cn.net.rms.chatroom.data.livekit.ConnectionState
 import cn.net.rms.chatroom.data.livekit.ParticipantInfo
 import cn.net.rms.chatroom.data.model.VoiceInviteInfo
 import cn.net.rms.chatroom.data.repository.VoiceRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -32,6 +35,7 @@ data class VoiceInviteState(
 
 @HiltViewModel
 class VoiceInviteViewModel @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val voiceRepository: VoiceRepository
 ) : ViewModel() {
 
@@ -96,11 +100,11 @@ class VoiceInviteViewModel @Inject constructor(
                 .onSuccess { info ->
                     _inviteInfo.value = info
                     if (!info.valid) {
-                        _localError.value = "邀请链接无效或已过期"
+                        _localError.value = context.getString(R.string.voice_invite_invalid_or_expired)
                     }
                 }
                 .onFailure { e ->
-                    _localError.value = e.message ?: "加载邀请信息失败"
+                    _localError.value = e.message ?: context.getString(R.string.voice_invite_load_failed)
                 }
 
             _isLoadingInfo.value = false
@@ -116,7 +120,7 @@ class VoiceInviteViewModel @Inject constructor(
         val username = _username.value.trim()
 
         if (username.isEmpty()) {
-            _localError.value = "请输入用户名"
+            _localError.value = context.getString(R.string.voice_invite_username_required)
             return
         }
 
@@ -126,7 +130,7 @@ class VoiceInviteViewModel @Inject constructor(
 
             voiceRepository.connectAsGuest(token, username)
                 .onFailure { e ->
-                    _localError.value = e.message ?: "加入失败"
+                    _localError.value = e.message ?: context.getString(R.string.voice_invite_join_failed)
                 }
 
             _isJoining.value = false

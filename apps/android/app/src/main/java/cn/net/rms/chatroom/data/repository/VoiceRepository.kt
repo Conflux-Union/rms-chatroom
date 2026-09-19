@@ -1,6 +1,8 @@
 package cn.net.rms.chatroom.data.repository
 
+import android.content.Context
 import android.util.Log
+import cn.net.rms.chatroom.R
 import cn.net.rms.chatroom.data.api.ApiService
 import cn.net.rms.chatroom.data.api.GuestJoinBody
 import android.content.Intent
@@ -20,6 +22,7 @@ import cn.net.rms.chatroom.data.model.VoiceTokenResponse
 import cn.net.rms.chatroom.data.model.VoiceUser
 import cn.net.rms.chatroom.data.websocket.GlobalWebSocket
 import com.google.gson.Gson
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -51,6 +54,7 @@ internal fun mergeAvatarUrls(
 
 @Singleton
 class VoiceRepository @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val api: ApiService,
     private val authRepository: AuthRepository,
     private val liveKitManager: LiveKitManager,
@@ -179,13 +183,13 @@ class VoiceRepository @Inject constructor(
     suspend fun getVoiceToken(channelId: Long): Result<VoiceTokenResponse> {
         return try {
             val token = authRepository.getToken()
-                ?: return Result.failure(AuthException("未登录，请先登录"))
+                ?: return Result.failure(AuthException(context.getString(R.string.error_not_logged_in)))
             val response = api.getVoiceToken(authRepository.getAuthHeader(token), channelId)
             _currentChannelId.value = channelId
             Result.success(response)
         } catch (e: Exception) {
             Log.e(TAG, "getVoiceToken failed", e)
-            Result.failure(e.toAuthException())
+            Result.failure(e.toAuthException(context))
         }
     }
 
@@ -218,7 +222,7 @@ class VoiceRepository @Inject constructor(
         } catch (e: Exception) {
             Log.e(TAG, "joinVoice failed", e)
             _error.value = e.message
-            Result.failure(e.toAuthException())
+            Result.failure(e.toAuthException(context))
         }
     }
 
@@ -242,13 +246,13 @@ class VoiceRepository @Inject constructor(
     suspend fun fetchVoiceUsers(channelId: Long): Result<List<VoiceUser>> {
         return try {
             val token = authRepository.getToken()
-                ?: return Result.failure(AuthException("未登录，请先登录"))
+                ?: return Result.failure(AuthException(context.getString(R.string.error_not_logged_in)))
             val users = api.getVoiceUsers(authRepository.getAuthHeader(token), channelId)
             _avatarCache.value = mergeAvatarUrls(_avatarCache.value, users.associate { it.id to it.avatarUrl })
             Result.success(users)
         } catch (e: Exception) {
             Log.e(TAG, "fetchVoiceUsers failed", e)
-            Result.failure(e.toAuthException())
+            Result.failure(e.toAuthException(context))
         }
     }
 
@@ -351,7 +355,7 @@ class VoiceRepository @Inject constructor(
             Result.success(response.success)
         } catch (e: Exception) {
             Log.e(TAG, "muteParticipant failed", e)
-            Result.failure(e.toAuthException())
+            Result.failure(e.toAuthException(context))
         }
     }
 
@@ -367,7 +371,7 @@ class VoiceRepository @Inject constructor(
             Result.success(response.success)
         } catch (e: Exception) {
             Log.e(TAG, "kickParticipant failed", e)
-            Result.failure(e.toAuthException())
+            Result.failure(e.toAuthException(context))
         }
     }
 
@@ -382,7 +386,7 @@ class VoiceRepository @Inject constructor(
             Result.success(response)
         } catch (e: Exception) {
             Log.e(TAG, "fetchHostMode failed", e)
-            Result.failure(e.toAuthException())
+            Result.failure(e.toAuthException(context))
         }
     }
 
@@ -401,7 +405,7 @@ class VoiceRepository @Inject constructor(
             Result.success(response)
         } catch (e: Exception) {
             Log.e(TAG, "setHostMode failed", e)
-            Result.failure(e.toAuthException())
+            Result.failure(e.toAuthException(context))
         }
     }
 
@@ -413,7 +417,7 @@ class VoiceRepository @Inject constructor(
             Result.success(response)
         } catch (e: Exception) {
             Log.e(TAG, "createVoiceInvite failed", e)
-            Result.failure(e.toAuthException())
+            Result.failure(e.toAuthException(context))
         }
     }
 
@@ -433,8 +437,8 @@ class VoiceRepository @Inject constructor(
             }
             val lockResponse = lockResult.getOrThrow()
             if (!lockResponse.success) {
-                _error.value = "${lockResponse.sharerName ?: "其他用户"} 正在共享屏幕"
-                return Result.failure(Exception("${lockResponse.sharerName ?: "其他用户"} 正在共享屏幕"))
+                _error.value = context.getString(R.string.voice_sharing_by, lockResponse.sharerName ?: context.getString(R.string.voice_other_user))
+                return Result.failure(Exception(context.getString(R.string.voice_sharing_by, lockResponse.sharerName ?: context.getString(R.string.voice_other_user))))
             }
             
             // Lock acquired, start screen sharing
@@ -471,7 +475,7 @@ class VoiceRepository @Inject constructor(
             Result.success(response)
         } catch (e: Exception) {
             Log.e(TAG, "fetchScreenShareStatus failed", e)
-            Result.failure(e.toAuthException())
+            Result.failure(e.toAuthException(context))
         }
     }
     
@@ -500,10 +504,10 @@ class VoiceRepository @Inject constructor(
                 }
             }
             Log.e(TAG, "lockScreenShare failed", e)
-            Result.failure(e.toAuthException())
+            Result.failure(e.toAuthException(context))
         } catch (e: Exception) {
             Log.e(TAG, "lockScreenShare failed", e)
-            Result.failure(e.toAuthException())
+            Result.failure(e.toAuthException(context))
         }
     }
     
@@ -518,7 +522,7 @@ class VoiceRepository @Inject constructor(
             Result.success(response)
         } catch (e: Exception) {
             Log.e(TAG, "unlockScreenShare failed", e)
-            Result.failure(e.toAuthException())
+            Result.failure(e.toAuthException(context))
         }
     }
 

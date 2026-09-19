@@ -1,6 +1,7 @@
 package cn.net.rms.chatroom
 
 import android.app.Application
+import android.content.Context
 import coil.ImageLoader
 import coil.ImageLoaderFactory
 import coil.disk.DiskCache
@@ -9,6 +10,7 @@ import coil.request.CachePolicy
 import coil.util.DebugLogger
 import cn.net.rms.chatroom.crash.CrashGuard
 import cn.net.rms.chatroom.data.auth.TokenAuthenticator
+import cn.net.rms.chatroom.data.local.AppLocale
 import cn.net.rms.chatroom.data.telemetry.TelemetryReporter
 import cn.net.rms.chatroom.notification.NotificationHelper
 import dagger.hilt.android.HiltAndroidApp
@@ -27,6 +29,14 @@ class RMSDiscordApp : Application(), ImageLoaderFactory {
 
     @Inject
     lateinit var tokenAuthenticator: TokenAuthenticator
+
+    // Pre-33 the in-app language needs a synchronous wrap at attach time so
+    // every @ApplicationContext consumer (ViewModels, services, notifications)
+    // resolves strings in the selected locale, not the system one. API 33+
+    // handles per-app locales in the framework and this is a no-op.
+    override fun attachBaseContext(base: Context) {
+        super.attachBaseContext(AppLocale.wrapContext(base))
+    }
 
     override fun onCreate() {
         super.onCreate()

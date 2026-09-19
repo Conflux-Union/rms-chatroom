@@ -14,9 +14,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import cn.net.rms.chatroom.R
 import cn.net.rms.chatroom.ui.theme.*
 
 @Composable
@@ -27,8 +29,8 @@ fun MusicLoginDialog(
     onRefreshQRCode: () -> Unit,
     onDismiss: () -> Unit
 ) {
-    val platformName = if (loginPlatform == "qq") "QQ 音乐" else "网易云音乐"
-    
+    val platformName = if (loginPlatform == "qq") stringResource(R.string.music_qq_name) else stringResource(R.string.music_netease_name)
+
     Dialog(onDismissRequest = onDismiss) {
         Surface(
             shape = RoundedCornerShape(8.dp),
@@ -41,7 +43,7 @@ fun MusicLoginDialog(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
-                    text = "扫码登录 $platformName",
+                    text = stringResource(R.string.music_scan_login, platformName),
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
                     color = Zhimo.ink
@@ -80,7 +82,7 @@ fun MusicLoginDialog(
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                text = "二维码加载失败",
+                                text = stringResource(R.string.music_qrcode_failed_load),
                                 color = Zhimo.inkFaint
                             )
                         }
@@ -105,14 +107,14 @@ fun MusicLoginDialog(
                 // Status text
                 Text(
                     text = when (loginStatus) {
-                        "loading" -> "加载中..."
-                        "waiting" -> "等待扫码..."
-                        "scanned" -> "扫码成功！请在手机上确认..."
-                        "expired" -> "二维码已过期"
-                        "refused" -> "登录被拒绝"
-                        "success" -> "登录成功！"
-                        "error" -> "加载失败"
-                        else -> "加载中..."
+                        "loading" -> stringResource(R.string.loading)
+                        "waiting" -> stringResource(R.string.music_status_waiting)
+                        "scanned" -> stringResource(R.string.music_status_scanned)
+                        "expired" -> stringResource(R.string.music_status_expired)
+                        "refused" -> stringResource(R.string.music_status_refused)
+                        "success" -> stringResource(R.string.music_status_success)
+                        "error" -> stringResource(R.string.music_status_error)
+                        else -> stringResource(R.string.loading)
                     },
                     style = MaterialTheme.typography.bodyMedium,
                     color = when (loginStatus) {
@@ -135,7 +137,7 @@ fun MusicLoginDialog(
                         ),
                         shape = RoundedCornerShape(8.dp)
                     ) {
-                        Text("刷新二维码")
+                        Text(stringResource(R.string.music_refresh_qrcode))
                     }
 
                     Spacer(modifier = Modifier.height(8.dp))
@@ -143,7 +145,7 @@ fun MusicLoginDialog(
 
                 // Close button
                 TextButton(onClick = onDismiss) {
-                    Text("关闭", color = Zhimo.inkFaint)
+                    Text(stringResource(R.string.action_close), color = Zhimo.inkFaint)
                 }
             }
         }

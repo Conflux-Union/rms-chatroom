@@ -84,7 +84,7 @@ class VoiceCallService : Service() {
     lateinit var settingsPreferences: SettingsPreferences
 
     private var wakeLock: PowerManager.WakeLock? = null
-    private var channelName: String = "语音通话"
+    private var channelName: String = ""
     private var isMuted: Boolean = false
     private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private var isAppInForeground = true
@@ -151,7 +151,8 @@ class VoiceCallService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        channelName = intent?.getStringExtra(EXTRA_CHANNEL_NAME) ?: "语音通话"
+        channelName = intent?.getStringExtra(EXTRA_CHANNEL_NAME)?.takeIf { it.isNotBlank() }
+            ?: getString(R.string.voice_call)
         val enableScreenShare = intent?.getBooleanExtra(EXTRA_ENABLE_SCREEN_SHARE, false) ?: false
 
         val notification = createNotification()
@@ -211,10 +212,10 @@ class VoiceCallService : Service() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 CHANNEL_ID,
-                "语音通话",
+                getString(R.string.notification_channel_voice),
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
-                description = "语音通话进行中"
+                description = getString(R.string.notification_channel_voice_service_desc)
                 setShowBadge(false)
             }
 
@@ -246,7 +247,7 @@ class VoiceCallService : Service() {
         )
         val muteAction = NotificationCompat.Action.Builder(
             if (isMuted) R.drawable.ic_notification else R.drawable.ic_notification,
-            if (isMuted) "取消静音" else "静音",
+            getString(if (isMuted) R.string.unmute else R.string.mute),
             mutePendingIntent
         ).build()
 
@@ -260,11 +261,15 @@ class VoiceCallService : Service() {
         )
         val hangUpAction = NotificationCompat.Action.Builder(
             R.drawable.ic_notification,
-            "挂断",
+            getString(R.string.action_hang_up),
             hangUpPendingIntent
         ).build()
 
-        val statusText = if (isMuted) "正在 $channelName 中通话 (已静音)" else "正在 $channelName 中通话"
+        val statusText = if (isMuted) {
+            getString(R.string.service_voice_calling_in_muted, channelName)
+        } else {
+            getString(R.string.service_voice_calling_in, channelName)
+        }
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("RMS ChatRoom")

@@ -16,6 +16,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.unit.dp
 import cn.net.rms.chatroom.BuildConfig
@@ -34,12 +35,12 @@ fun AboutScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("关于应用") },
+                title = { Text(stringResource(R.string.settings_about_title)) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "返回"
+                            contentDescription = stringResource(R.string.action_back)
                         )
                     }
                 },
@@ -57,21 +58,21 @@ fun AboutScreen(
             // Version
             AboutItem(
                 icon = Icons.Default.Info,
-                title = "版本",
+                title = stringResource(R.string.about_version),
                 subtitle = BuildConfig.VERSION_NAME
             )
 
             // Copyright
             AboutItem(
                 icon = Icons.Default.Copyright,
-                title = "版权信息",
-                subtitle = "RMS Server 版权所有"
+                title = stringResource(R.string.about_copyright),
+                subtitle = stringResource(R.string.about_copyright_value)
             )
 
             // GitHub repository
             AboutItem(
                 icon = ImageVector.vectorResource(R.drawable.ic_github),
-                title = "GitHub 仓库",
+                title = stringResource(R.string.about_github),
                 subtitle = "Conflux-Union/rms-chatroom",
                 onClick = {
                     runCatching {
@@ -80,7 +81,7 @@ fun AboutScreen(
                             .build()
                             .launchUrl(context, Uri.parse(GITHUB_REPO_URL))
                     }.onFailure {
-                        Toast.makeText(context, "未找到可打开链接的浏览器", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, context.getString(R.string.about_no_browser), Toast.LENGTH_SHORT).show()
                     }
                 }
             )
@@ -88,8 +89,8 @@ fun AboutScreen(
             // Open source licenses
             AboutItem(
                 icon = Icons.Default.Code,
-                title = "开放源代码许可",
-                subtitle = "查看第三方开源库许可",
+                title = stringResource(R.string.about_licenses),
+                subtitle = stringResource(R.string.about_licenses_desc),
                 onClick = onNavigateToLicenses
             )
 
