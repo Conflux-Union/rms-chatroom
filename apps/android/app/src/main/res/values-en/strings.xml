@@ -253,10 +253,10 @@
     <string name="settings_section_language">Language</string>
     <string name="settings_theme_title">Theme</string>
     <string name="settings_theme_desc">Pick the app color scheme; changes apply immediately</string>
-    <string name="theme_follow_system">Follow system</string>
+    <string name="theme_follow_system">System</string>
     <string name="theme_light">Light</string>
     <string name="theme_dark">Dark</string>
-    <string name="language_system">Follow system</string>
+    <string name="language_system">System</string>
     <string name="language_zh">简体中文</string>
     <string name="language_en">English</string>
     <string name="settings_language_title">Language</string>
