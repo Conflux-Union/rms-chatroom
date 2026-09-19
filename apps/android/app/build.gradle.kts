@@ -58,8 +58,13 @@ android {
 
         // Ship only arm64 native libs. The WebRTC .so from LiveKit is ~12 MB per
         // ABI; x86/x86_64 only served emulators and were bloating the APK.
+        // Debug builds additionally pack x86_64 for the local emulator (pure
+        // x86_64, no ARM translation layer).
         ndk {
             abiFilters += "arm64-v8a"
+            if (gradle.startParameter.taskNames.any { it.contains("Debug", ignoreCase = true) }) {
+                abiFilters += "x86_64"
+            }
         }
     }
 
