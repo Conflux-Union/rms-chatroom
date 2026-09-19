@@ -17,9 +17,9 @@ export const messages = {
   'app.noChannelPrompt': '选择一个频道开始聊天',
   // Login.vue
   'app.tryingSilentLogin': '正在尝试无感登录...',
-  'app.welcomeLogin': '欢迎！请使用 RMS 账号登录',
+  'app.welcomeLogin': '欢迎！请使用 CXU 账号登录',
   'app.pleaseWait': '请稍候...',
-  'app.rmsAccountLogin': 'RMS 账号登录',
+  'app.cxuAccountLogin': 'CXU 账号登录',
   // Callback.vue
   'app.loggingInWait': '正在登录，请稍候...',
   // NotFound.vue

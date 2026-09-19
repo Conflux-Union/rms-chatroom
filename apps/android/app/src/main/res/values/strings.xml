@@ -2,7 +2,7 @@
 <resources>
     <string name="app_name">RMS ChatRoom</string>
     <string name="login_title">登录</string>
-    <string name="login_with_sso">使用 RMSSSO 登录</string>
+    <string name="login_with_sso">使用 CXU 账号登录</string>
     <string name="logout">退出登录</string>
     <string name="select_channel">选择一个频道开始聊天</string>
     <string name="send_message">发送消息</string>
@@ -278,7 +278,7 @@
     <!-- About -->
     <string name="about_version">版本</string>
     <string name="about_copyright">版权信息</string>
-    <string name="about_copyright_value">RMS Server 版权所有</string>
+    <string name="about_copyright_value">Conflux Union 版权所有</string>
     <string name="about_github">GitHub 仓库</string>
     <string name="about_no_browser">未找到可打开链接的浏览器</string>
     <string name="about_licenses">开放源代码许可</string>

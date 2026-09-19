@@ -34,7 +34,7 @@ class LoginScreenTest {
         }
 
         composeTestRule
-            .onNodeWithText("使用 RMSSSO 登录", substring = true)
+            .onNodeWithText("使用 CXU 账号登录", substring = true)
             .assertIsDisplayed()
     }
 
@@ -49,7 +49,7 @@ class LoginScreenTest {
         }
 
         composeTestRule
-            .onNodeWithText("使用 RMSSSO 登录", substring = true)
+            .onNodeWithText("使用 CXU 账号登录", substring = true)
             .performClick()
 
         assert(loginClicked)

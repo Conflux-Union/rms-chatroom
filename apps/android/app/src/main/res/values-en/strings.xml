@@ -2,7 +2,7 @@
 <resources>
     <string name="app_name">RMS ChatRoom</string>
     <string name="login_title">Log in</string>
-    <string name="login_with_sso">Log in with RMSSSO</string>
+    <string name="login_with_sso">Log in with CXU account</string>
     <string name="logout">Log out</string>
     <string name="select_channel">Select a channel to start chatting</string>
     <string name="send_message">Send a message</string>
@@ -278,7 +278,7 @@
     <!-- About -->
     <string name="about_version">Version</string>
     <string name="about_copyright">Copyright</string>
-    <string name="about_copyright_value">Copyright RMS Server</string>
+    <string name="about_copyright_value">Copyright Conflux Union</string>
     <string name="about_github">GitHub repository</string>
     <string name="about_no_browser">No browser found to open the link</string>
     <string name="about_licenses">Open-source licenses</string>

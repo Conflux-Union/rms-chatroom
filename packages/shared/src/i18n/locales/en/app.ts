@@ -15,9 +15,9 @@ export const messages: Record<Keys, Message> = {
   'app.selectChannel': 'Select a channel',
   'app.noChannelPrompt': 'Select a channel to start chatting',
   'app.tryingSilentLogin': 'Attempting silent log in...',
-  'app.welcomeLogin': 'Welcome! Log in with your RMS account',
+  'app.welcomeLogin': 'Welcome! Log in with your CXU account',
   'app.pleaseWait': 'Please wait...',
-  'app.rmsAccountLogin': 'Log in with RMS account',
+  'app.cxuAccountLogin': 'Log in with CXU account',
   'app.loggingInWait': 'Logging in, please wait...',
   'app.pageNotFound': 'Page not found',
   'app.notFoundHint':

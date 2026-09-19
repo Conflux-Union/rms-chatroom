@@ -86,7 +86,7 @@ onMounted(async () => {
           :loading="isTryingSilentLogin || undefined"
           @click="handleLogin"
         >
-          {{ isTryingSilentLogin ? t('app.pleaseWait') : t('app.rmsAccountLogin') }}
+          {{ isTryingSilentLogin ? t('app.pleaseWait') : t('app.cxuAccountLogin') }}
         </zhimo-button>
       </div>
     </zhimo-card>
