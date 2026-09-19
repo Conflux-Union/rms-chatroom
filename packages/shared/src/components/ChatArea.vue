@@ -1175,7 +1175,9 @@ onUnmounted(() => {
 
 .message-input {
   width: 100%;
-  padding: 12px 16px;
+  /* 10px vertical padding keeps the single-line height at 40px, matching the
+     attach/send buttons under align-items: flex-end */
+  padding: 10px 16px;
   border: 1px solid transparent;
   border-radius: var(--radius-md);
   background: var(--surface-glass-input);
