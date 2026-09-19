@@ -9,7 +9,7 @@ const files = [
 ];
 
 const forbidden = [
-  { pattern: /backdrop-filter\s*:/, reason: 'glass blur does not belong in the paper-and-ink shell' },
+  { pattern: /backdrop-filter\s*:\s*(?:(?!var\(--zhimo-surface-blur\))[^;\s])/, reason: 'shell surfaces may only blur via var(--zhimo-surface-blur), not ad hoc values' },
   { pattern: /--blur-strength/, reason: 'legacy blur token should not drive the core shell' },
   { pattern: /--color-gradient-primary|--color-gradient-secondary|linear-gradient\(/, reason: 'core shell should use ink/seal fills, not gradients' },
   { pattern: /box-shadow:\s*var\(--shadow-glow\)/, reason: 'glow shadows break the printed-paper hierarchy' },
