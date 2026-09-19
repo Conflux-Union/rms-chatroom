@@ -1,14 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <style name="Theme.RMSDiscord" parent="android:Theme.Material.NoActionBar">
+        <!-- Day-night backdrop so the pre-first-frame gap (recreation on
+             language switch etc.) matches the active theme instead of always
+             flashing the dark Material parent background. -->
+        <item name="android:windowBackground">@color/app_background</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
         <item name="android:windowDrawsSystemBarBackgrounds">true</item>
-        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightStatusBar">@bool/light_status_bars</item>
     </style>
 
     <style name="Theme.RMSDiscord.Starting" parent="Theme.SplashScreen">
-        <item name="windowSplashScreenBackground">#1D1A14</item>
+        <item name="windowSplashScreenBackground">@color/app_background</item>
         <item name="windowSplashScreenAnimatedIcon">@drawable/ic_splash_logo</item>
         <item name="postSplashScreenTheme">@style/Theme.RMSDiscord</item>
     </style>

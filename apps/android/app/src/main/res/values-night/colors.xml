@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Night variant of app_background: zhimo PaperDarkSubtle (ui/theme/Color.kt). -->
+    <color name="app_background">#1D1A14</color>
+</resources>

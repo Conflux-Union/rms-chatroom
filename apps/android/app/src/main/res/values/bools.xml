@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Status-bar icon appearance for the pre-first-frame window (matches the
+         runtime WindowCompat setting in Theme.kt: light icons on dark paper). -->
+    <bool name="light_status_bars">true</bool>
+</resources>

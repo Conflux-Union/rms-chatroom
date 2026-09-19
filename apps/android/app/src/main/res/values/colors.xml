@@ -1,5 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- Window/splash backdrop shown before Compose draws its first frame
+         (cold start and activity recreation, e.g. on language switch). Mirrors
+         the zhimo PaperLightSubtle token (ui/theme/Color.kt); the night variant
+         in values-night keeps the original dark-ink splash (#1D1A14). -->
+    <color name="app_background">#F3EEE1</color>
     <color name="purple_200">#FFBB86FC</color>
     <color name="purple_500">#FF6200EE</color>
     <color name="purple_700">#FF3700B3</color>
