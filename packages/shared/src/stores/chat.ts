@@ -353,6 +353,20 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
+  // The WebSocket only delivers what arrives while connected; after a
+  // reconnect, pull everything newer than the newest message already held so
+  // the outage window never shows as a gap. Delegating to fetchMessages'
+  // after-mode keeps its dedup and channel-switch guards, and appending
+  // chronologically keeps the viewport in place (a fresh load would replace
+  // the list). Skipped in permalink panes, where the viewport owns newer pages.
+  async function backfillAfterReconnect() {
+    const channel = currentChannel.value
+    const newest = messages.value[messages.value.length - 1]
+    if (!channel || !newest) return
+    if (hasMoreNewer.value) return
+    await fetchMessages(channel.id, undefined, undefined, newest.id)
+  }
+
   function setCurrentChannel(channel: Channel | null) {
     // Selection only. Clearing and reloading the message list is fetchMessages'
     // fresh-load branch, driven by ChatArea's id-keyed watcher.
@@ -501,6 +515,7 @@ export const useChatStore = defineStore('chat', () => {
     deleteServer,
     deleteChannel,
     fetchMessages,
+    backfillAfterReconnect,
     setCurrentChannel,
     addMessage,
     fetchVoiceChannelUsers,

@@ -4,6 +4,8 @@ import { useAuthStore } from './auth'
 import { useVoiceStore } from './voice'
 import { authFetch } from '../utils/authFetch'
 import { reportTelemetryEvent } from '../utils/telemetry'
+import { createReconnectingWebSocket } from '../composables/useReconnectingWebSocket'
+import { refreshTokenIfExpired } from '../utils/tokenRefresh'
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'https://chatroom.rms.net.cn'
 const WS_BASE = import.meta.env.VITE_WS_BASE || 'wss://chatroom.rms.net.cn'
@@ -68,12 +70,28 @@ export const useMusicStore = defineStore('music', () => {
   const playbackRoom = ref<string | null>(null)
 
   // WebSocket and audio state (managed by store, not component)
-  let musicWs: WebSocket | null = null
   let currentWsRoom: string | null = null
   let audioElement: HTMLAudioElement | null = null
   const volume = ref(parseFloat(localStorage.getItem('musicVolume') || '1.0'))
-  const wsConnected = ref(false)
 
+  const musicWs = createReconnectingWebSocket({
+    name: 'MusicWS',
+    onBeforeConnect: () => refreshTokenIfExpired(auth),
+    getUrl: () => {
+      if (!auth.token || !currentWsRoom) return null
+      return `${WS_BASE}/ws/music?token=${auth.token}&room_name=${encodeURIComponent(currentWsRoom)}`
+    },
+    // The backend only pushes on the next state change, so a reconnect window
+    // would otherwise leave playback stale until an unrelated push arrives.
+    onConnected: () => {
+      if (currentWsRoom) {
+        refreshQueue(currentWsRoom)
+        fetchPlaybackStatus(currentWsRoom)
+      }
+    },
+    onMessage: handleMusicWsMessage,
+  })
+  const wsConnected = musicWs.isConnected
   const jsonHeaders = { 'Content-Type': 'application/json' }
 
   // --- Login functions ---
@@ -453,160 +471,128 @@ export const useMusicStore = defineStore('music', () => {
   function connectMusicWs(roomName: string) {
     if (!auth.token || !roomName) return
 
-    // Disconnect existing connection if room changed
-    if (musicWs && currentWsRoom !== roomName) {
-      musicWs.close()
-      musicWs = null
+    // Room change: drop the old socket first. The composable's generation
+    // guard makes the stale onclose a no-op; the previous hand-rolled retry
+    // nulled the NEW socket's reference here and opened a duplicate.
+    if (currentWsRoom !== roomName) {
+      musicWs.disconnect()
+      currentWsRoom = roomName
     }
 
-    if (musicWs) return // Already connected to same room
+    // No-op when already open or connecting to this room.
+    musicWs.connect()
+  }
 
-    currentWsRoom = roomName
-    const url = `${WS_BASE}/ws/music?token=${auth.token}&room_name=${encodeURIComponent(roomName)}`
-    musicWs = new WebSocket(url)
-
-    musicWs.onopen = () => {
-      wsConnected.value = true
-    }
-
-    musicWs.onclose = () => {
-      wsConnected.value = false
-      musicWs = null
+  function handleMusicWsMessage(msg: any) {
+    try {
       const voice = useVoiceStore()
-      setTimeout(async () => {
-        const currentRoom = voice.currentVoiceChannel ? `voice_${voice.currentVoiceChannel.id}` : null
-        if (!auth.token || !currentRoom || currentRoom !== currentWsRoom) return
-        if (auth.canRecoverSession()) {
-          try {
-            const payload = JSON.parse(atob(auth.token.split('.')[1]))
-            if (payload.exp * 1000 - Date.now() < 30_000) {
-              await auth.doRefreshToken()
-            }
-          } catch { /* proceed anyway */ }
+      const currentRoom = voice.currentVoiceChannel ? `voice_${voice.currentVoiceChannel.id}` : null
+
+      // Handle global music events (no room_name check)
+      if (msg.type === 'music_login_status') {
+        // Update login status from WebSocket push
+        loginStatus.value = msg.status
+        if (msg.status === 'error' && msg.message) {
+          console.warn(`[MusicStore] Login error (${msg.platform}):`, msg.message)
         }
-        // Re-validate after async refresh: room may have changed while awaiting
-        const roomAfterRefresh = voice.currentVoiceChannel ? `voice_${voice.currentVoiceChannel.id}` : null
-        if (roomAfterRefresh !== currentRoom) return
-        connectMusicWs(currentRoom)
-      }, 3000)
-    }
-
-    musicWs.onmessage = (event) => {
-      try {
-        const msg = JSON.parse(event.data)
-        const voice = useVoiceStore()
-        const currentRoom = voice.currentVoiceChannel ? `voice_${voice.currentVoiceChannel.id}` : null
-
-        // Handle global music events (no room_name check)
-        if (msg.type === 'music_login_status') {
-          // Update login status from WebSocket push
-          loginStatus.value = msg.status
-          if (msg.status === 'error' && msg.message) {
-            console.warn(`[MusicStore] Login error (${msg.platform}):`, msg.message)
+        if (msg.status === 'success') {
+          if (msg.platform === 'qq') {
+            platformLoginStatus.value.qq.logged_in = true
+          } else if (msg.platform === 'netease') {
+            platformLoginStatus.value.netease.logged_in = true
           }
-          if (msg.status === 'success') {
-            if (msg.platform === 'qq') {
-              platformLoginStatus.value.qq.logged_in = true
-            } else if (msg.platform === 'netease') {
-              platformLoginStatus.value.netease.logged_in = true
-            }
-            isLoggedIn.value = true
-            qrCodeUrl.value = null
-          } else if (msg.status === 'refused') {
-            qrCodeUrl.value = null
-          }
-          // Note: 'expired' keeps modal open so user can click "refresh QR code"
+          isLoggedIn.value = true
+          qrCodeUrl.value = null
+        } else if (msg.status === 'refused') {
+          qrCodeUrl.value = null
+        }
+        // Note: 'expired' keeps modal open so user can click "refresh QR code"
+        return
+      }
+
+      // Handle playback commands - only process if for our room
+      if (msg.room_name && msg.room_name !== currentRoom) {
+        return // Ignore messages for other rooms
+      }
+
+      const audio = ensureAudioElement()
+
+      if (msg.type === 'play') {
+        // Play new song
+        // Update store state from the play message
+        if (msg.song) {
+          currentSong.value = msg.song
+          durationMs.value = (msg.song.duration || 0) * 1000
+        }
+        isPlaying.value = true
+        playbackState.value = 'playing'
+        positionMs.value = msg.position_ms || 0
+        if (msg.current_index !== undefined) {
+          currentIndex.value = msg.current_index
+        }
+
+        // Refresh queue to sync full state
+        const roomName = msg.room_name || currentWsRoom
+        if (roomName) {
+          refreshQueue(roomName)
+        }
+
+        audio.src = msg.url
+        audio.currentTime = (msg.position_ms || 0) / 1000
+        audio.play().catch(e => console.error('[MusicStore] Play failed:', e))
+      } else if (msg.type === 'pause') {
+        // Pause playback
+        isPlaying.value = false
+        playbackState.value = 'paused'
+        audio.pause()
+      } else if (msg.type === 'resume') {
+        // Resume playback
+        isPlaying.value = true
+        playbackState.value = 'playing'
+        audio.currentTime = (msg.position_ms || 0) / 1000
+        audio.play().catch(e => console.error('[MusicStore] Resume failed:', e))
+      } else if (msg.type === 'seek') {
+        // Seek to position
+        audio.currentTime = (msg.position_ms || 0) / 1000
+      } else if (msg.type === 'stop') {
+        // Room playback stopped (queue cleared or playback stopped)
+        audio.pause()
+        audio.src = ''
+        isPlaying.value = false
+        playbackState.value = 'idle'
+        currentSong.value = null
+        positionMs.value = 0
+        playbackActive.value = false
+        playbackRoom.value = null
+        const roomName = msg.room_name || currentWsRoom
+        if (roomName) {
+          refreshQueue(roomName)
+        }
+      } else if (msg.type === 'music_state' && msg.data) {
+        // Only process if for our room
+        if (msg.data.room_name && msg.data.room_name !== currentRoom) {
           return
         }
-
-        // Handle playback commands - only process if for our room
-        if (msg.room_name && msg.room_name !== currentRoom) {
-          return // Ignore messages for other rooms
-        }
-
-        const audio = ensureAudioElement()
-
-        if (msg.type === 'play') {
-          // Play new song
-          // Update store state from the play message
-          if (msg.song) {
-            currentSong.value = msg.song
-            durationMs.value = (msg.song.duration || 0) * 1000
-          }
-          isPlaying.value = true
-          playbackState.value = 'playing'
-          positionMs.value = msg.position_ms || 0
-          if (msg.current_index !== undefined) {
-            currentIndex.value = msg.current_index
-          }
-
-          // Refresh queue to sync full state
-          const roomName = msg.room_name || currentWsRoom
+        // Update music store with real-time state
+        updateProgress(msg.data)
+        // Also refresh queue to sync current index
+        if (msg.data.current_index !== undefined) {
+          const roomName = msg.data.room_name || currentRoom
           if (roomName) {
             refreshQueue(roomName)
           }
-
-          audio.src = msg.url
-          audio.currentTime = (msg.position_ms || 0) / 1000
-          audio.play().catch(e => console.error('[MusicStore] Play failed:', e))
-        } else if (msg.type === 'pause') {
-          // Pause playback
-          isPlaying.value = false
-          playbackState.value = 'paused'
-          audio.pause()
-        } else if (msg.type === 'resume') {
-          // Resume playback
-          isPlaying.value = true
-          playbackState.value = 'playing'
-          audio.currentTime = (msg.position_ms || 0) / 1000
-          audio.play().catch(e => console.error('[MusicStore] Resume failed:', e))
-        } else if (msg.type === 'seek') {
-          // Seek to position
-          audio.currentTime = (msg.position_ms || 0) / 1000
-        } else if (msg.type === 'stop') {
-          // Room playback stopped (queue cleared or playback stopped)
-          audio.pause()
-          audio.src = ''
-          isPlaying.value = false
-          playbackState.value = 'idle'
-          currentSong.value = null
-          positionMs.value = 0
-          playbackActive.value = false
-          playbackRoom.value = null
-          const roomName = msg.room_name || currentWsRoom
-          if (roomName) {
-            refreshQueue(roomName)
-          }
-        } else if (msg.type === 'music_state' && msg.data) {
-          // Only process if for our room
-          if (msg.data.room_name && msg.data.room_name !== currentRoom) {
-            return
-          }
-          // Update music store with real-time state
-          updateProgress(msg.data)
-          // Also refresh queue to sync current index
-          if (msg.data.current_index !== undefined) {
-            const roomName = msg.data.room_name || currentRoom
-            if (roomName) {
-              refreshQueue(roomName)
-            }
-          }
-        } else if (msg.type === 'song_unavailable') {
-          // Show notification for unavailable song
-          console.warn(`[MusicStore] Song unavailable: ${msg.song_name} - ${msg.reason}`)
         }
-      } catch (e) {
-        console.error('[MusicStore] Failed to handle WebSocket message:', e)
+      } else if (msg.type === 'song_unavailable') {
+        // Show notification for unavailable song
+        console.warn(`[MusicStore] Song unavailable: ${msg.song_name} - ${msg.reason}`)
       }
+    } catch (e) {
+      console.error('[MusicStore] Failed to handle WebSocket message:', e)
     }
   }
 
   function disconnectMusicWs() {
-    if (musicWs) {
-      musicWs.close()
-      musicWs = null
-    }
-    wsConnected.value = false
+    musicWs.disconnect()
     currentWsRoom = null
   }
 
