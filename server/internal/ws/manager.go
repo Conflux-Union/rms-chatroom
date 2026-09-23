@@ -150,6 +150,29 @@ func (m *ConnectionManager) BroadcastFiltered(msg interface{}, filter func(user 
 	m.mu.RUnlock()
 }
 
+// ForEachUser calls fn once per connected user passing the filter. The user
+// list is snapshotted under the read lock, so fn may safely call back into
+// the manager (e.g. SendToUser).
+func (m *ConnectionManager) ForEachUser(filter func(user *permission.UserInfo) bool, fn func(userID int64)) {
+	m.mu.RLock()
+	userIDs := make([]int64, 0, len(m.globals))
+	infos := make([]*permission.UserInfo, 0, len(m.globals))
+	for uid, conns := range m.globals {
+		if len(conns) == 0 {
+			continue
+		}
+		userIDs = append(userIDs, uid)
+		infos = append(infos, conns[0].user)
+	}
+	m.mu.RUnlock()
+
+	for i, uid := range userIDs {
+		if filter(infos[i]) {
+			fn(uid)
+		}
+	}
+}
+
 // SendToUser sends a JSON message to a specific user's global connections.
 func (m *ConnectionManager) SendToUser(userID int64, msg interface{}) {
 	data, err := json.Marshal(msg)

@@ -47,7 +47,6 @@ export function useMessageViewport(options: {
   const {
     saveReadPosition,
     getReadPosition,
-    sendChannelAck,
   } = useReadPosition()
   let scrollSaveTimeout: ReturnType<typeof setTimeout> | null = null
 
@@ -55,14 +54,12 @@ export function useMessageViewport(options: {
   const {
     clearChannelMention,
     getChannelMention,
-    clearUnreadCount,
   } = useMentionNotification()
 
   // First message the user has not seen in the current channel; rendered as an
   // in-list divider until the viewport catches up to the tail as of entry.
   const firstUnreadId = ref<number | null>(null)
   const entryTailId = ref<number | null>(null)
-  let entryAckTimer: ReturnType<typeof setTimeout> | null = null
   // Entry positioning (older-page pull + jump to first unread) must not let the
   // bottom page flash advance the read position before the jump happens.
   let entryPositioning = false
@@ -81,7 +78,6 @@ export function useMessageViewport(options: {
         // Clear any in-flight "load older" lock from the previous channel so the
         // new channel can paginate immediately.
         isFetchingOlder.value = false
-        if (entryAckTimer) clearTimeout(entryAckTimer)
         const token = ++entryToken
         entryPositioning = true
         // Hold the new-message auto-follow until entry positioning is done, so
@@ -144,15 +140,6 @@ export function useMessageViewport(options: {
             updateLatestVisibility()
           }, 250)
         }
-
-        // Acknowledge the channel after a short stay: quick channel switches
-        // don't clear unread badges on this or other devices.
-        entryAckTimer = setTimeout(() => {
-          if (chat.currentChannel?.id === channel.id) {
-            sendChannelAck(channel.id)
-            clearUnreadCount(channel.id)
-          }
-        }, 1000)
       }
     },
     { immediate: true }
@@ -356,21 +343,13 @@ export function useMessageViewport(options: {
     const visibleId = latestVisibleMessageId.value
     if (!visibleId) return
 
-    // An unseen mention survives position updates; once the viewport passes the
-    // mention message, clear the badge both locally and on the server.
-    let hasMention = false
-    let mentionId: number | null = null
+    // Optimistically drop the @ badge once the viewport passes the mention
+    // message; the server re-derives the flag from the new position anyway.
     const mention = getChannelMention(channel.id)
-    if (mention?.hasMention) {
-      mentionId = mention.lastMentionMessageId
-      if (mentionId != null && visibleId >= mentionId) {
-        clearChannelMention(channel.id)
-        mentionId = null
-      } else {
-        hasMention = true
-      }
+    if (mention?.hasMention && mention.lastMentionMessageId != null && visibleId >= mention.lastMentionMessageId) {
+      clearChannelMention(channel.id)
     }
-    saveReadPosition(channel.id, visibleId, hasMention, mentionId)
+    saveReadPosition(channel.id, visibleId)
 
     // Caught up to the tail as of entry: the unread divider served its purpose.
     if (entryTailId.value != null && visibleId >= entryTailId.value) {

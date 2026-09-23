@@ -138,6 +138,21 @@ func main() {
 		ws.ChatManager.BroadcastFiltered(payload, func(user *permission.UserInfo) bool {
 			return permission.CanAccess(user, rule)
 		})
+
+		// New chat messages (forward ingest paths) also refresh the
+		// server-derived unread badges of eligible online users.
+		if payload["type"] == "message" {
+			if id, ok := payload["id"].(int64); ok {
+				var sender int64 = -1
+				switch uid := payload["user_id"].(type) {
+				case int:
+					sender = int64(uid)
+				case int64:
+					sender = uid
+				}
+				ws.PushUnreadUpdates(db, rule, channelID, id, sender)
+			}
+		}
 	}
 
 	// Pull-based self-updater: triggered by CI via /api/system/update/check,

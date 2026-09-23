@@ -9,16 +9,18 @@ import (
 	"github.com/labstack/echo/v4"
 
 	"github.com/RMS-Server/rms-discord-go/internal/jwtutil"
+	"github.com/RMS-Server/rms-discord-go/internal/readstate"
 )
 
-// globalMessage represents an incoming message on /ws/global.
+// globalMessage represents an incoming message on /ws/global. Legacy clients
+// also send has_mention / last_mention_message_id on read_position_update;
+// those fields are ignored by the server-derived unread model and elided here
+// (unknown JSON fields are dropped by the decoder).
 type globalMessage struct {
-	Type                 string `json:"type"`
-	Data                 string `json:"data"`
-	ChannelID            int64  `json:"channel_id"`
-	LastReadMessageID    int64  `json:"last_read_message_id"`
-	HasMention           bool   `json:"has_mention"`
-	LastMentionMessageID *int64 `json:"last_mention_message_id"`
+	Type              string `json:"type"`
+	Data              string `json:"data"`
+	ChannelID         int64  `json:"channel_id"`
+	LastReadMessageID int64  `json:"last_read_message_id"`
 }
 
 // HandleGlobalWS handles the /ws/global WebSocket endpoint.
@@ -70,10 +72,8 @@ func HandleGlobalWS(jwtSecret string, db *sql.DB) echo.HandlerFunc {
 				return
 			}
 
-			if msg.Type == "channel_ack" {
-				handleChannelAck(conn, &msg)
-				return
-			}
+			// "channel_ack" was removed with the server-derived unread model;
+			// legacy clients still send it and unknown types are ignored.
 		})
 
 		return nil
@@ -85,55 +85,28 @@ func handleReadPositionUpdate(db *sql.DB, conn *Conn, msg *globalMessage) {
 		return
 	}
 
-	var lastMentionID sql.NullInt64
-	if msg.LastMentionMessageID != nil {
-		lastMentionID = sql.NullInt64{Int64: *msg.LastMentionMessageID, Valid: true}
-	}
-
-	_, err := db.Exec(
-		`INSERT INTO read_positions (user_id, channel_id, last_read_message_id, has_mention, last_mention_message_id)
-		 VALUES (?, ?, ?, ?, ?)
-		 ON DUPLICATE KEY UPDATE
-		   last_read_message_id = GREATEST(last_read_message_id, VALUES(last_read_message_id)),
-		   has_mention = VALUES(has_mention),
-		   last_mention_message_id = VALUES(last_mention_message_id),
-		   updated_at = UTC_TIMESTAMP()`,
-		conn.user.ID, msg.ChannelID, msg.LastReadMessageID, msg.HasMention, lastMentionID,
-	)
+	// Unread counts and mention flags are server-derived; the client-supplied
+	// has_mention / last_mention_message_id fields are legacy and ignored.
+	state, err := readstate.AdvanceReadPosition(db, int64(conn.user.ID), msg.ChannelID, msg.LastReadMessageID)
 	if err != nil {
-		log.Printf("ws/global: failed to upsert read position: %v", err)
+		log.Printf("ws/global: failed to advance read position: %v", err)
 		return
 	}
 
-	// Broadcast to user's other connections
-	update := map[string]interface{}{
-		"type":                    "read_position_sync",
-		"channel_id":             msg.ChannelID,
-		"last_read_message_id":   msg.LastReadMessageID,
-		"has_mention":            msg.HasMention,
-		"last_mention_message_id": msg.LastMentionMessageID,
-	}
-	GlobalStateManager.SendToUserExclude(int64(conn.user.ID), update, conn)
-}
-
-// handleChannelAck relays "device opened channel" to the user's other devices
-// so they can clear their local unread badges. Ack state is per-device, so
-// nothing is persisted here.
-func handleChannelAck(conn *Conn, msg *globalMessage) {
-	if msg.ChannelID == 0 {
-		return
-	}
-
-	update := map[string]interface{}{
-		"type":       "channel_ack",
-		"channel_id": msg.ChannelID,
-	}
-	GlobalStateManager.SendToUserExclude(int64(conn.user.ID), update, conn)
+	// Broadcast the recomputed state to the user's other connections.
+	GlobalStateManager.SendToUserExclude(int64(conn.user.ID), map[string]interface{}{
+		"type":                     "read_position_sync",
+		"channel_id":              msg.ChannelID,
+		"last_read_message_id":    state.LastReadMessageID,
+		"unread_count":            state.UnreadCount,
+		"has_mention":             state.HasMention,
+		"last_mention_message_id": state.LastMentionMessageID,
+	}, conn)
 }
 
 func handleReadPositionSync(db *sql.DB, conn *Conn) {
 	rows, err := db.Query(
-		"SELECT channel_id, last_read_message_id, has_mention, last_mention_message_id FROM read_positions WHERE user_id = ?",
+		"SELECT channel_id, last_read_message_id FROM read_positions WHERE user_id = ?",
 		conn.user.ID,
 	)
 	if err != nil {
@@ -143,21 +116,27 @@ func handleReadPositionSync(db *sql.DB, conn *Conn) {
 
 	for rows.Next() {
 		var channelID, lastReadID int64
-		var hasMention bool
-		var lastMentionID sql.NullInt64
-		if err := rows.Scan(&channelID, &lastReadID, &hasMention, &lastMentionID); err != nil {
+		if err := rows.Scan(&channelID, &lastReadID); err != nil {
+			continue
+		}
+
+		// Derive fresh: messages may have arrived since the mention columns
+		// were last written.
+		state, err := readstate.DeriveFromPosition(db, int64(conn.user.ID), channelID, lastReadID)
+		if err != nil {
 			continue
 		}
 
 		msg := map[string]interface{}{
-			"type":                    "read_position_sync",
-			"channel_id":             channelID,
-			"last_read_message_id":   lastReadID,
-			"has_mention":            hasMention,
-			"last_mention_message_id": nil,
+			"type":                     "read_position_sync",
+			"channel_id":              channelID,
+			"last_read_message_id":     state.LastReadMessageID,
+			"unread_count":             state.UnreadCount,
+			"has_mention":              state.HasMention,
+			"last_mention_message_id":  nil,
 		}
-		if lastMentionID.Valid {
-			msg["last_mention_message_id"] = lastMentionID.Int64
+		if state.LastMentionMessageID != nil {
+			msg["last_mention_message_id"] = *state.LastMentionMessageID
 		}
 
 		data, _ := json.Marshal(msg)

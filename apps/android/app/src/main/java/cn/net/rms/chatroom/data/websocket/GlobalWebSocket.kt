@@ -21,10 +21,20 @@ sealed class GlobalWebSocketEvent {
     data class ReadPositionSync(
         val channelId: Long,
         val lastReadMessageId: Long,
+        val unreadCount: Int?,
         val hasMention: Boolean,
         val lastMentionMessageId: Long?
     ) : GlobalWebSocketEvent()
-    data class ChannelAck(val channelId: Long) : GlobalWebSocketEvent()
+    /**
+     * Server-derived unread state pushed with every new message. Counts are
+     * absolute values computed from the user's read position.
+     */
+    data class UnreadUpdate(
+        val channelId: Long,
+        val unreadCount: Int,
+        val hasMention: Boolean,
+        val lastMentionMessageId: Long?
+    ) : GlobalWebSocketEvent()
     object Connected : GlobalWebSocketEvent()
     object Disconnected : GlobalWebSocketEvent()
     data class Error(val error: String) : GlobalWebSocketEvent()
@@ -82,6 +92,7 @@ class GlobalWebSocket @Inject constructor(
             "read_position_sync" -> {
                 val channelId = json.get("channel_id")?.asLong ?: return null
                 val lastReadMessageId = json.get("last_read_message_id")?.asLong ?: return null
+                val unreadCount = json.get("unread_count")?.takeIf { !it.isJsonNull }?.asInt
                 val hasMention = json.get("has_mention")?.asBoolean ?: false
                 val lastMentionMessageIdElement = json.get("last_mention_message_id")
                 val lastMentionMessageId = if (lastMentionMessageIdElement != null && !lastMentionMessageIdElement.isJsonNull) {
@@ -90,18 +101,33 @@ class GlobalWebSocket @Inject constructor(
                     null
                 }
 
-                Log.d(TAG, "Read position sync: channel=$channelId, lastRead=$lastReadMessageId, hasMention=$hasMention")
+                Log.d(TAG, "Read position sync: channel=$channelId, lastRead=$lastReadMessageId, unread=$unreadCount, hasMention=$hasMention")
                 GlobalWebSocketEvent.ReadPositionSync(
                     channelId = channelId,
                     lastReadMessageId = lastReadMessageId,
+                    unreadCount = unreadCount,
                     hasMention = hasMention,
                     lastMentionMessageId = lastMentionMessageId
                 )
             }
-            "channel_ack" -> {
+            "unread_update" -> {
                 val channelId = json.get("channel_id")?.asLong ?: return null
-                Log.d(TAG, "Channel ack from another device: channel=$channelId")
-                GlobalWebSocketEvent.ChannelAck(channelId)
+                val unreadCount = json.get("unread_count")?.asInt ?: return null
+                val hasMention = json.get("has_mention")?.asBoolean ?: false
+                val lastMentionMessageIdElement = json.get("last_mention_message_id")
+                val lastMentionMessageId = if (lastMentionMessageIdElement != null && !lastMentionMessageIdElement.isJsonNull) {
+                    lastMentionMessageIdElement.asLong
+                } else {
+                    null
+                }
+
+                Log.d(TAG, "Unread update: channel=$channelId, unread=$unreadCount, hasMention=$hasMention")
+                GlobalWebSocketEvent.UnreadUpdate(
+                    channelId = channelId,
+                    unreadCount = unreadCount,
+                    hasMention = hasMention,
+                    lastMentionMessageId = lastMentionMessageId
+                )
             }
             "connected" -> {
                 Log.d(TAG, "Global WebSocket server confirmed connection")
@@ -115,52 +141,27 @@ class GlobalWebSocket @Inject constructor(
     }
 
     /**
-     * Send read position update to server for cross-device sync.
+     * Send read position update to server for cross-device sync. Unread counts
+     * and mention flags are server-derived from the resulting position.
      */
-    fun sendReadPositionUpdate(
-        channelId: Long,
-        lastReadMessageId: Long,
-        hasMention: Boolean = false,
-        lastMentionMessageId: Long? = null
-    ) {
+    fun sendReadPositionUpdate(channelId: Long, lastReadMessageId: Long) {
         if (connectionState.value != ConnectionState.CONNECTED) {
             Log.w(TAG, "Cannot send read position update: not connected")
             return
         }
 
         try {
-            val message = buildMap {
-                put("type", "read_position_update")
-                put("channel_id", channelId)
-                put("last_read_message_id", lastReadMessageId)
-                put("has_mention", hasMention)
-                if (lastMentionMessageId != null) {
-                    put("last_mention_message_id", lastMentionMessageId)
-                }
-            }
+            val message = mapOf(
+                "type" to "read_position_update",
+                "channel_id" to channelId,
+                "last_read_message_id" to lastReadMessageId
+            )
             val sent = webSocket?.send(gson.toJson(message)) ?: false
             if (sent) {
                 Log.d(TAG, "Sent read position update: channel=$channelId, lastRead=$lastReadMessageId")
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error sending read position update", e)
-        }
-    }
-
-    /**
-     * Tell the user's other devices this channel was opened so they can clear
-     * their unread badges. Ack state is per-device and never persisted.
-     */
-    fun sendChannelAck(channelId: Long) {
-        if (connectionState.value != ConnectionState.CONNECTED) {
-            Log.w(TAG, "Cannot send channel ack: not connected")
-            return
-        }
-
-        try {
-            webSocket?.send(gson.toJson(mapOf("type" to "channel_ack", "channel_id" to channelId)))
-        } catch (e: Exception) {
-            Log.e(TAG, "Error sending channel ack", e)
         }
     }
 

@@ -21,7 +21,7 @@ func TestChatBroadcastMarshalIncludesAvatarURL(t *testing.T) {
 		Content:     "hi",
 		CreatedAt:   "2026-09-12 00:00:00",
 		Attachments: []attachmentPayload{},
-		Mentions:    []string{},
+		Mentions:    []mentionPayload{},
 	})
 	if err != nil {
 		t.Fatalf("marshal: %v", err)

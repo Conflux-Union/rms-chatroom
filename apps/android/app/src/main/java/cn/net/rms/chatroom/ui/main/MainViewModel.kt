@@ -267,10 +267,6 @@ class MainViewModel @Inject constructor(
 
         // Load messages for text and forward (sync) channels
         if (channel.type == ChannelType.TEXT || channel.type == ChannelType.FORWARD) {
-            // Opening the channel acknowledges it: this device's badge clears
-            // and other devices are told to clear theirs. The read position
-            // itself only advances when messages enter the viewport.
-            readPositionRepository.acknowledgeChannel(channel.id)
             loadMessages(channel.id, positionViewport = true)
         }
     }
@@ -436,38 +432,14 @@ class MainViewModel @Inject constructor(
                         val message = event.message
                         val userId = currentUserId
                         val isOwnMessage = message.userId == userId
-                        val hasMentions = message.mentions?.isNotEmpty() == true
-                        val mentionIds = message.mentions?.map { it.id } ?: emptyList()
                         val isMentioned = message.mentions?.any { it.id == userId } == true
-                        
-                        Log.d(TAG, "New message received: id=${message.id}, channelId=${message.channelId}, " +
-                            "currentUserId=$userId, messageUserId=${message.userId}, isOwnMessage=$isOwnMessage, " +
-                            "hasMentions=$hasMentions, mentionIds=$mentionIds, isMentioned=$isMentioned")
 
-                        if (userId != null && !isOwnMessage) {
-                            val channelId = message.channelId
-                            val currentChannelId = _state.value.currentChannel?.id
-                            val isCurrentChannel = channelId == currentChannelId
-
-                            if (isMentioned) {
-                                Log.d(TAG, "Mention detected in channel $channelId (current: $currentChannelId)")
-                                // Play sound for mentions even in the current channel
-                                mentionNotificationManager.playMentionSound(channelId, message.id)
-                            }
-
-                            // Only badge channels the user is not currently viewing;
-                            // unread counts all non-own messages, mentions add the @ badge
-                            if (!isCurrentChannel) {
-                                viewModelScope.launch {
-                                    mentionNotificationManager.incrementUnreadCount(channelId)
-                                    if (isMentioned) {
-                                        mentionNotificationManager.markChannelAsMentioned(channelId, message.id)
-                                        // Sync mention to server
-                                        readPositionRepository.markChannelAsMentioned(channelId, message.id, message.id)
-                                    }
-                                }
-                            }
+                        if (isMentioned && !isOwnMessage) {
+                            // Play sound for mentions even in the current channel
+                            mentionNotificationManager.playMentionSound(message.channelId, message.id)
                         }
+                        // Unread badges and @ badge flags are server-derived
+                        // and arrive via /ws/global (unread_update).
                     }
                     is WebSocketEvent.Connected -> {
                         Log.d(TAG, "WebSocket connected to channel ${event.channelId}")
@@ -859,13 +831,13 @@ class MainViewModel @Inject constructor(
     // Mention notification methods
     private fun loadMentionStates() {
         viewModelScope.launch {
-            mentionNotificationManager.getChannelsWithMentions().collect { mentions ->
+            readPositionRepository.mentionChannels.collect { mentions ->
                 Log.d(TAG, "MainViewModel received mention update: $mentions")
                 _state.value = _state.value.copy(channelMentions = mentions)
             }
         }
         viewModelScope.launch {
-            mentionNotificationManager.getAllUnreadCounts().collect { counts ->
+            readPositionRepository.unreadCounts.collect { counts ->
                 Log.d(TAG, "MainViewModel received unread counts update: $counts")
                 _state.value = _state.value.copy(unreadCounts = counts)
             }

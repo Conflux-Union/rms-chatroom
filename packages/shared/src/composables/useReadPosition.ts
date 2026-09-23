@@ -18,8 +18,6 @@ interface ReadPositions {
 interface ServerReadPosition {
   channel_id: number
   last_read_message_id: number
-  has_mention: boolean
-  last_mention_message_id: number | null
 }
 
 // Shared state across all instances
@@ -116,15 +114,10 @@ export function useReadPosition() {
 
   /**
    * Record that the viewport has reached a message, and sync to the server
-   * (debounced). The caller resolves the current mention flags so an unseen
-   * mention survives position updates.
+   * (debounced). The server derives unread counts and mention flags from the
+   * resulting position.
    */
-  function saveReadPosition(
-    channelId: number,
-    messageId: number,
-    hasMention: boolean = false,
-    lastMentionMessageId: number | null = null
-  ) {
+  function saveReadPosition(channelId: number, messageId: number) {
     const current = positions.value[channelId]
 
     // Only update if new position is greater
@@ -143,7 +136,7 @@ export function useReadPosition() {
       clearTimeout(syncDebounceTimers[channelId])
     }
     syncDebounceTimers[channelId] = window.setTimeout(() => {
-      syncToServer(channelId, messageId, hasMention, lastMentionMessageId)
+      syncToServer(channelId, messageId)
       delete syncDebounceTimers[channelId]
     }, 500)
   }
@@ -151,18 +144,11 @@ export function useReadPosition() {
   /**
    * Sync read position to server via WebSocket.
    */
-  function syncToServer(
-    channelId: number,
-    messageId: number,
-    hasMention: boolean = false,
-    lastMentionMessageId: number | null = null
-  ) {
+  function syncToServer(channelId: number, messageId: number) {
     send({
       type: 'read_position_update',
       channel_id: channelId,
       last_read_message_id: messageId,
-      has_mention: hasMention,
-      last_mention_message_id: lastMentionMessageId,
     })
   }
 
@@ -170,18 +156,9 @@ export function useReadPosition() {
     return positions.value[channelId]?.messageId ?? null
   }
 
-  /**
-   * Tell the user's other devices this channel was opened so they can clear
-   * their unread badges. Ack state is per-device and never persisted.
-   */
-  function sendChannelAck(channelId: number) {
-    send({ type: 'channel_ack', channel_id: channelId })
-  }
-
   return {
     saveReadPosition,
     getReadPosition,
-    sendChannelAck,
     syncToServer,
     refetchFromServer: fetchAndMergeServerPositions,
   }

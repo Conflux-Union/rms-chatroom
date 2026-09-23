@@ -838,8 +838,10 @@ private fun GroupedChannelItem(
                 Spacer(modifier = Modifier.width(4.dp))
             }
 
-            // Unread count badge
-            if (unreadCount > 0 && channel.type == ChannelType.TEXT) {
+            // Unread count badge (hidden on the channel being viewed; its
+            // count state is server-derived and may be non-zero while the
+            // viewport sits mid-history)
+            if (unreadCount > 0 && !isSelected && channel.type == ChannelType.TEXT) {
                 Surface(
                     shape = RoundedCornerShape(8.dp),
                     color = Zhimo.inkFaint
@@ -996,8 +998,10 @@ private fun UngroupedChannelItem(
                 Spacer(modifier = Modifier.width(4.dp))
             }
 
-            // Unread count badge
-            if (unreadCount > 0 && channel.type == ChannelType.TEXT) {
+            // Unread count badge (hidden on the channel being viewed; its
+            // count state is server-derived and may be non-zero while the
+            // viewport sits mid-history)
+            if (unreadCount > 0 && !isSelected && channel.type == ChannelType.TEXT) {
                 Surface(
                     shape = RoundedCornerShape(8.dp),
                     color = Zhimo.inkFaint

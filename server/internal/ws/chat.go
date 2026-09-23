@@ -48,8 +48,16 @@ type chatBroadcast struct {
 	Content     string              `json:"content"`
 	CreatedAt   string              `json:"created_at"`
 	Attachments []attachmentPayload `json:"attachments"`
-	Mentions    []string            `json:"mentions"`
+	Mentions    []mentionPayload    `json:"mentions"`
 	ReplyTo     *replyPayload       `json:"reply_to,omitempty"`
+}
+
+// mentionPayload is a resolved @mention in the broadcast: the user id lets
+// clients detect "I was mentioned" without a username round-trip, matching
+// the forward ingest path's shape.
+type mentionPayload struct {
+	ID       int64  `json:"id"`
+	Username string `json:"username"`
 }
 
 type attachmentPayload struct {
@@ -204,20 +212,18 @@ func handleChatMessage(db *sql.DB, ssoClient *sso.Client, conn *Conn, msg *chatM
 		}
 	}
 
-	// Parse @mentions
+	// Parse @mentions, resolve them to user IDs, and record them. The
+	// broadcast carries {id, username} objects so clients can match by id.
 	mentions := mentionRe.FindAllStringSubmatch(msg.Content, -1)
-	var mentionNames []string
+	var mentionPairs []mentionPayload
 	seen := make(map[string]bool)
 	for _, m := range mentions {
 		name := m[1]
-		if !seen[name] {
-			seen[name] = true
-			mentionNames = append(mentionNames, name)
+		if seen[name] {
+			continue
 		}
-	}
+		seen[name] = true
 
-	// Insert mention records (look up user IDs from messages table)
-	for _, name := range mentionNames {
 		var uid int64
 		err := db.QueryRow(
 			"SELECT DISTINCT user_id FROM messages WHERE username = ? LIMIT 1", name,
@@ -225,6 +231,7 @@ func handleChatMessage(db *sql.DB, ssoClient *sso.Client, conn *Conn, msg *chatM
 		if err == nil {
 			db.Exec("INSERT IGNORE INTO message_mentions (message_id, user_id) VALUES (?, ?)",
 				messageID, uid)
+			mentionPairs = append(mentionPairs, mentionPayload{ID: uid, Username: name})
 		}
 	}
 
@@ -259,13 +266,16 @@ func handleChatMessage(db *sql.DB, ssoClient *sso.Client, conn *Conn, msg *chatM
 		Content:     msg.Content,
 		CreatedAt:   now,
 		Attachments: attachments,
-		Mentions:    mentionNames,
+		Mentions:    mentionPairs,
 		ReplyTo:     reply,
 	}
 
 	ChatManager.BroadcastFiltered(broadcast, func(user *permission.UserInfo) bool {
 		return permission.CanAccess(user, accessRule)
 	})
+
+	// Recompute and push server-derived unread badges for this message.
+	PushUnreadUpdates(db, accessRule, msg.ChannelID, messageID, int64(conn.user.ID))
 
 	// FORWARD channels are bridged to the game network via ChatBridge. The
 	// SSO username is the in-game account name, so it doubles as the chat

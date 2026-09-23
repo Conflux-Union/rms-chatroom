@@ -498,16 +498,19 @@ data class AppUpdateResponse(
     val downloadUrl: String
 )
 
-// Read Positions (cross-device sync)
+// Read Positions (cross-device sync). Unread counts and mention flags are
+// server-derived from the read position.
 data class ReadPositionItem(
     @SerializedName("channel_id")
     val channelId: Long,
     @SerializedName("last_read_message_id")
     val lastReadMessageId: Long,
+    @SerializedName("unread_count")
+    val unreadCount: Int = 0,
     @SerializedName("has_mention")
-    val hasMention: Boolean,
+    val hasMention: Boolean = false,
     @SerializedName("last_mention_message_id")
-    val lastMentionMessageId: Long?
+    val lastMentionMessageId: Long? = null
 )
 
 data class ReadPositionsResponse(

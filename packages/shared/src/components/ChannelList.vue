@@ -692,8 +692,8 @@ async function deleteChannel() {
                     <span class="channel-name" @dblclick.stop="auth.isAdmin && editMode ? startInlineEdit(channel) : undefined">{{ channel.name }}</span>
                   </template>
                   <span v-if="channelMentions[channel.id]" class="mention-badge">@</span>
-                  <span 
-                    v-if="unreadCounts[channel.id] && unreadCounts[channel.id] > 0" 
+                  <span
+                    v-if="chat.currentChannel?.id !== channel.id && unreadCounts[channel.id] && unreadCounts[channel.id] > 0"
                     class="unread-badge"
                   >{{ unreadCounts[channel.id] > 99 ? '99+' : unreadCounts[channel.id] }}</span>
                   <div v-if="editMode" class="edit-actions" @click.stop>
@@ -789,8 +789,8 @@ async function deleteChannel() {
               <span v-if="channelMentions[item.data.id]" class="mention-badge">@</span>
               <span class="channel-name" @dblclick.stop="auth.isAdmin && editMode ? startInlineEdit(item.data) : undefined">{{ item.data.name }}</span>
             </template>
-            <span 
-              v-if="unreadCounts[item.data.id] && unreadCounts[item.data.id] > 0" 
+            <span
+              v-if="chat.currentChannel?.id !== item.data.id && unreadCounts[item.data.id] && unreadCounts[item.data.id] > 0"
               class="unread-badge"
             >{{ unreadCounts[item.data.id] > 99 ? '99+' : unreadCounts[item.data.id] }}</span>
             <div v-if="editMode" class="edit-actions" @click.stop>

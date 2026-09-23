@@ -30,7 +30,7 @@ const music = useMusicStore()
 
 // Initialize global chat WebSocket (persists across channel switches)
 const chatWs = useChatWebSocket()
-const { playMentionSound, markChannelAsMentioned, setUnreadCount, getUnreadCount, refetchFromServer: refetchMentionFlags } = useMentionNotification()
+const { playMentionSound, refetchFromServer: refetchMentionFlags } = useMentionNotification()
 const { showMessageNotification, setUnreadAttention } = useDesktopNotifications()
 
 // Resolve a channel display name across all loaded servers (for toasts).
@@ -80,10 +80,9 @@ chatWs.onMessage((data) => {
     const isOwnMessage = data.user_id === currentUserId
     const isCurrentChannel = messageChannelId === chat.currentChannel?.id
 
-    // Unread tracking for channels the user is not currently viewing.
-    // Feeds the channel badges, tray flashing and system toast.
+    // Attention for channels the user is not currently viewing. The unread
+    // badge count itself is server-derived and arrives via /ws/global.
     if (!isOwnMessage && !isCurrentChannel) {
-      setUnreadCount(messageChannelId, getUnreadCount(messageChannelId) + 1)
       setUnreadAttention(true)
 
       if (!isWindowActive()) {
@@ -95,20 +94,20 @@ chatWs.onMessage((data) => {
       }
     }
 
-    // Check if current user is mentioned (for any channel)
+    // Check if current user is mentioned (for any channel). Broadcasts carry
+    // either {id, username} objects (forwarded sources) or plain username
+    // strings (in-app WS messages); the badge flag itself is server-derived.
     if (data.mentions && data.mentions.length > 0) {
+      const ownUsername = auth.user?.username
       const isMentioned = data.mentions.some(
-        (mention: { id: number; username: string }) => mention.id === currentUserId
+        (mention: { id: number; username: string } | string) =>
+          typeof mention === 'string' ? mention === ownUsername : mention.id === currentUserId
       )
 
       if (isMentioned && !isOwnMessage) {
         // Play sound for mentions (even in current channel)
         if (document.visibilityState === 'visible') {
           playMentionSound(messageChannelId, data.id)
-        }
-        // Mark channel badge only if not current channel
-        if (!isCurrentChannel) {
-          markChannelAsMentioned(messageChannelId, data.id)
         }
       }
     }
