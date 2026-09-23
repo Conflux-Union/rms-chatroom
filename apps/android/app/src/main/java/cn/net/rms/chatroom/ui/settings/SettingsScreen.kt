@@ -40,6 +40,7 @@ fun SettingsScreen(
     val floatingWindowEnabled by viewModel.floatingWindowEnabled.collectAsState()
     val backgroundMessageServiceEnabled by viewModel.backgroundMessageServiceEnabled.collectAsState()
     val telemetryEnabled by viewModel.telemetryEnabled.collectAsState()
+    val voiceJoinLeaveAnnouncements by viewModel.voiceJoinLeaveAnnouncements.collectAsState()
     val themeMode by viewModel.themeMode.collectAsState()
     val hasOverlayPermission by viewModel.hasOverlayPermission.collectAsState()
     val isIgnoringBatteryOptimization by viewModel.isIgnoringBatteryOptimization.collectAsState()
@@ -137,6 +138,28 @@ fun SettingsScreen(
                             } else {
                                 viewModel.setFloatingWindowEnabled(enabled)
                             }
+                        },
+                        colors = SwitchDefaults.colors(checkedTrackColor = Zhimo.seal)
+                    )
+                }
+            )
+
+            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+
+            // Voice join/leave TTS announcements
+            SettingsItem(
+                icon = Icons.Default.RecordVoiceOver,
+                title = stringResource(R.string.settings_voice_announcements_title),
+                subtitle = if (voiceJoinLeaveAnnouncements) {
+                    stringResource(R.string.settings_voice_announcements_desc_on)
+                } else {
+                    stringResource(R.string.settings_voice_announcements_desc_off)
+                },
+                trailing = {
+                    Switch(
+                        checked = voiceJoinLeaveAnnouncements,
+                        onCheckedChange = { enabled ->
+                            viewModel.setVoiceJoinLeaveAnnouncements(enabled)
                         },
                         colors = SwitchDefaults.colors(checkedTrackColor = Zhimo.seal)
                     )

@@ -36,8 +36,12 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -49,6 +53,12 @@ enum class ConnectionState {
     CONNECTED,
     RECONNECTING
 }
+
+data class RemotePresenceEvent(
+    val identity: String,
+    val name: String,
+    val joined: Boolean
+)
 
 data class ParticipantInfo(
     val identity: String,
@@ -107,6 +117,17 @@ class LiveKitManager @Inject constructor(
 
     private val _participants = MutableStateFlow<List<ParticipantInfo>>(emptyList())
     val participants: StateFlow<List<ParticipantInfo>> = _participants.asStateFlow()
+
+    /**
+     * Remote participants joining or leaving the room after we connected.
+     * Existing members arrive with the initial room snapshot, so they never
+     * appear here — exactly the set of events a join/leave announcer wants.
+     */
+    private val _remotePresenceEvents = MutableSharedFlow<RemotePresenceEvent>(
+        extraBufferCapacity = 32,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
+    val remotePresenceEvents: SharedFlow<RemotePresenceEvent> = _remotePresenceEvents.asSharedFlow()
 
     private val _isMuted = MutableStateFlow(false)
     val isMuted: StateFlow<Boolean> = _isMuted.asStateFlow()
@@ -489,11 +510,13 @@ class LiveKitManager @Inject constructor(
                 }
                 is RoomEvent.ParticipantConnected -> {
                     updateParticipants()
+                    emitRemotePresence(event.participant, joined = true)
                 }
                 is RoomEvent.ParticipantDisconnected -> {
                     updateParticipants()
                     // Drop their screen share entry; no TrackUnpublished is guaranteed
                     event.participant.identity?.value?.let { removeScreenShareEntry(it) }
+                    emitRemotePresence(event.participant, joined = false)
                 }
                 is RoomEvent.TrackPublished -> {
                     updateParticipants()
@@ -588,6 +611,13 @@ class LiveKitManager @Inject constructor(
                 }
             }
         }
+    }
+
+    private fun emitRemotePresence(participant: Participant, joined: Boolean) {
+        val identity = participant.identity?.value ?: return
+        _remotePresenceEvents.tryEmit(
+            RemotePresenceEvent(identity, participant.name ?: identity, joined)
+        )
     }
 
     private fun updateParticipants() {

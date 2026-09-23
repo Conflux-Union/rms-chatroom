@@ -264,6 +264,11 @@
     <string name="settings_floating_window_title">通话悬浮窗</string>
     <string name="settings_floating_window_desc_on">应用在后台时显示当前发言用户</string>
     <string name="settings_floating_window_desc_off">需要授予悬浮窗权限</string>
+    <string name="settings_voice_announcements_title">加入/离开播报</string>
+    <string name="settings_voice_announcements_desc_on">语音频道内有人加入或离开时朗读播报</string>
+    <string name="settings_voice_announcements_desc_off">关闭加入/离开的朗读播报</string>
+    <string name="voice_tts_joined">%1$s 加入了</string>
+    <string name="voice_tts_left">%1$s 离开了</string>
     <string name="settings_background_service_title">后台消息驻留</string>
     <string name="settings_background_service_desc_on">显示常驻通知并尽量保持消息连接</string>
     <string name="settings_background_service_desc_off">关闭后仅在应用存活时接收后台提醒</string>

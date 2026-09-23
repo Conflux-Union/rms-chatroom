@@ -34,6 +34,10 @@ class SettingsViewModel @Inject constructor(
     val telemetryEnabled: StateFlow<Boolean> = settingsPreferences.telemetryEnabled
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
 
+    val voiceJoinLeaveAnnouncements: StateFlow<Boolean> =
+        settingsPreferences.voiceJoinLeaveAnnouncements
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
+
     val themeMode: StateFlow<ThemeMode> = settingsPreferences.themeMode
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), ThemeMode.SYSTEM)
 
@@ -63,6 +67,12 @@ class SettingsViewModel @Inject constructor(
     fun setTelemetryEnabled(enabled: Boolean) {
         viewModelScope.launch {
             settingsPreferences.setTelemetryEnabled(enabled)
+        }
+    }
+
+    fun setVoiceJoinLeaveAnnouncements(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsPreferences.setVoiceJoinLeaveAnnouncements(enabled)
         }
     }
 

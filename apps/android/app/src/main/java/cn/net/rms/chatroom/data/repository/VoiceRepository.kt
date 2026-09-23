@@ -11,6 +11,8 @@ import cn.net.rms.chatroom.data.livekit.ConnectionState
 import cn.net.rms.chatroom.data.livekit.LiveKitManager
 import cn.net.rms.chatroom.data.livekit.ParticipantInfo
 import cn.net.rms.chatroom.data.livekit.ScreenShareInfo
+import cn.net.rms.chatroom.data.livekit.VoiceTtsAnnouncer
+import cn.net.rms.chatroom.data.local.SettingsPreferences
 import cn.net.rms.chatroom.data.model.HostModeRequest
 import cn.net.rms.chatroom.data.model.HostModeResponse
 import cn.net.rms.chatroom.data.model.InviteCreateResponse
@@ -58,7 +60,9 @@ class VoiceRepository @Inject constructor(
     private val api: ApiService,
     private val authRepository: AuthRepository,
     private val liveKitManager: LiveKitManager,
-    private val globalWebSocket: GlobalWebSocket
+    private val globalWebSocket: GlobalWebSocket,
+    private val settingsPreferences: SettingsPreferences,
+    private val ttsAnnouncer: VoiceTtsAnnouncer
 ) {
     companion object {
         private const val TAG = "VoiceRepository"
@@ -100,6 +104,34 @@ class VoiceRepository @Inject constructor(
                     cache = mergeAvatarUrls(cache, users.associate { it.id to it.avatarUrl })
                 }
                 _avatarCache.value = cache
+            }
+        }
+
+        scope.launch {
+            settingsPreferences.voiceJoinLeaveAnnouncements.collect { enabled ->
+                ttsAnnouncer.setEnabled(enabled)
+            }
+        }
+
+        // TTS engine lifetime follows the voice connection: async init is
+        // started as soon as we are connected so the first announcement is not
+        // dropped, and the engine is released on any disconnect.
+        scope.launch {
+            liveKitManager.connectionState.collect { state ->
+                when (state) {
+                    ConnectionState.CONNECTED -> ttsAnnouncer.warmUp()
+                    ConnectionState.DISCONNECTED -> ttsAnnouncer.release()
+                    else -> {}
+                }
+            }
+        }
+
+        scope.launch {
+            liveKitManager.remotePresenceEvents.collect { event ->
+                // Deafened = no audio at all, announcements included
+                if (!liveKitManager.isDeafened.value) {
+                    ttsAnnouncer.announce(event.name, event.joined)
+                }
             }
         }
     }

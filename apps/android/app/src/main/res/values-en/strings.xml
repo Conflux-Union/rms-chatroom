@@ -264,6 +264,11 @@
     <string name="settings_floating_window_title">Call floating window</string>
     <string name="settings_floating_window_desc_on">Show who is speaking while the app is in the background</string>
     <string name="settings_floating_window_desc_off">Requires the display-over-other-apps permission</string>
+    <string name="settings_voice_announcements_title">Join/leave announcements</string>
+    <string name="settings_voice_announcements_desc_on">Speak when someone joins or leaves the voice channel</string>
+    <string name="settings_voice_announcements_desc_off">Voice join/leave announcements are off</string>
+    <string name="voice_tts_joined">%1$s joined</string>
+    <string name="voice_tts_left">%1$s left</string>
     <string name="settings_background_service_title">Background connection</string>
     <string name="settings_background_service_desc_on">Show a persistent notification and keep the message connection alive</string>
     <string name="settings_background_service_desc_off">When off, background alerts arrive only while the app is alive</string>

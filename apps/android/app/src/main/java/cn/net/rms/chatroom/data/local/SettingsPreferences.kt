@@ -23,6 +23,7 @@ class SettingsPreferences @Inject constructor(
         private val FLOATING_WINDOW_ENABLED = booleanPreferencesKey("floating_window_enabled")
         private val BACKGROUND_MESSAGE_SERVICE_ENABLED = booleanPreferencesKey("background_message_service_enabled")
         private val TELEMETRY_ENABLED = booleanPreferencesKey("telemetry_enabled")
+        private val VOICE_JOIN_LEAVE_ANNOUNCEMENTS = booleanPreferencesKey("voice_join_leave_announcements")
         private val THEME_MODE = stringPreferencesKey("theme_mode")
         private fun lastReadMessageKey(channelId: Long) = longPreferencesKey("last_read_message_$channelId")
     }
@@ -37,6 +38,10 @@ class SettingsPreferences @Inject constructor(
 
     val telemetryEnabled: Flow<Boolean> = dataStore.data.map { prefs ->
         prefs[TELEMETRY_ENABLED] ?: true
+    }
+
+    val voiceJoinLeaveAnnouncements: Flow<Boolean> = dataStore.data.map { prefs ->
+        prefs[VOICE_JOIN_LEAVE_ANNOUNCEMENTS] ?: true
     }
 
     val themeMode: Flow<ThemeMode> = dataStore.data.map { prefs ->
@@ -58,6 +63,12 @@ class SettingsPreferences @Inject constructor(
     suspend fun setTelemetryEnabled(enabled: Boolean) {
         dataStore.edit { prefs ->
             prefs[TELEMETRY_ENABLED] = enabled
+        }
+    }
+
+    suspend fun setVoiceJoinLeaveAnnouncements(enabled: Boolean) {
+        dataStore.edit { prefs ->
+            prefs[VOICE_JOIN_LEAVE_ANNOUNCEMENTS] = enabled
         }
     }
 
