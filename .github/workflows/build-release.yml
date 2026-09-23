@@ -100,6 +100,14 @@ jobs:
           git diff --find-renames --stat "$DIFF_RANGE" \
             -- "${CHANGELOG_PATHS[@]}" > file-changes.txt
 
+          # What earlier releases already shipped, so the agent can tell new
+          # changes from old ones without burning tool rounds on git archaeology.
+          if [[ "$BASE_DESCRIPTION" != "the beginning of the project" ]]; then
+            git log --oneline --no-merges -30 "$PREVIOUS_TAG" > prior-history.txt
+          else
+            : > prior-history.txt
+          fi
+
           # Agent mode: the model investigates the repository on its own
           # through read-only tools (see .github/scripts/changelog_agent.py)
           # instead of only receiving the pre-collected context above.
@@ -111,6 +119,7 @@ jobs:
             --diff-range "$DIFF_RANGE" \
             --commits commit-data.txt \
             --files file-changes.txt \
+            --prior-history prior-history.txt \
             --output mimo-response.json
 
           if ! jq -er '
