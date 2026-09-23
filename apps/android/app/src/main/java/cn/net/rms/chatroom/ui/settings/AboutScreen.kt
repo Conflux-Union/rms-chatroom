@@ -12,6 +12,8 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -19,8 +21,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.unit.dp
+import androidx.hilt.navigation.compose.hiltViewModel
 import cn.net.rms.chatroom.BuildConfig
 import cn.net.rms.chatroom.R
+import cn.net.rms.chatroom.ui.common.ChangelogList
 import cn.net.rms.chatroom.ui.theme.Zhimo
 
 private const val GITHUB_REPO_URL = "https://github.com/Conflux-Union/rms-chatroom"
@@ -29,9 +33,11 @@ private const val GITHUB_REPO_URL = "https://github.com/Conflux-Union/rms-chatro
 @Composable
 fun AboutScreen(
     onNavigateBack: () -> Unit,
-    onNavigateToLicenses: () -> Unit
+    onNavigateToLicenses: () -> Unit,
+    updateCheckViewModel: UpdateCheckViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
+    val updateCheckState by updateCheckViewModel.state.collectAsState()
     Scaffold(
         topBar = {
             TopAppBar(
@@ -69,6 +75,17 @@ fun AboutScreen(
                 subtitle = stringResource(R.string.about_copyright_value)
             )
 
+            // Manual update check
+            AboutItem(
+                icon = Icons.Default.SystemUpdate,
+                title = stringResource(R.string.update_check),
+                subtitle = when (updateCheckState) {
+                    UpdateCheckState.Checking -> stringResource(R.string.update_checking)
+                    else -> null
+                },
+                onClick = { updateCheckViewModel.checkForUpdate() }
+            )
+
             // GitHub repository
             AboutItem(
                 icon = ImageVector.vectorResource(R.drawable.ic_github),
@@ -96,6 +113,90 @@ fun AboutScreen(
 
             Spacer(modifier = Modifier.height(32.dp))
         }
+    }
+
+    // Manual check results
+    when (val s = updateCheckState) {
+        UpdateCheckState.UpToDate -> AlertDialog(
+            onDismissRequest = { updateCheckViewModel.dismissResult() },
+            title = { Text(stringResource(R.string.update_up_to_date)) },
+            confirmButton = {
+                TextButton(onClick = { updateCheckViewModel.dismissResult() }) {
+                    Text(stringResource(R.string.action_ok))
+                }
+            }
+        )
+
+        is UpdateCheckState.UpdateAvailable -> {
+            val update = s.update
+            AlertDialog(
+                onDismissRequest = { updateCheckViewModel.dismissResult() },
+                title = { Text(stringResource(R.string.update_available)) },
+                text = {
+                    Column {
+                        Text(stringResource(R.string.update_version_label, update.versionName))
+                        update.changelog?.let { changelog ->
+                            Spacer(modifier = Modifier.height(10.dp))
+                            ChangelogList(changelog)
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { updateCheckViewModel.downloadUpdate(update) }) {
+                        Text(stringResource(R.string.update_download))
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { updateCheckViewModel.dismissResult() }) {
+                        Text(stringResource(R.string.main_later))
+                    }
+                }
+            )
+        }
+
+        is UpdateCheckState.Downloading -> {
+            val update = s.update
+            AlertDialog(
+                onDismissRequest = { updateCheckViewModel.dismissResult() },
+                title = { Text(stringResource(R.string.update_available)) },
+                text = {
+                    Column {
+                        Text(stringResource(R.string.update_version_label, update.versionName))
+                        update.changelog?.let { changelog ->
+                            Spacer(modifier = Modifier.height(10.dp))
+                            ChangelogList(changelog)
+                        }
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Text(
+                            text = stringResource(R.string.update_started_download),
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { updateCheckViewModel.dismissResult() }) {
+                        Text(stringResource(R.string.action_ok))
+                    }
+                }
+            )
+        }
+
+        UpdateCheckState.Failed -> AlertDialog(
+            onDismissRequest = { updateCheckViewModel.dismissResult() },
+            title = { Text(stringResource(R.string.update_check_failed)) },
+            confirmButton = {
+                TextButton(onClick = { updateCheckViewModel.checkForUpdate() }) {
+                    Text(stringResource(R.string.action_retry))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { updateCheckViewModel.dismissResult() }) {
+                    Text(stringResource(R.string.action_close))
+                }
+            }
+        )
+
+        UpdateCheckState.Checking, UpdateCheckState.Idle -> Unit
     }
 }
 

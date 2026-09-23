@@ -28,14 +28,274 @@ jobs:
 
           echo "Extracted: version=$VERSION, code=$CODE"
 
+  generate-changelog:
+    name: Generate Changelog (AI)
+    runs-on: ubuntu-latest
+    needs: extract-version
+    timeout-minutes: 45
+    permissions:
+      contents: read  # gh release download of the previous history asset
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up changelog agent dependencies
+        run: |
+          set -euo pipefail
+          python3 -m venv "$RUNNER_TEMP/changelog-venv"
+          "$RUNNER_TEMP/changelog-venv/bin/pip" install --disable-pip-version-check --quiet 'anthropic==1.8.0'
+
+      - name: Generate user-facing changelog
+        env:
+          CHANGELOG_API_KEY: ${{ secrets.CHANGELOG_API_KEY }}
+          CHANGELOG_MODEL: ${{ vars.CHANGELOG_MODEL || 'mimo-v2.6-flash' }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION_NAME: ${{ needs.extract-version.outputs.version_name }}
+          VERSION_CODE: ${{ needs.extract-version.outputs.version_code }}
+          TAG_NAME: ${{ needs.extract-version.outputs.tag_name }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${CHANGELOG_API_KEY:-}" ]]; then
+            echo "::error::CHANGELOG_API_KEY secret is not configured for this repository. The AI changelog generator calls an Anthropic-compatible endpoint (cf.api.fan by default) and requires this key." >&2
+            exit 1
+          fi
+
+          CURRENT_TAG="$TAG_NAME"
+          # Previous tag by version sort — the same logic the release body
+          # has always used; handles v1.0.24-fix-1(69) style tags.
+          PREVIOUS_TAG=$(git tag --sort=-version:refname | { grep -A1 "^${CURRENT_TAG}$" || true; } | tail -n1)
+          if [[ -z "$PREVIOUS_TAG" || "$PREVIOUS_TAG" == "$CURRENT_TAG" ]]; then
+            PREVIOUS_TAG=$(git rev-list --max-parents=0 HEAD)
+            COMMIT_RANGE="$PREVIOUS_TAG..HEAD"
+            DIFF_RANGE="$COMMIT_RANGE"
+            BASE_DESCRIPTION="the beginning of the project"
+          else
+            COMMIT_RANGE="$PREVIOUS_TAG..HEAD"
+            DIFF_RANGE="$COMMIT_RANGE"
+            BASE_DESCRIPTION="$PREVIOUS_TAG"
+          fi
+
+          echo "Generating changelog for $CURRENT_TAG (range $COMMIT_RANGE)"
+
+          CHANGELOG_PATHS=(
+            .
+            ':(exclude).github/**'
+            ':(exclude)scripts/**'
+            ':(exclude)README.md'
+            ':(exclude)pnpm-lock.yaml'
+          )
+
+          git log --reverse --no-merges \
+            --perl-regexp --invert-grep --grep='^(test|docs|chore)(\([^)]*\))?:' \
+            --format='Subject: %s%n%b%n---' \
+            "$COMMIT_RANGE" -- "${CHANGELOG_PATHS[@]}" > commit-data.txt
+          if [[ ! -s commit-data.txt ]]; then
+            printf '%s\n' 'No commits were found in this release range.' > commit-data.txt
+          fi
+
+          git diff --find-renames --stat "$DIFF_RANGE" \
+            -- "${CHANGELOG_PATHS[@]}" > file-changes.txt
+
+          # Agent mode: the model investigates the repository on its own
+          # through read-only tools (see .github/scripts/changelog_agent.py)
+          # instead of only receiving the pre-collected context above.
+          "$RUNNER_TEMP/changelog-venv/bin/python" .github/scripts/changelog_agent.py \
+            --repo "$GITHUB_WORKSPACE" \
+            --current "$CURRENT_TAG" \
+            --base "$BASE_DESCRIPTION" \
+            --commit-range "$COMMIT_RANGE" \
+            --diff-range "$DIFF_RANGE" \
+            --commits commit-data.txt \
+            --files file-changes.txt \
+            --output mimo-response.json
+
+          if ! jq -er '
+            select(.choices[0].finish_reason == "stop")
+            | .choices[0].message.content
+            | select(type == "string" and length > 0)
+            | sub("^```(?:json)?[[:space:]]*"; "")
+            | sub("[[:space:]]*```$"; "")
+            | fromjson
+            | select(type == "object")
+            | select((keys - ["fixes", "improvements"]) | length == 0)
+            | select(.improvements | type == "array")
+            | select(.fixes | type == "array")
+            | select((.improvements | length) + (.fixes | length) > 0)
+            | select(all(.improvements[], .fixes[];
+                type == "object"
+                and ((keys - ["en", "zh"]) | length == 0)
+                and (.en | type == "string" and length > 0)
+                and (.zh | type == "string" and length > 0)
+                and (.en | test("[\\r\\n]") | not)
+                and (.zh | test("[\\r\\n]") | not)))
+          ' mimo-response.json > generated-changelog.json; then
+            echo "MiMo agent returned an invalid bilingual changelog payload" >&2
+            printf 'content_bytes=%s\n' "$(jq -r '.choices[0].message.content // ""' mimo-response.json | wc -c)" >&2
+            exit 1
+          fi
+
+          # Render one markdown half per language. The desktop updater
+          # reassembles these into latest.json notes with a '---' separator
+          # that AppUpdater.vue splits per locale.
+          jq -r '
+            def section($heading; $items; $key):
+              if ($items | length) == 0 then ""
+              else "### " + $heading + "\n\n" + ($items | map("- " + .[$key]) | join("\n"))
+              end;
+            [section("✨ 新增与改进"; .improvements; "zh"),
+             section("🐛 问题修复"; .fixes; "zh")]
+            | map(select(length > 0)) | join("\n\n")
+          ' generated-changelog.json > notes-zh.md
+
+          jq -r '
+            def section($heading; $items; $key):
+              if ($items | length) == 0 then ""
+              else "### " + $heading + "\n\n" + ($items | map("- " + .[$key]) | join("\n"))
+              end;
+            [section("✨ New & Improved"; .improvements; "en"),
+             section("🐛 Bug Fixes"; .fixes; "en")]
+            | map(select(length > 0)) | join("\n\n")
+          ' generated-changelog.json > notes-en.md
+
+          mkdir -p release-notes
+          {
+            cat notes-zh.md
+            printf '\n---\n\n'
+            cat notes-en.md
+            if [[ "$BASE_DESCRIPTION" != "the beginning of the project" ]]; then
+              printf '\n\n**Full commit history:** [`%s...%s`](%s/%s/compare/%s...%s)\n' \
+                "$PREVIOUS_TAG" "$CURRENT_TAG" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" \
+                "$PREVIOUS_TAG" "$CURRENT_TAG"
+            fi
+          } > release-notes/changelog.md
+
+          # Structured manifest consumed by the Android updater (fetched as a
+          # release asset) and embedded into web/desktop/Android builds.
+          jq --arg version "$VERSION_NAME" --argjson code "$VERSION_CODE" \
+             --arg tag "$TAG_NAME" --arg date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+             '{version: $version, code: $code, tag: $tag, date: $date,
+               improvements: .improvements, fixes: .fixes}' \
+            generated-changelog.json > release-notes/changelog.json
+
+          # Rolling history manifest (newest first, capped at 15 releases):
+          # clients merge every release inside (installed code, latest code]
+          # so skipped versions show their changes too. Carry the previous
+          # release's history forward; releases predating the asset start a
+          # fresh list.
+          if [[ "$BASE_DESCRIPTION" != "the beginning of the project" ]]; then
+            gh release download "$PREVIOUS_TAG" -R "$GITHUB_REPOSITORY" \
+              -p changelog-history.json -O previous-changelog-history.json || true
+          fi
+          [[ -f previous-changelog-history.json ]] || printf '[]' > previous-changelog-history.json
+          jq -s --slurpfile cur release-notes/changelog.json '
+            [$cur[0]] + ((.[0] // []) | map(select(.code < $cur[0].code)) | .[0:14])
+          ' previous-changelog-history.json > release-notes/changelog-history.json
+
+          # changelog.ts consumed as-is by the web and desktop builds (same
+          # delivery path as version.ts: committed placeholder, CI overwrite).
+          python3 - release-notes/changelog-history.json release-notes/changelog.ts << 'PYEOF'
+          import json
+          import sys
+
+          HEAD = """// Auto-generated by GitHub Actions on release builds - DO NOT EDIT.
+          // The committed placeholder carries dev values (code 0, empty items);
+          // release builds overwrite this file with the AI-generated changelog
+          // history (newest first).
+
+          export interface ChangelogEntry { en: string; zh: string }
+
+          export interface ReleaseChangelog {
+            version: string
+            code: number
+            tag?: string
+            date: string
+            improvements: ChangelogEntry[]
+            fixes: ChangelogEntry[]
+          }
+
+          export const CHANGELOG_HISTORY: ReleaseChangelog[] = """
+
+          TAIL = """
+
+          export const CHANGELOG: ReleaseChangelog = CHANGELOG_HISTORY[0]
+
+          /**
+           * Flatten every release inside (fromCode, toCode] into one merged
+           * view so a user who skipped versions sees all of their changes in
+           * a single dialog. `history` is newest-first; entries render
+           * oldest -> newest with duplicates (same English text) removed.
+           * Returns the newest release unchanged when there is nothing to
+           * merge (fresh installs, unknown fromCode).
+           */
+          export function mergeChangelog(
+            history: ReleaseChangelog[],
+            fromCode: number | null,
+            toCode: number,
+          ): ReleaseChangelog {
+            const newest = history[0]
+            if (fromCode == null || !Number.isFinite(fromCode) || fromCode >= toCode) {
+              return newest
+            }
+            const window = history.filter(c => c.code > fromCode && c.code <= toCode).reverse()
+            if (window.length === 0) return newest
+            const improvements: ChangelogEntry[] = []
+            const fixes: ChangelogEntry[] = []
+            const add = (list: ChangelogEntry[], entry: ChangelogEntry) => {
+              if (!list.some(item => item.en === entry.en)) list.push(entry)
+            }
+            for (const release of window) {
+              release.improvements.forEach(entry => add(improvements, entry))
+              release.fixes.forEach(entry => add(fixes, entry))
+            }
+            return { ...newest, improvements, fixes }
+          }
+          """
+
+          with open(sys.argv[1], encoding="utf-8") as handle:
+              history = json.load(handle)
+          with open(sys.argv[2], "w", encoding="utf-8") as handle:
+              handle.write(HEAD)
+              handle.write(json.dumps(history, ensure_ascii=False, indent=2))
+              handle.write(TAIL)
+          PYEOF
+
+          cp notes-zh.md notes-en.md release-notes/
+          echo "--- changelog.md ---"
+          cat release-notes/changelog.md
+          echo "--- history entries: $(jq 'length' release-notes/changelog-history.json) ---"
+
+      - name: Upload changelog
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-changelog
+          path: release-notes/
+          if-no-files-found: error
+          retention-days: 7
+
   build-android:
     name: Build Android APK
     runs-on: ubuntu-latest
-    needs: extract-version
+    needs: [extract-version, generate-changelog]
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
+
+      - name: Download changelog
+        uses: actions/download-artifact@v8
+        with:
+          name: release-changelog
+          path: release-notes
+
+      - name: Bundle changelog into APK assets
+        run: |
+          mkdir -p apps/android/app/src/main/assets
+          cp release-notes/changelog-history.json apps/android/app/src/main/assets/changelog-history.json
+          echo "Bundled changelog history ($(jq 'length' apps/android/app/src/main/assets/changelog-history.json) releases)"
 
       - name: Update Android version in build.gradle.kts
         run: |
@@ -93,11 +353,17 @@ jobs:
   build-server:
     name: Build Server Bundle
     runs-on: ubuntu-latest
-    needs: extract-version
+    needs: [extract-version, generate-changelog]
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
+
+      - name: Download changelog
+        uses: actions/download-artifact@v8
+        with:
+          name: release-changelog
+          path: release-notes
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
@@ -131,6 +397,15 @@ jobs:
           EOF
 
           echo "Generated shared version.ts: $VERSION_NAME($VERSION_CODE)"
+
+      - name: Install generated changelog module
+        run: |
+          # Prebuilt by the generate-changelog job; same delivery path as
+          # version.ts (committed placeholder, CI overwrite) so the web
+          # bundle embeds its version's changelog history.
+          cp release-notes/changelog.ts packages/shared/src/changelog.ts
+          echo "Installed shared changelog.ts:"
+          sed -n '1,13p' packages/shared/src/changelog.ts
 
       - name: Build web frontend
         run: pnpm web:build
@@ -195,7 +470,7 @@ jobs:
   build-desktop:
     name: Build Desktop (Tauri)
     runs-on: ${{ matrix.os }}
-    needs: extract-version
+    needs: [extract-version, generate-changelog]
 
     strategy:
       matrix:
@@ -206,6 +481,12 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
+
+      - name: Download changelog
+        uses: actions/download-artifact@v8
+        with:
+          name: release-changelog
+          path: release-notes
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
@@ -246,6 +527,15 @@ jobs:
 
           echo "Generated shared version.ts and set tauri version to $VERSION_NAME($VERSION_CODE)"
 
+      - name: Install generated changelog module
+        shell: bash
+        run: |
+          # Prebuilt by the generate-changelog job; same content as the web
+          # build so the desktop bundle embeds its version's changelog
+          # history for the first-open popup.
+          cp release-notes/changelog.ts packages/shared/src/changelog.ts
+          echo "Installed shared changelog.ts"
+
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
         env:
@@ -277,17 +567,12 @@ jobs:
 
   create-release:
     name: Create GitHub Release
-    needs: [extract-version, build-android, build-desktop, build-server]
+    needs: [extract-version, generate-changelog, build-android, build-desktop, build-server]
     runs-on: ubuntu-latest
     permissions:
       contents: write
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
-        with:
-          fetch-depth: 0  # Fetch all history for changelog generation
-
       - name: Determine release type
         id: release_type
         run: |
@@ -302,117 +587,24 @@ jobs:
             echo "release_type=Release" >> $GITHUB_OUTPUT
           fi
 
-      - name: Generate changelog from commits
+      - name: Download changelog
+        uses: actions/download-artifact@v8
+        with:
+          name: release-changelog
+          path: release-notes
+
+      - name: Load release notes
         id: changelog
         run: |
-          # Get the previous tag
-          CURRENT_TAG="${{ needs.extract-version.outputs.tag_name }}"
-          PREVIOUS_TAG=$(git tag --sort=-version:refname | grep -A1 "^${CURRENT_TAG}$" | tail -n1)
-
-          if [ -z "$PREVIOUS_TAG" ] || [ "$PREVIOUS_TAG" == "$CURRENT_TAG" ]; then
-            echo "No previous tag found, using all commits"
-            PREVIOUS_TAG=$(git rev-list --max-parents=0 HEAD)
-          fi
-
-          echo "Generating changelog from $PREVIOUS_TAG to $CURRENT_TAG"
-
-          # Generate changelog with conventional commit grouping
-          CHANGELOG=$(git log ${PREVIOUS_TAG}..HEAD --pretty=format:"%s" --no-merges | awk '
-          BEGIN {
-            feat_count = 0
-            fix_count = 0
-            refactor_count = 0
-            docs_count = 0
-            chore_count = 0
-            other_count = 0
-          }
-          /^feat(\(.*\))?:/ {
-            feat[feat_count++] = substr($0, index($0, ":") + 2)
-            next
-          }
-          /^fix(\(.*\))?:/ {
-            fix[fix_count++] = substr($0, index($0, ":") + 2)
-            next
-          }
-          /^refactor(\(.*\))?:/ {
-            refactor[refactor_count++] = substr($0, index($0, ":") + 2)
-            next
-          }
-          /^docs(\(.*\))?:/ {
-            docs[docs_count++] = substr($0, index($0, ":") + 2)
-            next
-          }
-          /^chore(\(.*\))?:/ {
-            chore[chore_count++] = substr($0, index($0, ":") + 2)
-            next
-          }
-          {
-            other[other_count++] = $0
-          }
-          END {
-            if (feat_count > 0) {
-              print "### ✨ New Features"
-              print ""
-              for (i = 0; i < feat_count; i++) {
-                print "- " feat[i]
-              }
-              print ""
-            }
-            if (fix_count > 0) {
-              print "### 🐛 Bug Fixes"
-              print ""
-              for (i = 0; i < fix_count; i++) {
-                print "- " fix[i]
-              }
-              print ""
-            }
-            if (refactor_count > 0) {
-              print "### ♻️ Refactoring"
-              print ""
-              for (i = 0; i < refactor_count; i++) {
-                print "- " refactor[i]
-              }
-              print ""
-            }
-            if (docs_count > 0) {
-              print "### 📝 Documentation"
-              print ""
-              for (i = 0; i < docs_count; i++) {
-                print "- " docs[i]
-              }
-              print ""
-            }
-            if (chore_count > 0) {
-              print "### 🔧 Chores"
-              print ""
-              for (i = 0; i < chore_count; i++) {
-                print "- " chore[i]
-              }
-              print ""
-            }
-            if (other_count > 0) {
-              print "### 📦 Other Changes"
-              print ""
-              for (i = 0; i < other_count; i++) {
-                print "- " other[i]
-              }
-              print ""
-            }
-          }
-          ')
-
-          # If no commits found, use a default message
-          if [ -z "$CHANGELOG" ]; then
-            CHANGELOG="No significant changes recorded."
-          fi
-
           # Save to output (handle multiline)
-          echo "changelog<<EOF" >> $GITHUB_OUTPUT
-          echo "$CHANGELOG" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          {
+            echo "changelog<<EOF"
+            cat release-notes/changelog.md
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
 
-          echo "Generated changelog:"
-          echo "$CHANGELOG"
+          echo "Release notes:"
+          cat release-notes/changelog.md
 
       - name: Download all artifacts
         uses: actions/download-artifact@v8
@@ -444,6 +636,17 @@ jobs:
           # Server bundle (Go binary + web dist) and its update manifest
           if [ -d artifacts/server-bundle ]; then
             cp artifacts/server-bundle/* release-assets/
+          fi
+
+          # Structured changelog as release assets: changelog.json (single
+          # version) is what already-installed older clients fetch for the
+          # update dialog; changelog-history.json (rolling, newest first) is
+          # what new clients fetch so skipped versions merge into one view.
+          if [ -f release-notes/changelog.json ]; then
+            cp release-notes/changelog.json release-assets/
+          fi
+          if [ -f release-notes/changelog-history.json ]; then
+            cp release-notes/changelog-history.json release-assets/
           fi
 
           ls -lh release-assets/
@@ -497,6 +700,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG_NAME: ${{ needs.extract-version.outputs.tag_name }}
           VERSION_NAME: ${{ needs.extract-version.outputs.version_name }}
+          VERSION_CODE: ${{ needs.extract-version.outputs.version_code }}
           RELEASE_NAME: ${{ steps.release_type.outputs.release_type }} ${{ needs.extract-version.outputs.version_name }}
         run: |
           # Build the Tauri v2 updater manifest here (tauri-action is
@@ -505,6 +709,9 @@ jobs:
           # signature. The platform URL is routed through gh-proxy so
           # mainland-China clients can download the update; tauri.conf.json
           # lists the gh-proxy endpoint first for the same reason.
+          #
+          # notes carries the bilingual changelog as "zh half\n---\nen half";
+          # AppUpdater.vue splits on the --- line and picks the locale half.
           UPDATER_EXE=$(find release-assets -maxdepth 1 -name '*-setup.exe' | head -n1)
           if [ -z "$UPDATER_EXE" ]; then
             echo "::error::no setup installer found for the updater manifest"
@@ -515,25 +722,35 @@ jobs:
             exit 1
           fi
 
-          ASSET_URL="https://github.com/Conflux-Union/rms-chatroom/releases/download/${TAG_NAME}/$(basename "$UPDATER_EXE")"
-          RELEASE_NAME_ESC=$(printf '%s' "$RELEASE_NAME" | sed 's/"/\\"/g')
-          python3 << PYEOF
-          import json, datetime
-          signature = open("$UPDATER_EXE.sig").read().strip()
+          export UPDATER_EXE ASSET_URL="https://github.com/Conflux-Union/rms-chatroom/releases/download/${TAG_NAME}/$(basename "$UPDATER_EXE")"
+          python3 << 'PYEOF'
+          import datetime
+          import json
+          import os
+
+          # Values pass through os.environ instead of heredoc interpolation:
+          # AI-generated bullet text could otherwise trip shell expansion.
+          signature = open(os.environ["UPDATER_EXE"] + ".sig").read().strip()
+          zh = open("release-notes/notes-zh.md", encoding="utf-8").read().strip()
+          en = open("release-notes/notes-en.md", encoding="utf-8").read().strip()
+          notes = (
+              f"{os.environ['RELEASE_NAME']} (Build {os.environ['VERSION_CODE']})\n\n"
+              f"{zh}\n---\n{en}"
+          )
           data = {
-              "version": "$VERSION_NAME",
-              "notes": "$RELEASE_NAME_ESC",
+              "version": os.environ["VERSION_NAME"],
+              "notes": notes,
               "pub_date": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
               "platforms": {
                   "windows-x86_64": {
                       "signature": signature,
-                      "url": "https://gh-proxy.com/$ASSET_URL",
+                      "url": "https://gh-proxy.com/" + os.environ["ASSET_URL"],
                   }
               },
           }
-          with open("release-assets/latest.json", "w") as f:
-              json.dump(data, f, indent=2)
-          print(json.dumps(data, indent=2))
+          with open("release-assets/latest.json", "w", encoding="utf-8") as f:
+              json.dump(data, f, indent=2, ensure_ascii=False)
+          print(json.dumps(data, indent=2, ensure_ascii=False))
           PYEOF
           gh release upload "$TAG_NAME" release-assets/latest.json -R Conflux-Union/rms-chatroom --clobber
 

@@ -13,11 +13,14 @@ import { useDesktopNotifications } from '../composables/useDesktopNotifications'
 import { fetchAndMergeServerPositions } from '../composables/useReadPosition'
 import { printConsoleEasterEgg } from '../utils/consoleArt'
 import { t } from '../i18n'
+import { CHANGELOG, CHANGELOG_HISTORY, mergeChangelog } from '../changelog'
+import { VERSION_CODE } from '../version'
 import ServerList from '../components/ServerList.vue'
 import ChannelList from '../components/ChannelList.vue'
 import ChatArea from '../components/ChatArea.vue'
 import VoicePanel from '../components/VoicePanel.vue'
 import MusicPanel from '../components/MusicPanel.vue'
+import ChangelogDialog from '../components/ChangelogDialog.vue'
 import { Music, Menu, X } from 'lucide-vue-next'
 
 const auth = useAuthStore()
@@ -271,9 +274,52 @@ watch(() => auth.token, (token) => {
   music.disconnectMusicWs()
 })
 
+// First open of a new release: web and desktop both learn their version at
+// build time (version.ts / changelog.ts are generated per release), so a
+// stored-version mismatch means this is the first launch after an update.
+// The stored code also marks where the user came from, so skipped versions
+// merge into one dialog.
+const showChangelog = ref(false)
+const CHANGELOG_SEEN_KEY = 'rms-changelog-seen-code'
+
+const mergedChangelog = ref(CHANGELOG)
+
+function maybeShowChangelog() {
+  if (VERSION_CODE <= 0) return // dev placeholder builds carry no changelog
+  if (CHANGELOG.code !== VERSION_CODE) return
+  if (!CHANGELOG.improvements.length && !CHANGELOG.fixes.length) return
+  let seen: number | null = null
+  try {
+    const raw = localStorage.getItem(CHANGELOG_SEEN_KEY)
+    if (raw != null && raw !== String(VERSION_CODE)) {
+      const parsed = Number(raw)
+      seen = Number.isFinite(parsed) ? parsed : null
+    } else if (raw === String(VERSION_CODE)) {
+      return // already saw this version
+    }
+  } catch {
+    // Storage unavailable (private mode): skip rather than nag every launch.
+    return
+  }
+  mergedChangelog.value = mergeChangelog(CHANGELOG_HISTORY, seen, VERSION_CODE)
+  if (!mergedChangelog.value.improvements.length && !mergedChangelog.value.fixes.length) return
+  showChangelog.value = true
+}
+
+function closeChangelog() {
+  showChangelog.value = false
+  try {
+    localStorage.setItem(CHANGELOG_SEEN_KEY, String(VERSION_CODE))
+  } catch {
+    // Same as above: without storage the dialog is skipped anyway.
+  }
+}
+
 onMounted(async () => {
   // Connect global chat WebSocket
   chatWs.connect()
+
+  maybeShowChangelog()
 
   await chat.fetchServers()
   if (routeChannelTarget()) {
@@ -453,6 +499,15 @@ watch(
         <MusicPanel />
       </div>
     </Transition>
+
+    <!-- First open of a new release: show what changed (merged across
+         skipped versions) -->
+    <ChangelogDialog
+      v-if="showChangelog"
+      :show="true"
+      :changelog="mergedChangelog"
+      @close="closeChangelog"
+    />
   </div>
 </template>
 

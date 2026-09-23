@@ -306,6 +306,14 @@
     <string name="update_version_label">Version: %1$s</string>
     <string name="update_downloading">Downloading...</string>
     <string name="update_download">Download update</string>
+    <string name="update_check">Check for updates</string>
+    <string name="update_checking">Checking for updates...</string>
+    <string name="update_up_to_date">You are on the latest version</string>
+    <string name="update_check_failed">Failed to check for updates. Try again later.</string>
+    <string name="update_started_download">Download started; see the system notification for progress</string>
+    <string name="whats_new_title">Updated to v%1$s</string>
+    <string name="changelog_new">✨ New &amp; Improved</string>
+    <string name="changelog_fixes">🐛 Bug Fixes</string>
     <string name="error_open_server_failed">Cannot open the server containing the original message</string>
     <string name="error_open_channel_failed">Cannot open the channel containing the original message</string>
     <string name="error_send_failed">Send failed: %1$s</string>

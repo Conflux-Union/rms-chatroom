@@ -6,8 +6,10 @@ import android.os.SystemClock
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import cn.net.rms.chatroom.BuildConfig
 import cn.net.rms.chatroom.R
 import cn.net.rms.chatroom.data.api.ChannelMember
+import cn.net.rms.chatroom.data.api.ReleaseChangelog
 import cn.net.rms.chatroom.data.api.ReorderTopLevelItem
 import cn.net.rms.chatroom.data.model.Channel
 import cn.net.rms.chatroom.data.model.ChannelGroup
@@ -16,6 +18,7 @@ import cn.net.rms.chatroom.data.model.Server
 import cn.net.rms.chatroom.data.model.VoiceUser
 import cn.net.rms.chatroom.data.api.AppUpdateResponse
 import cn.net.rms.chatroom.data.model.AttachmentResponse
+import cn.net.rms.chatroom.data.local.SettingsPreferences
 import cn.net.rms.chatroom.data.manager.MentionNotificationManager
 import cn.net.rms.chatroom.data.model.Message
 import cn.net.rms.chatroom.data.repository.AuthRepository
@@ -28,6 +31,7 @@ import cn.net.rms.chatroom.data.repository.VoiceRepository
 import cn.net.rms.chatroom.data.websocket.ConnectionState
 import cn.net.rms.chatroom.data.websocket.GlobalWebSocket
 import cn.net.rms.chatroom.data.websocket.GlobalWebSocketEvent
+import cn.net.rms.chatroom.ui.common.mergeChangelog
 import cn.net.rms.chatroom.data.websocket.WebSocketEvent
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -52,6 +56,9 @@ data class MainState(
     val bugReportSubmitting: Boolean = false,
     val bugReportId: String? = null,
     val updateInfo: AppUpdateResponse? = null,
+    // Changelog of the currently installed version; non-null only on the
+    // first launch after updating to a release that bundles one.
+    val whatsNew: ReleaseChangelog? = null,
     val isDownloading: Boolean = false,
     val downloadComplete: Boolean = false,
     val downloadedBytes: Long = 0L,
@@ -84,6 +91,7 @@ class MainViewModel @Inject constructor(
     private val chatRepository: ChatRepository,
     private val bugReportRepository: BugReportRepository,
     private val updateRepository: UpdateRepository,
+    private val settingsPreferences: SettingsPreferences,
     private val voiceRepository: VoiceRepository,
     private val mentionNotificationManager: MentionNotificationManager,
     private val authRepository: AuthRepository,
@@ -124,6 +132,7 @@ class MainViewModel @Inject constructor(
         observeWebSocket()
         observeGlobalWebSocket()
         checkForUpdate()
+        maybeShowWhatsNew()
         loadMentionStates()
         loadCurrentUser()
         connectGlobalWebSocket()
@@ -540,6 +549,40 @@ class MainViewModel @Inject constructor(
                 .onSuccess { updateInfo ->
                     _state.value = _state.value.copy(updateInfo = updateInfo)
                 }
+        }
+    }
+
+    /**
+     * First launch after an update: show the bundled changelog, merged
+     * across every version since the last one the user saw. Debug builds
+     * ship a code-0 placeholder asset and releases predating the bundle
+     * ship none; both just record the version so the dialog never appears
+     * for them.
+     */
+    private fun maybeShowWhatsNew() {
+        viewModelScope.launch {
+            val seen = settingsPreferences.getLastSeenVersionCode()
+            if (seen == BuildConfig.VERSION_CODE) return@launch
+            val history = updateRepository.loadBundledHistory()
+            val newest = history?.firstOrNull()
+            val changelog = when {
+                newest == null || newest.code != BuildConfig.VERSION_CODE -> null
+                seen != null && seen < BuildConfig.VERSION_CODE ->
+                    mergeChangelog(history, seen, BuildConfig.VERSION_CODE)
+                else -> newest
+            }
+            if (changelog != null && !changelog.isEmpty()) {
+                _state.value = _state.value.copy(whatsNew = changelog)
+            } else {
+                settingsPreferences.setLastSeenVersionCode(BuildConfig.VERSION_CODE)
+            }
+        }
+    }
+
+    fun dismissWhatsNew() {
+        _state.value = _state.value.copy(whatsNew = null)
+        viewModelScope.launch {
+            settingsPreferences.setLastSeenVersionCode(BuildConfig.VERSION_CODE)
         }
     }
 

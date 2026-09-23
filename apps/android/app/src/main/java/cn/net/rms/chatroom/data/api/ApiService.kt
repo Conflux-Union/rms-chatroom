@@ -397,6 +397,14 @@ interface ApiService {
     @GET
     suspend fun checkGitHubRelease(@Url url: String): GitHubReleaseResponse
 
+    // Structured changelog manifest (changelog.json release asset)
+    @GET
+    suspend fun fetchReleaseChangelog(@Url url: String): ReleaseChangelog
+
+    // Rolling changelog history (changelog-history.json release asset)
+    @GET
+    suspend fun fetchReleaseChangelogHistory(@Url url: String): List<ReleaseChangelog>
+
     // Read Positions (cross-device sync)
     @GET("api/read-positions")
     suspend fun getReadPositions(@Header("Authorization") token: String): ReadPositionsResponse
@@ -485,18 +493,37 @@ data class GitHubAsset(
     val size: Long
 )
 
-// App Update (legacy, kept for compatibility)
+// App Update. Built by UpdateRepository from the GitHub release response;
+// changelog comes from the release's changelog.json asset when present.
 data class AppUpdateResponse(
     @SerializedName("version_code")
     val versionCode: Int,
     @SerializedName("version_name")
     val versionName: String,
-    val changelog: String,
+    val changelog: ReleaseChangelog? = null,
     @SerializedName("force_update")
     val forceUpdate: Boolean,
     @SerializedName("download_url")
     val downloadUrl: String
 )
+
+// Bilingual changelog manifest shipped as the changelog.json release asset
+// and bundled into APK assets at build time.
+data class ChangelogEntry(
+    val en: String,
+    val zh: String
+)
+
+data class ReleaseChangelog(
+    val version: String,
+    val code: Int,
+    val tag: String? = null,
+    val date: String? = null,
+    val improvements: List<ChangelogEntry> = emptyList(),
+    val fixes: List<ChangelogEntry> = emptyList()
+) {
+    fun isEmpty(): Boolean = improvements.isEmpty() && fixes.isEmpty()
+}
 
 // Read Positions (cross-device sync). Unread counts and mention flags are
 // server-derived from the read position.

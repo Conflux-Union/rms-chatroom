@@ -15,6 +15,10 @@ export const messages = {
   'app.youAreMuted': '你已被禁言',
   'app.selectChannel': '选择频道',
   'app.noChannelPrompt': '选择一个频道开始聊天',
+  // ChangelogDialog.vue
+  'app.whatsNew': '更新日志 v{version}',
+  'app.changelogNew': '✨ 新增与改进',
+  'app.changelogFixes': '🐛 问题修复',
   // Login.vue
   'app.tryingSilentLogin': '正在尝试无感登录...',
   'app.welcomeLogin': '欢迎！请使用 CXU 账号登录',

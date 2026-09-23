@@ -27,6 +27,7 @@ import cn.net.rms.chatroom.ui.chat.ChatScreen
 import cn.net.rms.chatroom.ui.main.components.ChannelListColumn
 import cn.net.rms.chatroom.ui.main.components.ServerListColumn
 import cn.net.rms.chatroom.ui.common.BatteryOptimizationDialog
+import cn.net.rms.chatroom.ui.common.ChangelogList
 import cn.net.rms.chatroom.ui.theme.Zhimo
 import cn.net.rms.chatroom.ui.voice.VoiceScreen
 import cn.net.rms.chatroom.util.BatteryOptimizationHelper
@@ -372,6 +373,10 @@ fun MainScreen(
             text = {
                 Column {
                     Text(stringResource(R.string.update_version_label, updateInfo.versionName))
+                    updateInfo.changelog?.let { changelog ->
+                        Spacer(modifier = Modifier.height(10.dp))
+                        ChangelogList(changelog)
+                    }
                     if (mainState.isDownloading) {
                         Spacer(modifier = Modifier.height(12.dp))
                         val totalBytes = mainState.downloadTotalBytes
@@ -410,6 +415,21 @@ fun MainScreen(
                     TextButton(onClick = { mainViewModel.dismissUpdate() }) {
                         Text(stringResource(R.string.main_later))
                     }
+                }
+            }
+        )
+    }
+
+    // What's New Dialog - first launch after an update, held until the
+    // splash overlay has cleared like the other startup popups
+    mainState.whatsNew?.takeIf { splashSettled }?.let { changelog ->
+        AlertDialog(
+            onDismissRequest = { mainViewModel.dismissWhatsNew() },
+            title = { Text(stringResource(R.string.whats_new_title, changelog.version)) },
+            text = { ChangelogList(changelog) },
+            confirmButton = {
+                TextButton(onClick = { mainViewModel.dismissWhatsNew() }) {
+                    Text(stringResource(R.string.action_ok))
                 }
             }
         )

@@ -15,6 +15,9 @@ import cn.net.rms.chatroom.BuildConfig
 import cn.net.rms.chatroom.data.api.ApiService
 import cn.net.rms.chatroom.data.api.AppUpdateResponse
 import cn.net.rms.chatroom.data.api.GitHubReleaseResponse
+import cn.net.rms.chatroom.data.api.ReleaseChangelog
+import cn.net.rms.chatroom.ui.common.mergeChangelog
+import com.google.gson.Gson
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -35,7 +38,10 @@ class UpdateRepository @Inject constructor(
     companion object {
         private const val TAG = "UpdateRepository"
         private const val APK_FILE_NAME = "rms-chatroom-update.apk"
-        private const val GITHUB_REPO_OWNER = "RMS-Server"
+        private const val CHANGELOG_ASSET_NAME = "changelog.json"
+        private const val CHANGELOG_HISTORY_ASSET_NAME = "changelog-history.json"
+        private const val BUNDLED_HISTORY_ASSET = "changelog-history.json"
+        private const val GITHUB_REPO_OWNER = "Conflux-Union"
         private const val GITHUB_REPO_NAME = "rms-chatroom"
         private const val GITHUB_RELEASE_API = "https://api.github.com/repos/$GITHUB_REPO_OWNER/$GITHUB_REPO_NAME/releases/latest"
 
@@ -54,6 +60,7 @@ class UpdateRepository @Inject constructor(
     private var originalDownloadUrl: String? = null
     private var mirrorIndex = 0
     private var downloadCompleteCallback: ((Boolean) -> Unit)? = null
+    private val gson = Gson()
 
     /**
      * Parse version code from tag name
@@ -101,7 +108,7 @@ class UpdateRepository @Inject constructor(
         try {
             Log.d(TAG, "Trying official GitHub API")
             val release = api.checkGitHubRelease(GITHUB_RELEASE_API)
-            val result = parseReleaseResponse(release, currentVersionCode, "GitHub")
+            val result = parseReleaseResponse(release, currentVersionCode, null)
             if (result != null) {
                 Log.i(TAG, "Update check succeeded via GitHub")
                 return@withContext result
@@ -115,12 +122,15 @@ class UpdateRepository @Inject constructor(
     }
 
     /**
-     * Parse GitHub release response and return update info if available
+     * Parse GitHub release response and return update info if available.
+     * [mirrorPrefix] is the mirror the release response came through (null
+     * for direct GitHub); the changelog asset is fetched through the same
+     * source.
      */
-    private fun parseReleaseResponse(
+    private suspend fun parseReleaseResponse(
         release: GitHubReleaseResponse,
         currentVersionCode: Int,
-        source: String
+        mirrorPrefix: String?
     ): Result<AppUpdateResponse?>? {
         // Parse version info from tag
         val versionCode = parseVersionCode(release.tagName)
@@ -139,18 +149,78 @@ class UpdateRepository @Inject constructor(
         }
 
         return if (versionCode > currentVersionCode) {
-            Log.i(TAG, "Update available: $versionName (code: $versionCode) from $source")
+            Log.i(TAG, "Update available: $versionName (code: $versionCode)")
+            val changelog = fetchReleaseChangelog(release, mirrorPrefix, currentVersionCode, versionCode)
             Result.success(
                 AppUpdateResponse(
                     versionCode = versionCode,
                     versionName = versionName,
-                    changelog = "",  // No changelog display needed
+                    changelog = changelog,
                     forceUpdate = false,
                     downloadUrl = apkAsset.browserDownloadUrl
                 )
             )
         } else {
             Result.success(null)
+        }
+    }
+
+    /**
+     * Fetch the release's changelog history and merge every version inside
+     * (currentVersionCode, latestVersionCode] into one view, so a user who
+     * skipped releases sees all of their changes. Missing assets (older
+     * releases) or transient failures just leave the dialog without a
+     * changelog section.
+     */
+    private suspend fun fetchReleaseChangelog(
+        release: GitHubReleaseResponse,
+        mirrorPrefix: String?,
+        currentVersionCode: Int,
+        latestVersionCode: Int
+    ): ReleaseChangelog? {
+        val history = fetchChangelogHistory(release, mirrorPrefix) ?: return null
+        return mergeChangelog(history, currentVersionCode, latestVersionCode)
+    }
+
+    /**
+     * History asset first; the single-version changelog.json remains as a
+     * one-element fallback for releases that predate the history asset.
+     */
+    private suspend fun fetchChangelogHistory(
+        release: GitHubReleaseResponse,
+        mirrorPrefix: String?
+    ): List<ReleaseChangelog>? {
+        for (assetName in listOf(CHANGELOG_HISTORY_ASSET_NAME, CHANGELOG_ASSET_NAME)) {
+            val asset = release.assets.find { it.name == assetName } ?: continue
+            try {
+                val url = mirrorPrefix?.let { "$it/${asset.browserDownloadUrl}" }
+                    ?: asset.browserDownloadUrl
+                return if (assetName == CHANGELOG_HISTORY_ASSET_NAME) {
+                    api.fetchReleaseChangelogHistory(url)
+                } else {
+                    listOf(api.fetchReleaseChangelog(url))
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Changelog fetch via $assetName failed: ${e.message}")
+            }
+        }
+        return null
+    }
+
+    /**
+     * Changelog history of the currently installed version, bundled into the
+     * APK assets at build time by CI (newest first). Null when missing or
+     * unreadable (debug builds carry a code-0 placeholder entry that callers
+     * filter out).
+     */
+    suspend fun loadBundledHistory(): List<ReleaseChangelog>? = withContext(Dispatchers.IO) {
+        try {
+            context.assets.open(BUNDLED_HISTORY_ASSET).bufferedReader().use { reader ->
+                gson.fromJson(reader, Array<ReleaseChangelog>::class.java).toList()
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Bundled changelog history unreadable: ${e.message}")
+            null
         }
     }
 

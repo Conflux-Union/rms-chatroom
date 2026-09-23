@@ -14,6 +14,8 @@
         <div v-if="versionText">{{ t('app.versionLabel', { value: versionText }) }}</div>
       </div>
 
+      <div v-if="notesText" class="notes">{{ notesText }}</div>
+
       <div v-if="state === 'downloading'" class="progress">
         <div class="progress-row">
           <span>{{ total > 0 ? t('app.downloadingPercent', { percent: percent.toFixed(1) }) : t('app.downloading') }}</span>
@@ -68,7 +70,7 @@
 <script setup lang="ts">
 import { onMounted, ref, computed } from 'vue'
 import { isTauri } from '../index'
-import { t } from '../i18n'
+import { t, locale } from '../i18n'
 
 const visible = ref(false)
 const state = ref<'idle' | 'checking' | 'available' | 'none' | 'downloading' | 'downloaded' | 'error'>('idle')
@@ -79,6 +81,7 @@ const total = ref(0)
 const speed = ref(0)
 const message = ref('')
 const versionText = ref('')
+const updateBody = ref('')
 
 let updateObj: any = null
 
@@ -116,14 +119,32 @@ function formatBytes(n: number) {
   return `${v.toFixed(1)} ${units[i]}`
 }
 
+// The updater manifest notes are AI-generated changelog bullets, so generic
+// words like "security" must never trip a forced update. Forcing one is an
+// explicit act: edit the release's latest.json notes to contain one of
+// these markers (e.g. prefix the notes with "[forced] 强制更新").
 function isForcedUpdate(body: string): boolean {
   const t = String(body || '').toLowerCase()
-  const words = [
-    'security', 'forced', 'force update', 'mandatory', 'must update',
-    '强制更新', '必须更新', '安全更新',
-  ].map(w => w.toLowerCase())
-  return words.some(w => t.includes(w))
+  const markers = [
+    '[forced]', 'forced update', 'mandatory update', 'must update',
+    '强制更新', '必须更新',
+  ]
+  return markers.some(m => t.includes(m))
 }
+
+// latest.json notes carry the bilingual changelog as "title\n\nzh half\n---\n
+// en half"; split per locale for display. Hand-written notes without the
+// separator fall back to the raw body.
+const notesText = computed(() => {
+  const body = updateBody.value.trim()
+  if (!body) return ''
+  const parts = body.split(/\n---\n/)
+  if (parts.length < 3) return body
+  const half = (parts[locale.value === 'zh' ? 1 : 2] || '').trim()
+  if (!half) return body
+  // Section headings arrive as markdown; they read fine without the #'s.
+  return half.replace(/^#{1,6}\s+/gm, '')
+})
 
 async function check() {
   if (!isTauri) return
@@ -134,6 +155,7 @@ async function check() {
     if (update) {
       updateObj = update
       versionText.value = update.version
+      updateBody.value = update.body || ''
       forced.value = isForcedUpdate(update.body || '')
       state.value = 'available'
 
@@ -255,6 +277,15 @@ onMounted(() => {
   margin-bottom: 10px;
 }
 .info { font-size: 13px; color: #333; }
+.notes {
+  margin-top: 10px;
+  font-size: 13px;
+  line-height: 1.5;
+  max-height: 180px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
 .progress { margin-top: 10px; font-size: 13px; }
 .progress-row {
   display: flex;

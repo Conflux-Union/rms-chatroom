@@ -5,6 +5,7 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -25,6 +26,7 @@ class SettingsPreferences @Inject constructor(
         private val TELEMETRY_ENABLED = booleanPreferencesKey("telemetry_enabled")
         private val VOICE_JOIN_LEAVE_ANNOUNCEMENTS = booleanPreferencesKey("voice_join_leave_announcements")
         private val THEME_MODE = stringPreferencesKey("theme_mode")
+        private val LAST_SEEN_VERSION_CODE = intPreferencesKey("last_seen_version_code")
         private fun lastReadMessageKey(channelId: Long) = longPreferencesKey("last_read_message_$channelId")
     }
 
@@ -89,6 +91,18 @@ class SettingsPreferences @Inject constructor(
     suspend fun setLastReadMessageId(channelId: Long, messageId: Long) {
         dataStore.edit { prefs ->
             prefs[lastReadMessageKey(channelId)] = messageId
+        }
+    }
+
+    // Version code the user last saw a changelog for; drives the
+    // "what's new" dialog on the first launch after an update.
+    suspend fun getLastSeenVersionCode(): Int? {
+        return dataStore.data.first()[LAST_SEEN_VERSION_CODE]
+    }
+
+    suspend fun setLastSeenVersionCode(code: Int) {
+        dataStore.edit { prefs ->
+            prefs[LAST_SEEN_VERSION_CODE] = code
         }
     }
 }
