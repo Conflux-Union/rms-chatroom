@@ -1,5 +1,9 @@
 package cn.net.rms.chatroom.ui.main.components
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
@@ -11,6 +15,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -28,17 +33,21 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
+import cn.net.rms.chatroom.BuildConfig
 import cn.net.rms.chatroom.R
 import cn.net.rms.chatroom.data.api.ReorderTopLevelItem
 import cn.net.rms.chatroom.data.model.Channel
@@ -94,6 +103,18 @@ fun ChannelListColumn(
     var showCreateGroupDialog by remember { mutableStateOf(false) }
     var showDeleteGroupDialog by remember { mutableStateOf(false) }
     var groupToDelete by remember { mutableStateOf<ChannelGroup?>(null) }
+
+    val context = LocalContext.current
+
+    // Web channel deep link: /:serverId/:channelId on the host that serves
+    // the web app (ChannelPath route) — same shape as message permalinks.
+    fun copyChannelLink(channel: Channel) {
+        val serverId = server?.id ?: return
+        val url = "${BuildConfig.API_BASE_URL.trimEnd('/')}/$serverId/${channel.id}"
+        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        clipboard.setPrimaryClip(ClipData.newPlainText("channel link", url))
+        Toast.makeText(context, context.getString(R.string.channel_link_copied), Toast.LENGTH_SHORT).show()
+    }
     
     // Collapsed groups state
     val collapsedGroups = remember { mutableStateMapOf<Long, Boolean>() }
@@ -247,12 +268,12 @@ fun ChannelListColumn(
                                         channel = channel,
                                         isSelected = channel.id == currentChannelId,
                                         onClick = { onChannelClick(channel) },
-                                        onLongClick = if (isAdmin) {
-                                            {
-                                                channelToDelete = channel
-                                                showDeleteDialog = true
-                                            }
-                                        } else null,
+                                        isAdmin = isAdmin,
+                                        onCopyChannelLink = { copyChannelLink(channel) },
+                                        onRequestDelete = {
+                                            channelToDelete = channel
+                                            showDeleteDialog = true
+                                        },
                                         voiceUsers = voiceChannelUsers[channel.id] ?: emptyList(),
                                         editMode = editMode,
                                         onMoveUp = if (editMode && channelIndex > 0) {
@@ -288,12 +309,12 @@ fun ChannelListColumn(
                                 channel = channel,
                                 isSelected = channel.id == currentChannelId,
                                 onClick = { onChannelClick(channel) },
-                                onLongClick = if (isAdmin) {
-                                    {
-                                        channelToDelete = channel
-                                        showDeleteDialog = true
-                                    }
-                                } else null,
+                                isAdmin = isAdmin,
+                                onCopyChannelLink = { copyChannelLink(channel) },
+                                onRequestDelete = {
+                                    channelToDelete = channel
+                                    showDeleteDialog = true
+                                },
                                 voiceUsers = voiceChannelUsers[channel.id] ?: emptyList(),
                                 editMode = editMode,
                                 onMoveUp = if (editMode && index > 0) {
@@ -758,6 +779,56 @@ private fun AddChannelButton(
     }
 }
 
+// Long-press context menu for channel items. Anchored in a zero-size Box at
+// the item's top-left, so the popup opens exactly at the long-press position.
+@Composable
+private fun ChannelContextMenu(
+    expanded: Boolean,
+    pressPosition: Offset,
+    isAdmin: Boolean,
+    onDismiss: () -> Unit,
+    onCopyChannelLink: () -> Unit,
+    onRequestDelete: () -> Unit
+) {
+    val density = LocalDensity.current
+    Box {
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = onDismiss,
+            offset = with(density) { DpOffset(pressPosition.x.toDp(), pressPosition.y.toDp()) },
+            shape = RoundedCornerShape(12.dp),
+            containerColor = Zhimo.paperRaised,
+            tonalElevation = 0.dp,
+            shadowElevation = 8.dp
+        ) {
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.channel_copy_link), color = Zhimo.ink) },
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Default.Link,
+                        contentDescription = null,
+                        tint = Zhimo.inkMuted
+                    )
+                },
+                onClick = onCopyChannelLink
+            )
+            if (isAdmin) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.channel_delete_title), color = Zhimo.danger) },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Default.Delete,
+                            contentDescription = null,
+                            tint = Zhimo.danger
+                        )
+                    },
+                    onClick = onRequestDelete
+                )
+            }
+        }
+    }
+}
+
 // Grouped Channel Item (with indent)
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -765,7 +836,9 @@ private fun GroupedChannelItem(
     channel: Channel,
     isSelected: Boolean,
     onClick: () -> Unit,
-    onLongClick: (() -> Unit)?,
+    isAdmin: Boolean,
+    onCopyChannelLink: () -> Unit,
+    onRequestDelete: () -> Unit,
     voiceUsers: List<VoiceUser>,
     editMode: Boolean,
     onMoveUp: (() -> Unit)?,
@@ -785,18 +858,46 @@ private fun GroupedChannelItem(
         label = "channelText"
     )
 
+    var menuVisible by remember { mutableStateOf(false) }
+    var pressPosition by remember { mutableStateOf(Offset.Zero) }
+
     Column(
         modifier = Modifier.padding(start = 12.dp)  // Indent for grouped channels
     ) {
+        // Zero-size menu anchor placed at the row's top-left, so the popup
+        // offset matches the pointerInput coordinate space of the row below.
+        ChannelContextMenu(
+            expanded = menuVisible,
+            pressPosition = pressPosition,
+            isAdmin = isAdmin,
+            onDismiss = { menuVisible = false },
+            onCopyChannelLink = {
+                menuVisible = false
+                onCopyChannelLink()
+            },
+            onRequestDelete = {
+                menuVisible = false
+                onRequestDelete()
+            }
+        )
+
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(4.dp))
                 .background(backgroundColor)
-                .combinedClickable(
-                    onClick = onClick,
-                    onLongClick = onLongClick
-                )
+                .pointerInput(Unit) {
+                    // Position-aware long press so the context menu pops up at
+                    // the finger; consumes the gesture so the pending click in
+                    // combinedClickable is cancelled on release.
+                    detectTapGestures(
+                        onLongPress = { offset ->
+                            pressPosition = offset
+                            menuVisible = true
+                        }
+                    )
+                }
+                .combinedClickable(onClick = onClick)
                 .padding(horizontal = 8.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -927,7 +1028,9 @@ private fun UngroupedChannelItem(
     channel: Channel,
     isSelected: Boolean,
     onClick: () -> Unit,
-    onLongClick: (() -> Unit)?,
+    isAdmin: Boolean,
+    onCopyChannelLink: () -> Unit,
+    onRequestDelete: () -> Unit,
     voiceUsers: List<VoiceUser>,
     editMode: Boolean,
     onMoveUp: (() -> Unit)?,
@@ -947,16 +1050,44 @@ private fun UngroupedChannelItem(
         label = "channelText"
     )
 
+    var menuVisible by remember { mutableStateOf(false) }
+    var pressPosition by remember { mutableStateOf(Offset.Zero) }
+
     Column {
+        // Zero-size menu anchor placed at the row's top-left, so the popup
+        // offset matches the pointerInput coordinate space of the row below.
+        ChannelContextMenu(
+            expanded = menuVisible,
+            pressPosition = pressPosition,
+            isAdmin = isAdmin,
+            onDismiss = { menuVisible = false },
+            onCopyChannelLink = {
+                menuVisible = false
+                onCopyChannelLink()
+            },
+            onRequestDelete = {
+                menuVisible = false
+                onRequestDelete()
+            }
+        )
+
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(4.dp))
                 .background(backgroundColor)
-                .combinedClickable(
-                    onClick = onClick,
-                    onLongClick = onLongClick
-                )
+                .pointerInput(Unit) {
+                    // Position-aware long press so the context menu pops up at
+                    // the finger; consumes the gesture so the pending click in
+                    // combinedClickable is cancelled on release.
+                    detectTapGestures(
+                        onLongPress = { offset ->
+                            pressPosition = offset
+                            menuVisible = true
+                        }
+                    )
+                }
+                .combinedClickable(onClick = onClick)
                 .padding(horizontal = 8.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {

@@ -212,7 +212,9 @@
     <string name="action_add_channel">Add channel</string>
     <string name="action_add_group">Add group</string>
     <string name="action_add_server">Add server</string>
-    <string name="channel_delete_title">Delete channel</string>
+    <string name="channel_copy_link">Copy channel link</string>
+    <string name="channel_link_copied">Channel link copied</string>
+<string name="channel_delete_title">Delete channel</string>
     <string name="channel_delete_confirm">Delete channel \"%1$s\"? This cannot be undone.</string>
     <string name="group_delete_title">Delete channel group</string>
     <string name="group_delete_confirm">Delete channel group \"%1$s\"? Channels inside it will become ungrouped.</string>

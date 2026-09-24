@@ -212,7 +212,9 @@
     <string name="action_add_channel">添加频道</string>
     <string name="action_add_group">添加分组</string>
     <string name="action_add_server">添加服务器</string>
-    <string name="channel_delete_title">删除频道</string>
+    <string name="channel_copy_link">复制频道链接</string>
+    <string name="channel_link_copied">频道链接已复制</string>
+<string name="channel_delete_title">删除频道</string>
     <string name="channel_delete_confirm">确定要删除频道「%1$s」吗？此操作不可撤销。</string>
     <string name="group_delete_title">删除分组</string>
     <string name="group_delete_confirm">确定要删除分组「%1$s」吗？分组内的频道将变为未分组状态。</string>
