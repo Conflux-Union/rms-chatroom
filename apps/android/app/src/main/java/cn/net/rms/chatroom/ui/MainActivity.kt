@@ -235,8 +235,11 @@ class MainActivity : ComponentActivity() {
         super.onConfigurationChanged(newConfig)
         // configChanges=locale delivers locale changes here instead of
         // relaunching the activity (the relaunch gap is what flashed black).
-        // Bumping the tick makes composition derive a fresh locale context so
-        // stringResource readers re-resolve with the new configuration.
+        // The framework only refreshes the activity's base resources — and a
+        // per-app locale write can dispatch a propagation still carrying the
+        // stale locale — so realign the wrapped resources (which composition
+        // reads) with the stored choice before bumping the tick.
+        AppLocale.realign(this)
         AppLocale.tick.longValue++
     }
 

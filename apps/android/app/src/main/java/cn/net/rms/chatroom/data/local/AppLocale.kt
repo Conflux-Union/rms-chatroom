@@ -95,19 +95,58 @@ object AppLocale {
                     AppLanguage.EN -> LocaleList.forLanguageTags("en")
                     AppLanguage.SYSTEM -> LocaleList.getEmptyLocaleList()
                 }
-        } else {
-            val locales = localesFor(language)
-            val appRes = context.applicationContext.resources
-            val appConfig = Configuration(appRes.configuration)
-            appConfig.setLocales(locales)
-            appRes.updateConfiguration(appConfig, appRes.displayMetrics)
-            if (context.resources !== appRes) {
-                val config = Configuration(context.resources.configuration)
-                config.setLocales(locales)
-                context.resources.updateConfiguration(config, context.resources.displayMetrics)
+        }
+        // Reconfigure resources in place on every API level. Pre-33 this IS the
+        // application mechanism. On 33+ LocaleManager applies asynchronously and
+        // only refreshes the activity's base resources — but the composition
+        // reads the wrapped context from attachBaseContext (AppThemeMode wrap),
+        // which owns a separate Resources instance the framework never touches.
+        // Without this in-place reconfigure, the tick-driven recomposition
+        // resolves strings from the stale locale and the switch only lands
+        // after a relaunch.
+        val locales = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            when (language) {
+                AppLanguage.ZH -> LocaleList.forLanguageTags("zh")
+                AppLanguage.EN -> LocaleList.forLanguageTags("en")
+                AppLanguage.SYSTEM -> LocaleList.getDefault()
             }
+        } else {
+            localesFor(language)
+        }
+        val appRes = context.applicationContext.resources
+        val appConfig = Configuration(appRes.configuration)
+        appConfig.setLocales(locales)
+        appRes.updateConfiguration(appConfig, appRes.displayMetrics)
+        if (context.resources !== appRes) {
+            val config = Configuration(context.resources.configuration)
+            config.setLocales(locales)
+            context.resources.updateConfiguration(config, context.resources.displayMetrics)
         }
         tick.longValue++
+    }
+
+    /**
+     * Force this context's (wrapped) Resources onto the effective locale.
+     *
+     * The composition reads the wrapped context from attachBaseContext
+     * (AppThemeMode wrap), which owns a separate Resources instance the
+     * framework's configuration propagation never refreshes — worse, the
+     * propagation dispatched by a per-app locale write can arrive carrying the
+     * STALE locale while the write commits, clobbering the in-place
+     * reconfiguration done in [apply]. Called from onConfigurationChanged so
+     * the wrapper is realigned before the tick-driven recomposition reads it.
+     */
+    fun realign(context: Context) {
+        val locales = when (current(context)) {
+            AppLanguage.ZH -> LocaleList.forLanguageTags("zh")
+            AppLanguage.EN -> LocaleList.forLanguageTags("en")
+            AppLanguage.SYSTEM -> LocaleList.getDefault()
+        }
+        val res = context.resources
+        if (res.configuration.locales == locales) return
+        val config = Configuration(res.configuration)
+        config.setLocales(locales)
+        res.updateConfiguration(config, res.displayMetrics)
     }
 
     /**
