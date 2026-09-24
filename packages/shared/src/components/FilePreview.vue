@@ -5,7 +5,7 @@ import { useAuthStore } from '../stores/auth'
 import { authFetch } from '../utils/authFetch'
 import { t } from '../i18n'
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'https://chatroom.rms.net.cn'
+const API_BASE = import.meta.env.VITE_API_BASE || 'https://chatroom.cxu.org.cn'
 
 const props = defineProps<{
   attachment: Attachment

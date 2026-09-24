@@ -794,7 +794,7 @@ jobs:
             echo "DEPLOY_TOKEN secret not set; skipping deploy"
             exit 0
           fi
-          DEPLOY_URL="${DEPLOY_URL:-https://chatroom.rms.net.cn}"
+          DEPLOY_URL="${DEPLOY_URL:-https://chatroom.cxu.org.cn}"
           MANIFEST=server-assets/server-latest.json
           CODE=$(python3 -c "import json; print(json.load(open('$MANIFEST'))['code'])")
 

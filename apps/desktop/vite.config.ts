@@ -15,8 +15,8 @@ export default defineConfig({
   define: {
     // Only set absolute URLs for production build
     // In dev mode, use empty string to enable vite proxy
-    'import.meta.env.VITE_API_BASE': JSON.stringify(process.env.NODE_ENV === 'production' ? 'https://chatroom.rms.net.cn' : ''),
-    'import.meta.env.VITE_WS_BASE': JSON.stringify(process.env.NODE_ENV === 'production' ? 'wss://chatroom.rms.net.cn' : ''),
+    'import.meta.env.VITE_API_BASE': JSON.stringify(process.env.NODE_ENV === 'production' ? 'https://chatroom.cxu.org.cn' : ''),
+    'import.meta.env.VITE_WS_BASE': JSON.stringify(process.env.NODE_ENV === 'production' ? 'wss://chatroom.cxu.org.cn' : ''),
   },
   resolve: {
     alias: {
@@ -27,12 +27,12 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-        target: 'https://chatroom.rms.net.cn',
+        target: 'https://chatroom.cxu.org.cn',
         changeOrigin: true,
         secure: false,
       },
       '/ws': {
-        target: 'wss://chatroom.rms.net.cn',
+        target: 'wss://chatroom.cxu.org.cn',
         ws: true,
         changeOrigin: true,
       },

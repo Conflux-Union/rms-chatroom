@@ -7,8 +7,8 @@ import { reportTelemetryEvent } from '../utils/telemetry'
 import { createReconnectingWebSocket } from '../composables/useReconnectingWebSocket'
 import { refreshTokenIfExpired } from '../utils/tokenRefresh'
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'https://chatroom.rms.net.cn'
-const WS_BASE = import.meta.env.VITE_WS_BASE || 'wss://chatroom.rms.net.cn'
+const API_BASE = import.meta.env.VITE_API_BASE || 'https://chatroom.cxu.org.cn'
+const WS_BASE = import.meta.env.VITE_WS_BASE || 'wss://chatroom.cxu.org.cn'
 
 
 export type MusicPlatform = 'qq' | 'netease' | 'all'

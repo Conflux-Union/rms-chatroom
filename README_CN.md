@@ -97,7 +97,7 @@ cd apps/android
 ```json
 {
   "database_url": "mysql://user:password@localhost/rmschat?charset=utf8mb4",
-  "oauth_base_url": "https://sso.rms.net.cn",
+  "oauth_base_url": "https://sso.cxu.org.cn",
   "oauth_client_id": "your-client-id",
   "oauth_client_secret": "your-client-secret",
   "oauth_redirect_uri": "http://localhost:8000/api/auth/callback",

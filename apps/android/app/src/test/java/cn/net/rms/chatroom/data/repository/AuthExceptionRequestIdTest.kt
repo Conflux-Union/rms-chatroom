@@ -42,7 +42,7 @@ class AuthExceptionRequestIdTest {
 
     private fun httpException(code: Int, requestId: String?): HttpException {
         val builder = okhttp3.Response.Builder()
-            .request(Request.Builder().url("https://chatroom.rms.net.cn/").build())
+            .request(Request.Builder().url("https://chatroom.cxu.org.cn/").build())
             .protocol(Protocol.HTTP_1_1)
             .code(code)
             .message("Server Error")

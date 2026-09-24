@@ -21,11 +21,11 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-        target: 'https://chatroom.rms.net.cn',
+        target: 'https://chatroom.cxu.org.cn',
         changeOrigin: true,
       },
       '/ws': {
-        target: 'wss://chatroom.rms.net.cn',
+        target: 'wss://chatroom.cxu.org.cn',
         ws: true,
         changeOrigin: true,
       },

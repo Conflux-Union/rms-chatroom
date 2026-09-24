@@ -7,8 +7,8 @@ class MessagePermalinkTest {
     @Test
     fun `builds canonical web permalink`() {
         assertEquals(
-            "https://chatroom.rms.net.cn/1/8/123",
-            buildMessagePermalink("https://chatroom.rms.net.cn/", 1, 8, 123)
+            "https://chatroom.cxu.org.cn/1/8/123",
+            buildMessagePermalink("https://chatroom.cxu.org.cn/", 1, 8, 123)
         )
     }
 }

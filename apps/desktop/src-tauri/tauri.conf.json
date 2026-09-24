@@ -21,7 +21,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' blob: data:; script-src-elem 'self' blob: data:; worker-src 'self' blob:; img-src 'self' blob: data: http://m701.music.126.net https://isure.stream.qqmusic.qq.com; media-src 'self' blob: data: http://m701.music.126.net https://isure.stream.qqmusic.qq.com; connect-src 'self' blob: data: https://chatroom.rms.net.cn http://chatroom.rms.net.cn wss://chatroom.rms.net.cn ws://chatroom.rms.net.cn http://m701.music.126.net https://isure.stream.qqmusic.qq.com http://localhost:8000 http://127.0.0.1:8000 ws://localhost:8000 ws://127.0.0.1:8000 https://api.github.com"
+      "csp": "default-src 'self'; script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' blob: data:; script-src-elem 'self' blob: data:; worker-src 'self' blob:; img-src 'self' blob: data: http://m701.music.126.net https://isure.stream.qqmusic.qq.com; media-src 'self' blob: data: http://m701.music.126.net https://isure.stream.qqmusic.qq.com; connect-src 'self' blob: data: https://chatroom.cxu.org.cn http://chatroom.cxu.org.cn wss://chatroom.cxu.org.cn ws://chatroom.cxu.org.cn http://m701.music.126.net https://isure.stream.qqmusic.qq.com http://localhost:8000 http://127.0.0.1:8000 ws://localhost:8000 ws://127.0.0.1:8000 https://api.github.com"
     }
   },
   "bundle": {

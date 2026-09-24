@@ -14,8 +14,8 @@ class VoiceInviteUrlTest {
         )
 
         assertEquals(
-            "https://chatroom.rms.net.cn/voice/invite/invite-token",
-            buildVoiceInviteUrl("https://chatroom.rms.net.cn/", response.token)
+            "https://chatroom.cxu.org.cn/voice/invite/invite-token",
+            buildVoiceInviteUrl("https://chatroom.cxu.org.cn/", response.token)
         )
     }
 }

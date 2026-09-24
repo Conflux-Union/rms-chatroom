@@ -303,7 +303,7 @@ export const useAuthStore = defineStore('auth', () => {
     if (typeof window === 'undefined') return false
     if (isSilentLoginSuppressed()) return false
     const hostname = window.location.hostname
-    return hostname === 'rms.net.cn' || hostname.endsWith('.rms.net.cn')
+    return hostname === 'cxu.org.cn' || hostname.endsWith('.cxu.org.cn')
   }
 
   async function doSilentLogin(): Promise<boolean> {

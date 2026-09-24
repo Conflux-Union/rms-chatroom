@@ -84,14 +84,14 @@ func defaults() Config {
 		// database_url to be set in config.json or via the DATABASE_URL env
 		// var, rather than silently starting with an unusable sqlite default.
 		DatabaseURL:              "",
-		SSOBaseURL:               "https://sso.rms.net.cn",
+		SSOBaseURL:               "https://sso.cxu.org.cn",
 		Host:                     "0.0.0.0",
 		Port:                     8000,
 		Debug:                    true,
 		FrontendDistPath:         "../apps/web/dist",
 		CORSOrigins:              []string{"http://localhost:5173", "http://127.0.0.1:5173"},
 		JWTSecret:                "dev-secret-change-in-production",
-		OAuthBaseURL:             "https://sso.rms.net.cn",
+		OAuthBaseURL:             "https://sso.cxu.org.cn",
 		OAuthAuthorizeEndpoint:   "/oauth/authorize",
 		OAuthTokenEndpoint:       "/oauth/token",
 		OAuthUserinfoEndpoint:    "/oauth/userinfo",
