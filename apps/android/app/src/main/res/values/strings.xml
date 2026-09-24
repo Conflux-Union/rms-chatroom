@@ -281,6 +281,33 @@
     <string name="settings_telemetry_desc_off">已关闭，不会上报任何数据</string>
     <string name="settings_about_title">关于应用</string>
     <string name="settings_about_desc">版本、版权和开源许可</string>
+    <string name="settings_storage_title">存储空间</string>
+    <string name="settings_storage_desc">管理应用占用的存储空间</string>
+
+    <!-- Storage management -->
+    <string name="storage_device_title">设备存储</string>
+    <string name="storage_app_title">本应用</string>
+    <string name="storage_device_total">共 %1$s</string>
+    <string name="storage_device_other_used">其他已用</string>
+    <string name="storage_legend_app_value">%1$s（设备的 %2$s%%）</string>
+    <string name="storage_legend_other_value">%1$s · 剩余 %2$s</string>
+    <string name="storage_app_section">本应用占用明细</string>
+    <string name="storage_category_image_cache">图片缓存</string>
+    <string name="storage_category_other_cache">其他缓存</string>
+    <string name="storage_category_updates">更新安装包</string>
+    <string name="storage_category_chat_db">聊天记录缓存</string>
+    <string name="storage_category_chat_db_desc">清空后打开频道时会从服务器重新加载</string>
+    <string name="storage_category_app_data">其他数据</string>
+    <string name="storage_category_app_data_desc">崩溃报告、遥测数据与本地设置</string>
+    <string name="storage_category_app_program">应用程序</string>
+    <string name="storage_category_app_program_desc">应用本体与原生库</string>
+    <string name="storage_action_clear">清理</string>
+    <string name="storage_clear_all">一键清理缓存</string>
+    <string name="storage_clear_all_with_size">一键清理缓存（%1$s）</string>
+    <string name="storage_cleared">已释放 %1$s</string>
+    <string name="storage_nothing_to_clean">没有可清理的缓存</string>
+    <string name="storage_clear_chat_db_title">清理聊天记录缓存？</string>
+    <string name="storage_clear_chat_db_body">本地聊天记录将被清空，打开频道时会从服务器重新加载，云端消息与阅读进度不受影响</string>
 
     <!-- About -->
     <string name="about_version">版本</string>

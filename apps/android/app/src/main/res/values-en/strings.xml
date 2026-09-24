@@ -281,6 +281,33 @@
     <string name="settings_telemetry_desc_off">Off — no data is uploaded</string>
     <string name="settings_about_title">About</string>
     <string name="settings_about_desc">Version, copyright, and open-source licenses</string>
+    <string name="settings_storage_title">Storage</string>
+    <string name="settings_storage_desc">Manage the storage used by the app</string>
+
+    <!-- Storage management -->
+    <string name="storage_device_title">Device storage</string>
+    <string name="storage_app_title">This app</string>
+    <string name="storage_device_total">%1$s total</string>
+    <string name="storage_device_other_used">Other usage</string>
+    <string name="storage_legend_app_value">%1$s (%2$s%% of device)</string>
+    <string name="storage_legend_other_value">%1$s · %2$s free</string>
+    <string name="storage_app_section">App storage breakdown</string>
+    <string name="storage_category_image_cache">Image cache</string>
+    <string name="storage_category_other_cache">Other cache</string>
+    <string name="storage_category_updates">Update packages</string>
+    <string name="storage_category_chat_db">Chat history cache</string>
+    <string name="storage_category_chat_db_desc">Reloads from the server when channels are reopened</string>
+    <string name="storage_category_app_data">Other data</string>
+    <string name="storage_category_app_data_desc">Crash reports, telemetry, and local settings</string>
+    <string name="storage_category_app_program">App program</string>
+    <string name="storage_category_app_program_desc">The app binary and native libraries</string>
+    <string name="storage_action_clear">Clear</string>
+    <string name="storage_clear_all">Clear all caches</string>
+    <string name="storage_clear_all_with_size">Clear all caches (%1$s)</string>
+    <string name="storage_cleared">Freed %1$s</string>
+    <string name="storage_nothing_to_clean">Nothing to clean</string>
+    <string name="storage_clear_chat_db_title">Clear chat history cache?</string>
+    <string name="storage_clear_chat_db_body">Local chat history will be removed and reloaded from the server when you open channels. Cloud messages and read progress are unaffected</string>
 
     <!-- About -->
     <string name="about_version">Version</string>

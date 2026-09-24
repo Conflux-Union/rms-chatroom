@@ -33,6 +33,7 @@ import cn.net.rms.chatroom.ui.theme.Zhimo
 fun SettingsScreen(
     viewModel: SettingsViewModel = hiltViewModel(),
     onNavigateBack: () -> Unit,
+    onNavigateToStorage: () -> Unit,
     onNavigateToAbout: () -> Unit
 ) {
     val context = LocalContext.current
@@ -225,6 +226,14 @@ fun SettingsScreen(
 
             // About section
             SettingsSectionHeader(title = stringResource(R.string.settings_section_about))
+
+            // Storage management
+            SettingsItem(
+                icon = Icons.Default.Storage,
+                title = stringResource(R.string.settings_storage_title),
+                subtitle = stringResource(R.string.settings_storage_desc),
+                onClick = onNavigateToStorage
+            )
 
             // About app
             SettingsItem(
