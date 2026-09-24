@@ -608,7 +608,7 @@ class ChatRepository @Inject constructor(
         return try {
             val token = authRepository.getToken()
                 ?: return Result.failure(AuthException(notLoggedInError))
-            api.deleteChannel(authRepository.getAuthHeader(token), channelId)
+            api.deleteChannel(authRepository.getAuthHeader(token), serverId, channelId)
             Result.success(Unit)
         } catch (e: Exception) {
             Log.e(TAG, "deleteChannel failed", e)

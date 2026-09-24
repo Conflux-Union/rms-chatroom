@@ -53,9 +53,11 @@ interface ApiService {
         @Body body: CreateChannelRequest
     ): Channel
 
-    @DELETE("api/channels/{channelId}")
+    // Route lives under /api/servers — the same endpoint the web client calls.
+    @DELETE("api/servers/{serverId}/channels/{channelId}")
     suspend fun deleteChannel(
         @Header("Authorization") token: String,
+        @Path("serverId") serverId: Long,
         @Path("channelId") channelId: Long
     )
 
