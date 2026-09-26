@@ -7,11 +7,23 @@ API (default endpoint: the cf.api.fan relay serving the MiMo model family;
 override with CHANGELOG_API_BASE / CHANGELOG_MODEL). The model investigates
 the checked-out repository with read-only tools -- a strictly gated
 read-only bash command runner and a bounded file reader -- until it can
-decide which changes are user-visible, then returns the bilingual
-changelog JSON that the workflow validates and renders downstream.
+decide which changes are user-visible, then submits the bilingual
+changelog through a structured submit tool. Tool-call input arrives as
+parsed JSON, so a provider-side truncation can never pose as a complete
+text answer; the submission is additionally validated in-process against
+the same rules build-release.yml enforces, and an invalid submission is
+fed back to the model for a bounded number of retries instead of failing
+the whole job.
 
-The final answer is written as a minimal OpenAI-style chat-completion
-envelope so the jq validation in build-release.yml keeps working.
+Responses are consumed as a stream so the CI log stays alive while the
+model generates: a heartbeat line showing the output state and an
+output-token estimate (received characters / 4) is printed once per
+second, and the final summary reports input and output tokens, cache
+reads, cache writes, and the resulting cache rate.
+
+The validated submission is serialized into a minimal OpenAI-style
+chat-completion envelope so the jq validation in build-release.yml keeps
+working.
 
 Requires the Anthropic SDK (pip install anthropic). Run with --self-test
 to exercise the command gate and the full agent loop against an
@@ -21,6 +33,7 @@ in-process mock Messages API; no network access or API key is needed.
 from __future__ import annotations
 
 import argparse
+import io
 import json
 import os
 import re
@@ -30,8 +43,9 @@ import sys
 import tempfile
 import time
 from collections import deque
+from contextlib import redirect_stdout
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from threading import Thread
+from threading import Lock, Thread
 
 import anthropic
 
@@ -333,6 +347,39 @@ READ_FILE_TOOL = {
 TOOLS = [BASH_TOOL, READ_FILE_TOOL]
 
 
+_SUBMIT_ENTRY_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "en": {"type": "string", "description": "English user-facing bullet body"},
+        "zh": {"type": "string", "description": "Faithful Simplified Chinese translation"},
+    },
+    "required": ["en", "zh"],
+    "additionalProperties": False,
+}
+
+SUBMIT_TOOL = {
+    "name": "submit",
+    "type": "custom",
+    "description": (
+        "Submit the final bilingual changelog and end the run. The input must be "
+        "the complete changelog object: improvements and fixes arrays whose items "
+        "carry the English bullet in en and its Simplified Chinese translation in "
+        "zh. The changelog is only accepted through this tool -- never write it "
+        "as a text message. Do not submit while still uncertain; investigate "
+        "with bash/read_file first."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "improvements": {"type": "array", "items": _SUBMIT_ENTRY_SCHEMA},
+            "fixes": {"type": "array", "items": _SUBMIT_ENTRY_SCHEMA},
+        },
+        "required": ["improvements", "fixes"],
+        "additionalProperties": False,
+    },
+}
+
+
 # --- agent loop --------------------------------------------------------------
 
 
@@ -341,9 +388,21 @@ class AgentError(Exception):
 
 
 WRAPUP_PROMPT = (
-    "The tool budget for this run is exhausted. Do not call any more tools. "
-    "Reply now with exactly one JSON object in the required shape and no prose."
+    "The tool budget for this run is exhausted. Do not call bash or read_file "
+    "again. Call the submit tool now with the complete changelog object as its "
+    "arguments."
 )
+
+SUBMIT_NUDGE_PROMPT = (
+    "Your last message was text, which is discarded. The changelog is only "
+    "accepted through the submit tool. Call submit now with the complete "
+    "changelog object as its arguments."
+)
+
+# Bounds so a confused model or a flaky provider fails loudly instead of
+# looping forever; the wall-clock deadline remains the outer backstop.
+MAX_SUBMIT_REJECTIONS = 3
+MAX_TEXT_NUDGES = 2
 
 
 def _log(message: str) -> None:
@@ -354,6 +413,48 @@ def _log_limited(label: str, text: str, limit: int) -> None:
     if len(text) > limit:
         text = f"{text[:limit]}\n... [truncated, {len(text)} characters total]"
     _log(f"{label}: {text}")
+
+
+class StreamProgressReporter(Thread):
+    """Prints one heartbeat line per second while a response streams.
+
+    A single model turn can take tens of seconds of silence, which in the
+    Actions log is indistinguishable from a hung job. The heartbeat mimics
+    the agent CLI status line: the current output state plus a rough token
+    estimate of the response so far, at four characters per token. A stall
+    shows up as a frozen token count instead of silence.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(daemon=True)
+        self._lock = Lock()
+        self._label: str | None = None
+        self._chars = 0
+
+    def begin_response(self) -> None:
+        with self._lock:
+            self._label = "waiting"
+            self._chars = 0
+
+    def start_block(self, label: str) -> None:
+        with self._lock:
+            self._label = label
+
+    def add_chars(self, count: int) -> None:
+        with self._lock:
+            self._chars += count
+
+    def end_response(self) -> None:
+        with self._lock:
+            self._label = None
+
+    def run(self) -> None:
+        while True:
+            time.sleep(1)
+            with self._lock:
+                label, chars = self._label, self._chars
+            if label is not None:
+                _log(f"{label} ·⬇️ {chars // 4} tokens")
 
 
 def _execute_tool(
@@ -385,6 +486,51 @@ def _execute_tool(
         return f"error: {type(exc).__name__}: {exc}"
 
 
+def validate_submission(payload) -> "tuple[dict | None, list[str]]":
+    """Check a submit payload against the same rules the jq gate in
+    build-release.yml enforces, so a rejected submission can be retried
+    in-process instead of failing the whole job. Returns (payload, [])
+    when valid and (None, errors) otherwise."""
+    if not isinstance(payload, dict):
+        return None, ["the submission must be a JSON object"]
+    errors: list[str] = []
+    extra_keys = sorted(set(payload) - {"improvements", "fixes"})
+    if extra_keys:
+        errors.append(f"unexpected top-level keys: {', '.join(extra_keys)}")
+    entries = 0
+    for section in ("improvements", "fixes"):
+        items = payload.get(section)
+        if not isinstance(items, list):
+            errors.append(f"{section} must be an array")
+            continue
+        for index, item in enumerate(items):
+            where = f"{section}[{index}]"
+            if not isinstance(item, dict):
+                errors.append(f"{where} must be an object")
+                continue
+            item_extra = sorted(set(item) - {"en", "zh"})
+            if item_extra:
+                errors.append(f"{where} has unexpected keys: {', '.join(item_extra)}")
+            for field in ("en", "zh"):
+                value = item.get(field)
+                if not isinstance(value, str) or not value.strip():
+                    errors.append(f"{where}.{field} must be a non-empty string")
+                elif re.search(r"[\r\n]", value):
+                    errors.append(f"{where}.{field} must not contain line breaks")
+            entries += 1
+    if entries == 0:
+        errors.append("improvements and fixes must not both be empty")
+    if errors:
+        return None, errors
+    return payload, []
+
+
+def _cache_rate(cache_read: int, input_side_total: int) -> float:
+    """Share of input-side tokens served from cache, in percent:
+    read / (fresh input + cache write + cache read)."""
+    return 100.0 * cache_read / input_side_total if input_side_total else 0.0
+
+
 def run_agent(
     client: anthropic.Anthropic,
     *,
@@ -395,7 +541,7 @@ def run_agent(
     max_rounds: int,
     tool_timeout: float,
     deadline: float,
-) -> str:
+) -> dict:
     messages: list[dict] = [{"role": "user", "content": user_prompt}]
     home_dir = tempfile.mkdtemp(prefix="changelog-agent-home-")
     stop_at = time.monotonic() + deadline
@@ -403,24 +549,85 @@ def run_agent(
     api_calls = 0
     tokens_in = 0
     tokens_out = 0
+    cache_read = 0
+    cache_write = 0
     forced_final = False
+    submit_rejections = 0
+    text_nudges = 0
+    progress = StreamProgressReporter()
+    progress.start()
 
-    def request(include_tools: bool):
-        nonlocal api_calls, tokens_in, tokens_out
+    def request(investigate: bool):
+        nonlocal api_calls, tokens_in, tokens_out, cache_read, cache_write
         kwargs = dict(model=model, max_tokens=16000, system=system, messages=messages)
-        if include_tools:
-            kwargs["tools"] = TOOLS
-        # MiMo accepts the Anthropic Messages shape but spells thinking
-        # config without a token budget, so it rides in via extra_body.
-        message = client.messages.create(
+        # The submit tool must stay available even once the investigation
+        # budget is gone -- it is the only way to finish the run.
+        kwargs["tools"] = [SUBMIT_TOOL] + TOOLS if investigate else [SUBMIT_TOOL]
+        progress.begin_response()
+        started = time.monotonic()
+        first_delta_at = None
+        # Streamed instead of a single blocking create() so the reporter can
+        # print a per-second heartbeat while the model generates; the final
+        # message is identical. MiMo accepts the Anthropic Messages shape
+        # but spells thinking config without a token budget, so it rides in
+        # via extra_body.
+        with client.messages.stream(
             **kwargs, extra_body={"thinking": {"type": "enabled"}}
-        )
+        ) as stream:
+            for event in stream:
+                if event.type == "content_block_start":
+                    block_type = event.content_block.type
+                    if block_type == "thinking":
+                        progress.start_block("thinking")
+                    elif block_type == "tool_use":
+                        progress.start_block("tool use")
+                    elif block_type == "text":
+                        progress.start_block("text")
+                elif event.type == "content_block_delta":
+                    if first_delta_at is None:
+                        first_delta_at = time.monotonic()
+                    delta = event.delta
+                    if delta.type == "thinking_delta":
+                        progress.add_chars(len(delta.thinking or ""))
+                    elif delta.type == "text_delta":
+                        progress.add_chars(len(delta.text or ""))
+                    elif delta.type == "input_json_delta":
+                        progress.add_chars(len(delta.partial_json or ""))
+            message = stream.get_final_message()
+        progress.end_response()
         api_calls += 1
+        finished = time.monotonic()
+        ttft = (first_delta_at - started) if first_delta_at is not None else (finished - started)
+        generation = (finished - first_delta_at) if first_delta_at is not None else 0.0
         usage = getattr(message, "usage", None)
-        if usage is not None:
-            tokens_in += getattr(usage, "input_tokens", 0) or 0
-            tokens_out += getattr(usage, "output_tokens", 0) or 0
+        call_in = getattr(usage, "input_tokens", 0) or 0
+        call_out = getattr(usage, "output_tokens", 0) or 0
+        call_cache_read = getattr(usage, "cache_read_input_tokens", 0) or 0
+        call_cache_write = getattr(usage, "cache_creation_input_tokens", 0) or 0
+        tokens_in += call_in
+        tokens_out += call_out
+        cache_read += call_cache_read
+        cache_write += call_cache_write
+        speed = call_out / generation if generation > 0 else 0.0
+        _log(
+            f"request {api_calls}: ttft {ttft:.1f}s, {speed:.1f} tokens/s, "
+            f"input {call_in} (cache read {call_cache_read}, "
+            f"cache write {call_cache_write}), output {call_out}"
+        )
         return message
+
+    def echo_assistant(message) -> None:
+        # Echo the assistant turn back verbatim (thinking blocks included;
+        # MiMo recommends keeping them across tool turns).
+        messages.append(
+            {
+                "role": "assistant",
+                "content": [
+                    block.model_dump(exclude_none=True)
+                    for block in message.content
+                ],
+            }
+        )
 
     while True:
         budget_left = (
@@ -430,7 +637,7 @@ def run_agent(
             _log("tool budget exhausted; requesting the final answer")
             messages.append({"role": "user", "content": WRAPUP_PROMPT})
             forced_final = True
-        response = request(include_tools=budget_left)
+        response = request(investigate=budget_left)
         _log(
             f"round {rounds}: stop_reason={response.stop_reason}, "
             f"blocks={[block.type for block in response.content]}"
@@ -442,24 +649,87 @@ def run_agent(
                 _log(f"model thinking: {len(block.thinking)} characters (not shown)")
 
         tool_uses = [block for block in response.content if block.type == "tool_use"]
-        if response.stop_reason == "tool_use" and tool_uses:
+        submits = [block for block in tool_uses if block.name == "submit"]
+        investigations = [block for block in tool_uses if block.name != "submit"]
+
+        if submits:
+            submit_block = submits[0]
+            _log_limited(
+                "submit attempt",
+                json.dumps(submit_block.input, ensure_ascii=False),
+                2000,
+            )
+            payload, errors = validate_submission(submit_block.input)
+            if payload is not None:
+                input_side = tokens_in + cache_read + cache_write
+                _log(
+                    f"done after {rounds} tool rounds, {api_calls} API calls, "
+                    f"{tokens_in} input + {tokens_out} output tokens, "
+                    f"cache read {cache_read} + cache write {cache_write}, "
+                    f"cache rate {_cache_rate(cache_read, input_side):.1f}%"
+                )
+                return payload
+            submit_rejections += 1
+            if submit_rejections > MAX_SUBMIT_REJECTIONS:
+                raise AgentError(
+                    "model could not produce a valid submission: " + "; ".join(errors)
+                )
+            _log_limited("submit rejected", "; ".join(errors), 2000)
+            # Keep the conversation well formed: every tool_use of this turn
+            # needs a tool_result before the next request.
+            echo_assistant(response)
+            results = [
+                {
+                    "type": "tool_result",
+                    "tool_use_id": submit_block.id,
+                    "content": (
+                        "error: invalid submission: "
+                        + "; ".join(errors)
+                        + ". Call submit again with the complete, corrected object."
+                    ),
+                }
+            ]
+            for block in submits[1:]:
+                results.append(
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": block.id,
+                        "content": (
+                            "error: submit was already processed this turn; "
+                            "call submit once"
+                        ),
+                    }
+                )
+            if investigations and budget_left:
+                rounds += 1
+            for block in investigations:
+                if budget_left:
+                    _log_limited(
+                        f"tool call {block.name}",
+                        json.dumps(block.input, ensure_ascii=False),
+                        2000,
+                    )
+                    result = _execute_tool(
+                        block.name, block.input, repo_root, home_dir, tool_timeout
+                    )
+                    _log_limited("tool result", result, 2000)
+                else:
+                    result = "error: tool budget exhausted"
+                results.append(
+                    {"type": "tool_result", "tool_use_id": block.id, "content": result}
+                )
+            messages.append({"role": "user", "content": results})
+            continue
+
+        if response.stop_reason == "tool_use" and investigations:
             if not budget_left:
                 raise AgentError(
                     "model attempted another tool call after the tool budget was exhausted"
                 )
             rounds += 1
-            # Echo the assistant turn back verbatim (thinking blocks
-            # included; MiMo recommends keeping them across tool turns).
-            messages.append(
-                {
-                    "role": "assistant",
-                    "content": [
-                        block.model_dump(exclude_none=True) for block in response.content
-                    ],
-                }
-            )
+            echo_assistant(response)
             results = []
-            for block in tool_uses:
+            for block in investigations:
                 _log_limited(
                     f"tool call {block.name}",
                     json.dumps(block.input, ensure_ascii=False),
@@ -478,19 +748,28 @@ def run_agent(
         text = "".join(
             block.text for block in response.content if block.type == "text"
         ).strip()
-        if response.stop_reason == "end_turn" and text:
-            _log(
-                f"done after {rounds} tool rounds, {api_calls} API calls, "
-                f"{tokens_in} input + {tokens_out} output tokens"
+        if response.stop_reason == "end_turn":
+            # The changelog only counts when it arrives through submit; a
+            # text answer is nudged back (this is also the path a
+            # provider-truncated completion takes, since it reports
+            # end_turn with partial text).
+            if text_nudges < MAX_TEXT_NUDGES:
+                text_nudges += 1
+                _log("model answered in text; requesting a submit tool call")
+                echo_assistant(response)
+                messages.append({"role": "user", "content": SUBMIT_NUDGE_PROMPT})
+                continue
+            raise AgentError(
+                "model kept answering in text instead of calling submit "
+                f"(stop_reason={response.stop_reason}, text_characters={len(text)})"
             )
-            return text
         raise AgentError(
-            "model stopped without usable content "
+            "model stopped without calling submit "
             f"(stop_reason={response.stop_reason}, text_characters={len(text)})"
         )
 
 
-def write_envelope(path: str, final_text: str) -> None:
+def write_envelope(path: str, submission: dict) -> None:
     # OpenAI-style envelope: build-release.yml validates and renders this
     # with jq as if it were a raw chat-completions response.
     envelope = {
@@ -498,7 +777,10 @@ def write_envelope(path: str, final_text: str) -> None:
             {
                 "index": 0,
                 "finish_reason": "stop",
-                "message": {"role": "assistant", "content": final_text},
+                "message": {
+                    "role": "assistant",
+                    "content": json.dumps(submission, ensure_ascii=False),
+                },
             }
         ]
     }
@@ -517,7 +799,7 @@ Investigation. The user message supplies the commit metadata and the complete fi
 
 Content policy. Describe observable effects for chat users rather than code mechanics. Include a change only when the supplied data or your repository investigation supports a concrete user-visible effect on at least one client or on behavior users observe through the server; omit it when that effect cannot be described confidently. Omit documentation, tests, CI, build changes, dependency maintenance, internal refactors, generic hardening, and release chores. Combine commits that describe the same user-visible change, and place every distinct change in exactly one of improvements or fixes: new features, UI additions, and behavior enhancements are improvements; corrections of previously broken behavior are fixes. Do not mention commit hashes, file names, components, stores, APIs, algorithms, or other implementation details. Do not add parenthetical implementation explanations. Do not invent versions, platforms, causes, or outcomes not supported by the supplied data or your investigation.
 
-Final answer. For each change, write an English user-facing bullet body in en and its faithful Simplified Chinese translation in zh. Keep the same meaning in both languages. Before answering, silently check that no item duplicates or restates another item and that every item is understandable without code knowledge. Avoid marketing claims. When you are confident, stop calling tools and return exactly one JSON object and no prose in this shape: {{"improvements": [{{"en": string, "zh": string}}], "fixes": [{{"en": string, "zh": string}}]}}. Use empty arrays for empty categories, but the two category arrays must not both be empty. Do not include Markdown bullet markers, headings, or links in the strings.
+Final answer. For each change, write an English user-facing bullet body in en and its faithful Simplified Chinese translation in zh. Keep the same meaning in both languages. Before answering, silently check that no item duplicates or restates another item and that every item is understandable without code knowledge. Avoid marketing claims. When you are confident, stop investigating and finish by calling the submit tool with exactly one JSON object of this shape as its arguments: {{"improvements": [{{"en": string, "zh": string}}], "fixes": [{{"en": string, "zh": string}}]}}. Use empty arrays for empty categories, but the two category arrays must not both be empty. The run only ends through the submit tool: never write the changelog as a text message. Do not include Markdown bullet markers, headings, or links in the strings.
 
 You have at most {max_rounds} tool rounds in total. Investigate efficiently, prioritize the commits whose user-visible effect is least clear, and stop investigating as soon as you are confident."""
 
@@ -659,7 +941,7 @@ def main(argv=None) -> int:
         max_retries=4,
         timeout=float(args.request_timeout),
     )
-    final_text = run_agent(
+    final_submission = run_agent(
         client,
         model=args.model,
         system=system_prompt(args.max_rounds),
@@ -669,7 +951,7 @@ def main(argv=None) -> int:
         tool_timeout=float(args.tool_timeout),
         deadline=float(args.max_seconds),
     )
-    write_envelope(args.output, final_text)
+    write_envelope(args.output, final_submission)
     _log(f"wrote {args.output}")
     return 0
 
@@ -757,7 +1039,16 @@ def self_test() -> int:
         ],
         "fixes": [],
     }
-    expected_final = "```json\n" + json.dumps(final_answer, indent=2) + "\n```"
+    invalid_submission = {
+        "improvements": [
+            {
+                "en": "Broken\nline one",
+                "zh": "坏掉的条目",
+                "scope": "web",
+            }
+        ],
+        "fixes": [],
+    }
 
     class _MockHandler(BaseHTTPRequestHandler):
         calls: list[dict] = []
@@ -767,15 +1058,18 @@ def self_test() -> int:
             length = int(self.headers.get("Content-Length") or 0)
             body = json.loads(self.rfile.read(length) or b"{}")
             type(self).calls.append(body)
-            raw = json.dumps(type(self).responses.popleft()).encode()
+            payload = message_to_sse(type(self).responses.popleft())
             self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(raw)))
+            self.send_header("Content-Type", "text/event-stream")
+            self.send_header("Content-Length", str(len(payload)))
             self.end_headers()
-            self.wfile.write(raw)
+            self.wfile.write(payload)
 
         def log_message(self, *args):
             pass
+
+    def thinking_block(text: str) -> dict:
+        return {"type": "thinking", "thinking": text, "signature": "mock-signature"}
 
     def text_block(text: str) -> dict:
         return {"type": "text", "text": text}
@@ -792,13 +1086,92 @@ def self_test() -> int:
             "content": content,
             "stop_reason": stop_reason,
             "stop_sequence": None,
-            "usage": {"input_tokens": 10, "output_tokens": 5},
+            "usage": {
+                "input_tokens": 10,
+                "output_tokens": 5,
+                "cache_creation_input_tokens": 3,
+                "cache_read_input_tokens": 40,
+            },
         }
+
+    def message_to_sse(message: dict) -> bytes:
+        # Re-encode a queued mock message as the Anthropic SSE event stream
+        # the SDK expects from a streaming request.
+        events: list[tuple[str, dict]] = [
+            (
+                "message_start",
+                {
+                    "type": "message_start",
+                    "message": {**message, "content": [], "stop_reason": None},
+                },
+            )
+        ]
+        for index, block in enumerate(message["content"]):
+            if block["type"] == "thinking":
+                seed = {"type": "thinking", "thinking": "", "signature": ""}
+                deltas = [
+                    {"type": "thinking_delta", "thinking": block["thinking"]},
+                    {"type": "signature_delta", "signature": block["signature"]},
+                ]
+            elif block["type"] == "text":
+                seed = {"type": "text", "text": ""}
+                deltas = [{"type": "text_delta", "text": block["text"]}]
+            else:
+                seed = {
+                    "type": "tool_use",
+                    "id": block["id"],
+                    "name": block["name"],
+                    "input": {},
+                }
+                deltas = [
+                    {
+                        "type": "input_json_delta",
+                        "partial_json": json.dumps(block["input"]),
+                    }
+                ]
+            events.append(
+                (
+                    "content_block_start",
+                    {
+                        "type": "content_block_start",
+                        "index": index,
+                        "content_block": seed,
+                    },
+                )
+            )
+            for delta in deltas:
+                events.append(
+                    (
+                        "content_block_delta",
+                        {"type": "content_block_delta", "index": index, "delta": delta},
+                    )
+                )
+            events.append(
+                ("content_block_stop", {"type": "content_block_stop", "index": index})
+            )
+        events.append(
+            (
+                "message_delta",
+                {
+                    "type": "message_delta",
+                    "delta": {
+                        "stop_reason": message["stop_reason"],
+                        "stop_sequence": None,
+                    },
+                    "usage": {"output_tokens": message["usage"]["output_tokens"]},
+                },
+            )
+        )
+        events.append(("message_stop", {"type": "message_stop"}))
+        return "".join(
+            f"event: {name}\ndata: {json.dumps(event)}\n\n" for name, event in events
+        ).encode()
 
     _MockHandler.responses.extend(
         [
             mock_response(
                 [
+                    thinking_block("Planning the investigation."),
                     text_block("Inspecting the repository first."),
                     tool_use("toolu_bash_ok", "bash", {"command": "git log --oneline -3"}),
                     tool_use(
@@ -827,7 +1200,18 @@ def self_test() -> int:
                 ],
                 "tool_use",
             ),
-            mock_response([text_block(expected_final)], "end_turn"),
+            # Answers in prose instead of calling submit: must be nudged.
+            mock_response(
+                [text_block("Here is the changelog you asked for.")], "end_turn"
+            ),
+            # Submits an invalid payload: must be rejected with feedback.
+            mock_response(
+                [tool_use("toolu_submit_bad", "submit", invalid_submission)],
+                "tool_use",
+            ),
+            mock_response(
+                [tool_use("toolu_submit_ok", "submit", final_answer)], "tool_use"
+            ),
         ]
     )
 
@@ -850,32 +1234,44 @@ def self_test() -> int:
                 max_retries=0,
                 timeout=30.0,
             )
-            final_text = run_agent(
-                client,
-                model="mimo-mock",
-                system=system_prompt(8),
-                user_prompt=build_user_prompt(
-                    current="v1.1.1(74)",
-                    base="v1.1.0(73)",
-                    commit_range="v1.1.0(73)..HEAD",
-                    diff_range="v1.1.0(73)..HEAD",
-                    commit_data=_read_text(commits_path),
-                    file_changes=_read_text(files_path),
-                    prior_history="abc1234 feat(unread): older released change",
-                    diff_excerpt="--- a/packages/shared/src/X.ts\n+++ b/packages/shared/src/X.ts\n",
+            log_buffer = io.StringIO()
+            with redirect_stdout(log_buffer):
+                final_submission = run_agent(
+                    client,
+                    model="mimo-mock",
+                    system=system_prompt(8),
+                    user_prompt=build_user_prompt(
+                        current="v1.1.1(74)",
+                        base="v1.1.0(73)",
+                        commit_range="v1.1.0(73)..HEAD",
+                        diff_range="v1.1.0(73)..HEAD",
+                        commit_data=_read_text(commits_path),
+                        file_changes=_read_text(files_path),
+                        prior_history="abc1234 feat(unread): older released change",
+                        diff_excerpt="--- a/packages/shared/src/X.ts\n+++ b/packages/shared/src/X.ts\n",
+                        repo_root=repo_root,
+                    ),
                     repo_root=repo_root,
-                ),
-                repo_root=repo_root,
-                max_rounds=8,
-                tool_timeout=15.0,
-                deadline=60.0,
+                    max_rounds=8,
+                    tool_timeout=15.0,
+                    deadline=60.0,
+                )
+            agent_log = log_buffer.getvalue()
+            _expect(final_submission == final_answer, "final submission mismatch")
+            _expect(
+                "cache rate" in agent_log and "cache read" in agent_log,
+                "final usage summary is missing the cache fields",
             )
-            _expect(final_text == expected_final.strip(), "final text mismatch")
-            write_envelope(envelope_path, final_text)
+            _expect(
+                "ttft" in agent_log and "tokens/s" in agent_log,
+                "per-request line is missing ttft or speed",
+            )
+            write_envelope(envelope_path, final_submission)
             with open(envelope_path, encoding="utf-8") as handle:
                 envelope = json.load(handle)
             _expect(
-                envelope["choices"][0]["message"]["content"] == final_text,
+                json.loads(envelope["choices"][0]["message"]["content"])
+                == final_answer,
                 "envelope content mismatch",
             )
     finally:
@@ -883,11 +1279,18 @@ def self_test() -> int:
         server.server_close()
 
     bodies = _MockHandler.calls
-    _expect(len(bodies) == 4, f"expected 4 API calls, got {len(bodies)}")
+    _expect(len(bodies) == 6, f"expected 6 API calls, got {len(bodies)}")
     _expect(bodies[0].get("thinking", {}).get("type") == "enabled", "thinking enabled")
     _expect(
         any(tool.get("name") == "bash" for tool in bodies[0].get("tools", [])),
         "bash tool offered",
+    )
+    _expect(
+        all(
+            any(tool.get("name") == "submit" for tool in body.get("tools", []))
+            for body in bodies
+        ),
+        "submit tool offered on every request",
     )
     _expect(
         "<commit-data>" in bodies[0]["messages"][0]["content"],
@@ -912,6 +1315,13 @@ def self_test() -> int:
 
     first_results = tool_results(bodies[1])
     _expect(len(first_results) == 2, "two tool results in second request")
+    assistant_echo = next(
+        m for m in bodies[1]["messages"] if m["role"] == "assistant"
+    )
+    _expect(
+        any(block.get("type") == "thinking" for block in assistant_echo["content"]),
+        "thinking block was not echoed across tool turns",
+    )
     git_result = next(r for r in first_results if r["tool_use_id"] == "toolu_bash_ok")["content"]
     curl_result = next(r for r in first_results if r["tool_use_id"] == "toolu_bash_bad")["content"]
     _expect(git_result.startswith("exit code 0"), "git log did not run")
@@ -921,6 +1331,20 @@ def self_test() -> int:
             "read_file content mismatch")
     escape_result = tool_results(bodies[3])[0]["content"]
     _expect("escapes the repository root" in escape_result, "path escape not rejected")
+    nudge = bodies[4]["messages"][-1]
+    _expect(
+        nudge["role"] == "user" and nudge["content"] == SUBMIT_NUDGE_PROMPT,
+        "prose answer was not nudged toward submit",
+    )
+    submit_rejection = tool_results(bodies[5])[0]["content"]
+    _expect(
+        "line breaks" in submit_rejection
+        and "unexpected keys: scope" in submit_rejection,
+        "invalid submission was not fed back with all errors",
+    )
+
+    _expect(_cache_rate(40, 53) == 4000 / 53, "cache rate math")
+    _expect(_cache_rate(0, 0) == 0.0, "cache rate zero guard")
 
     print("[self-test] agent loop against mock Messages API: ok")
     print("self-test passed")
