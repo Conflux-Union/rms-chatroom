@@ -67,6 +67,8 @@ apps/android/app/release.keystore
 
 # Debug
 debug/
+# ...except the Android debug source set (dev-server cleartext overlay)
+!apps/android/app/src/debug/
 
 # Scripts
 git-commit-ai.sh

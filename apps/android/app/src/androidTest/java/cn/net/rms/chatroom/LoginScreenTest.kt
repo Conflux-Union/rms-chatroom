@@ -16,12 +16,12 @@ class LoginScreenTest {
     fun loginScreen_displaysTitle() {
         composeTestRule.setContent {
             RMSDiscordTheme {
-                LoginScreen(onLogin = {})
+                LoginScreen(onLoginClick = {}, onLoginSuccess = {})
             }
         }
 
         composeTestRule
-            .onNodeWithText("RMS Discord")
+            .onNodeWithText("RMS ChatRoom")
             .assertIsDisplayed()
     }
 
@@ -29,7 +29,7 @@ class LoginScreenTest {
     fun loginScreen_displaysLoginButton() {
         composeTestRule.setContent {
             RMSDiscordTheme {
-                LoginScreen(onLogin = {})
+                LoginScreen(onLoginClick = {}, onLoginSuccess = {})
             }
         }
 
@@ -44,7 +44,7 @@ class LoginScreenTest {
 
         composeTestRule.setContent {
             RMSDiscordTheme {
-                LoginScreen(onLogin = { loginClicked = true })
+                LoginScreen(onLoginClick = { loginClicked = true }, onLoginSuccess = {})
             }
         }
 

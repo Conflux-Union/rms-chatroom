@@ -141,3 +141,10 @@
 -keep class * implements android.os.Parcelable {
     public static final android.os.Parcelable$Creator *;
 }
+
+# ================================
+# sherpa-onnx (on-demand TTS)
+# ================================
+# The JNI layer looks up classes, fields and native methods by name; the
+# runtime .so is loaded from the downloaded pack, never from the APK.
+-keep class com.k2fsa.sherpa.onnx.** { *; }

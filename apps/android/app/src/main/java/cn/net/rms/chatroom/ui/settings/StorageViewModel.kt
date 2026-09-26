@@ -6,6 +6,7 @@ import android.os.StatFs
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import cn.net.rms.chatroom.data.local.AppDatabase
+import cn.net.rms.chatroom.data.tts.TtsModelManager
 import coil.imageLoader
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -23,6 +24,7 @@ enum class StorageCategoryKind {
     OTHER_CACHE,
     UPDATES,
     CHAT_DB,
+    TTS_MODELS,
     APP_DATA,
     APP_PROGRAM
 }
@@ -51,7 +53,8 @@ data class StorageStats(
 @HiltViewModel
 class StorageViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val appDatabase: AppDatabase
+    private val appDatabase: AppDatabase,
+    private val ttsModelManager: TtsModelManager
 ) : ViewModel() {
 
     companion object {
@@ -112,6 +115,7 @@ class StorageViewModel @Inject constructor(
                     if (StorageCategoryKind.OTHER_CACHE in kinds) clearOtherCache()
                     if (StorageCategoryKind.UPDATES in kinds) clearUpdates()
                     if (StorageCategoryKind.CHAT_DB in kinds) clearChatDb()
+                    if (StorageCategoryKind.TTS_MODELS in kinds) ttsModelManager.delete()
                 }
                 val updated = withContext(Dispatchers.IO) { computeStats() }
                 _stats.value = updated
@@ -136,7 +140,8 @@ class StorageViewModel @Inject constructor(
         val externalCache = dirSize(context.externalCacheDir)
         val updates = dirSize(context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS))
         val chatDb = dirSize(File(context.applicationInfo.dataDir, "databases"))
-        val appData = dirSize(context.filesDir) +
+        val ttsModels = dirSize(File(context.filesDir, "tts"))
+        val appData = dirSize(context.filesDir) - ttsModels +
             dirSize(context.codeCacheDir) +
             dirSize(File(context.applicationInfo.dataDir, "shared_prefs"))
         val appInfo = context.applicationInfo
@@ -151,6 +156,7 @@ class StorageViewModel @Inject constructor(
                 StorageCategory(StorageCategoryKind.OTHER_CACHE, cacheTotal - imageCache + externalCache, cleanable = true),
                 StorageCategory(StorageCategoryKind.UPDATES, updates, cleanable = true),
                 StorageCategory(StorageCategoryKind.CHAT_DB, chatDb, cleanable = chatDb > EMPTY_CHAT_DB_FLOOR_BYTES),
+                StorageCategory(StorageCategoryKind.TTS_MODELS, ttsModels, cleanable = ttsModels > 0L),
                 StorageCategory(StorageCategoryKind.APP_DATA, appData, cleanable = false),
                 StorageCategory(StorageCategoryKind.APP_PROGRAM, appProgram, cleanable = false)
             )

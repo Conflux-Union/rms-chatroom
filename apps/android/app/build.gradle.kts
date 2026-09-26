@@ -79,6 +79,11 @@ android {
             excludes += setOf(
                 "google/protobuf/*.proto",
                 "kotlin-tooling-metadata.json",
+                // Duplicated license files across androidTest deps
+                "META-INF/LICENSE.md",
+                "META-INF/LICENSE-notice.md",
+                "META-INF/AL2.0",
+                "META-INF/LGPL2.1",
             )
         }
     }
@@ -87,6 +92,9 @@ android {
         debug {
             buildConfigField("String", "API_BASE_URL", "\"https://chatroom.cxu.org.cn\"")
             buildConfigField("String", "WS_BASE_URL", "\"wss://chatroom.cxu.org.cn\"")
+            // On-demand TTS pack source: local dev server (emulator host
+            // loopback) in debug, release assets via mirrors in release.
+            buildConfigField("String", "TTS_PACK_BASE_URL", "\"http://10.0.2.2:8000/tts\"")
         }
 
         release {
@@ -99,6 +107,7 @@ android {
             )
             buildConfigField("String", "API_BASE_URL", "\"https://chatroom.cxu.org.cn\"")
             buildConfigField("String", "WS_BASE_URL", "\"wss://chatroom.cxu.org.cn\"")
+            buildConfigField("String", "TTS_PACK_BASE_URL", "\"\"")
         }
     }
 

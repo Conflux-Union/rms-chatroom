@@ -34,6 +34,7 @@ fun SettingsScreen(
     viewModel: SettingsViewModel = hiltViewModel(),
     onNavigateBack: () -> Unit,
     onNavigateToStorage: () -> Unit,
+    onNavigateToTtsEngine: () -> Unit,
     onNavigateToAbout: () -> Unit
 ) {
     val context = LocalContext.current
@@ -165,6 +166,15 @@ fun SettingsScreen(
                         colors = SwitchDefaults.colors(checkedTrackColor = Zhimo.seal)
                     )
                 }
+            )
+
+            // TTS engine behind the announcements: system engine status and
+            // the downloadable on-device pack for devices without a system voice.
+            SettingsItem(
+                icon = Icons.Default.GraphicEq,
+                title = stringResource(R.string.settings_tts_engine_title),
+                subtitle = stringResource(R.string.settings_tts_engine_desc),
+                onClick = onNavigateToTtsEngine
             )
 
             HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))

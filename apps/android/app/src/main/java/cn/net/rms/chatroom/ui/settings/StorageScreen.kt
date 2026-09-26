@@ -37,6 +37,7 @@ fun StorageScreen(
     val stats by viewModel.stats.collectAsState()
     val clearing by viewModel.clearing.collectAsState()
     var confirmChatDbClear by remember { mutableStateOf(false) }
+    var confirmTtsDelete by remember { mutableStateOf(false) }
 
     fun reportFreed(freed: Long?) {
         val message = if (freed == null || freed <= 0L) {
@@ -95,10 +96,10 @@ fun StorageScreen(
                     category = category,
                     enabled = !clearing,
                     onClear = {
-                        if (category.kind == StorageCategoryKind.CHAT_DB) {
-                            confirmChatDbClear = true
-                        } else {
-                            viewModel.clearCategory(category.kind, ::reportFreed)
+                        when (category.kind) {
+                            StorageCategoryKind.CHAT_DB -> confirmChatDbClear = true
+                            StorageCategoryKind.TTS_MODELS -> confirmTtsDelete = true
+                            else -> viewModel.clearCategory(category.kind, ::reportFreed)
                         }
                     }
                 )
@@ -130,6 +131,27 @@ fun StorageScreen(
 
             Spacer(modifier = Modifier.height(32.dp))
         }
+    }
+
+    if (confirmTtsDelete) {
+        AlertDialog(
+            onDismissRequest = { confirmTtsDelete = false },
+            title = { Text(stringResource(R.string.storage_clear_tts_title)) },
+            text = { Text(stringResource(R.string.storage_clear_tts_body)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmTtsDelete = false
+                    viewModel.clearCategory(StorageCategoryKind.TTS_MODELS, ::reportFreed)
+                }) {
+                    Text(stringResource(R.string.storage_action_clear))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmTtsDelete = false }) {
+                    Text(stringResource(R.string.action_cancel))
+                }
+            }
+        )
     }
 
     if (confirmChatDbClear) {
@@ -355,6 +377,7 @@ private fun StorageCategory.icon(): ImageVector = when (kind) {
     StorageCategoryKind.OTHER_CACHE -> Icons.Default.Folder
     StorageCategoryKind.UPDATES -> Icons.Default.SystemUpdate
     StorageCategoryKind.CHAT_DB -> Icons.Default.Forum
+    StorageCategoryKind.TTS_MODELS -> Icons.Default.GraphicEq
     StorageCategoryKind.APP_DATA -> Icons.Default.Tune
     StorageCategoryKind.APP_PROGRAM -> Icons.Default.Apps
 }
@@ -365,6 +388,7 @@ private fun StorageCategory.label(): String = when (kind) {
     StorageCategoryKind.OTHER_CACHE -> stringResource(R.string.storage_category_other_cache)
     StorageCategoryKind.UPDATES -> stringResource(R.string.storage_category_updates)
     StorageCategoryKind.CHAT_DB -> stringResource(R.string.storage_category_chat_db)
+    StorageCategoryKind.TTS_MODELS -> stringResource(R.string.storage_category_tts_models)
     StorageCategoryKind.APP_DATA -> stringResource(R.string.storage_category_app_data)
     StorageCategoryKind.APP_PROGRAM -> stringResource(R.string.storage_category_app_program)
 }
@@ -372,6 +396,7 @@ private fun StorageCategory.label(): String = when (kind) {
 @Composable
 private fun StorageCategory.description(): String? = when (kind) {
     StorageCategoryKind.CHAT_DB -> stringResource(R.string.storage_category_chat_db_desc)
+    StorageCategoryKind.TTS_MODELS -> stringResource(R.string.storage_category_tts_models_desc)
     StorageCategoryKind.APP_DATA -> stringResource(R.string.storage_category_app_data_desc)
     StorageCategoryKind.APP_PROGRAM -> stringResource(R.string.storage_category_app_program_desc)
     else -> null

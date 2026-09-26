@@ -5,20 +5,25 @@ import android.media.AudioAttributes
 import android.speech.tts.TextToSpeech
 import android.util.Log
 import cn.net.rms.chatroom.R
+import cn.net.rms.chatroom.data.tts.SherpaTtsEngine
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Speaks voice-channel join/leave announcements through the system TTS engine.
+ * Speaks voice-channel join/leave announcements.
  *
- * The engine is created when a voice connection is established ([warmUp]) and
- * shut down on disconnect ([release]), so no TTS resources are held while the
- * user is out of voice. Utterances resolve through the application context,
- * which AppLocale keeps aligned with the in-app language. If the engine has no
- * voice for that locale, announcements are skipped instead of being read in
- * the wrong language.
+ * Engine priority: the downloaded on-device model (kokoro via sherpa-onnx)
+ * when its pack is installed, falling back to the system TTS engine, and
+ * silently dropping the utterance when neither can speak the app's locale.
+ * Installing the pack is an explicit opt-in, so it wins over whatever system
+ * voice happens to be present; deleting it falls back to system TTS.
+ *
+ * The system engine is created when a voice connection is established
+ * ([warmUp]) and shut down on disconnect ([release]), so no TTS resources
+ * are held while the user is out of voice; the local engine follows the same
+ * lifetime through [SherpaTtsEngine.setDesired].
  *
  * Audio uses USAGE_MEDIA + CONTENT_TYPE_SPEECH, matching the room's
  * MODE_NORMAL media output, so announcements play over the same route as the
@@ -26,7 +31,8 @@ import javax.inject.Singleton
  */
 @Singleton
 class VoiceTtsAnnouncer @Inject constructor(
-    @ApplicationContext private val appContext: Context
+    @ApplicationContext private val appContext: Context,
+    private val sherpaEngine: SherpaTtsEngine
 ) {
     companion object {
         private const val TAG = "VoiceTtsAnnouncer"
@@ -46,12 +52,16 @@ class VoiceTtsAnnouncer @Inject constructor(
     }
 
     /**
-     * Create the engine ahead of the first announcement; TTS initialization is
-     * asynchronous and would otherwise drop the first utterance.
+     * Create the engines ahead of the first announcement; TTS initialization
+     * is asynchronous and would otherwise drop the first utterance. The system
+     * engine is warmed even when the local pack is installed: it is the
+     * fallback for the window while the local model is still loading.
      */
     fun warmUp() {
         synchronized(lock) {
-            if (!enabled || tts != null) return
+            if (!enabled) return
+            sherpaEngine.setDesired(true)
+            if (tts != null) return
             tts = TextToSpeech(appContext) { status ->
                 synchronized(lock) {
                     if (status != TextToSpeech.SUCCESS) {
@@ -83,13 +93,20 @@ class VoiceTtsAnnouncer @Inject constructor(
     }
 
     fun announce(name: String, joined: Boolean) {
+        val text = appContext.getString(
+            if (joined) R.string.voice_tts_joined else R.string.voice_tts_left,
+            name
+        )
+        // The local pack takes priority once it is ready; while it is still
+        // loading, a working system engine keeps the first announcement from
+        // being dropped.
+        if (sherpaEngine.isReady()) {
+            sherpaEngine.speak(text, appLanguage())
+            return
+        }
         synchronized(lock) {
             val engine = tts ?: return
             if (!enabled || !ready) return
-            val text = appContext.getString(
-                if (joined) R.string.voice_tts_joined else R.string.voice_tts_left,
-                name
-            )
             engine.speak(text, TextToSpeech.QUEUE_ADD, null, "voice_presence")
         }
     }
@@ -98,6 +115,7 @@ class VoiceTtsAnnouncer @Inject constructor(
         synchronized(lock) {
             releaseLocked()
         }
+        sherpaEngine.setDesired(false)
     }
 
     private fun releaseLocked() {
@@ -109,5 +127,10 @@ class VoiceTtsAnnouncer @Inject constructor(
         }
         tts = null
         ready = false
+    }
+
+    private fun appLanguage(): String {
+        val locale = appContext.resources.configuration.locales[0] ?: Locale.getDefault()
+        return locale.language
     }
 }

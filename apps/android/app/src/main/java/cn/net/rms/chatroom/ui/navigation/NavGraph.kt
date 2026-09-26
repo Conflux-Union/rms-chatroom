@@ -17,6 +17,7 @@ import cn.net.rms.chatroom.ui.settings.AboutScreen
 import cn.net.rms.chatroom.ui.settings.OpenSourceLicensesScreen
 import cn.net.rms.chatroom.ui.settings.SettingsScreen
 import cn.net.rms.chatroom.ui.settings.StorageScreen
+import cn.net.rms.chatroom.ui.settings.TtsEngineScreen
 import cn.net.rms.chatroom.ui.voice.VoiceInviteScreen
 
 sealed class Screen(val route: String) {
@@ -24,6 +25,7 @@ sealed class Screen(val route: String) {
     object Main : Screen("main")
     object Settings : Screen("settings")
     object Storage : Screen("storage")
+    object TtsEngine : Screen("tts-engine")
     object About : Screen("about")
     object OpenSourceLicenses : Screen("open-source-licenses")
     object VoiceInvite : Screen("voice-invite/{token}") {
@@ -95,12 +97,19 @@ fun NavGraph(
             SettingsScreen(
                 onNavigateBack = { navController.popBackStack() },
                 onNavigateToStorage = { navController.navigate(Screen.Storage.route) },
+                onNavigateToTtsEngine = { navController.navigate(Screen.TtsEngine.route) },
                 onNavigateToAbout = { navController.navigate(Screen.About.route) }
             )
         }
 
         composable(Screen.Storage.route) {
             StorageScreen(
+                onNavigateBack = { navController.popBackStack() }
+            )
+        }
+
+        composable(Screen.TtsEngine.route) {
+            TtsEngineScreen(
                 onNavigateBack = { navController.popBackStack() }
             )
         }
