@@ -60,7 +60,7 @@ jobs:
           set -euo pipefail
 
           if [[ -z "${CHANGELOG_API_KEY:-}" ]]; then
-            echo "::error::CHANGELOG_API_KEY secret is not configured for this repository. The AI changelog generator calls an Anthropic-compatible endpoint (cf.api.fan by default) and requires this key." >&2
+            echo "::error::CHANGELOG_API_KEY secret is not configured for this repository. The AI changelog generator calls an Anthropic-compatible endpoint (packyapi.com by default) and requires this key." >&2
             exit 1
           fi
 
