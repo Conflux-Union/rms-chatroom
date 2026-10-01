@@ -1,0 +1,231 @@
+name: Changelog
+
+# rms-chatroom's changelog pipeline as a reusable workflow: the shared
+# Conflux-Union generator (changelog.yml@v2) produces the validated
+# bilingual submission, and the render job turns it into every format
+# this project ships — release notes, the zh/en updater halves, the
+# structured manifests, the rolling history, and the changelog.ts module
+# embedded into web/desktop builds.
+
+on:
+  workflow_call:
+    inputs:
+      tag-name:
+        description: 'Release tag, e.g. v1.0.7-fix-2(33).'
+        required: true
+        type: string
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+jobs:
+  resolve:
+    name: Resolve Version Info
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      code: ${{ steps.version.outputs.code }}
+      previous_tag: ${{ steps.version.outputs.previous_tag }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Extract version from tag
+        id: version
+        env:
+          TAG_INPUT: ${{ inputs.tag-name }}
+        run: |
+          set -euo pipefail
+
+          TAG_NAME="$TAG_INPUT"
+          VERSION=$(echo "$TAG_NAME" | sed -E 's/v([^(]+)\(([^)]+)\)/\1/')
+          CODE=$(echo "$TAG_NAME" | sed -E 's/v([^(]+)\(([^)]+)\)/\2/')
+
+          # Previous tag by version sort — the same logic the release body
+          # has always used; handles v1.0.24-fix-1(69) style tags that git
+          # describe cannot rank.
+          PREVIOUS_TAG=$(git tag --sort=-version:refname | { grep -A1 "^${TAG_NAME}$" || true; } | tail -n1)
+          if [[ -z "$PREVIOUS_TAG" || "$PREVIOUS_TAG" == "$TAG_NAME" ]]; then
+            PREVIOUS_TAG=""
+          fi
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "code=$CODE" >> "$GITHUB_OUTPUT"
+          echo "previous_tag=$PREVIOUS_TAG" >> "$GITHUB_OUTPUT"
+
+          echo "Extracted: version=$VERSION, code=$CODE, previous=$PREVIOUS_TAG"
+  generate:
+    name: Generate Changelog (AI)
+    needs: resolve
+    uses: Conflux-Union/.github/.github/workflows/changelog.yml@v2
+    with:
+      tag: ${{ inputs.tag-name }}
+      previous-tag: ${{ needs.resolve.outputs.previous_tag }}
+      exclude: |
+        .github/**
+        scripts/**
+        README.md
+        pnpm-lock.yaml
+      model: ${{ vars.CHANGELOG_MODEL || 'mimo-v2.6-flash' }}
+      artifact-name: changelog-raw
+    secrets: inherit
+  render:
+    name: Render changelog formats
+    needs: [resolve, generate]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      VERSION_NAME: ${{ needs.resolve.outputs.version }}
+      VERSION_CODE: ${{ needs.resolve.outputs.code }}
+      TAG_NAME: ${{ inputs.tag-name }}
+      PREVIOUS_TAG: ${{ needs.resolve.outputs.previous_tag }}
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - name: Download raw changelog
+        uses: actions/download-artifact@v8
+        with:
+          name: changelog-raw
+      - name: Render release-note formats
+        run: |
+          set -euo pipefail
+
+          # Render one markdown half per language. The desktop updater
+          # reassembles these into latest.json notes with a '---' separator
+          # that AppUpdater.vue splits per locale.
+          jq -r '
+            def section($heading; $items; $key):
+              if ($items | length) == 0 then ""
+              else "### " + $heading + "\n\n" + ($items | map("- " + .[$key]) | join("\n"))
+              end;
+            [section("✨ 新增与改进"; .improvements; "zh"),
+             section("🐛 问题修复"; .fixes; "zh")]
+            | map(select(length > 0)) | join("\n\n")
+          ' generated-changelog.json > notes-zh.md
+
+          jq -r '
+            def section($heading; $items; $key):
+              if ($items | length) == 0 then ""
+              else "### " + $heading + "\n\n" + ($items | map("- " + .[$key]) | join("\n"))
+              end;
+            [section("✨ New & Improved"; .improvements; "en"),
+             section("🐛 Bug Fixes"; .fixes; "en")]
+            | map(select(length > 0)) | join("\n\n")
+          ' generated-changelog.json > notes-en.md
+
+          mkdir -p release-notes
+          {
+            cat notes-zh.md
+            printf '\n---\n\n'
+            cat notes-en.md
+            if [[ -n "$PREVIOUS_TAG" ]]; then
+              printf '\n\n**Full commit history:** [`%s...%s`](%s/%s/compare/%s...%s)\n' \
+                "$PREVIOUS_TAG" "$TAG_NAME" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" \
+                "$PREVIOUS_TAG" "$TAG_NAME"
+            fi
+          } > release-notes/changelog.md
+
+          # Structured manifest consumed by the Android updater (fetched as a
+          # release asset) and embedded into web/desktop/Android builds. The
+          # shared generator's reference ids stay out of the shipped formats.
+          jq --arg version "$VERSION_NAME" --argjson code "$VERSION_CODE" \
+             --arg tag "$TAG_NAME" --arg date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '
+            .improvements |= map(del(.references))
+            | .fixes |= map(del(.references))
+            | {version: $version, code: $code, tag: $tag, date: $date,
+               improvements: .improvements, fixes: .fixes}
+          ' generated-changelog.json > release-notes/changelog.json
+
+          # Rolling history manifest (newest first, capped at 15 releases):
+          # clients merge every release inside (installed code, latest code]
+          # so skipped versions show their changes too. Carry the previous
+          # release's history forward; releases predating the asset start a
+          # fresh list.
+          if [[ -n "$PREVIOUS_TAG" ]]; then
+            gh release download "$PREVIOUS_TAG" -R "$GITHUB_REPOSITORY" \
+              -p changelog-history.json -O previous-changelog-history.json || true
+          fi
+          [[ -f previous-changelog-history.json ]] || printf '[]' > previous-changelog-history.json
+          jq -s --slurpfile cur release-notes/changelog.json '
+            [$cur[0]] + ((.[0] // []) | map(select(.code < $cur[0].code)) | .[0:14])
+          ' previous-changelog-history.json > release-notes/changelog-history.json
+
+          # changelog.ts consumed as-is by the web and desktop builds (same
+          # delivery path as version.ts: committed placeholder, CI overwrite).
+          python3 - release-notes/changelog-history.json release-notes/changelog.ts << 'PYEOF'
+          import json
+          import sys
+
+          HEAD = """// Auto-generated by GitHub Actions on release builds - DO NOT EDIT.
+          // The committed placeholder carries dev values (code 0, empty items);
+          // release builds overwrite this file with the AI-generated changelog
+          // history (newest first).
+
+          export interface ChangelogEntry { en: string; zh: string }
+
+          export interface ReleaseChangelog {
+            version: string
+            code: number
+            tag?: string
+            date: string
+            improvements: ChangelogEntry[]
+            fixes: ChangelogEntry[]
+          }
+
+          export const CHANGELOG_HISTORY: ReleaseChangelog[] = """
+
+          TAIL = """
+
+          export const CHANGELOG: ReleaseChangelog = CHANGELOG_HISTORY[0]
+
+          /**
+           * Flatten every release inside (fromCode, toCode] into one merged
+           * view so a user who skipped versions sees all of their changes in
+           * a single dialog. `history` is newest-first; entries render
+           * oldest -> newest with duplicates (same English text) removed.
+           * Returns the newest release unchanged when there is nothing to
+           * merge (fresh installs, unknown fromCode).
+           */
+          export function mergeChangelog(
+            history: ReleaseChangelog[],
+            fromCode: number | null,
+            toCode: number,
+          ): ReleaseChangelog {
+            const newest = history[0]
+            if (fromCode == null || !Number.isFinite(fromCode) || fromCode >= toCode) {
+              return newest
+            }
+            const window = history.filter(c => c.code > fromCode && c.code <= toCode).reverse()
+            if (window.length === 0) return newest
+            const improvements: ChangelogEntry[] = []
+            const fixes: ChangelogEntry[] = []
+            const add = (list: ChangelogEntry[], entry: ChangelogEntry) => {
+              if (!list.some(item => item.en === entry.en)) list.push(entry)
+            }
+            for (const release of window) {
+              release.improvements.forEach(entry => add(improvements, entry))
+              release.fixes.forEach(entry => add(fixes, entry))
+            }
+            return { ...newest, improvements, fixes }
+          }
+          """
+
+          with open(sys.argv[1], encoding="utf-8") as handle:
+              history = json.load(handle)
+          with open(sys.argv[2], "w", encoding="utf-8") as handle:
+              handle.write(HEAD)
+              handle.write(json.dumps(history, ensure_ascii=False, indent=2))
+              handle.write(TAIL)
+          PYEOF
+
+          cp notes-zh.md notes-en.md release-notes/
+          echo "--- changelog.md ---"
+          cat release-notes/changelog.md
+          echo "--- history entries: $(jq 'length' release-notes/changelog-history.json) ---"
+      - name: Upload changelog
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-changelog
+          path: release-notes/
+          if-no-files-found: error
+          retention-days: 7
