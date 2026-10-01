@@ -58,7 +58,7 @@ jobs:
   generate:
     name: Generate Changelog (AI)
     needs: resolve
-    uses: Conflux-Union/.github/.github/workflows/changelog.yml@v2
+    uses: Conflux-Union/.github/.github/workflows/changelog.yml@v3
     with:
       tag: ${{ inputs.tag-name }}
       previous-tag: ${{ needs.resolve.outputs.previous_tag }}
@@ -90,48 +90,42 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Render one markdown half per language. The desktop updater
-          # reassembles these into latest.json notes with a '---' separator
-          # that AppUpdater.vue splits per locale.
-          jq -r '
-            def section($heading; $items; $key):
-              if ($items | length) == 0 then ""
-              else "### " + $heading + "\n\n" + ($items | map("- " + .[$key]) | join("\n"))
-              end;
-            [section("✨ 新增与改进"; .improvements; "zh"),
-             section("🐛 问题修复"; .fixes; "zh")]
-            | map(select(length > 0)) | join("\n\n")
-          ' generated-changelog.json > notes-zh.md
+          # The shared generator already rendered the unified bilingual
+          # changelog (en sections, --- separator, zh sections, citations,
+          # compare link); ship it as-is.
+          mkdir -p release-notes
+          cp changelog.md release-notes/changelog.md
 
+          # Single-language halves for the desktop updater, reassembled by
+          # create-release into latest.json notes with a '---' separator
+          # that AppUpdater.vue splits per locale: the same unified
+          # headings and citations, one locale per file.
           jq -r '
-            def section($heading; $items; $key):
+            def section($heading; $items):
               if ($items | length) == 0 then ""
-              else "### " + $heading + "\n\n" + ($items | map("- " + .[$key]) | join("\n"))
+              else "## " + $heading + "\n\n" + ($items | map("- " + .en + .citations) | join("\n"))
               end;
-            [section("✨ New & Improved"; .improvements; "en"),
-             section("🐛 Bug Fixes"; .fixes; "en")]
+            [section("Improvements"; .improvements), section("Fixes"; .fixes)]
             | map(select(length > 0)) | join("\n\n")
           ' generated-changelog.json > notes-en.md
 
-          mkdir -p release-notes
-          {
-            cat notes-zh.md
-            printf '\n---\n\n'
-            cat notes-en.md
-            if [[ -n "$PREVIOUS_TAG" ]]; then
-              printf '\n\n**Full commit history:** [`%s...%s`](%s/%s/compare/%s...%s)\n' \
-                "$PREVIOUS_TAG" "$TAG_NAME" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" \
-                "$PREVIOUS_TAG" "$TAG_NAME"
-            fi
-          } > release-notes/changelog.md
+          jq -r '
+            def section($heading; $items):
+              if ($items | length) == 0 then ""
+              else "## " + $heading + "\n\n" + ($items | map("- " + .zh + .citations) | join("\n"))
+              end;
+            [section("改进"; .improvements), section("修复"; .fixes)]
+            | map(select(length > 0)) | join("\n\n")
+          ' generated-changelog.json > notes-zh.md
 
           # Structured manifest consumed by the Android updater (fetched as a
           # release asset) and embedded into web/desktop/Android builds. The
-          # shared generator's reference ids stay out of the shipped formats.
+          # shared generator's reference ids and rendered citations stay out
+          # of the shipped formats.
           jq --arg version "$VERSION_NAME" --argjson code "$VERSION_CODE" \
              --arg tag "$TAG_NAME" --arg date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '
-            .improvements |= map(del(.references))
-            | .fixes |= map(del(.references))
+            .improvements |= map(del(.references, .citations))
+            | .fixes |= map(del(.references, .citations))
             | {version: $version, code: $code, tag: $tag, date: $date,
                improvements: .improvements, fixes: .fixes}
           ' generated-changelog.json > release-notes/changelog.json
