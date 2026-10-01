@@ -10,10 +10,6 @@ import { reportAvatarImgError, reportAvatarMissing } from '../utils/avatarTeleme
 import { t } from '../i18n'
 import { Volume2, VolumeX, Mic, MicOff, Phone, Crown, Link, Copy, Check, UserX, Monitor, MonitorOff, Maximize, Minimize } from 'lucide-vue-next'
 
-// Detect iOS devices
-const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-  (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
-
 const API_BASE = import.meta.env.VITE_API_BASE || ''
 
 const chat = useChatStore()
@@ -479,32 +475,16 @@ function closeInviteDialog() {
                     <Mic v-if="participant.isSpeaking" class="speaking-icon" :size="14" />
                   </div>
                   <div v-if="!participant.isLocal" class="volume-control">
-                    <!-- iOS: show mute toggle (volume control not supported) -->
-                    <template v-if="isIOS">
-                      <Volume2 class="volume-icon" :size="14" />
-                      <input
-                        type="range"
-                        class="volume-slider"
-                        min="0"
-                        max="300"
-                        :value="participant.volume"
-                        @input="handleVolumeChange(participant.id, $event)"
-                      />
-                      <span class="volume-value">{{ participant.volume }}%</span>
-                    </template>
-                    <!-- Non-iOS: show volume slider -->
-                    <template v-else>
-                      <Volume2 class="volume-icon" :size="14" />
-                      <input
-                        type="range"
-                        class="volume-slider"
-                        min="0"
-                        max="100"
-                        :value="participant.volume"
-                        @input="handleVolumeChange(participant.id, $event)"
-                      />
-                      <span class="volume-value">{{ participant.volume }}%</span>
-                    </template>
+                    <Volume2 class="volume-icon" :size="14" />
+                    <input
+                      type="range"
+                      class="volume-slider"
+                      min="0"
+                      max="300"
+                      :value="participant.volume"
+                      @input="handleVolumeChange(participant.id, $event)"
+                    />
+                    <span class="volume-value">{{ participant.volume }}%</span>
                   </div>
                 </div>
                 <!-- Swipe action buttons -->
@@ -1115,35 +1095,6 @@ function closeInviteDialog() {
   flex-shrink: 0;
   white-space: nowrap;
   text-align: right;
-}
-
-/* iOS mute button styles */
-.ios-mute-btn {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  background: var(--surface-glass);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s ease;
-}
-
-.ios-mute-btn:hover {
-  background: rgba(255, 255, 255, 0.15);
-}
-
-.ios-mute-btn.muted {
-  background: var(--color-error, #ef4444);
-  border-color: var(--color-error, #ef4444);
-}
-
-.ios-volume-hint {
-  font-size: 12px;
-  color: var(--color-text-muted);
-  margin-left: 8px;
 }
 
 .voice-controlss {

@@ -215,16 +215,20 @@ export const useVoiceStore = defineStore('voice', () => {
     return `${participantId}:screen-share`
   }
 
-  // Same perceptual curve as the non-iOS microphone volume path
-  function screenShareVolumeGain(volume: number): number {
-    return Math.pow(Math.max(0, Math.min(volume, 100)) / 100, 2.6)
+  // Unified volume -> gain mapping for all remote audio (mics and share
+  // audio): perceptual ^2.6 curve up to 100% (matches the legacy
+  // audioElement.volume curve), linear boost above 100%. Both branches meet
+  // at exactly 1.0 when volume is 100. Hard ceiling 300% = gain 3.0.
+  function participantVolumeGain(volume: number): number {
+    if (volume <= 100) return Math.pow(Math.max(0, volume) / 100, 2.6)
+    return Math.min(volume, 300) / 100
   }
 
   function applyScreenShareVolume(participantId: string, volume: number): void {
     const audio = participantAudioMap.get(screenShareAudioKey(participantId))
     if (!audio) return
-    if (audio.gainNode) audio.gainNode.gain.value = screenShareVolumeGain(volume)
-    else audio.audioElement.volume = screenShareVolumeGain(volume)
+    if (audio.gainNode) audio.gainNode.gain.value = participantVolumeGain(volume)
+    else audio.audioElement.volume = participantVolumeGain(volume)
     audio.volume = volume
   }
 
@@ -259,8 +263,21 @@ export const useVoiceStore = defineStore('voice', () => {
     if (!audioContext.value) {
       audioContext.value = new (window.AudioContext || (window as any).webkitAudioContext)()
       audioContextInitialized.value = true
+      applyOutputSinkToContext(audioContext.value)
     }
     return audioContext.value
+  }
+
+  // Audible voice playback flows through the AudioContext, so output device
+  // switching must target the context itself. Chromium-only; browsers without
+  // AudioContext.setSinkId keep the per-element fallback in
+  // setAudioOutputDevice (which only reaches element-path participants).
+  function applyOutputSinkToContext(ctx: AudioContext): void {
+    const sink = (ctx as AudioContext & { setSinkId?: (id: string) => Promise<void> }).setSinkId
+    if (!sink) return
+    sink.call(ctx, selectedAudioOutput.value || '').catch((e) => {
+      console.error('Failed to set AudioContext output device: ' + e)
+    })
   }
 
   // iOS-specific: Resume AudioContext - must be called in user gesture sync stack
@@ -279,9 +296,9 @@ export const useVoiceStore = defineStore('voice', () => {
     return ctx.state === 'running'
   }
 
-  // Initialize and activate AudioContext immediately on user interaction (iOS requirement)
+  // Initialize and activate AudioContext immediately on user interaction
+  // (iOS requirement, and Chrome autoplay policy benefits equally)
   async function activateAudioContext(): Promise<boolean> {
-    if (!isIOS()) return true
     const audioElements = document.querySelectorAll('audio[data-livekit-audio="true"]')
     audioElements.forEach((el) => {
       ;(el as HTMLAudioElement).muted = true
@@ -303,16 +320,16 @@ export const useVoiceStore = defineStore('voice', () => {
     return ctx.state === 'running'
   }
 
-  // Connect audio nodes for iOS - handle Web Audio API routing using MediaStream
+  // Connect audio nodes - handle Web Audio API routing using MediaStream.
+  // Unified path for every platform: per-user volume above 100% is only
+  // possible through a GainNode (HTMLMediaElement.volume caps at 1.0).
   function connectAudioNodes(
     participantId: string,
     audioElement: HTMLAudioElement,
     volume: number
   ): boolean {
-    if (!isIOS()) return true
-
     audioElement.volume = 0.0 // Mute native volume
-    audioElement.muted = true // Ensure not muted
+    audioElement.muted = true // The graph is the audible path
     const audioElements = document.querySelectorAll('audio[data-livekit-audio="true"]')
     audioElements.forEach((el) => {
       ;(el as HTMLAudioElement).muted = true
@@ -337,9 +354,7 @@ export const useVoiceStore = defineStore('voice', () => {
       const sourceNode = ctx.createMediaStreamSource(mediaStream)
       const gainNode = ctx.createGain()
 
-      // Set initial gain based on volume (0-300% mapped to 0.0-3.0)
-      const gain = Math.max(0, Math.min(3, volume / 100))
-      gainNode.gain.value = gain
+      gainNode.gain.value = participantVolumeGain(volume)
 
       // Connect nodes: source -> gain -> master
       const master = ensureMasterGain(ctx)
@@ -371,31 +386,52 @@ export const useVoiceStore = defineStore('voice', () => {
 
 
   let masterGain: GainNode | null = null
+  let outputLimiter: WaveShaperNode | null = null
+
+  // Soft-clip ceiling for boosted (>100%) playback: identity below the knee,
+  // tanh saturation above it, so gains up to 3.0 never hard-clip at the
+  // output. Playback at 100% or below only ever touches the identity part.
+  function softClipCurve() {
+    const n = 2048
+    const curve = new Float32Array(n)
+    const knee = 0.8
+    for (let i = 0; i < n; i++) {
+      const x = (i / (n - 1)) * 2 - 1
+      const a = Math.abs(x)
+      curve[i] = a <= knee ? x : Math.sign(x) * (knee + (1 - knee) * Math.tanh((a - knee) / (1 - knee)))
+    }
+    return curve
+  }
 
   function ensureMasterGain(ctx: AudioContext): GainNode {
     if (!masterGain) {
       masterGain = ctx.createGain()
       masterGain.gain.value = 1
     }
+    if (!outputLimiter) {
+      outputLimiter = ctx.createWaveShaper()
+      outputLimiter.curve = softClipCurve()
+      outputLimiter.oversample = '4x'
+    }
+
+    // Audible chain: per-source gains -> master -> limiter -> target
+    try { masterGain.disconnect() } catch {}
+    try { outputLimiter.disconnect() } catch {}
+    masterGain.connect(outputLimiter)
 
     // iOS：put WebAudio output into <audio> for playback
     if (isIOS()) {
       if (!bgDestNode) {
         bgDestNode = ctx.createMediaStreamDestination()
       }
-
-      // Reconnect master gain to bgDestNode
-      try { masterGain.disconnect() } catch {}
-      masterGain.connect(bgDestNode)
+      outputLimiter.connect(bgDestNode)
 
       const el = ensureBackgroundAudioElement()
       if (el.srcObject !== bgDestNode.stream) {
         el.srcObject = bgDestNode.stream
       }
     } else {
-      // Non-iOS: connect master gain directly to destination
-      try { masterGain.disconnect() } catch {}
-      masterGain.connect(ctx.destination)
+      outputLimiter.connect(ctx.destination)
     }
 
     return masterGain
@@ -561,6 +597,11 @@ export const useVoiceStore = defineStore('voice', () => {
       localStorage.removeItem(STORAGE_KEY_OUTPUT)
     }
 
+    // The Web Audio graph carries the audible playback; switch its sink first
+    if (audioContext.value) {
+      applyOutputSinkToContext(audioContext.value)
+    }
+
     // Apply to all audio elements
     const audioElements = document.querySelectorAll('audio[data-livekit-audio="true"]')
     const targetId = deviceId || 'default'
@@ -601,15 +642,14 @@ export const useVoiceStore = defineStore('voice', () => {
     // iOS user-gesture requirement below).
     const leavePromise = isConnected.value ? disconnect() : null
 
-    // CRITICAL: Activate AudioContext IMMEDIATELY in user gesture call stack (iOS requirement)
+    // CRITICAL: Activate AudioContext IMMEDIATELY in user gesture call stack.
+    // All platforms route remote audio through Web Audio now; without a
+    // running context, playback falls back to element volume (max 100%).
     // This must happen BEFORE any async operations
-    let audioActivatedPromise: Promise<boolean> | null = null
+    const audioActivatedPromise = activateAudioContext()
 
+    // iOS: play bgaudio so the Web Audio session follows background-audio policy
     if (isIOS()) {
-      // Activate AudioContext
-      audioActivatedPromise = activateAudioContext()
-
-      // Play bgaudio
       const el = ensureBackgroundAudioElement()
       const playPromise = el.play()
       if (playPromise && typeof (playPromise as any).catch === 'function') {
@@ -617,13 +657,11 @@ export const useVoiceStore = defineStore('voice', () => {
           console.error('bgAudio play failed:', e)
         })
       }
-    } else {
-      audioActivatedPromise = Promise.resolve(true)
     }
 
     // Waiting for async operations
     const audioActivated = await audioActivatedPromise
-    if (isIOS() && !audioActivated) {
+    if (!audioActivated) {
       console.warn('AudioContext activation failed, volume control may not work')
     }
     
@@ -723,22 +761,18 @@ export const useVoiceStore = defineStore('voice', () => {
 
             const savedVolume = userVolumes.value.get(participant.identity) ?? 100
 
-            if (isIOS()) {
-              // iOS: Use Web Audio API for volume control
-              connectAudioNodes(participant.identity, audioElement, savedVolume)
-              audioElement.volume = 0.0 // Mute native volume
-              audioElement.muted = true // Ensure not muted
-              const audioElements = document.querySelectorAll('audio[data-livekit-audio="true"]')
-              audioElements.forEach((el) => {
-                ;(el as HTMLAudioElement).muted = true
-                ;(el as HTMLAudioElement).volume = 0.0
-              })
-            } else {
-              // Non-iOS: use native audioElement.volume
-              audioElement.volume = Math.pow(Math.max(0, Math.min(savedVolume, 100)) / 100, 2.6)
-              participantAudioMap.set(participant.identity, { 
-                audioElement, 
-                volume: savedVolume 
+            // Route playback through the shared Web Audio graph so per-user
+            // volume above 100% works on every platform. The element itself
+            // is muted either way; only the graph (or the fallback below)
+            // is audible.
+            const connected = connectAudioNodes(participant.identity, audioElement, savedVolume)
+            if (!connected) {
+              // No graph (AudioContext unavailable): native element volume
+              // caps at 100%
+              audioElement.volume = participantVolumeGain(Math.min(savedVolume, 100))
+              participantAudioMap.set(participant.identity, {
+                audioElement,
+                volume: savedVolume
               })
             }
             
@@ -766,17 +800,13 @@ export const useVoiceStore = defineStore('voice', () => {
 
             const savedVolume = screenShareVolumes.value.get(participant.identity) ?? 100
 
-            if (isIOS()) {
-              // iOS: route through the Web Audio graph like microphone
-              // tracks, so the element-level mutes applied elsewhere (which
-              // iOS playback needs) cannot silence the share audio
-              connectAudioNodes(screenShareAudioKey(participant.identity), audioElement, savedVolume)
-              // connectAudioNodes maps volume linearly; apply the shared
-              // perceptual curve instead
-              const audio = participantAudioMap.get(screenShareAudioKey(participant.identity))
-              if (audio?.gainNode) audio.gainNode.gain.value = screenShareVolumeGain(savedVolume)
-            } else {
-              audioElement.volume = screenShareVolumeGain(savedVolume)
+            // Same unified graph routing as mic tracks (share audio volume
+            // itself stays 0-100). Graph routing also keeps share audio
+            // audible regardless of the element-level mutes applied for
+            // Web Audio playback.
+            const connected = connectAudioNodes(screenShareAudioKey(participant.identity), audioElement, savedVolume)
+            if (!connected) {
+              audioElement.volume = participantVolumeGain(savedVolume)
               participantAudioMap.set(screenShareAudioKey(participant.identity), {
                 audioElement,
                 volume: savedVolume,
@@ -899,10 +929,8 @@ export const useVoiceStore = defineStore('voice', () => {
 
       await room.value.localParticipant.setMicrophoneEnabled(true)
 
-      // Resume AudioContext after connection on iOS if needed
-      if (isIOS()) {
-        await resumeAudioContext()
-      }
+      // Resume AudioContext after connection if needed (no-op when running)
+      await resumeAudioContext()
 
       isMuted.value = false
       isDeafened.value = false
@@ -964,6 +992,15 @@ export const useVoiceStore = defineStore('voice', () => {
       masterGain = null
     }
 
+    if (outputLimiter) {
+      outputLimiter.disconnect()
+      outputLimiter = null
+    }
+
+    // Belongs to the closed AudioContext above; keeping it stale would make
+    // the next join connect nodes across two different contexts
+    bgDestNode = null
+
     // Release the screen share lock before clearing state; the server also
     // self-heals stale locks, but this keeps the normal leave path immediate.
     if (isScreenSharing.value) {
@@ -1024,24 +1061,23 @@ export const useVoiceStore = defineStore('voice', () => {
   bindMicHotkeyOnce()
 
   function setGlobalMute(muted: boolean) {
-    const audioElements = document.querySelectorAll('audio[data-livekit-audio="true"]')
-    // iOS change masterGain 
-    if (isIOS()) {
-      const ctx = audioContext.value
-      if (!ctx) return
-
-      const master = ensureMasterGain(ctx)
-      master.gain.value = muted ? 0 : 1
-      audioElements.forEach((el) => {
-        ;(el as HTMLAudioElement).muted = true
-        ;(el as HTMLAudioElement).volume = 0.0
-      })
-    } else {
-      // other platforms mute via audioElement.muted
-      audioElements.forEach((el) => {
-        ;(el as HTMLAudioElement).muted = muted
-      })
+    // Graph-routed playback (all platforms): mute at the master gain
+    if (audioContext.value && masterGain) {
+      masterGain.gain.value = muted ? 0 : 1
     }
+
+    const audioElements = document.querySelectorAll('audio[data-livekit-audio="true"]')
+    audioElements.forEach((el) => {
+      const audioEl = el as HTMLAudioElement
+      if (connectedAudioElements.has(audioEl)) {
+        // Graph-routed: element stays silent by design
+        audioEl.muted = true
+        audioEl.volume = 0.0
+      } else {
+        // Element fallback path (no graph): audibility toggles here
+        audioEl.muted = muted
+      }
+    })
   }
 
   function toggleDeafen() {
@@ -1080,29 +1116,22 @@ export const useVoiceStore = defineStore('voice', () => {
     // Apply volume
     const participantAudio = participantAudioMap.get(participantId)
     if (participantAudio) {
-      if (isIOS() && participantAudio.gainNode) {
-        // iOS: Use Web Audio API gain control
-        let gain = 0;
-
-        if (clampedVolume <= 100) {
-          gain = Math.pow(Math.max(0, Math.min(clampedVolume, 100)) / 100, 2.6);
-        } else {
-          gain = clampedVolume / 100;
+      if (participantAudio.gainNode) {
+        // Web Audio graph path (all platforms)
+        if (isIOS()) {
+          // iOS Safari spontaneously unmutes elements; re-enforce
+          const audioElements = document.querySelectorAll('audio[data-livekit-audio="true"]')
+          audioElements.forEach((el) => {
+            ;(el as HTMLAudioElement).muted = true
+          })
         }
 
-        // (20*Math.log(clampedVolume+1)/Math.log(10))/(20*Math.log(301)/Math.log(10))*3.0
-
-        const audioElements = document.querySelectorAll('audio[data-livekit-audio="true"]')
-        audioElements.forEach((el) => {
-          ;(el as HTMLAudioElement).muted = true
-        })
-
-        participantAudio.gainNode.gain.value = gain
-      } else if (!isIOS() && participantAudio.audioElement) {
-        // Non-iOS: use native volume (max 100%)
-        participantAudio.audioElement.volume = Math.pow(Math.max(0, Math.min(clampedVolume, 100)) / 100, 2.6);
+        participantAudio.gainNode.gain.value = participantVolumeGain(clampedVolume)
+      } else if (participantAudio.audioElement) {
+        // Element fallback: native volume caps at 100%
+        participantAudio.audioElement.volume = participantVolumeGain(Math.min(clampedVolume, 100))
       }
-      
+
       // Update stored volume
       participantAudio.volume = clampedVolume
       participantAudioMap.set(participantId, participantAudio)
