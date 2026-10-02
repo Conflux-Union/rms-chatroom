@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.media.AudioAttributes
 import android.media.AudioManager
+import android.media.MediaCodecList
 import android.util.Log
 import com.twilio.audioswitch.AudioDevice
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -107,6 +108,27 @@ class LiveKitManager @Inject constructor(
 ) {
     companion object {
         private const val TAG = "LiveKitManager"
+
+        /**
+         * Whether the device exposes a hardware AVC (H.264) encoder. The name
+         * filter mirrors libwebrtc's MediaCodecUtils software-codec list so
+         * the result matches what the SDK's encoder factory would actually
+         * pick; without a hardware encoder there is no H.264 encoder at all
+         * (this webrtc build has no OpenH264) and publishing must stay on VP8.
+         */
+        fun hasHardwareAvcEncoder(): Boolean {
+            val softwarePrefixes = listOf("OMX.google", "c2.android", "c2.google", "AVCEncoder")
+            return try {
+                MediaCodecList(MediaCodecList.REGULAR_CODECS).codecInfos.any { info ->
+                    info.isEncoder &&
+                        info.supportedTypes.any { it.equals("video/avc", ignoreCase = true) } &&
+                        softwarePrefixes.none { info.name.startsWith(it) }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to enumerate video encoders", e)
+                false
+            }
+        }
         private const val PREFS_NAME = "rms_voice_prefs"
         private const val KEY_SCREEN_SHARE_IGNORED = "screen_share_ignored"
     }
@@ -287,20 +309,22 @@ class LiveKitManager @Inject constructor(
                 red = true    // Enable redundant audio data for reliability
             )
 
-            // Screen share capture at 1080p30; publish codec stays on the SDK
-            // default (VP8 + simulcast). Pinning "av1"/"vp9" here produced a
-            // track that signaled fine but never sent a single RTP packet
-            // (SFU reported FEED_DRY) on both arm64 and x86_64 devices, so
-            // screen sharing stayed black for viewers. Every LiveKit client
-            // decodes VP8, and the SFU degrades per subscriber through the
-            // simulcast layers.
+            // Screen share capture at 1080p30, published as hardware H.264 when
+            // the device has an AVC encoder: same plain-simulcast publish path
+            // as the SDK-default VP8 (the old "av1"/"vp9" pins take the SDK's
+            // SVC path — forced L3T3_KEY + dynacast — and produced a track that
+            // signaled fine but never sent a single RTP packet, SFU reported
+            // FEED_DRY) while encoding on dedicated silicon instead of CPU-bound
+            // libvpx. This webrtc build ships no software H.264 (OpenH264), so
+            // devices without a hardware AVC encoder (emulators) stay on VP8.
             val screenShareCaptureDefaults = LocalVideoTrackOptions(
                 captureParams = ScreenSharePresets.H1080_FPS30.capture
             )
             val screenSharePublishDefaults = VideoTrackPublishDefaults(
                 videoEncoding = VideoEncoding(maxBitrate = 2_000_000, maxFps = 30),
                 simulcast = true,
-                degradationPreference = DegradationPreference.MAINTAIN_FRAMERATE  // Prioritize framerate
+                videoCodec = if (hasHardwareAvcEncoder()) "h264" else "vp8",
+                degradationPreference = DegradationPreference.MAINTAIN_FRAMERATE  // Prioritize framerate (matches web)
             )
 
             val roomOptions = RoomOptions(
