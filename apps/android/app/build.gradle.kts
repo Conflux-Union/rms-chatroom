@@ -169,6 +169,8 @@ dependencies {
     implementation(libs.androidx.material.icons.extended)
     implementation(libs.androidx.navigation.compose)
     debugImplementation(libs.androidx.ui.tooling)
+    // Debug-only: surfaces the LiveKit SDK's Timber logs in logcat
+    debugImplementation("com.jakewharton.timber:timber:5.0.1")
 
     // Browser (Custom Tabs for SSO)
     implementation(libs.androidx.browser)

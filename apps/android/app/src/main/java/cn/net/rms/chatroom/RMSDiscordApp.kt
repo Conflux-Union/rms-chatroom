@@ -47,6 +47,13 @@ class RMSDiscordApp : Application(), ImageLoaderFactory {
         notificationHelper.createNotificationChannels()
         telemetryReporter.installCrashHandler()
         telemetryReporter.uploadPendingCrashes()
+        if (BuildConfig.DEBUG) {
+            // The LiveKit SDK logs its publish/negotiation flow through
+            // Timber; without a tree planted all SDK-side failures are
+            // silent in logcat.
+            timber.log.Timber.plant(timber.log.Timber.DebugTree())
+            io.livekit.android.util.LKLog.loggingLevel = io.livekit.android.util.LoggingLevel.VERBOSE
+        }
     }
 
     /**
