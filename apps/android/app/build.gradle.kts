@@ -169,8 +169,10 @@ dependencies {
     implementation(libs.androidx.material.icons.extended)
     implementation(libs.androidx.navigation.compose)
     debugImplementation(libs.androidx.ui.tooling)
-    // Debug-only: surfaces the LiveKit SDK's Timber logs in logcat
-    debugImplementation("com.jakewharton.timber:timber:5.0.1")
+    // The LiveKit SDK routes its logs through Timber; the tree is planted only
+    // in debug builds (RMSDiscordApp), but the main source set references the
+    // symbol, so it must be on the release classpath too or compileReleaseKotlin fails.
+    implementation("com.jakewharton.timber:timber:5.0.1")
 
     // Browser (Custom Tabs for SSO)
     implementation(libs.androidx.browser)
