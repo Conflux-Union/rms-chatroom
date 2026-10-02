@@ -190,26 +190,6 @@ func (m *ConnectionManager) SendToUser(userID int64, msg interface{}) {
 	m.mu.RUnlock()
 }
 
-// SendToUserExclude sends to all of a user's connections except the given one.
-func (m *ConnectionManager) SendToUserExclude(userID int64, msg interface{}, exclude *Conn) {
-	data, err := json.Marshal(msg)
-	if err != nil {
-		return
-	}
-	m.mu.RLock()
-	conns := m.globals[userID]
-	for _, c := range conns {
-		if c == exclude {
-			continue
-		}
-		select {
-		case c.send <- data:
-		default:
-		}
-	}
-	m.mu.RUnlock()
-}
-
 // StartHeartbeat launches the health monitor goroutine.
 func (m *ConnectionManager) StartHeartbeat() {
 	m.heartbeatOnce.Do(func() {

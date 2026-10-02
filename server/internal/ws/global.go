@@ -93,15 +93,18 @@ func handleReadPositionUpdate(db *sql.DB, conn *Conn, msg *globalMessage) {
 		return
 	}
 
-	// Broadcast the recomputed state to the user's other connections.
-	GlobalStateManager.SendToUserExclude(int64(conn.user.ID), map[string]interface{}{
+	// Push the recomputed state to all of the user's connections, including
+	// the one that reported the position: client badge state is
+	// server-derived, so without the echo the reporting client keeps its
+	// stale unread count until the next full fetch.
+	GlobalStateManager.SendToUser(int64(conn.user.ID), map[string]interface{}{
 		"type":                     "read_position_sync",
 		"channel_id":              msg.ChannelID,
 		"last_read_message_id":    state.LastReadMessageID,
 		"unread_count":            state.UnreadCount,
 		"has_mention":             state.HasMention,
 		"last_mention_message_id": state.LastMentionMessageID,
-	}, conn)
+	})
 }
 
 func handleReadPositionSync(db *sql.DB, conn *Conn) {
