@@ -43,6 +43,7 @@ fun SettingsScreen(
     val backgroundMessageServiceEnabled by viewModel.backgroundMessageServiceEnabled.collectAsState()
     val telemetryEnabled by viewModel.telemetryEnabled.collectAsState()
     val voiceJoinLeaveAnnouncements by viewModel.voiceJoinLeaveAnnouncements.collectAsState()
+    val aiNoiseSuppression by viewModel.aiNoiseSuppression.collectAsState()
     val themeMode by viewModel.themeMode.collectAsState()
     val hasOverlayPermission by viewModel.hasOverlayPermission.collectAsState()
     val isIgnoringBatteryOptimization by viewModel.isIgnoringBatteryOptimization.collectAsState()
@@ -167,6 +168,24 @@ fun SettingsScreen(
                     )
                 }
             )
+
+            // AI noise suppression (RNNoise) on the microphone
+            SettingsItem(
+                icon = Icons.Default.AutoAwesome,
+                title = stringResource(R.string.settings_ai_noise_title),
+                subtitle = stringResource(R.string.settings_ai_noise_desc),
+                trailing = {
+                    Switch(
+                        checked = aiNoiseSuppression,
+                        onCheckedChange = { enabled ->
+                            viewModel.setAiNoiseSuppression(enabled)
+                        },
+                        colors = SwitchDefaults.colors(checkedTrackColor = Zhimo.seal)
+                    )
+                }
+            )
+
+            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
 
             // TTS engine behind the announcements: system engine status and
             // the downloadable on-device pack for devices without a system voice.

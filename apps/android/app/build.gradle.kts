@@ -66,6 +66,20 @@ android {
                 abiFilters += "x86_64"
             }
         }
+
+        // RNNoise neural noise suppression (cpp/rnnoise git submodule)
+        externalNativeBuild {
+            cmake {
+                arguments += "-DANDROID_STL=none"
+            }
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
+        }
     }
 
     // Compress native libs inside the APK (~5 MB smaller download at the

@@ -25,6 +25,7 @@ class SettingsPreferences @Inject constructor(
         private val BACKGROUND_MESSAGE_SERVICE_ENABLED = booleanPreferencesKey("background_message_service_enabled")
         private val TELEMETRY_ENABLED = booleanPreferencesKey("telemetry_enabled")
         private val VOICE_JOIN_LEAVE_ANNOUNCEMENTS = booleanPreferencesKey("voice_join_leave_announcements")
+        private val AI_NOISE_SUPPRESSION = booleanPreferencesKey("ai_noise_suppression")
         private val THEME_MODE = stringPreferencesKey("theme_mode")
         private val LAST_SEEN_VERSION_CODE = intPreferencesKey("last_seen_version_code")
         private fun lastReadMessageKey(channelId: Long) = longPreferencesKey("last_read_message_$channelId")
@@ -44,6 +45,10 @@ class SettingsPreferences @Inject constructor(
 
     val voiceJoinLeaveAnnouncements: Flow<Boolean> = dataStore.data.map { prefs ->
         prefs[VOICE_JOIN_LEAVE_ANNOUNCEMENTS] ?: true
+    }
+
+    val aiNoiseSuppression: Flow<Boolean> = dataStore.data.map { prefs ->
+        prefs[AI_NOISE_SUPPRESSION] ?: true
     }
 
     val themeMode: Flow<ThemeMode> = dataStore.data.map { prefs ->
@@ -71,6 +76,12 @@ class SettingsPreferences @Inject constructor(
     suspend fun setVoiceJoinLeaveAnnouncements(enabled: Boolean) {
         dataStore.edit { prefs ->
             prefs[VOICE_JOIN_LEAVE_ANNOUNCEMENTS] = enabled
+        }
+    }
+
+    suspend fun setAiNoiseSuppression(enabled: Boolean) {
+        dataStore.edit { prefs ->
+            prefs[AI_NOISE_SUPPRESSION] = enabled
         }
     }
 

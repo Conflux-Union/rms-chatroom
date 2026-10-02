@@ -7,6 +7,7 @@ import android.media.AudioManager
 import android.util.Log
 import com.twilio.audioswitch.AudioDevice
 import dagger.hilt.android.qualifiers.ApplicationContext
+import cn.net.rms.chatroom.data.local.SettingsPreferences
 import io.livekit.android.AudioOptions
 import io.livekit.android.AudioType
 import io.livekit.android.LiveKit
@@ -100,7 +101,8 @@ data class ScreenShareInfo(
 
 @Singleton
 class LiveKitManager @Inject constructor(
-    @ApplicationContext private val context: Context
+    @ApplicationContext private val context: Context,
+    private val settingsPreferences: SettingsPreferences
 ) {
     companion object {
         private const val TAG = "LiveKitManager"
@@ -111,6 +113,24 @@ class LiveKitManager @Inject constructor(
     private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     private var room: Room? = null
     private var scope: CoroutineScope? = null
+
+    // Application-lifetime collector so the RNNoise processor's isEnabled()
+    // (read on the audio thread) always sees the current preference.
+    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    // AI noise suppression preference (RNNoise on the mic track). Mirrors the
+    // DataStore setting; flipping it mid-call gates the processor instantly,
+    // while the native-NS exclusion below is fixed per voice join.
+    private val _aiNoiseSuppression = MutableStateFlow(true)
+    val aiNoiseSuppression: StateFlow<Boolean> = _aiNoiseSuppression.asStateFlow()
+
+    private var rnNoiseProcessor: RnNoiseProcessor? = null
+
+    init {
+        appScope.launch {
+            settingsPreferences.aiNoiseSuppression.collect { _aiNoiseSuppression.value = it }
+        }
+    }
 
     private val _connectionState = MutableStateFlow(ConnectionState.DISCONNECTED)
     val connectionState: StateFlow<ConnectionState> = _connectionState.asStateFlow()
@@ -235,9 +255,26 @@ class LiveKitManager @Inject constructor(
                 audioAttributes = musicAudioAttributes,
                 audioStreamType = AudioManager.STREAM_MUSIC
             )
-            // High quality stereo audio capture options (matching Web's musicHighQualityStereo)
+            // AI noise suppression (RNNoise): probe the native library once so
+            // a device where it cannot load keeps the WebRTC-native noise
+            // suppression instead of shipping unprocessed audio.
+            val rnnoiseAvailable = try {
+                val probe = RnNoise.create()
+                probe?.close()
+                probe != null
+            } catch (e: Throwable) {
+                Log.e(TAG, "RNNoise native library unavailable", e)
+                false
+            }
+            val aiNoiseActive = _aiNoiseSuppression.value && rnnoiseAvailable
+            val processor = RnNoiseProcessor(_aiNoiseSuppression)
+            rnNoiseProcessor = processor
+
+            // High quality stereo audio capture options (matching Web's musicHighQualityStereo).
+            // WebRTC's own suppression is off while RNNoise runs it, so the two
+            // do not stack and muddy the voice.
             val audioTrackCaptureDefaults = LocalAudioTrackOptions(
-                noiseSuppression = true,
+                noiseSuppression = !aiNoiseActive,
                 echoCancellation = true,
                 autoGainControl = true
             )
@@ -280,6 +317,7 @@ class LiveKitManager @Inject constructor(
                     audioOptions = AudioOptions(
                         audioOutputType = musicAudioType,
                         audioProcessorOptions = AudioProcessorOptions(
+                            capturePostProcessor = processor,
                             renderPreBypass = true
                         )
                     )
@@ -318,6 +356,9 @@ class LiveKitManager @Inject constructor(
     fun disconnect() {
         scope?.cancel()
         scope = null
+
+        rnNoiseProcessor?.release()
+        rnNoiseProcessor = null
 
         room?.disconnect()
         room?.release()

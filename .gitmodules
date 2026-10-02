@@ -1,0 +1,3 @@
+[submodule "apps/android/app/src/main/cpp/rnnoise"]
+	path = apps/android/app/src/main/cpp/rnnoise
+	url = https://github.com/xiph/rnnoise.git

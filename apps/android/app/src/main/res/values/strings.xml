@@ -271,6 +271,8 @@
     <string name="settings_voice_announcements_desc_off">关闭加入/离开的朗读播报</string>
     <string name="voice_tts_joined">%1$s 加入了</string>
     <string name="voice_tts_left">%1$s 离开了</string>
+    <string name="settings_ai_noise_title">AI 降噪</string>
+    <string name="settings_ai_noise_desc">神经网络过滤键盘、风扇等背景噪声；对麦克风唱歌或演奏时建议关闭</string>
     <string name="settings_tts_engine_title">TTS 引擎</string>
     <string name="settings_tts_engine_desc">管理播报使用的语音引擎，可下载离线语音包</string>
     <string name="tts_engine_status_section">当前状态</string>

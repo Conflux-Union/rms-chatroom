@@ -38,6 +38,10 @@ class SettingsViewModel @Inject constructor(
         settingsPreferences.voiceJoinLeaveAnnouncements
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
 
+    val aiNoiseSuppression: StateFlow<Boolean> =
+        settingsPreferences.aiNoiseSuppression
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
+
     val themeMode: StateFlow<ThemeMode> = settingsPreferences.themeMode
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), ThemeMode.SYSTEM)
 
@@ -73,6 +77,12 @@ class SettingsViewModel @Inject constructor(
     fun setVoiceJoinLeaveAnnouncements(enabled: Boolean) {
         viewModelScope.launch {
             settingsPreferences.setVoiceJoinLeaveAnnouncements(enabled)
+        }
+    }
+
+    fun setAiNoiseSuppression(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsPreferences.setAiNoiseSuppression(enabled)
         }
     }
 

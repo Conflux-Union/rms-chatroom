@@ -48,6 +48,9 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
+        with:
+          # cpp/rnnoise is a git submodule required by the native build
+          submodules: recursive
 
       - name: Download changelog
         uses: actions/download-artifact@v8
