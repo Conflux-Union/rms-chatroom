@@ -139,9 +139,12 @@ func main() {
 			return permission.CanAccess(user, rule)
 		})
 
-		// New chat messages (forward ingest paths) also refresh the
-		// server-derived unread badges of eligible online users.
-		if payload["type"] == "message" {
+		// Message mutations that change server-derived unread badges also
+		// refresh them for eligible online users: new messages (forward
+		// ingest, REST create) seed first-activity baselines, soft deletes
+		// only recompute existing counts.
+		switch payload["type"] {
+		case "message":
 			if id, ok := payload["id"].(int64); ok {
 				var sender int64 = -1
 				switch uid := payload["user_id"].(type) {
@@ -150,8 +153,10 @@ func main() {
 				case int64:
 					sender = uid
 				}
-				ws.PushUnreadUpdates(db, rule, channelID, id, sender)
+				ws.PushUnreadAfterMessage(db, rule, channelID, id, sender)
 			}
+		case "message_deleted":
+			ws.PushUnreadAfterMutation(db, rule, channelID)
 		}
 	}
 

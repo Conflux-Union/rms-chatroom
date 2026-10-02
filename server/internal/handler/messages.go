@@ -604,13 +604,17 @@ func (h *MessageHandler) CreateMessage(c echo.Context) error {
 		)
 	}
 
-	// Store mentions
+	// Store mentions and resolve them to user IDs; the broadcast carries
+	// {id, username} objects so clients match by id, matching the ws send
+	// path's shape.
+	mentionPairs := []mentionResp{}
 	for _, name := range extractMentions(req.Content) {
 		// Look up user_id by username in messages for this server
 		var mentionedUID int64
 		err := h.db.QueryRow("SELECT DISTINCT user_id FROM messages WHERE username = ? LIMIT 1", name).Scan(&mentionedUID)
 		if err == nil {
-			h.db.Exec("INSERT INTO message_mentions (message_id, user_id) VALUES (?, ?)", msgID, mentionedUID)
+			h.db.Exec("INSERT IGNORE INTO message_mentions (message_id, user_id) VALUES (?, ?)", msgID, mentionedUID)
+			mentionPairs = append(mentionPairs, mentionResp{ID: mentionedUID, Username: name})
 		}
 	}
 
@@ -628,11 +632,33 @@ func (h *MessageHandler) CreateMessage(c echo.Context) error {
 		Attachments: h.loadAttachments(msgID),
 		ReplyToID:   req.ReplyToID,
 		ReplyTo:     h.loadReplyTo(req.ReplyToID),
-		Mentions:    parseMentions(req.Content),
+		Mentions:    mentionPairs,
 		Reactions:   []reactionGroupResp{},
 	}
 
 	metrics.MessagesCreated.Inc()
+
+	// Broadcast so online clients render the message live; the BroadcastFunc
+	// wiring also refreshes their unread badges. Payload matches the ws
+	// chatBroadcast shape, like the forward ingest path.
+	if BroadcastFunc != nil {
+		payload := map[string]interface{}{
+			"type":        "message",
+			"id":          resp.ID,
+			"channel_id":  channelID,
+			"user_id":     resp.UserID,
+			"username":    resp.Username,
+			"content":     resp.Content,
+			"created_at":  resp.CreatedAt,
+			"attachments": resp.Attachments,
+			"mentions":    resp.Mentions,
+		}
+		if resp.ReplyToID != nil {
+			payload["reply_to_id"] = *resp.ReplyToID
+			payload["reply_to"] = resp.ReplyTo
+		}
+		BroadcastFunc(channelID, payload)
+	}
 
 	// FORWARD channels are bridged to the game network via ChatBridge. The
 	// SSO username is the in-game account name, so it doubles as the chat

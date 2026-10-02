@@ -275,7 +275,7 @@ func handleChatMessage(db *sql.DB, ssoClient *sso.Client, conn *Conn, msg *chatM
 	})
 
 	// Recompute and push server-derived unread badges for this message.
-	PushUnreadUpdates(db, accessRule, msg.ChannelID, messageID, int64(conn.user.ID))
+	PushUnreadAfterMessage(db, accessRule, msg.ChannelID, messageID, int64(conn.user.ID))
 
 	// FORWARD channels are bridged to the game network via ChatBridge. The
 	// SSO username is the in-game account name, so it doubles as the chat
