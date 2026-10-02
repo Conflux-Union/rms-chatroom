@@ -6,6 +6,9 @@ export const messages: Record<Keys, Message> = {
   'settings.inputDevice': 'Input device',
   'settings.outputDevice': 'Output device',
   'settings.play': 'Play',
+  'settings.aiNoiseSuppression': 'AI noise suppression',
+  'settings.aiNoiseSuppressionDesc':
+    'Neural-network removal of keyboard and fan noise; turn off when singing or playing instruments into the mic',
   'settings.voiceAnnounce': 'Voice join announcement',
   'settings.voiceAnnounceDesc':
     'Speak the nickname when someone joins or leaves the current voice channel',

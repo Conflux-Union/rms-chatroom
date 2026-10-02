@@ -2,8 +2,10 @@
 import { ref, onMounted, onUnmounted, shallowRef } from 'vue'
 import { useRoute } from 'vue-router'
 import { t } from '../i18n'
-import { Room, RoomEvent, Track, RemoteParticipant, AudioPresets } from 'livekit-client'
+import { Room, RoomEvent, Track, RemoteParticipant, AudioPresets, LocalAudioTrack } from 'livekit-client'
 import { Volume2, VolumeX, Mic, MicOff, Phone, AlertCircle, UserPlus, Crown } from 'lucide-vue-next'
+import { isAiNoiseSuppressionSupported, RNNoiseTrackProcessor } from '../audio/noise-filter'
+import { buildAudioCaptureDefaults, readAiNoiseSuppression } from '../audio/capture'
 
 const API_BASE = import.meta.env.VITE_API_BASE || ''
 
@@ -167,11 +169,7 @@ async function joinVoice() {
     room.value = new Room({
       adaptiveStream: true,
       dynacast: true,
-      audioCaptureDefaults: {
-        autoGainControl: true,
-        noiseSuppression: true,
-        echoCancellation: true,
-      },
+      audioCaptureDefaults: buildAudioCaptureDefaults(readAiNoiseSuppression()),
       publishDefaults: {
         audioPreset: AudioPresets.musicHighQualityStereo,
       },
@@ -215,6 +213,7 @@ async function joinVoice() {
 
     await room.value.connect(data.url, data.token)
     await room.value.localParticipant.setMicrophoneEnabled(true)
+    await attachNoiseFilter()
 
     isMuted.value = false
     isDeafened.value = false
@@ -234,7 +233,22 @@ async function toggleMute() {
   const newMuted = !isMuted.value
   await room.value.localParticipant.setMicrophoneEnabled(!newMuted)
   isMuted.value = newMuted
+  // Unmute recreates the mic track, so the filter must be re-attached.
+  if (!newMuted) await attachNoiseFilter()
   updateParticipants()
+}
+
+// Guests get the same RNNoise filter as members (default on; no toggle UI on
+// this page). No-op when disabled or unsupported.
+async function attachNoiseFilter(): Promise<void> {
+  if (!readAiNoiseSuppression() || !isAiNoiseSuppressionSupported() || !room.value) return
+  const pub = room.value.localParticipant.getTrackPublication(Track.Source.Microphone)
+  if (!(pub?.track instanceof LocalAudioTrack)) return
+  try {
+    await pub.track.setProcessor(new RNNoiseTrackProcessor())
+  } catch (e) {
+    console.error('Noise filter attach failed: ' + e)
+  }
 }
 
 function toggleDeafen() {

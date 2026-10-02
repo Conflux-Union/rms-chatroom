@@ -3,9 +3,10 @@ import { onMounted, onUnmounted, ref, computed } from 'vue'
 import { useVoiceStore } from '../stores/voice'
 import { ZmModal, ZmSelect, ZmButton, ZmSpace, ZmProgress } from './ui'
 import type { ZmSelectOption } from './ui'
-import { Mic, Volume2, Activity, Bell, Globe } from 'lucide-vue-next'
+import { Mic, Volume2, Activity, Bell, Globe, AudioWaveform } from 'lucide-vue-next'
 import { isTauri } from '../index'
 import { isTelemetryEnabled, setTelemetryEnabled } from '../utils/telemetry'
+import { isAiNoiseSuppressionSupported } from '../audio/noise-filter'
 import { t, getLocalePreference, setLocalePreference } from '../i18n'
 import type { LocalePreference } from '../i18n'
 
@@ -46,6 +47,12 @@ const selectedLanguage = computed({
 // Voice join TTS announcement
 function toggleVoiceAnnounce() {
   voice.setVoiceAnnounceEnabled(!voice.voiceAnnounceEnabled)
+}
+
+// AI noise suppression (RNNoise) — hidden on engines without AudioWorklet
+const supportsAiNoise = isAiNoiseSuppressionSupported()
+function toggleAiNoiseSuppression() {
+  void voice.setAiNoiseSuppression(!voice.aiNoiseSuppressionEnabled)
 }
 
 // setSinkId support: Chromium yes, Firefox 135+, Safari never. Without it the
@@ -367,6 +374,24 @@ function stopOutputTest() {
             @click="outputTestPlaying ? stopOutputTest() : startOutputTest()"
           >
             {{ outputTestPlaying ? t('common.stop') : t('settings.play') }}
+          </ZmButton>
+        </div>
+      </div>
+
+      <!-- AI noise suppression -->
+      <div v-if="supportsAiNoise" class="setting-row">
+        <div class="setting-label">
+          <AudioWaveform :size="16" />
+          <span>{{ t('settings.aiNoiseSuppression') }}</span>
+        </div>
+        <div class="setting-ctrl">
+          <span class="telemetry-desc">{{ t('settings.aiNoiseSuppressionDesc') }}</span>
+          <ZmButton
+            size="small"
+            :type="voice.aiNoiseSuppressionEnabled ? 'primary' : 'default'"
+            @click="toggleAiNoiseSuppression"
+          >
+            {{ voice.aiNoiseSuppressionEnabled ? t('common.enabled') : t('common.disabled') }}
           </ZmButton>
         </div>
       </div>

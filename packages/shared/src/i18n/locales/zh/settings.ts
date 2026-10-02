@@ -4,6 +4,8 @@ export const messages = {
   'settings.inputDevice': '输入设备',
   'settings.outputDevice': '输出设备',
   'settings.play': '播放',
+  'settings.aiNoiseSuppression': 'AI 降噪',
+  'settings.aiNoiseSuppressionDesc': '神经网络过滤键盘、风扇等背景噪声；对麦克风唱歌或演奏时建议关闭',
   'settings.voiceAnnounce': '进入语音提醒',
   'settings.voiceAnnounceDesc': '有人加入或离开当前语音频道时播报其昵称',
   'settings.hotkeyWindow': '显示/隐藏窗口（全局快捷键）',

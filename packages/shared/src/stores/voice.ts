@@ -8,12 +8,14 @@ import {
   AudioPresets,
   RemoteTrackPublication,
   LocalTrackPublication,
+  LocalAudioTrack,
   ScreenSharePresets,
   setLogLevel,
 } from 'livekit-client'
 import type {
-  Channel,
-} from '../types'
+  AudioCaptureOptions,
+} from 'livekit-client'
+import type { Channel } from '../types'
 import type { VideoCodec } from 'livekit-client'
 import { useAuthStore } from './auth'
 import { useChatStore } from './chat'
@@ -21,6 +23,8 @@ import { authFetch } from '../utils/authFetch'
 import { reportTelemetryEvent } from '../utils/telemetry'
 import { reportAvatarMissing } from '../utils/avatarTelemetry'
 import { announceParticipantJoined, announceParticipantLeft } from '../composables/voiceAnnounce'
+import { isAiNoiseSuppressionSupported, RNNoiseTrackProcessor } from '../audio/noise-filter'
+import { buildAudioCaptureDefaults, readAiNoiseSuppression, STORAGE_KEY_AI_NOISE } from '../audio/capture'
 import { t } from '../i18n'
 
 const API_BASE = import.meta.env.VITE_API_BASE || ''
@@ -249,6 +253,80 @@ export const useVoiceStore = defineStore('voice', () => {
     voiceAnnounceEnabled.value = enabled
     if (enabled) localStorage.removeItem(STORAGE_KEY_ANNOUNCE)
     else localStorage.setItem(STORAGE_KEY_ANNOUNCE, 'false')
+  }
+
+  // AI noise suppression (RNNoise) on the local microphone. When off, the
+  // browser's built-in WebRTC suppression handles the mic instead.
+  const aiNoiseSuppressionEnabled = ref(readAiNoiseSuppression())
+  const aiNoiseFilterAttachedTo = shallowRef<LocalAudioTrack | null>(null)
+
+  function localMicTrack(): LocalAudioTrack | null {
+    const pub = room.value?.localParticipant.getTrackPublication(Track.Source.Microphone)
+    return pub?.track instanceof LocalAudioTrack ? pub.track : null
+  }
+
+  async function detachAiNoiseFilter(): Promise<void> {
+    const track = aiNoiseFilterAttachedTo.value
+    if (!track) return
+    aiNoiseFilterAttachedTo.value = null
+    try {
+      await track.stopProcessor()
+    } catch { /* track already stopped/replaced */ }
+  }
+
+  async function applyAiNoiseFilterToMic(): Promise<void> {
+    const track = localMicTrack()
+    if (!track) return
+    const want = aiNoiseSuppressionEnabled.value && isAiNoiseSuppressionSupported()
+    if (!want) {
+      if (aiNoiseFilterAttachedTo.value === track) await detachAiNoiseFilter()
+      return
+    }
+    if (aiNoiseFilterAttachedTo.value === track) return
+    // Drop any processor on a recycled track before attaching a fresh one.
+    await detachAiNoiseFilter()
+    try {
+      await track.setProcessor(new RNNoiseTrackProcessor())
+      aiNoiseFilterAttachedTo.value = track
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      console.error('Failed to attach noise filter: ' + msg)
+      reportTelemetryEvent('voice_noise_filter_attach_failure', msg, {})
+    }
+  }
+
+  // Constraint changes only apply at getUserMedia time, so switching the AI
+  // filter mid-call means restarting the mic track. Muted callers keep their
+  // mute; the new constraints apply on their next unmute (toggleMute passes
+  // them explicitly).
+  async function restartMicWithCaptureOptions(options: AudioCaptureOptions): Promise<void> {
+    const r = room.value
+    if (!r || !isConnected.value) return
+    if (!localMicTrack()) return
+    const muted = isMuted.value
+    await detachAiNoiseFilter()
+    await r.localParticipant.setMicrophoneEnabled(false)
+    if (!muted) {
+      await r.localParticipant.setMicrophoneEnabled(true, options)
+      await applyAiNoiseFilterToMic()
+    }
+  }
+
+  async function setAiNoiseSuppression(enabled: boolean): Promise<void> {
+    aiNoiseSuppressionEnabled.value = enabled
+    if (enabled) localStorage.removeItem(STORAGE_KEY_AI_NOISE)
+    else localStorage.setItem(STORAGE_KEY_AI_NOISE, 'false')
+
+    const r = room.value
+    if (!r || !isConnected.value) return
+    // Keep the room-level defaults in sync so SDK-internal track re-acquires
+    // (device switch) pick up the new constraints as well.
+    try {
+      r.options.audioCaptureDefaults = buildAudioCaptureDefaults(enabled, selectedAudioInput.value || undefined)
+    } catch { /* non-fatal: the explicit restart below carries the options */ }
+    await restartMicWithCaptureOptions(
+      buildAudioCaptureDefaults(enabled, selectedAudioInput.value || undefined),
+    )
   }
 
   // Avatar URL cache (from API)
@@ -690,12 +768,10 @@ export const useVoiceStore = defineStore('voice', () => {
       const newRoom = new Room({
         adaptiveStream: true,
         dynacast: true,
-        audioCaptureDefaults: {
-          autoGainControl: true,
-          noiseSuppression: true,
-          echoCancellation: true,
-          deviceId: selectedAudioInput.value || undefined,
-        },
+        audioCaptureDefaults: buildAudioCaptureDefaults(
+          aiNoiseSuppressionEnabled.value,
+          selectedAudioInput.value || undefined,
+        ),
         publishDefaults: {
           audioPreset: AudioPresets.musicHighQualityStereo,
         },
@@ -928,6 +1004,7 @@ export const useVoiceStore = defineStore('voice', () => {
       }
 
       await room.value.localParticipant.setMicrophoneEnabled(true)
+      await applyAiNoiseFilterToMic()
 
       // Resume AudioContext after connection if needed (no-op when running)
       await resumeAudioContext()
@@ -980,6 +1057,7 @@ export const useVoiceStore = defineStore('voice', () => {
   async function disconnect() {
     stopSyncInterval()
     participantAudioMap.clear()
+    await detachAiNoiseFilter()
 
     if (audioContext.value) {
       audioContext.value.close()
@@ -1036,7 +1114,13 @@ export const useVoiceStore = defineStore('voice', () => {
     const newMuted = !isMuted.value
     isMuted.value = newMuted
 
-    await room.value.localParticipant.setMicrophoneEnabled(!newMuted)
+    // Explicit capture options so a mid-call AI-filter toggle reaches the
+    // track recreated by unmute.
+    await room.value.localParticipant.setMicrophoneEnabled(
+      !newMuted,
+      buildAudioCaptureDefaults(aiNoiseSuppressionEnabled.value, selectedAudioInput.value || undefined),
+    )
+    if (!newMuted) await applyAiNoiseFilterToMic()
 
     updateParticipants()
     return isMuted.value
@@ -1486,6 +1570,8 @@ export const useVoiceStore = defineStore('voice', () => {
     detachScreenShare,
     voiceAnnounceEnabled,
     setVoiceAnnounceEnabled,
+    aiNoiseSuppressionEnabled,
+    setAiNoiseSuppression,
   }
 })
 
