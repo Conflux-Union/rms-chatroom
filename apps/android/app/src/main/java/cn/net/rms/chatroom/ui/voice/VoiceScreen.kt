@@ -43,6 +43,8 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -51,11 +53,16 @@ import android.app.Activity
 import android.content.pm.PackageManager
 import android.media.projection.MediaProjectionManager
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.compose.BackHandler
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import io.livekit.android.renderer.TextureViewRenderer
+import io.livekit.android.room.track.RemoteVideoTrack
 import cn.net.rms.chatroom.R
 import cn.net.rms.chatroom.data.livekit.AudioDeviceInfo
 import cn.net.rms.chatroom.data.livekit.AudioDeviceType
@@ -94,6 +101,16 @@ fun VoiceScreen(
     var selectedParticipant by remember { mutableStateOf<ParticipantInfo?>(null) }
     var showInviteDialog by remember { mutableStateOf(false) }
     var participantToMute by remember { mutableStateOf<ParticipantInfo?>(null) }
+    var screenShareFullscreen by remember { mutableStateOf(false) }
+    val activeScreenShare = state.remoteScreenShares.values.firstOrNull()
+
+    // Leave fullscreen when the share stops being viewable (stopped, left,
+    // ignored, or disconnected); participant switches keep the fullscreen.
+    LaunchedEffect(activeScreenShare?.participantId, activeScreenShare?.videoTrack, state.isConnected) {
+        if (activeScreenShare?.videoTrack == null || !state.isConnected) {
+            screenShareFullscreen = false
+        }
+    }
     var hasAudioPermission by remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
@@ -323,10 +340,11 @@ fun VoiceScreen(
     // MainScreen's Scaffold already consumes the system-bar insets; this
     // Scaffold is an embedded pane and must not count them again, or the
     // docked controls end up floating above an empty strip.
-    Scaffold(
-        containerColor = Color.Transparent,
-        contentWindowInsets = WindowInsets(0.dp)
-    ) { paddingValues ->
+    Box(modifier = Modifier.fillMaxSize()) {
+        Scaffold(
+            containerColor = Color.Transparent,
+            contentWindowInsets = WindowInsets(0.dp)
+        ) { paddingValues ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -352,17 +370,17 @@ fun VoiceScreen(
                 }
 
                 // Remote screen share video
-                val activeScreenShare = state.remoteScreenShares.values.firstOrNull()
                 if (activeScreenShare != null && state.isConnected) {
                     key(activeScreenShare.participantId) {
                         RemoteScreenShareView(
                             screenShare = activeScreenShare,
                             ignored = state.screenShareIgnored,
+                            fullscreenActive = screenShareFullscreen,
                             onToggleWatch = { viewModel.toggleScreenShareWatch() },
+                            onToggleFullscreen = { screenShareFullscreen = !screenShareFullscreen },
                             initRenderer = { renderer -> viewModel.initVideoRenderer(renderer) },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .aspectRatio(16f / 9f)
                                 .padding(bottom = 8.dp)
                         )
                     }
@@ -457,6 +475,17 @@ fun VoiceScreen(
                 },
                 onShowMusicPanel = { showMusicPanel = true },
                 onToggleMore = { moreControlsExpanded = !moreControlsExpanded }
+            )
+        }
+        }
+
+        // Fullscreen screen share viewing, above the whole pane
+        val fullscreenShare = if (screenShareFullscreen) activeScreenShare else null
+        if (fullscreenShare != null && fullscreenShare.videoTrack != null) {
+            ScreenShareFullscreenView(
+                screenShare = fullscreenShare,
+                initRenderer = { renderer -> viewModel.initVideoRenderer(renderer) },
+                onDismiss = { screenShareFullscreen = false }
             )
         }
     }
@@ -1408,131 +1437,305 @@ private fun AudioDeviceItem(
 private fun RemoteScreenShareView(
     screenShare: ScreenShareInfo,
     ignored: Boolean,
+    fullscreenActive: Boolean,
     onToggleWatch: () -> Unit,
+    onToggleFullscreen: () -> Unit,
     initRenderer: (TextureViewRenderer) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val videoTrack = screenShare.videoTrack
-    var rendererAttached by remember { mutableStateOf(false) }
-
-    DisposableEffect(videoTrack) {
-        onDispose {
-            rendererAttached = false
-        }
-    }
-
-    // No video while the share is ignored (or still connecting): show a
-    // lightweight placeholder instead of a renderer
-    if (videoTrack == null) {
-        Surface(
-            modifier = modifier.clip(RoundedCornerShape(8.dp)),
-            color = Zhimo.paper
-        ) {
-            Column(
-                modifier = Modifier.fillMaxSize(),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.DesktopWindows,
-                    contentDescription = null,
-                    modifier = Modifier.size(32.dp),
-                    tint = Zhimo.inkFaint
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = stringResource(R.string.voice_sharing_by, screenShare.participantName),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = Zhimo.ink
-                )
-                if (ignored) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    OutlinedButton(onClick = onToggleWatch) {
-                        Text(stringResource(R.string.action_watch))
-                    }
-                } else {
-                    Text(
-                        text = stringResource(R.string.voice_connecting_stream),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Zhimo.inkFaint,
-                        textAlign = TextAlign.Center
-                    )
-                }
-            }
-        }
-        return
-    }
 
     Surface(
         modifier = modifier.clip(RoundedCornerShape(8.dp)),
         color = Zhimo.paper
     ) {
-        Box(contentAlignment = Alignment.Center) {
-            AndroidView(
-                factory = { ctx ->
-                    // Init through the room so the renderer joins the SDK's
-                    // shared EGL group — hardware-decoded frames are GPU
-                    // textures a private EglBase cannot sample (white video).
-                    TextureViewRenderer(ctx).apply { initRenderer(this) }
-                },
-                modifier = Modifier.fillMaxSize(),
-                update = { view ->
-                    if (!rendererAttached) {
-                        videoTrack.addRenderer(view)
-                        rendererAttached = true
-                    }
-                },
-                onRelease = { view ->
-                    try {
-                        videoTrack.removeRenderer(view)
-                        view.release()
-                    } catch (_: Exception) {}
-                }
-            )
-
-            // Stop receiving the screen share stream
-            Surface(
+        Column {
+            // Stage header like the web panel: who is sharing + stream toggles
+            Row(
                 modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(8.dp),
-                color = Zhimo.paperSubtle.copy(alpha = 0.8f),
-                shape = RoundedCornerShape(4.dp)
+                    .fillMaxWidth()
+                    .padding(start = 10.dp, end = 4.dp, top = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                Text(
-                    text = stringResource(R.string.action_ignore),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = Zhimo.ink,
-                    modifier = Modifier
-                        .clickable { onToggleWatch() }
-                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                Icon(
+                    imageVector = Icons.Default.DesktopWindows,
+                    contentDescription = null,
+                    modifier = Modifier.size(14.dp),
+                    tint = Zhimo.success
                 )
+                Text(
+                    text = stringResource(R.string.voice_sharing_by, screenShare.participantName),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = Zhimo.ink,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+                HeaderActionChip(
+                    text = stringResource(if (ignored) R.string.action_watch else R.string.action_ignore),
+                    onClick = onToggleWatch
+                )
+                if (videoTrack != null) {
+                    IconButton(
+                        onClick = onToggleFullscreen,
+                        modifier = Modifier.size(28.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Fullscreen,
+                            contentDescription = stringResource(R.string.voice_fullscreen),
+                            tint = Zhimo.ink,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
             }
 
-            Surface(
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .padding(8.dp),
-                color = Zhimo.paperSubtle.copy(alpha = 0.8f),
-                shape = RoundedCornerShape(4.dp)
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+            if (videoTrack == null) {
+                // No video while the share is ignored (or still connecting):
+                // lightweight placeholder instead of a renderer
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(16f / 9f),
+                    contentAlignment = Alignment.Center
                 ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.DesktopWindows,
+                            contentDescription = null,
+                            modifier = Modifier.size(32.dp),
+                            tint = Zhimo.inkFaint
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        if (ignored) {
+                            OutlinedButton(onClick = onToggleWatch) {
+                                Text(stringResource(R.string.action_watch))
+                            }
+                        } else {
+                            Text(
+                                text = stringResource(R.string.voice_connecting_stream),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Zhimo.inkFaint,
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    }
+                }
+            } else {
+                InlineShareVideoArea(
+                    videoTrack = videoTrack,
+                    fullscreenActive = fullscreenActive,
+                    initRenderer = initRenderer
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Inline share stage: sized to the video's real aspect ratio so a portrait
+ * share fills the height instead of letterboxing inside a 16:9 box, capped at
+ * 45% of the pane so the participant grid below keeps its space (desktop web
+ * needs no cap because its stage shares a row with the user list).
+ */
+@Composable
+private fun InlineShareVideoArea(
+    videoTrack: RemoteVideoTrack,
+    fullscreenActive: Boolean,
+    initRenderer: (TextureViewRenderer) -> Unit
+) {
+    var frameWidth by remember { mutableStateOf(0) }
+    var frameHeight by remember { mutableStateOf(0) }
+
+    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+        val density = LocalDensity.current
+        val videoAspect = if (frameWidth > 0 && frameHeight > 0) {
+            frameWidth.toFloat() / frameHeight
+        } else {
+            16f / 9f
+        }
+        val heightCap = if (constraints.hasBoundedHeight) {
+            with(density) { (constraints.maxHeight * 0.45f).toDp() }
+        } else {
+            maxWidth * 9f / 16f
+        }
+        val height = minOf(maxWidth / videoAspect, heightCap)
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(height)
+                .background(Color.Black),
+            contentAlignment = Alignment.Center
+        ) {
+            // The fullscreen overlay owns its own renderer; unmount this one
+            // instead of decoding onto two surfaces at once.
+            if (!fullscreenActive) {
+                ScreenShareRendererView(
+                    videoTrack = videoTrack,
+                    onDimensionsChanged = { width, heightPx ->
+                        frameWidth = width
+                        frameHeight = heightPx
+                    },
+                    initRenderer = initRenderer,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Fullscreen screen share viewing: black stage fitted to the video aspect,
+ * tap toggles the chrome bar, back gesture or the exit button leaves.
+ */
+@Composable
+private fun ScreenShareFullscreenView(
+    screenShare: ScreenShareInfo,
+    initRenderer: (TextureViewRenderer) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val videoTrack = screenShare.videoTrack ?: return
+    var controlsVisible by remember { mutableStateOf(true) }
+    var frameWidth by remember { mutableStateOf(0) }
+    var frameHeight by remember { mutableStateOf(0) }
+
+    BackHandler(onBack = onDismiss)
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black)
+            .pointerInput(Unit) {
+                detectTapGestures { controlsVisible = !controlsVisible }
+            }
+    ) {
+        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+            val videoAspect = if (frameWidth > 0 && frameHeight > 0) {
+                frameWidth.toFloat() / frameHeight
+            } else {
+                16f / 9f
+            }
+            val fittedWidth: Dp
+            val fittedHeight: Dp
+            if (maxWidth / maxHeight > videoAspect) {
+                fittedHeight = maxHeight
+                fittedWidth = maxHeight * videoAspect
+            } else {
+                fittedWidth = maxWidth
+                fittedHeight = maxWidth / videoAspect
+            }
+
+            // Re-key on the track instance: a sharer switch keeps this
+            // overlay composed, and the renderer below must be rebuilt to
+            // attach to the new track.
+            key(videoTrack) {
+                ScreenShareRendererView(
+                    videoTrack = videoTrack,
+                    onDimensionsChanged = { width, heightPx ->
+                        frameWidth = width
+                        frameHeight = heightPx
+                    },
+                    initRenderer = initRenderer,
+                    modifier = Modifier
+                        .size(fittedWidth, fittedHeight)
+                        .align(Alignment.Center)
+                )
+            }
+        }
+
+        if (controlsVisible) {
+            Row(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .fillMaxWidth()
+                    .background(Color.Black.copy(alpha = 0.55f))
+                    .padding(start = 12.dp, end = 4.dp, top = 2.dp, bottom = 2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.DesktopWindows,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp),
+                    tint = Zhimo.success
+                )
+                Text(
+                    text = stringResource(R.string.voice_sharing_by, screenShare.participantName),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color.White,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+                IconButton(onClick = onDismiss) {
                     Icon(
-                        imageVector = Icons.Default.DesktopWindows,
-                        contentDescription = null,
-                        modifier = Modifier.size(14.dp),
-                        tint = Zhimo.success
-                    )
-                    Text(
-                        text = screenShare.participantName,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = Zhimo.ink
+                        imageVector = Icons.Default.FullscreenExit,
+                        contentDescription = stringResource(R.string.voice_exit_fullscreen),
+                        tint = Color.White,
+                        modifier = Modifier.size(20.dp)
                     )
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun ScreenShareRendererView(
+    videoTrack: RemoteVideoTrack,
+    onDimensionsChanged: (Int, Int) -> Unit,
+    initRenderer: (TextureViewRenderer) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var rendererAttached by remember { mutableStateOf(false) }
+
+    AndroidView(
+        factory = { ctx ->
+            // Init through the room so the renderer joins the SDK's shared
+            // EGL group — hardware-decoded frames are GPU textures a private
+            // EglBase cannot sample (white video).
+            ScreenShareRenderer(ctx).apply {
+                onVideoDimensionsChanged = onDimensionsChanged
+                initRenderer(this)
+            }
+        },
+        modifier = modifier,
+        update = { view ->
+            if (!rendererAttached) {
+                videoTrack.addRenderer(view)
+                rendererAttached = true
+            }
+        },
+        onRelease = { view ->
+            try {
+                videoTrack.removeRenderer(view)
+                view.release()
+            } catch (_: Exception) {}
+        }
+    )
+}
+
+@Composable
+private fun HeaderActionChip(
+    text: String,
+    onClick: () -> Unit
+) {
+    Surface(
+        color = Zhimo.paperSubtle,
+        shape = RoundedCornerShape(4.dp)
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelSmall,
+            color = Zhimo.ink,
+            maxLines = 1,
+            modifier = Modifier
+                .clickable { onClick() }
+                .padding(horizontal = 8.dp, vertical = 4.dp)
+        )
     }
 }

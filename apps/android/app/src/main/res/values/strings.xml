@@ -140,6 +140,8 @@
     <string name="voice_other_user">其他用户</string>
     <string name="voice_sharing_by">%1$s 正在共享屏幕</string>
     <string name="voice_connecting_stream">正在接入视频流...</string>
+    <string name="voice_fullscreen">全屏</string>
+    <string name="voice_exit_fullscreen">退出全屏</string>
     <string name="action_hang_up">挂断</string>
     <string name="voice_invite_title">邀请访客</string>
     <string name="voice_invite_generating">正在生成链接...</string>

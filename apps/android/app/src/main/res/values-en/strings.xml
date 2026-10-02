@@ -140,6 +140,8 @@
     <string name="voice_other_user">Another user</string>
     <string name="voice_sharing_by">%1$s is sharing their screen</string>
     <string name="voice_connecting_stream">Connecting to the video stream...</string>
+    <string name="voice_fullscreen">Fullscreen</string>
+    <string name="voice_exit_fullscreen">Exit fullscreen</string>
     <string name="action_hang_up">Hang up</string>
     <string name="voice_invite_title">Invite guest</string>
     <string name="voice_invite_generating">Generating link...</string>
