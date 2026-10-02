@@ -10,10 +10,8 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
@@ -830,7 +828,6 @@ private fun ChannelContextMenu(
 }
 
 // Grouped Channel Item (with indent)
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun GroupedChannelItem(
     channel: Channel,
@@ -886,18 +883,20 @@ private fun GroupedChannelItem(
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(4.dp))
                 .background(backgroundColor)
-                .pointerInput(Unit) {
-                    // Position-aware long press so the context menu pops up at
-                    // the finger; consumes the gesture so the pending click in
-                    // combinedClickable is cancelled on release.
+                .pointerInput(onClick) {
+                    // One detector handles both gestures. The old setup had a
+                    // separate combinedClickable after this pointerInput, but
+                    // combinedClickable consumes the down event, so this
+                    // long-press detector never saw an unconsumed press and
+                    // the context menu never opened.
                     detectTapGestures(
+                        onTap = { onClick() },
                         onLongPress = { offset ->
                             pressPosition = offset
                             menuVisible = true
                         }
                     )
                 }
-                .combinedClickable(onClick = onClick)
                 .padding(horizontal = 8.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -1022,7 +1021,6 @@ private fun GroupedChannelItem(
 }
 
 // Ungrouped Channel Item (no indent)
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun UngroupedChannelItem(
     channel: Channel,
@@ -1076,18 +1074,20 @@ private fun UngroupedChannelItem(
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(4.dp))
                 .background(backgroundColor)
-                .pointerInput(Unit) {
-                    // Position-aware long press so the context menu pops up at
-                    // the finger; consumes the gesture so the pending click in
-                    // combinedClickable is cancelled on release.
+                .pointerInput(onClick) {
+                    // One detector handles both gestures. The old setup had a
+                    // separate combinedClickable after this pointerInput, but
+                    // combinedClickable consumes the down event, so this
+                    // long-press detector never saw an unconsumed press and
+                    // the context menu never opened.
                     detectTapGestures(
+                        onTap = { onClick() },
                         onLongPress = { offset ->
                             pressPosition = offset
                             menuVisible = true
                         }
                     )
                 }
-                .combinedClickable(onClick = onClick)
                 .padding(horizontal = 8.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
