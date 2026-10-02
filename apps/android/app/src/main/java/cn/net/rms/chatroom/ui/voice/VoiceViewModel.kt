@@ -12,6 +12,7 @@ import cn.net.rms.chatroom.data.livekit.ParticipantInfo
 import cn.net.rms.chatroom.data.livekit.ScreenShareInfo
 import cn.net.rms.chatroom.data.repository.AuthRepository
 import cn.net.rms.chatroom.data.repository.VoiceRepository
+import io.livekit.android.renderer.TextureViewRenderer
 import cn.net.rms.chatroom.service.VoiceCallService
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -402,6 +403,10 @@ class VoiceViewModel @Inject constructor(
 
     fun toggleScreenShareWatch() {
         voiceRepository.setScreenShareIgnored(!_state.value.screenShareIgnored)
+    }
+
+    fun initVideoRenderer(renderer: TextureViewRenderer) {
+        voiceRepository.initVideoRenderer(renderer)
     }
 
     override fun onCleared() {

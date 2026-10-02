@@ -359,6 +359,7 @@ fun VoiceScreen(
                             screenShare = activeScreenShare,
                             ignored = state.screenShareIgnored,
                             onToggleWatch = { viewModel.toggleScreenShareWatch() },
+                            initRenderer = { renderer -> viewModel.initVideoRenderer(renderer) },
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .aspectRatio(16f / 9f)
@@ -1408,10 +1409,10 @@ private fun RemoteScreenShareView(
     screenShare: ScreenShareInfo,
     ignored: Boolean,
     onToggleWatch: () -> Unit,
+    initRenderer: (TextureViewRenderer) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val videoTrack = screenShare.videoTrack
-    val eglBase = remember { livekit.org.webrtc.EglBase.create() }
     var rendererAttached by remember { mutableStateOf(false) }
 
     DisposableEffect(videoTrack) {
@@ -1469,9 +1470,10 @@ private fun RemoteScreenShareView(
         Box(contentAlignment = Alignment.Center) {
             AndroidView(
                 factory = { ctx ->
-                    TextureViewRenderer(ctx).apply {
-                        init(eglBase.eglBaseContext, null)
-                    }
+                    // Init through the room so the renderer joins the SDK's
+                    // shared EGL group — hardware-decoded frames are GPU
+                    // textures a private EglBase cannot sample (white video).
+                    TextureViewRenderer(ctx).apply { initRenderer(this) }
                 },
                 modifier = Modifier.fillMaxSize(),
                 update = { view ->

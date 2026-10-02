@@ -31,6 +31,7 @@ import io.livekit.android.room.track.RemoteVideoTrack
 import io.livekit.android.room.track.Track
 import io.livekit.android.room.track.ScreenSharePresets
 import io.livekit.android.room.track.VideoEncoding
+import io.livekit.android.renderer.TextureViewRenderer
 import livekit.org.webrtc.RtpParameters.DegradationPreference
 import io.livekit.android.room.track.screencapture.ScreenCaptureParams
 import kotlinx.coroutines.CoroutineScope
@@ -712,6 +713,17 @@ class LiveKitManager @Inject constructor(
     }
 
     fun isConnected(): Boolean = _connectionState.value == ConnectionState.CONNECTED
+
+    /**
+     * Initialize a renderer with the room's shared EGL context. The decoder
+     * factory binds hardware decoders to that share group, and their output
+     * frames are GPU textures only samplable inside it — a renderer inited
+     * with a private EglBase decodes but paints nothing (white video for
+     * hardware-decoded VP8, i.e. Android-to-Android screen share).
+     */
+    fun initVideoRenderer(renderer: TextureViewRenderer) {
+        room?.initVideoRenderer(renderer)
+    }
 
     /**
      * Store MediaProjection permission data for screen sharing.

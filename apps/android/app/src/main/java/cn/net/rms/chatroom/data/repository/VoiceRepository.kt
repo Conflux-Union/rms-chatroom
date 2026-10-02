@@ -8,6 +8,7 @@ import cn.net.rms.chatroom.data.api.GuestJoinBody
 import android.content.Intent
 import cn.net.rms.chatroom.data.livekit.AudioDeviceInfo
 import cn.net.rms.chatroom.data.livekit.ConnectionState
+import io.livekit.android.renderer.TextureViewRenderer
 import cn.net.rms.chatroom.data.livekit.LiveKitManager
 import cn.net.rms.chatroom.data.livekit.ParticipantInfo
 import cn.net.rms.chatroom.data.livekit.ScreenShareInfo
@@ -138,6 +139,10 @@ class VoiceRepository @Inject constructor(
 
     // Delegate to LiveKitManager
     val connectionState: StateFlow<ConnectionState> = liveKitManager.connectionState
+
+    fun initVideoRenderer(renderer: TextureViewRenderer) =
+        liveKitManager.initVideoRenderer(renderer)
+
     val isConnected: StateFlow<Boolean> get() = MutableStateFlow(false).also { flow ->
         // Map connectionState to boolean
     }.let { 
