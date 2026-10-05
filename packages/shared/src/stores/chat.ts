@@ -363,6 +363,10 @@ export const useChatStore = defineStore('chat', () => {
     const channel = currentChannel.value
     const newest = messages.value[messages.value.length - 1]
     if (!channel || !newest) return
+    // Selecting a voice channel keeps the previous text channel's list loaded
+    // (the ChatArea watcher only fetches for TEXT/FORWARD), so the newest
+    // message may belong to a different channel than currentChannel.
+    if (newest.channel_id !== channel.id) return
     if (hasMoreNewer.value) return
     await fetchMessages(channel.id, undefined, undefined, newest.id)
   }
