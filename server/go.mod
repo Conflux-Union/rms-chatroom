@@ -53,7 +53,7 @@ require (
 	github.com/magefile/mage v1.17.0 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.22 // indirect
-	github.com/moby/sys/user v0.4.0 // indirect
+	github.com/moby/sys/user v0.4.1 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/nats-io/nats.go v1.48.0 // indirect
 	github.com/nats-io/nkeys v0.4.15 // indirect
