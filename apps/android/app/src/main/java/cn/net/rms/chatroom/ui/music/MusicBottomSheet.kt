@@ -15,6 +15,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.Subtitles
@@ -52,6 +53,7 @@ fun MusicBottomSheet(
     onSeek: (Long) -> Unit,
     onVolumeChange: (Float) -> Unit,
     onToggleLyrics: () -> Unit,
+    onCycleLoopMode: () -> Unit,
     onRemoveFromQueue: (Int) -> Unit,
     onClearQueue: () -> Unit,
     onShowSearch: () -> Unit,
@@ -94,11 +96,13 @@ fun MusicBottomSheet(
                     volume = state.volume,
                     voiceConnected = voiceConnected,
                     lyricsVisible = state.lyricsWindowVisible,
+                    loopMode = state.loopMode,
                     onTogglePlayPause = onTogglePlayPause,
                     onSkip = onSkip,
                     onSeek = onSeek,
                     onVolumeChange = onVolumeChange,
-                    onToggleLyrics = onToggleLyrics
+                    onToggleLyrics = onToggleLyrics,
+                    onCycleLoopMode = onCycleLoopMode
                 )
             } else {
                 EmptyPlayingState(onShowSearch = onShowSearch)
@@ -249,11 +253,13 @@ private fun NowPlayingSection(
     volume: Float,
     voiceConnected: Boolean,
     lyricsVisible: Boolean,
+    loopMode: String,
     onTogglePlayPause: () -> Unit,
     onSkip: () -> Unit,
     onSeek: (Long) -> Unit,
     onVolumeChange: (Float) -> Unit,
-    onToggleLyrics: () -> Unit
+    onToggleLyrics: () -> Unit,
+    onCycleLoopMode: () -> Unit
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -316,6 +322,28 @@ private fun NowPlayingSection(
 
                 // Playback controls
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    // Loop mode cycle: sequence -> list -> one -> random
+                    IconButton(
+                        onClick = onCycleLoopMode,
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .background(Zhimo.paperSubtle)
+                    ) {
+                        val (icon, labelRes) = when (loopMode) {
+                            "list" -> Icons.Default.Repeat to R.string.music_loop_list
+                            "one" -> Icons.Default.RepeatOne to R.string.music_loop_one
+                            "random" -> Icons.Default.Shuffle to R.string.music_loop_random
+                            else -> Icons.AutoMirrored.Filled.List to R.string.music_loop_sequence
+                        }
+                        Icon(
+                            imageVector = icon,
+                            contentDescription = stringResource(labelRes),
+                            tint = if (loopMode != "sequence") Zhimo.seal else Zhimo.ink,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+
                     // Lyrics floating window toggle
                     IconButton(
                         onClick = onToggleLyrics,

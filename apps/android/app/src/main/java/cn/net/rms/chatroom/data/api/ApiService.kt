@@ -329,6 +329,12 @@ interface ApiService {
         @Body request: MusicSeekRequest
     ): MusicSuccessResponse
 
+    @POST("api/music/playback/loop")
+    suspend fun setMusicLoopMode(
+        @Header("Authorization") token: String,
+        @Body request: MusicLoopModeRequest
+    ): MusicSuccessResponse
+
     // File Upload
     @Multipart
     @POST("api/channels/{channelId}/upload")

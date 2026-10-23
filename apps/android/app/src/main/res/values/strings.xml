@@ -213,6 +213,11 @@
     <string name="music_skip_failed">跳过失败</string>
     <string name="music_previous_failed">上一首失败</string>
     <string name="music_stop_failed">停止播放失败</string>
+    <string name="music_loop_sequence">顺序播放</string>
+    <string name="music_loop_list">列表循环</string>
+    <string name="music_loop_one">单曲循环</string>
+    <string name="music_loop_random">随机播放</string>
+    <string name="music_loop_failed">切换播放模式失败</string>
 
     <!-- Channel / server management -->
     <string name="channel_list_select_server">选择服务器</string>

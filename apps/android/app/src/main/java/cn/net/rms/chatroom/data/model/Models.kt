@@ -255,6 +255,8 @@ data class MusicQueueResponse(
     val currentSong: Song?,
     @SerializedName("current_index")
     val currentIndex: Int,
+    @SerializedName("loop_mode")
+    val loopMode: String? = null,
     val queue: List<QueueItem>
 )
 
@@ -266,7 +268,9 @@ data class MusicPlaybackStatusResponse(
     val active: Boolean,
     val room: String?,
     @SerializedName("is_playing")
-    val isPlaying: Boolean
+    val isPlaying: Boolean,
+    @SerializedName("loop_mode")
+    val loopMode: String? = null
 )
 
 data class MusicLoginCheckResponse(
@@ -330,6 +334,12 @@ data class MusicSeekRequest(
     val roomName: String,
     @SerializedName("position_ms")
     val positionMs: Long
+)
+
+data class MusicLoopModeRequest(
+    @SerializedName("room_name")
+    val roomName: String,
+    val mode: String
 )
 
 data class MusicSuccessResponse(

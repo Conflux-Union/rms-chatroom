@@ -38,6 +38,7 @@ sealed class MusicWebSocketEvent {
     data class Seek(val roomName: String, val positionMs: Long, val serverTime: Double? = null) : MusicWebSocketEvent()
     data class Stop(val roomName: String) : MusicWebSocketEvent()
     data class QueueFinished(val roomName: String) : MusicWebSocketEvent()
+    data class LoopModeChanged(val roomName: String, val mode: String) : MusicWebSocketEvent()
     data class SongUnavailable(val roomName: String, val songName: String, val reason: String) : MusicWebSocketEvent()
     data class MusicLoginStatus(val status: String, val platform: String) : MusicWebSocketEvent()
     object Connected : MusicWebSocketEvent()
@@ -128,6 +129,12 @@ class MusicWebSocket @Inject constructor(
                 val roomName = json.get("room_name")?.asString ?: ""
                 Log.d(TAG, "Queue finished: room=$roomName")
                 MusicWebSocketEvent.QueueFinished(roomName)
+            }
+            "loop_mode" -> {
+                val roomName = json.get("room_name")?.asString ?: ""
+                val mode = json.get("mode")?.asString ?: "sequence"
+                Log.d(TAG, "Loop mode changed: room=$roomName, mode=$mode")
+                MusicWebSocketEvent.LoopModeChanged(roomName, mode)
             }
             "music_state" -> {
                 val data = json.getAsJsonObject("data")

@@ -14,6 +14,11 @@ const WS_BASE = import.meta.env.VITE_WS_BASE || 'wss://chatroom.cxu.org.cn'
 
 export type MusicPlatform = 'qq' | 'netease' | 'all'
 
+// Room playback loop modes, server-authoritative. The cycle order is the
+// button tap order in the UI.
+export type LoopMode = 'sequence' | 'list' | 'one' | 'random'
+const LOOP_MODES: LoopMode[] = ['sequence', 'list', 'one', 'random']
+
 export interface Song {
   mid: string
   name: string
@@ -62,6 +67,7 @@ export const useMusicStore = defineStore('music', () => {
   const playbackState = ref<string>('idle')  // idle, loading, playing, paused, stopped
   const positionMs = ref(0)
   const durationMs = ref(0)
+  const loopMode = ref<LoopMode>('sequence')
   
   // Current song URL for audio playback
   const currentSongUrl = ref<string | null>(null)
@@ -284,6 +290,9 @@ export const useMusicStore = defineStore('music', () => {
       currentIndex.value = data.current_index || 0
       currentSong.value = data.current_song || null
       isPlaying.value = data.is_playing || false
+      if (data.loop_mode) {
+        loopMode.value = data.loop_mode
+      }
     } catch (e) {
       console.error('Failed to refresh queue:', e)
     }
@@ -366,6 +375,9 @@ export const useMusicStore = defineStore('music', () => {
       playbackActive.value = data.active
       playbackRoom.value = data.room
       isPlaying.value = data.is_playing
+      if (data.loop_mode) {
+        loopMode.value = data.loop_mode
+      }
       return data
     } catch (e) {
       console.error('Failed to get playback status:', e)
@@ -461,6 +473,21 @@ export const useMusicStore = defineStore('music', () => {
       })
     } catch (e) {
       console.error('Seek failed:', e)
+    }
+  }
+
+  // Cycle the room loop mode to the next one in LOOP_MODES order.
+  async function cycleLoopMode(roomName: string) {
+    const next = LOOP_MODES[(LOOP_MODES.indexOf(loopMode.value) + 1) % LOOP_MODES.length]
+    try {
+      await authFetch(`${API_BASE}/api/music/playback/loop`, {
+        method: 'POST',
+        headers: jsonHeaders,
+        body: JSON.stringify({ room_name: roomName, mode: next })
+      })
+      loopMode.value = next
+    } catch (e) {
+      console.error('Set loop mode failed:', e)
     }
   }
 
@@ -637,6 +664,11 @@ export const useMusicStore = defineStore('music', () => {
             refreshQueue(roomName)
           }
         }
+      } else if (msg.type === 'loop_mode') {
+        // Room loop mode changed (by us or another room member)
+        if (msg.mode) {
+          loopMode.value = msg.mode
+        }
       } else if (msg.type === 'song_unavailable') {
         // Show notification for unavailable song
         console.warn(`[MusicStore] Song unavailable: ${msg.song_name} - ${msg.reason}`)
@@ -730,6 +762,7 @@ export const useMusicStore = defineStore('music', () => {
     playbackState,
     positionMs,
     durationMs,
+    loopMode,
     getSongUrl,
 
     // Lyrics
@@ -749,6 +782,7 @@ export const useMusicStore = defineStore('music', () => {
     skipNext,
     skipPrevious,
     seek,
+    cycleLoopMode,
     updateProgress,
 
     // WebSocket and audio state

@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"log"
+	"math/rand"
 	"net/http"
 	"os"
 	"strings"
@@ -56,6 +57,22 @@ var (
 	progressTimersMu sync.Mutex
 )
 
+// Room playback loop modes.
+const (
+	loopModeSequence = "sequence" // play through once, stop at the end (default)
+	loopModeList     = "list"     // wrap back to the first song
+	loopModeOne      = "one"      // repeat the current song
+	loopModeRandom   = "random"   // pick a random song (never the current one)
+)
+
+func validLoopMode(mode string) bool {
+	switch mode {
+	case loopModeSequence, loopModeList, loopModeOne, loopModeRandom:
+		return true
+	}
+	return false
+}
+
 // RoomMusicState holds per-room playback state.
 type RoomMusicState struct {
 	mu                sync.Mutex
@@ -67,6 +84,8 @@ type RoomMusicState struct {
 	PlayStartTime     float64
 	PlayStartPosition int64
 	CurrentSongURL    string
+	// LoopMode is one of the loopMode* constants; empty behaves as sequence.
+	LoopMode string
 	// Normalization gain (0, 1] for the current song, derived from its
 	// measured loudness; 1 when not analyzed.
 	CurrentLoudnessGain float64
@@ -118,7 +137,7 @@ func getRoomState(roomName string) *RoomMusicState {
 	if s, ok := roomStates[roomName]; ok {
 		return s
 	}
-	s := &RoomMusicState{RoomName: roomName, CurrentLoudnessGain: 1}
+	s := &RoomMusicState{RoomName: roomName, LoopMode: loopModeSequence, CurrentLoudnessGain: 1}
 	roomStates[roomName] = s
 	return s
 }
@@ -153,6 +172,7 @@ func init() {
 			"loudness_gain": s.CurrentLoudnessGain,
 			"position_ms":   pos,
 			"is_playing":    true,
+			"loop_mode":     s.LoopMode,
 		}
 	}
 }
@@ -261,7 +281,9 @@ func playCurrentSongAsync(state *RoomMusicState, roomName string) {
 				"song":      cur.Song,
 				"error":     "failed to get song URL",
 			})
-			// Try next song
+			// Try next song. This deliberately advances sequentially instead
+			// of via nextQueueIndex: retrying the same (broken) song in one
+			// mode or re-rolling randomly in random mode could loop forever.
 			if state.CurrentIndex < len(state.PlayQueue)-1 {
 				state.CurrentIndex++
 				state.mu.Unlock()
@@ -298,13 +320,48 @@ func playCurrentSongAsync(state *RoomMusicState, roomName string) {
 	}()
 }
 
-// playNextSong advances to the next song and plays it.
-// Must NOT hold state.mu when calling this (HTTP request involved).
+// nextQueueIndex returns the queue index playback should advance to, or -1
+// when playback should stop instead. manual distinguishes a user-initiated
+// skip (which moves on even in one-loop mode) from a natural track end.
+// Caller must hold state.mu.
+func nextQueueIndex(state *RoomMusicState, manual bool) int {
+	n := len(state.PlayQueue)
+	if n == 0 {
+		return -1
+	}
+	cur := state.CurrentIndex
+	switch state.LoopMode {
+	case loopModeOne:
+		if !manual {
+			return cur
+		}
+		return (cur + 1) % n
+	case loopModeList:
+		return (cur + 1) % n
+	case loopModeRandom:
+		if n == 1 {
+			return 0
+		}
+		i := rand.Intn(n - 1)
+		if i >= cur {
+			i++
+		}
+		return i
+	default: // sequence (and the empty legacy value)
+		if cur < n-1 {
+			return cur + 1
+		}
+		return -1
+	}
+}
+
+// playNextSong advances to the next song (per the room's loop mode) and plays
+// it. Must NOT hold state.mu when calling this (HTTP request involved).
 func playNextSong(state *RoomMusicState, roomName string) {
 	stopProgressTimer(roomName)
 	state.mu.Lock()
-	if state.CurrentIndex < len(state.PlayQueue)-1 {
-		state.CurrentIndex++
+	if next := nextQueueIndex(state, false); next >= 0 {
+		state.CurrentIndex = next
 		state.mu.Unlock()
 		playCurrentSongAsync(state, roomName)
 	} else {
@@ -394,6 +451,7 @@ func RegisterMusicRoutes(g *echo.Group, jwtSecret string, db *sql.DB) {
 	g.POST("/playback/resume", musicPlaybackResume(jwtSecret))
 	g.POST("/playback/skip", musicPlaybackSkip(jwtSecret))
 	g.POST("/playback/previous", musicPlaybackPrevious(jwtSecret))
+	g.POST("/playback/loop", musicPlaybackLoopMode(jwtSecret))
 	g.POST("/playback/seek", musicPlaybackSeek(jwtSecret))
 	g.POST("/playback/stop", musicPlaybackStop(jwtSecret))
 	g.GET("/playback/status/:room_name", musicPlaybackStatus(jwtSecret))
@@ -748,6 +806,7 @@ func musicQueueGet(jwtSecret string) echo.HandlerFunc {
 			"is_playing":    state.IsPlaying,
 			"current_song":  currentSong,
 			"current_index": state.CurrentIndex,
+			"loop_mode":     state.LoopMode,
 			"queue":         state.PlayQueue,
 		})
 	}
@@ -831,6 +890,7 @@ func musicPlaybackStatus(jwtSecret string) echo.HandlerFunc {
 			s.mu.Lock()
 			resp["is_playing"] = s.IsPlaying
 			resp["queue_length"] = len(s.PlayQueue)
+			resp["loop_mode"] = s.LoopMode
 			s.mu.Unlock()
 		}
 		return c.JSON(http.StatusOK, resp)
@@ -930,9 +990,9 @@ func musicPlaybackSkip(jwtSecret string) echo.HandlerFunc {
 		}
 		state := getRoomState(req.RoomName)
 		state.mu.Lock()
-		if state.CurrentIndex < len(state.PlayQueue)-1 {
+		if next := nextQueueIndex(state, true); next >= 0 {
 			stopProgressTimer(req.RoomName)
-			state.CurrentIndex++
+			state.CurrentIndex = next
 			newIndex := state.CurrentIndex
 			roomName := state.RoomName
 			state.mu.Unlock()
@@ -960,9 +1020,15 @@ func musicPlaybackPrevious(jwtSecret string) echo.HandlerFunc {
 		}
 		state := getRoomState(req.RoomName)
 		state.mu.Lock()
-		if state.CurrentIndex > 0 {
+		n := len(state.PlayQueue)
+		prev := state.CurrentIndex - 1
+		if prev < 0 && n > 0 && (state.LoopMode == loopModeList || state.LoopMode == loopModeRandom) {
+			// Loop modes wrap previous around to the last track.
+			prev = n - 1
+		}
+		if prev >= 0 {
 			stopProgressTimer(req.RoomName)
-			state.CurrentIndex--
+			state.CurrentIndex = prev
 			newIndex := state.CurrentIndex
 			roomName := state.RoomName
 			state.mu.Unlock()
@@ -975,6 +1041,37 @@ func musicPlaybackPrevious(jwtSecret string) echo.HandlerFunc {
 		state.mu.Unlock()
 		return c.JSON(http.StatusOK, map[string]interface{}{
 			"success": false, "message": "already at first song", "room_name": req.RoomName,
+		})
+	}
+}
+
+type loopModeRequest struct {
+	RoomName string `json:"room_name"`
+	Mode     string `json:"mode"`
+}
+
+func musicPlaybackLoopMode(jwtSecret string) echo.HandlerFunc {
+	return func(c echo.Context) error {
+		if _, err := authenticateFromEcho(c, jwtSecret); err != nil {
+			return err
+		}
+		var req loopModeRequest
+		if err := c.Bind(&req); err != nil {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid body"})
+		}
+		if !validLoopMode(req.Mode) {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid mode"})
+		}
+		state := getRoomState(req.RoomName)
+		state.mu.Lock()
+		state.LoopMode = req.Mode
+		state.mu.Unlock()
+		broadcastMusicCommand("loop_mode", map[string]interface{}{
+			"room_name": req.RoomName,
+			"mode":      req.Mode,
+		})
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"success": true, "room_name": req.RoomName, "mode": req.Mode,
 		})
 	}
 }

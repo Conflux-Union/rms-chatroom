@@ -262,6 +262,7 @@ fun VoiceScreen(
                 onSeek = { musicViewModel.seek(it) },
                 onVolumeChange = { musicViewModel.setVolume(it) },
                 onToggleLyrics = { musicViewModel.setLyricsWindowVisible(!musicState.lyricsWindowVisible) },
+                onCycleLoopMode = { musicViewModel.cycleLoopMode() },
                 onRemoveFromQueue = { musicViewModel.removeFromQueue(it) },
                 onClearQueue = { musicViewModel.clearQueue() },
                 onShowSearch = { showSearchDialog = true },

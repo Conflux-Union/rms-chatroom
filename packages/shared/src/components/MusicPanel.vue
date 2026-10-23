@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { useMusicStore, type Song } from '../stores/music'
+import { useMusicStore, type Song, type LoopMode } from '../stores/music'
 import { useVoiceStore } from '../stores/voice'
 import { formatDuration } from '../utils/datetime'
 import { t } from '../i18n'
 import { ZmSlider, ZmSelect, ZmModal, ZmButton, ZmSpace, ZmInput } from './ui'
-import { Music, Disc3, SkipBack, Pause, Play, SkipForward, Plus, Trash2, X, Search, Loader2, Volume2, Captions } from 'lucide-vue-next'
+import { Music, Disc3, SkipBack, Pause, Play, SkipForward, Plus, Trash2, X, Search, Loader2, Volume2, Captions, ListMusic, Repeat, Repeat1, Shuffle } from 'lucide-vue-next'
 
 const music = useMusicStore()
 const voice = useVoiceStore()
@@ -40,6 +40,31 @@ const progressValue = computed({
 // Volume control handler - use store's setVolume
 function handleVolumeChange(value: number) {
   music.setVolume(value)
+}
+
+const LOOP_MODE_ICONS: Record<LoopMode, typeof ListMusic> = {
+  sequence: ListMusic,
+  list: Repeat,
+  one: Repeat1,
+  random: Shuffle,
+}
+
+const loopIcon = computed(() => LOOP_MODE_ICONS[music.loopMode])
+
+// Labels go through t() inside the computed so a locale switch refreshes them.
+const loopTitle = computed(() => {
+  const mode = music.loopMode
+  const label = mode === 'sequence' ? t('music.loopSequence')
+    : mode === 'list' ? t('music.loopList')
+    : mode === 'one' ? t('music.loopOne')
+    : t('music.loopRandom')
+  return t('music.loopModeTitle', { mode: label })
+})
+
+function handleCycleLoopMode() {
+  if (currentRoomName.value) {
+    music.cycleLoopMode(currentRoomName.value)
+  }
 }
 
 onMounted(async () => {
@@ -241,6 +266,12 @@ async function handleStopPlayback() {
             <div class="song-artist">{{ music.currentSong.artist }}</div>
           </div>
           <div class="playback-controls">
+            <button
+              class="control-btn loop-btn-toggle"
+              :class="{ active: music.loopMode !== 'sequence' }"
+              @click="handleCycleLoopMode"
+              :title="loopTitle"
+            ><component :is="loopIcon" :size="18" /></button>
             <button
               class="control-btn lyrics-btn-toggle"
               :class="{ active: music.lyricsWindowVisible }"
@@ -600,6 +631,9 @@ async function handleStopPlayback() {
 }
 
 .control-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: 40px;
   height: 40px;
   border-radius: 50%;
@@ -616,6 +650,11 @@ async function handleStopPlayback() {
 }
 
 .control-btn.lyrics-btn-toggle.active {
+  color: var(--zhimo-seal);
+  background: var(--zhimo-bg-hover);
+}
+
+.control-btn.loop-btn-toggle.active {
   color: var(--zhimo-seal);
   background: var(--zhimo-bg-hover);
 }

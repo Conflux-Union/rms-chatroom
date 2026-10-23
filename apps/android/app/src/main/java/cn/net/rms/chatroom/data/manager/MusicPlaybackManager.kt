@@ -9,6 +9,7 @@ import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import cn.net.rms.chatroom.R
 import cn.net.rms.chatroom.data.api.ApiService
+import cn.net.rms.chatroom.data.model.MusicLoopModeRequest
 import cn.net.rms.chatroom.data.model.MusicQueueAddRequest
 import cn.net.rms.chatroom.data.model.MusicRoomRequest
 import cn.net.rms.chatroom.data.model.MusicSearchRequest
@@ -61,6 +62,8 @@ data class MusicState(
     val playbackState: String = "idle",
     val positionMs: Long = 0,
     val durationMs: Long = 0,
+    // Room loop mode set on the backend: sequence, list, one, random
+    val loopMode: String = "sequence",
     val volume: Float = 1.0f,  // Volume level (0.0 to 1.0)
     val loudnessGain: Float = 1.0f,  // Server-computed normalization gain for the current song
 
@@ -100,6 +103,8 @@ class MusicPlaybackManager @Inject constructor(
     companion object {
         private const val TAG = "MusicPlaybackManager"
         private const val PROGRESS_UPDATE_INTERVAL_MS = 500L
+        // Tap order of the loop-mode button, mirroring the web UI
+        private val LOOP_MODES = listOf("sequence", "list", "one", "random")
     }
 
     // ExoPlayer requires all access from its application looper thread
@@ -289,6 +294,11 @@ class MusicPlaybackManager @Inject constructor(
                                 isPlaying = false,
                                 playbackState = "idle"
                             )
+                        }
+                    }
+                    is MusicWebSocketEvent.LoopModeChanged -> {
+                        if (currentRoom != null && event.roomName == currentRoom) {
+                            _state.value = _state.value.copy(loopMode = event.mode)
                         }
                     }
                     is MusicWebSocketEvent.MusicStateUpdate -> {
@@ -572,7 +582,8 @@ class MusicPlaybackManager @Inject constructor(
                     queue = response.queue,
                     currentIndex = response.currentIndex,
                     currentSong = response.currentSong,
-                    isPlaying = response.isPlaying
+                    isPlaying = response.isPlaying,
+                    loopMode = response.loopMode ?: _state.value.loopMode
                 )
             } catch (e: Exception) {
                 // Ignore errors
@@ -626,7 +637,8 @@ class MusicPlaybackManager @Inject constructor(
                 _state.value = _state.value.copy(
                     playbackActive = response.active,
                     playbackRoom = response.room,
-                    isPlaying = response.isPlaying
+                    isPlaying = response.isPlaying,
+                    loopMode = response.loopMode ?: _state.value.loopMode
                 )
             } catch (e: Exception) {
                 // Ignore errors
@@ -709,6 +721,21 @@ class MusicPlaybackManager @Inject constructor(
                 refreshQueue(roomName)
             } catch (e: Exception) {
                 if (!e.isUnauthorized) _state.value = _state.value.copy(error = context.getString(R.string.music_previous_failed))
+            }
+        }
+    }
+
+    fun cycleLoopMode() {
+        val roomName = _state.value.currentRoomName ?: return
+        val next = LOOP_MODES[(LOOP_MODES.indexOf(_state.value.loopMode) + 1) % LOOP_MODES.size]
+        scope.launch {
+            try {
+                api.setMusicLoopMode(getAuthHeader(), MusicLoopModeRequest(roomName, next))
+                // The loop_mode broadcast also updates this; set locally so the
+                // button reflects the tap immediately.
+                _state.value = _state.value.copy(loopMode = next)
+            } catch (e: Exception) {
+                if (!e.isUnauthorized) _state.value = _state.value.copy(error = context.getString(R.string.music_loop_failed))
             }
         }
     }

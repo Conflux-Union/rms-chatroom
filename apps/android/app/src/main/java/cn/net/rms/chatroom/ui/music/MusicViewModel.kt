@@ -47,6 +47,7 @@ class MusicViewModel @Inject constructor(
     fun skipPrevious() = playback.skipPrevious()
     fun seek(positionMs: Long) = playback.seek(positionMs)
     fun stopPlayback() = playback.stopPlayback()
+    fun cycleLoopMode() = playback.cycleLoopMode()
 
     // Volume / errors
     fun setVolume(volume: Float) = playback.setVolume(volume)

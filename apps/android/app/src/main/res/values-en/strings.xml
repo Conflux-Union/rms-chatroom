@@ -213,6 +213,11 @@
     <string name="music_skip_failed">Skip failed</string>
     <string name="music_previous_failed">Previous track failed</string>
     <string name="music_stop_failed">Stop playback failed</string>
+    <string name="music_loop_sequence">Sequential</string>
+    <string name="music_loop_list">Loop queue</string>
+    <string name="music_loop_one">Repeat one</string>
+    <string name="music_loop_random">Shuffle</string>
+    <string name="music_loop_failed">Failed to change play mode</string>
 
     <!-- Channel / server management -->
     <string name="channel_list_select_server">Select a server</string>
