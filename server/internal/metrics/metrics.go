@@ -80,6 +80,11 @@ var (
 		Help: "Music provider credential refresh attempts by outcome.",
 	}, []string{"provider", "status"})
 
+	MusicLoudnessAnalysis = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "rms_music_loudness_analysis_total",
+		Help: "Song loudness analyses by provider and outcome.",
+	}, []string{"provider", "outcome"})
+
 	LivekitTokensIssued = promauto.NewCounter(prometheus.CounterOpts{
 		Name: "rms_livekit_tokens_issued_total",
 		Help: "LiveKit room tokens successfully minted.",

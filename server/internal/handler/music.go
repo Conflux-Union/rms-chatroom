@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"database/sql"
 	"encoding/base64"
 	"log"
 	"net/http"
@@ -23,10 +24,12 @@ import (
 
 // Music API clients
 var (
-	qqClient      *music.QQMusicClient
-	neteaseClient *music.NeteaseClient
+	qqClient        *music.QQMusicClient
+	neteaseClient   *music.NeteaseClient
 	neteaseUnikey   string // stored unikey for QR login flow
 	neteaseUnikeyMu sync.Mutex
+
+	musicDB *sql.DB // set by RegisterMusicRoutes for the loudness cache
 )
 
 const (
@@ -64,6 +67,9 @@ type RoomMusicState struct {
 	PlayStartTime     float64
 	PlayStartPosition int64
 	CurrentSongURL    string
+	// Normalization gain (0, 1] for the current song, derived from its
+	// measured loudness; 1 when not analyzed.
+	CurrentLoudnessGain float64
 }
 
 type queueItem struct {
@@ -112,7 +118,7 @@ func getRoomState(roomName string) *RoomMusicState {
 	if s, ok := roomStates[roomName]; ok {
 		return s
 	}
-	s := &RoomMusicState{RoomName: roomName}
+	s := &RoomMusicState{RoomName: roomName, CurrentLoudnessGain: 1}
 	roomStates[roomName] = s
 	return s
 }
@@ -141,11 +147,12 @@ func init() {
 		pos := s.PlayStartPosition + elapsed
 		cur := s.PlayQueue[s.CurrentIndex]
 		return map[string]interface{}{
-			"room_name":   roomName,
-			"song":        cur.Song,
-			"url":         s.CurrentSongURL,
-			"position_ms": pos,
-			"is_playing":  true,
+			"room_name":     roomName,
+			"song":          cur.Song,
+			"url":           s.CurrentSongURL,
+			"loudness_gain": s.CurrentLoudnessGain,
+			"position_ms":   pos,
+			"is_playing":    true,
 		}
 	}
 }
@@ -263,23 +270,27 @@ func playCurrentSongAsync(state *RoomMusicState, roomName string) {
 			}
 			state.IsPlaying = false
 			state.CurrentSongURL = ""
+			state.CurrentLoudnessGain = 1
 			stopProgressTimer(state.RoomName)
 			state.mu.Unlock()
 			return
 		}
 
+		gain := getSongLoudnessGain(cur.Song.Platform, cur.Song.Mid)
 		state.IsPlaying = true
 		state.CurrentSongURL = songURL
+		state.CurrentLoudnessGain = gain
 		state.PlayStartTime = float64(time.Now().UnixMilli()) / 1000.0
 		state.PlayStartPosition = 0
 		state.PositionMS = 0
 
 		broadcastMusicCommand("play", map[string]interface{}{
-			"room_name":   state.RoomName,
-			"song":        cur.Song,
-			"url":         songURL,
-			"position_ms": int64(0),
-			"is_playing":  true,
+			"room_name":     state.RoomName,
+			"song":          cur.Song,
+			"url":           songURL,
+			"loudness_gain": gain,
+			"position_ms":   int64(0),
+			"is_playing":    true,
 		})
 
 		state.mu.Unlock()
@@ -299,6 +310,7 @@ func playNextSong(state *RoomMusicState, roomName string) {
 	} else {
 		state.IsPlaying = false
 		state.CurrentSongURL = ""
+		state.CurrentLoudnessGain = 1
 		state.mu.Unlock()
 		broadcastMusicCommand("queue_finished", map[string]interface{}{
 			"room_name": roomName,
@@ -360,7 +372,8 @@ func stopProgressTimer(roomName string) {
 }
 
 // RegisterMusicRoutes registers all /api/music routes.
-func RegisterMusicRoutes(g *echo.Group, jwtSecret string) {
+func RegisterMusicRoutes(g *echo.Group, jwtSecret string, db *sql.DB) {
+	musicDB = db
 	g.GET("/login/qrcode", musicLoginQRCode())
 	g.GET("/login/status", musicLoginStatus())
 	g.GET("/login/check", musicLoginCheck())
@@ -676,7 +689,13 @@ func musicQueueAdd(jwtSecret string) echo.HandlerFunc {
 			RequestedBy: user.Username,
 		})
 		pos := len(state.PlayQueue)
+		platform, mid := req.Song.Platform, req.Song.Mid
 		state.mu.Unlock()
+
+		// Measure loudness while the song waits in the queue so playback
+		// can carry a normalization gain without delaying the track.
+		go analyzeSongLoudness(platform, mid)
+
 		return c.JSON(http.StatusOK, map[string]interface{}{
 			"success": true, "position": pos, "room_name": req.RoomName,
 		})
@@ -749,6 +768,7 @@ func musicQueueClear(jwtSecret string) echo.HandlerFunc {
 		state.PlayQueue = nil
 		state.CurrentIndex = 0
 		state.CurrentSongURL = ""
+		state.CurrentLoudnessGain = 1
 		state.mu.Unlock()
 		broadcastMusicCommand("stop", map[string]interface{}{"room_name": req.RoomName})
 		return c.JSON(http.StatusOK, map[string]interface{}{"success": true, "room_name": req.RoomName})

@@ -73,6 +73,14 @@ export const useMusicStore = defineStore('music', () => {
   let currentWsRoom: string | null = null
   let audioElement: HTMLAudioElement | null = null
   const volume = ref(parseFloat(localStorage.getItem('musicVolume') || '1.0'))
+  // Server-computed normalization gain for the current song (loudness-war
+  // masters are attenuated to an even level); 1 = not analyzed.
+  let loudnessGain = 1
+
+  function applyAudioVolume(): void {
+    if (!audioElement) return
+    audioElement.volume = Math.min(1, Math.max(0, volume.value * loudnessGain))
+  }
 
   const musicWs = createReconnectingWebSocket({
     name: 'MusicWS',
@@ -450,7 +458,7 @@ export const useMusicStore = defineStore('music', () => {
     if (!audioElement) {
       audioElement = document.createElement('audio')
       audioElement.style.display = 'none'
-      audioElement.volume = volume.value
+      applyAudioVolume()
       document.body.appendChild(audioElement)
 
       // Drive progress bar from local audio playback
@@ -530,6 +538,8 @@ export const useMusicStore = defineStore('music', () => {
         if (msg.current_index !== undefined) {
           currentIndex.value = msg.current_index
         }
+        loudnessGain = typeof msg.loudness_gain === 'number' ? msg.loudness_gain : 1
+        applyAudioVolume()
 
         // Refresh queue to sync full state
         const roomName = msg.room_name || currentWsRoom
@@ -558,6 +568,8 @@ export const useMusicStore = defineStore('music', () => {
         // Room playback stopped (queue cleared or playback stopped)
         audio.pause()
         audio.src = ''
+        loudnessGain = 1
+        applyAudioVolume()
         isPlaying.value = false
         playbackState.value = 'idle'
         currentSong.value = null
@@ -598,9 +610,7 @@ export const useMusicStore = defineStore('music', () => {
 
   function setVolume(newVolume: number) {
     volume.value = newVolume
-    if (audioElement) {
-      audioElement.volume = newVolume
-    }
+    applyAudioVolume()
     localStorage.setItem('musicVolume', newVolume.toString())
   }
 

@@ -58,6 +58,7 @@ data class MusicState(
     val positionMs: Long = 0,
     val durationMs: Long = 0,
     val volume: Float = 1.0f,  // Volume level (0.0 to 1.0)
+    val loudnessGain: Float = 1.0f,  // Server-computed normalization gain for the current song
 
     // Room playback state (backend is the master controller per room)
     val playbackActive: Boolean = false,
@@ -129,10 +130,17 @@ class MusicPlaybackManager @Inject constructor(
             val sharedPrefs = context.getSharedPreferences("music_prefs", Context.MODE_PRIVATE)
             val savedVolume = sharedPrefs.getFloat("volume", 1.0f)
             _state.value = _state.value.copy(volume = savedVolume)
-            exoPlayer.volume = savedVolume
+            applyPlayerVolume()
         }
         observeVoiceChannel()
         observeWebSocketEvents()
+    }
+
+    // Player volume is the user slider times the current song's loudness
+    // normalization gain from the server.
+    private fun applyPlayerVolume() {
+        val s = _state.value
+        exoPlayer.volume = (s.volume * s.loudnessGain).coerceIn(0f, 1f)
     }
 
     // Follow the joined voice channel, like the web store's voice-channel watcher
@@ -163,8 +171,10 @@ class MusicPlaybackManager @Inject constructor(
                 positionMs = 0,
                 durationMs = 0,
                 playbackActive = false,
-                playbackRoom = null
+                playbackRoom = null,
+                loudnessGain = 1.0f
             )
+            applyPlayerVolume()
         }
     }
 
@@ -185,7 +195,7 @@ class MusicPlaybackManager @Inject constructor(
                     is MusicWebSocketEvent.Play -> {
                         if (currentRoom != null && event.roomName == currentRoom) {
                             Log.d(TAG, "WebSocket Play: song=${event.song.name}, position=${event.positionMs}")
-                            handlePlayCommand(event.song, event.url, event.positionMs, currentRoom)
+                            handlePlayCommand(event.song, event.url, event.positionMs, currentRoom, event.loudnessGain)
                         }
                     }
                     is MusicWebSocketEvent.Pause -> {
@@ -277,15 +287,17 @@ class MusicPlaybackManager @Inject constructor(
         }
     }
 
-    private fun handlePlayCommand(song: Song, url: String, positionMs: Long, roomName: String) {
+    private fun handlePlayCommand(song: Song, url: String, positionMs: Long, roomName: String, loudnessGain: Float = 1f) {
         try {
             _state.value = _state.value.copy(
                 currentSong = song,
                 isPlaying = true,
                 playbackState = "playing",
                 positionMs = positionMs,
-                durationMs = song.duration * 1000L
+                durationMs = song.duration * 1000L,
+                loudnessGain = loudnessGain
             )
+            applyPlayerVolume()
             // Sync queue and current index, like the web store does on play
             refreshQueue(roomName)
 
@@ -687,7 +699,7 @@ class MusicPlaybackManager @Inject constructor(
     fun setVolume(volume: Float) {
         val clampedVolume = volume.coerceIn(0f, 1f)
         _state.value = _state.value.copy(volume = clampedVolume)
-        exoPlayer.volume = clampedVolume
+        applyPlayerVolume()
 
         val sharedPrefs = context.getSharedPreferences("music_prefs", Context.MODE_PRIVATE)
         sharedPrefs.edit().putFloat("volume", clampedVolume).apply()

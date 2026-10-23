@@ -30,7 +30,8 @@ sealed class MusicWebSocketEvent {
         val song: Song,
         val url: String,
         val positionMs: Long,
-        val serverTime: Double? = null
+        val serverTime: Double? = null,
+        val loudnessGain: Float = 1f
     ) : MusicWebSocketEvent()
     data class Pause(val roomName: String, val serverTime: Double? = null) : MusicWebSocketEvent()
     data class Resume(val roomName: String, val positionMs: Long, val serverTime: Double? = null) : MusicWebSocketEvent()
@@ -96,9 +97,10 @@ class MusicWebSocket @Inject constructor(
                 val url = json.get("url")?.asString ?: ""
                 val positionMs = json.get("position_ms")?.asLong ?: 0L
                 val song = parseSong(json.getAsJsonObject("song"))
+                val loudnessGain = json.get("loudness_gain")?.asFloat ?: 1f
 
                 Log.d(TAG, "Play command: room=$roomName, song=${song.name}, url=$url, serverTime=$serverTime")
-                MusicWebSocketEvent.Play(roomName, song, url, positionMs, serverTime)
+                MusicWebSocketEvent.Play(roomName, song, url, positionMs, serverTime, loudnessGain)
             }
             "pause" -> {
                 val roomName = json.get("room_name")?.asString ?: ""

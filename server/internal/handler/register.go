@@ -86,7 +86,7 @@ func Register(e *echo.Echo, cfg *config.Config, db *sql.DB, ssoClient *sso.Clien
 
 	// Music routes
 	musicGroup := e.Group("/api/music")
-	RegisterMusicRoutes(musicGroup, cfg.JWTSecret)
+	RegisterMusicRoutes(musicGroup, cfg.JWTSecret, db)
 
 	// Moderation routes
 	muteGroup := e.Group("/api/mute")
