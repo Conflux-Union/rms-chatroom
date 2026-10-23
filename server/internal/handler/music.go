@@ -706,6 +706,11 @@ func musicSearch(jwtSecret string) echo.HandlerFunc {
 				allResults = append(allResults, results...)
 			}
 		}
+		if platform == "" || platform == "all" {
+			// Providers return QQ first then netease; rank the merged list by
+			// keyword similarity so the platforms interleave by relevance.
+			music.SortSongsBySimilarity(allResults, req.Keyword)
+		}
 
 		return c.JSON(http.StatusOK, map[string]interface{}{
 			"songs": allResults,

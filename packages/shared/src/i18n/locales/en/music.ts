@@ -3,8 +3,6 @@ import type { Keys } from '../zh/music'
 
 export const messages: Record<Keys, Message> = {
   'music.player': 'Music player',
-  'music.playing': 'Playing',
-  'music.playingClickToStop': 'Room is playing - click to stop',
   'music.qqLoggedInQuit': 'QQ Music logged in - click to log out',
   'music.neteaseLoggedInQuit': 'NetEase Cloud Music logged in - click to log out',
   'music.login': 'Log in',

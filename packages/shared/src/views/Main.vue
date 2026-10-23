@@ -494,6 +494,10 @@ watch(
       <Music :size="24" />
     </button>
     
+    <!-- Click-catcher: while the music drawer is open, the first click on
+         anything outside it closes the drawer instead of hitting the app -->
+    <div v-if="showMusicPanel" class="music-overlay" @click="showMusicPanel = false"></div>
+
     <!-- Music Panel Sidebar -->
     <Transition name="slide">
       <div v-if="showMusicPanel" class="music-sidebar">
@@ -670,6 +674,12 @@ watch(
 .music-toggle-btn.active {
   background: var(--zhimo-accent);
   border-color: var(--zhimo-accent);
+}
+
+.music-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 98;
 }
 
 /* Music Sidebar */

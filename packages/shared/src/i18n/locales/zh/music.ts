@@ -1,8 +1,6 @@
 // Namespace: music panel (MusicPanel.vue).
 export const messages = {
   'music.player': '音乐播放器',
-  'music.playing': '播放中',
-  'music.playingClickToStop': '房间播放中 - 点击停止',
   'music.qqLoggedInQuit': 'QQ音乐已登录 - 点击退出',
   'music.neteaseLoggedInQuit': '网易云已登录 - 点击退出',
   'music.login': '登录',

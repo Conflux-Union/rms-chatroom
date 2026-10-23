@@ -3,9 +3,10 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useMusicStore, type Song, type LoopMode } from '../stores/music'
 import { useVoiceStore } from '../stores/voice'
 import { formatDuration } from '../utils/datetime'
+import qqMusicIconUrl from '../assets/qq_music_icon.png'
 import { t } from '../i18n'
-import { ZmSlider, ZmSelect, ZmModal, ZmButton, ZmSpace, ZmInput } from './ui'
-import { Music, Disc3, SkipBack, Pause, Play, SkipForward, Plus, Trash2, X, Search, Loader2, Volume2, Captions, ListMusic, Repeat, Repeat1, Shuffle } from 'lucide-vue-next'
+import { ZmSlider, ZmModal, ZmButton, ZmSpace, ZmInput } from './ui'
+import { Music, SkipBack, Pause, Play, SkipForward, Plus, Trash2, X, Search, Loader2, Volume2, Captions, ListMusic, Repeat, Repeat1, Shuffle } from 'lucide-vue-next'
 
 const music = useMusicStore()
 const voice = useVoiceStore()
@@ -82,8 +83,13 @@ async function startLogin(platform: 'qq' | 'netease' = 'qq', loginType: 'qq' | '
   // No longer need to poll - WebSocket will push login status updates
 }
 
+const lastSearchedQuery = ref('')
+
 function handleSearch() {
-  music.search(searchInput.value)
+  const query = searchInput.value.trim()
+  if (!query) return
+  lastSearchedQuery.value = query
+  music.search(query)
 }
 
 async function handleAddToQueue(song: Song) {
@@ -91,6 +97,7 @@ async function handleAddToQueue(song: Song) {
   await music.addToQueue(currentRoomName.value, song)
   showSearch.value = false
   searchInput.value = ''
+  lastSearchedQuery.value = ''
   music.searchResults = []
 }
 
@@ -145,12 +152,6 @@ async function handleSkipPrevious() {
     await music.skipPrevious(currentRoomName.value)
   }
 }
-
-async function handleStopPlayback() {
-  if (currentRoomName.value) {
-    await music.stopPlayback(currentRoomName.value)
-  }
-}
 </script>
 
 <template>
@@ -158,37 +159,31 @@ async function handleStopPlayback() {
     <div class="music-header">
       <Music class="header-icon" :size="20" />
       <span class="header-title">{{ t('music.player') }}</span>
-      <span
-        v-if="music.playbackActive"
-        class="playback-status active"
-        @click="handleStopPlayback"
-        :title="t('music.playingClickToStop')"
-      >
-        <Disc3 :size="14" /> {{ t('music.playing') }}
-      </span>
-      <span 
-        v-if="music.platformLoginStatus.qq.logged_in" 
-        class="login-status logged-in qq"
-        @click="music.logout('qq')"
-        :title="t('music.qqLoggedInQuit')"
-      >
-        QQ
-      </span>
-      <span 
-        v-if="music.platformLoginStatus.netease.logged_in" 
-        class="login-status logged-in netease"
-        @click="music.logout('netease')"
-        :title="t('music.neteaseLoggedInQuit')"
-      >
-        {{ t('music.netease') }}
-      </span>
-      <span 
-        v-if="!music.platformLoginStatus.qq.logged_in || !music.platformLoginStatus.netease.logged_in"
-        class="login-status"
-        @click="showLoginSelect = true"
-      >
-        {{ t('music.login') }}
-      </span>
+      <div class="login-actions">
+        <span
+          v-if="music.platformLoginStatus.qq.logged_in"
+          class="login-status logged-in qq"
+          @click="music.logout('qq')"
+          :title="t('music.qqLoggedInQuit')"
+        >
+          <span class="platform-dot"></span>QQ
+        </span>
+        <span
+          v-if="music.platformLoginStatus.netease.logged_in"
+          class="login-status logged-in netease"
+          @click="music.logout('netease')"
+          :title="t('music.neteaseLoggedInQuit')"
+        >
+          <span class="platform-dot"></span>{{ t('music.netease') }}
+        </span>
+        <span
+          v-if="!music.platformLoginStatus.qq.logged_in || !music.platformLoginStatus.netease.logged_in"
+          class="login-status login-btn"
+          @click="showLoginSelect = true"
+        >
+          {{ t('music.login') }}
+        </span>
+      </div>
     </div>
 
     <div class="music-content">
@@ -371,23 +366,47 @@ async function handleStopPlayback() {
       >
         <ZmSpace vertical>
           <ZmSpace>
-            <ZmSelect
-              v-model:value="music.searchPlatform"
-              :options="[
-                { label: t('music.all'), value: 'all' },
-                { label: t('music.qqMusic'), value: 'qq' },
-                { label: t('music.netease'), value: 'netease' },
-              ]"
-              style="width: 100px"
-            />
+            <div class="platform-picker">
+              <button
+                class="platform-chip"
+                :class="{ active: music.searchPlatform === 'all' }"
+                @click="music.searchPlatform = 'all'"
+                :title="t('music.all')"
+              >{{ t('music.all') }}</button>
+              <button
+                class="platform-chip"
+                :class="{ active: music.searchPlatform === 'qq' }"
+                @click="music.searchPlatform = 'qq'"
+                :title="t('music.qqMusic')"
+              >
+                <!-- Official QQ Music mark, cropped from the zh.wikipedia logo -->
+                <img :src="qqMusicIconUrl" alt="" class="platform-mark qq-mark" />
+              </button>
+              <button
+                class="platform-chip"
+                :class="{ active: music.searchPlatform === 'netease' }"
+                @click="music.searchPlatform = 'netease'"
+                :title="t('music.neteaseCloudMusic')"
+              >
+                <svg class="platform-mark netease" viewBox="0 0 24 24" aria-hidden="true">
+                  <!-- Official NetEase Cloud Music mark (simple-icons path data) -->
+                  <path d="M13.046 9.388a3.919 3.919 0 0 0-.66.19c-.809.312-1.447.991-1.666 1.775a2.269 2.269 0 0 0-.074.81c.048.546.333 1.05.764 1.35a1.483 1.483 0 0 0 2.01-.286c.406-.531.355-1.183.24-1.636-.098-.387-.22-.816-.345-1.249a64.76 64.76 0 0 1-.269-.954zm-.82 10.07c-3.984 0-7.224-3.24-7.224-7.223 0-.98.226-3.02 1.884-4.822A7.188 7.188 0 0 1 9.502 5.6a.792.792 0 1 1 .587 1.472 5.619 5.619 0 0 0-2.795 2.462 5.538 5.538 0 0 0-.707 2.7 5.645 5.645 0 0 0 5.638 5.638c1.844 0 3.627-.953 4.542-2.428 1.042-1.68.772-3.931-.627-5.238a3.299 3.299 0 0 0-1.437-.777c.172.589.334 1.18.494 1.772.284 1.12.1 2.181-.519 2.989-.39.51-.956.888-1.592 1.064a3.038 3.038 0 0 1-2.58-.44 3.45 3.45 0 0 1-1.44-2.514c-.04-.467.002-.93.128-1.376.35-1.256 1.356-2.339 2.622-2.826a5.5 5.5 0 0 1 .823-.246l-.134-.505c-.37-1.371.25-2.579 1.547-3.007.329-.109.68-.145 1.025-.105.792.09 1.476.592 1.709 1.023.258.507-.096 1.153-.706 1.153a.788.788 0 0 1-.54-.213c-.088-.08-.163-.174-.259-.247a.825.825 0 0 0-.632-.166.807.807 0 0 0-.634.551c-.056.191-.031.406.02.595.07.256.159.597.217.82 1.11.098 2.162.54 2.97 1.296 1.974 1.844 2.35 4.886.892 7.233-1.197 1.93-3.509 3.177-5.889 3.177zM0 12c0 6.627 5.373 12 12 12s12-5.373 12-12S18.627 0 12 0 0 5.373 0 12Z" />
+                </svg>
+              </button>
+            </div>
             <ZmInput
               v-model:value="searchInput"
               :placeholder="t('music.searchPlaceholder')"
               @keyup.enter="handleSearch"
               style="flex: 1"
             />
-            <ZmButton type="primary" @click="handleSearch" :loading="music.isSearching">
-              <Search :size="18" />
+            <ZmButton
+              type="primary"
+              @click="handleSearch"
+              :loading="music.isSearching"
+              style="min-width: 40px"
+            >
+              <Search v-if="!music.isSearching" :size="18" />
             </ZmButton>
           </ZmSpace>
 
@@ -410,7 +429,10 @@ async function handleStopPlayback() {
               </div>
               <span class="search-duration">{{ music.formatDuration(song.duration) }}</span>
             </div>
-            <div v-if="music.searchResults.length === 0 && searchInput" class="search-empty">
+            <div
+              v-if="lastSearchedQuery && searchInput.trim() === lastSearchedQuery && music.searchResults.length === 0"
+              class="search-empty"
+            >
               {{ music.isSearching ? t('music.searching') : t('music.noResults') }}
             </div>
           </div>
@@ -441,7 +463,7 @@ async function handleStopPlayback() {
   padding: 0 16px;
   display: flex;
   align-items: center;
-  border-bottom: 1px dashed rgba(128, 128, 128, 0.4);
+  border-bottom: 1px dashed var(--color-border);
   flex-shrink: 0;
 }
 
@@ -455,49 +477,50 @@ async function handleStopPlayback() {
   color: var(--color-text-main);
 }
 
-.login-status {
+.login-actions {
   margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.login-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-size: 12px;
-  padding: 4px 12px;
-  border-radius: 12px;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
-  background: rgba(255, 255, 255, 0.1);
+  color: var(--color-text-muted);
   transition: all 0.2s;
 }
 
 .login-status:hover {
-  background: rgba(255, 255, 255, 0.2);
+  background: var(--surface-glass-hover);
+  color: var(--color-text-main);
 }
 
-.login-status.logged-in {
-  color: #fff;
+.login-status .platform-dot {
+  width: 6px;
+  height: 6px;
+  flex-shrink: 0;
 }
 
-.login-status.logged-in.qq {
-  background: linear-gradient(135deg, #10b981, #059669);
+.login-status.logged-in.qq .platform-dot {
+  background: var(--brand-qq);
 }
 
-.login-status.logged-in.netease {
-  background: linear-gradient(135deg, #e60026, #c20020);
+.login-status.logged-in.netease .platform-dot {
+  background: var(--brand-netease);
 }
 
-.playback-status {
-  font-size: 12px;
-  padding: 4px 12px;
-  border-radius: 12px;
-  cursor: pointer;
-  background: rgba(255, 255, 255, 0.1);
-  transition: all 0.2s;
-  margin-right: 8px;
+.login-status.login-btn {
+  color: var(--color-primary);
 }
 
-.playback-status:hover {
-  background: rgba(255, 255, 255, 0.2);
-}
-
-.playback-status.active {
-  background: linear-gradient(135deg, #6366f1, #8b5cf6);
-  color: #fff;
+.login-status.login-btn:hover {
+  color: var(--color-primary-hover);
 }
 
 .music-content {
@@ -517,7 +540,7 @@ async function handleStopPlayback() {
 .qr-code {
   width: 200px;
   height: 200px;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: #fff;
 }
 
@@ -531,31 +554,31 @@ async function handleStopPlayback() {
   display: inline-block;
   font-size: 10px;
   padding: 2px 6px;
-  border-radius: 4px;
+  border-radius: var(--radius-md);
   margin-left: 6px;
   vertical-align: middle;
-  color: #fff;
+  color: var(--color-text-light);
 }
 
 .platform-tag.qq {
-  background: #10b981;
+  background: var(--brand-qq);
 }
 
 .platform-tag.netease {
-  background: #e60026;
+  background: var(--brand-netease);
 }
 
 /* Now Playing */
 .now-playing {
   background: var(--surface-glass);
   backdrop-filter: blur(20px);
-  border-radius: 16px;
+  border-radius: var(--radius-md);
   padding: 16px;
   display: flex;
   flex-direction: column;
   gap: 12px;
   margin-bottom: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--color-border);
   flex-shrink: 0;
 }
 
@@ -568,7 +591,7 @@ async function handleStopPlayback() {
 .album-cover {
   width: 56px;
   height: 56px;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   object-fit: cover;
   flex-shrink: 0;
 }
@@ -636,8 +659,9 @@ async function handleStopPlayback() {
   justify-content: center;
   width: 40px;
   height: 40px;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-md);
+  background: var(--surface-glass-darker);
+  color: var(--color-text-main);
   border: none;
   font-size: 18px;
   cursor: pointer;
@@ -645,7 +669,7 @@ async function handleStopPlayback() {
 }
 
 .control-btn:hover {
-  background: rgba(255, 255, 255, 0.2);
+  background: var(--surface-glass-hover);
   transform: scale(1.1);
 }
 
@@ -664,6 +688,7 @@ async function handleStopPlayback() {
   height: 48px;
   font-size: 22px;
   background: var(--color-gradient-primary);
+  color: var(--color-text-light);
 }
 
 /* Volume Control - Full Width */
@@ -716,10 +741,10 @@ async function handleStopPlayback() {
 
 .add-song-btn {
   background: var(--color-gradient-primary);
-  color: #fff;
+  color: var(--color-text-light);
   border: none;
   padding: 12px 24px;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   font-weight: 600;
   cursor: pointer;
 }
@@ -732,8 +757,8 @@ async function handleStopPlayback() {
   min-height: 0;
   background: var(--surface-glass);
   backdrop-filter: blur(20px);
-  border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
   overflow: hidden;
 }
 
@@ -742,7 +767,7 @@ async function handleStopPlayback() {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  border-bottom: 1px solid var(--color-border);
   flex-shrink: 0;
   color: var(--color-text-main);
   font-weight: 600;
@@ -756,15 +781,17 @@ async function handleStopPlayback() {
 .icon-btn {
   background: none;
   border: none;
+  color: var(--color-text-muted);
   font-size: 16px;
   cursor: pointer;
   padding: 4px;
-  border-radius: 4px;
-  transition: background 0.2s;
+  border-radius: var(--radius-md);
+  transition: background 0.2s, color 0.2s;
 }
 
 .icon-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--surface-glass-hover);
+  color: var(--color-text-main);
 }
 
 .queue-list {
@@ -778,22 +805,22 @@ async function handleStopPlayback() {
   align-items: center;
   gap: 12px;
   padding: 8px;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   transition: background 0.2s;
 }
 
 .queue-item:hover {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--surface-glass-hover);
 }
 
 .queue-item.current {
-  background: rgba(99, 102, 241, 0.2);
+  background: rgba(var(--color-accent-rgb), 0.12);
 }
 
 .queue-cover {
   width: 40px;
   height: 40px;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   object-fit: cover;
 }
 
@@ -848,6 +875,57 @@ async function handleStopPlayback() {
   font-size: 14px;
 }
 
+/* Search dialog platform picker: bare official marks, no boxes */
+.platform-picker {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.platform-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 30px;
+  height: 30px;
+  padding: 0 7px;
+  border: none;
+  background: none;
+  border-radius: var(--radius-md);
+  color: var(--color-text-muted);
+  font-size: 13px;
+  cursor: pointer;
+  opacity: 0.5;
+  transition: opacity 0.2s, background 0.2s, color 0.2s;
+}
+
+.platform-chip:hover {
+  background: var(--surface-glass-hover);
+  opacity: 0.85;
+}
+
+.platform-chip.active {
+  background: var(--surface-glass-darker);
+  color: var(--color-text-main);
+  opacity: 1;
+}
+
+.platform-mark {
+  width: 18px;
+  height: 18px;
+}
+
+.platform-mark.qq-mark {
+  width: 19px;
+  height: 19px;
+  object-fit: contain;
+}
+
+.platform-mark.netease path {
+  fill: var(--brand-netease);
+}
+
 /* Search Results */
 .search-results {
   max-height: 400px;
@@ -859,19 +937,19 @@ async function handleStopPlayback() {
   align-items: center;
   gap: 12px;
   padding: 12px;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   cursor: pointer;
   transition: background 0.2s;
 }
 
 .search-item:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--surface-glass-hover);
 }
 
 .search-cover {
   width: 48px;
   height: 48px;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   object-fit: cover;
 }
 
