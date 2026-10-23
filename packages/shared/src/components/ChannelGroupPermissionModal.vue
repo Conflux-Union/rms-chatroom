@@ -139,9 +139,9 @@ async function handleSave() {
 }
 
 .modal-content {
-  background: #ffffff;
+  background: var(--zhimo-bg);
   border: 2px solid var(--color-border);
-  border-radius: 12px;
+  border-radius: var(--radius-md);
   max-width: 550px;
   width: 90%;
   max-height: 85vh;
@@ -185,7 +185,7 @@ async function handleSave() {
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   transition: all 0.2s;
 }
 
@@ -213,9 +213,10 @@ async function handleSave() {
 .btn {
   padding: 10px 18px;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   font-size: 14px;
   font-weight: 600;
+  color: var(--color-text-main);
   cursor: pointer;
   transition: all 0.2s;
 }
@@ -233,7 +234,7 @@ async function handleSave() {
 
 .btn-primary {
   background: var(--color-gradient-primary);
-  color: white;
+  color: var(--color-text-light);
   border: none;
 }
 

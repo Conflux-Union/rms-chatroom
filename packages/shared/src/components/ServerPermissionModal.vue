@@ -131,8 +131,8 @@ const handleSave = async () => {
 }
 
 .modal-content {
-  background: #ffffff;
-  border-radius: 12px;
+  background: var(--zhimo-bg);
+  border-radius: var(--radius-md);
   width: 90%;
   max-width: 550px;
   max-height: 90vh;
@@ -178,7 +178,7 @@ const handleSave = async () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   transition: all 0.2s;
 }
 
@@ -205,16 +205,17 @@ const handleSave = async () => {
 .btn {
   padding: 10px 18px;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   font-size: 14px;
   font-weight: 600;
+  color: var(--color-text-main);
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .btn-primary {
   background: var(--color-gradient-primary);
-  color: white;
+  color: var(--color-text-light);
 }
 
 .btn-primary:hover:not(:disabled) {

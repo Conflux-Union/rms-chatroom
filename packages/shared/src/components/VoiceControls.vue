@@ -120,10 +120,10 @@ const screenShareTooltip = computed(() => {
 <style scoped>
 .voice-controls {
   padding: 8px;
-  background: rgba(16, 185, 129, 0.15);
+  background: rgba(var(--color-success-rgb), 0.12);
   border-radius: var(--radius-md);
   margin-bottom: 8px;
-  border: 1px solid rgba(16, 185, 129, 0.3);
+  border: 1px solid rgba(var(--color-success-rgb), 0.3);
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -154,7 +154,7 @@ const screenShareTooltip = computed(() => {
 .status-label {
   font-size: 12px;
   font-weight: 600;
-  color: #10b981;
+  color: var(--color-success);
 }
 
 .channel-name {
@@ -171,11 +171,11 @@ const screenShareTooltip = computed(() => {
 .control-btn {
   width: 36px;
   height: 36px;
-  border-radius: 50%;
+  border-radius: var(--radius-md);
   background: var(--surface-glass);
   backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-main);
   font-size: 16px;
   cursor: pointer;
   transition: all var(--transition-fast);
@@ -208,9 +208,9 @@ const screenShareTooltip = computed(() => {
 }
 
 .control-btn.host-mode-active {
-  background: linear-gradient(135deg, #f59e0b, #d97706);
-  border-color: #f59e0b;
-  color: white;
+  background: var(--color-warning);
+  border-color: var(--color-warning);
+  color: var(--zhimo-bg);
 }
 
 .control-btn.host-mode-active:hover {
@@ -229,9 +229,9 @@ const screenShareTooltip = computed(() => {
 }
 
 .control-btn.screen-share-active {
-  background: linear-gradient(135deg, #10b981, #059669);
-  border-color: #10b981;
-  color: white;
+  background: var(--color-success);
+  border-color: var(--color-success);
+  color: var(--zhimo-bg);
 }
 
 .control-btn.screen-share-active:hover {
@@ -256,9 +256,9 @@ const screenShareTooltip = computed(() => {
   gap: 6px;
   margin-top: 8px;
   padding: 4px 8px;
-  background: rgba(245, 158, 11, 0.2);
+  background: rgba(var(--color-warning-rgb), 0.18);
   border-radius: var(--radius-sm);
   font-size: 11px;
-  color: #f59e0b;
+  color: var(--color-warning);
 }
 </style>

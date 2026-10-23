@@ -266,17 +266,17 @@ onMounted(() => {
 }
 .box {
   width: min(520px, calc(100vw - 32px));
-  background: #fff;
-  border-radius: 14px;
+  background: var(--zhimo-bg);
+  border-radius: var(--radius-md);
   padding: 16px;
-  border: 1px solid #eee;
+  border: 1px solid var(--color-border);
 }
 .title {
   font-weight: 800;
   font-size: 16px;
   margin-bottom: 10px;
 }
-.info { font-size: 13px; color: #333; }
+.info { font-size: 13px; color: var(--color-text-main); }
 .notes {
   margin-top: 10px;
   font-size: 13px;
@@ -292,21 +292,21 @@ onMounted(() => {
   justify-content: space-between;
   align-items: baseline;
 }
-.speed { font-size: 12px; color: #666; }
+.speed { font-size: 12px; color: var(--color-text-muted); }
 .bar {
   position: relative;
   height: 8px;
   margin-top: 8px;
-  border-radius: 4px;
-  background: #eee;
+  border-radius: var(--radius-md);
+  background: var(--surface-glass-darker);
   overflow: hidden;
 }
 .bar-fill {
   position: absolute;
   inset: 0 auto 0 0;
   width: 0;
-  border-radius: 4px;
-  background: #111;
+  border-radius: var(--radius-md);
+  background: var(--zhimo-accent);
   transition: width 0.2s ease;
 }
 .bar.indeterminate .bar-fill {
@@ -317,17 +317,18 @@ onMounted(() => {
   0% { left: -30%; }
   100% { left: 100%; }
 }
-.sub { margin-top: 6px; font-size: 12px; color: #666; }
-.error { margin-top: 10px; color: #b00020; font-size: 13px; }
+.sub { margin-top: 6px; font-size: 12px; color: var(--color-text-muted); }
+.error { margin-top: 10px; color: var(--color-error); font-size: 13px; }
 .actions { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
 .btn {
   padding: 8px 12px;
-  border-radius: 10px;
-  border: 1px solid #ccc;
-  background: #fff;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border-strong);
+  background: var(--zhimo-bg);
+  color: var(--color-text-main);
   cursor: pointer;
 }
-.primary { border-color: #111; }
-.danger { border-color: #b00020; color: #b00020; }
+.primary { border-color: var(--zhimo-accent); }
+.danger { border-color: var(--color-error); color: var(--color-error); }
 .btn:disabled { opacity: 0.6; cursor: not-allowed; }
 </style>

@@ -297,7 +297,7 @@ const openPdf = () => {
   background: rgba(255, 255, 255, 0.2);
   color: white;
   font-size: 24px;
-  border-radius: 50%;
+  border-radius: var(--radius-md);
   cursor: pointer;
   transition: background 0.2s;
 }
@@ -313,7 +313,7 @@ const openPdf = () => {
   padding: 8px 16px;
   border: none;
   background: var(--color-accent);
-  color: white;
+  color: var(--color-text-light);
   border-radius: var(--radius-md);
   cursor: pointer;
   font-size: 14px;

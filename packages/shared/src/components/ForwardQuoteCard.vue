@@ -257,7 +257,7 @@ async function handleBodyClick(event: MouseEvent) {
   padding: 1px 5px;
   background: var(--surface-glass-hover);
   border: 1px solid var(--color-border);
-  border-radius: 4px;
+  border-radius: var(--radius-md);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.9em;
 }

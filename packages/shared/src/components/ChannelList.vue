@@ -1106,7 +1106,7 @@ async function deleteChannel() {
 .inline-edit {
   flex: 1;
   padding: 4px 8px;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   border: 1px solid var(--zhimo-border);
   background: var(--surface-glass-input);
   color: var(--color-text-main);
@@ -1119,7 +1119,7 @@ async function deleteChannel() {
 
 /* custom input appearance */
 .custom-input {
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   border: 1px solid var(--zhimo-border);
   background: var(--zhimo-bg-subtle);
 }
@@ -1140,7 +1140,7 @@ async function deleteChannel() {
 .server-header {
   padding: 12px 16px;
   height: 48px;
-  border-bottom: 1px dashed rgba(128, 128, 128, 0.4);
+  border-bottom: 1px dashed var(--color-border);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1170,7 +1170,7 @@ async function deleteChannel() {
   border: 1px solid var(--zhimo-border);
   color: var(--color-text-muted);
   padding: 4px 8px;
-  border-radius: 4px;
+  border-radius: var(--radius-md);
   font-size: 11px;
   cursor: pointer;
   transition: all var(--transition-fast);
@@ -1235,7 +1235,7 @@ async function deleteChannel() {
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 4px;
+  border-radius: var(--radius-md);
   transition: all var(--transition-fast);
 }
 
@@ -1306,7 +1306,7 @@ async function deleteChannel() {
 .edit-actions .small {
   font-size: 12px;
   padding: 4px 6px;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   border: none;
   background-color: rgba(0, 0, 0, 0);
   color: var(--color-text-main);
@@ -1332,7 +1332,7 @@ async function deleteChannel() {
   margin-top: auto; /* 自动推到底部 */ 
   display: flex; 
   justify-content: space-between; 
-  border-top: 1px dashed rgba(128,128,128,0.4); 
+  border-top: 1px dashed var(--color-border);
   padding: 8px; 
   background: transparent;
   flex-direction: column;
@@ -1364,7 +1364,7 @@ async function deleteChannel() {
   color: var(--color-text-muted);
   background: var(--surface-glass);
   padding: 1px 6px;
-  border-radius: 10px;
+  border-radius: var(--radius-md);
 }
 
 .voice-users-list {
@@ -1396,7 +1396,7 @@ async function deleteChannel() {
   justify-content: center;
   align-items: center;
   font-weight: 600;
-  color: #fff;
+  color: var(--color-text-light);
   font-size: 10px;
 }
 
@@ -1411,7 +1411,7 @@ async function deleteChannel() {
   position: absolute;
   bottom: -2px;
   right: -4px;
-  color: #f59e0b;
+  color: var(--color-warning);
   filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.5));
 }
 
@@ -1514,7 +1514,7 @@ async function deleteChannel() {
   border: 1px solid var(--zhimo-border);
   color: var(--color-text-muted);
   padding: 4px 8px;
-  border-radius: 4px;
+  border-radius: var(--radius-md);
   font-size: 11px;
   cursor: pointer;
   transition: all var(--transition-fast);
@@ -1647,7 +1647,7 @@ async function deleteChannel() {
   font-size: 10px;
   font-weight: 800;
   padding: 4px 6px;
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   white-space: nowrap;
   box-shadow: none;
   animation: pulse-mention 2s ease-in-out infinite;
@@ -1671,12 +1671,12 @@ async function deleteChannel() {
 
 /* Unread Count Badge */
 .unread-badge {
-  background: var(--color-text-muted, #6b7280);
-  color: white;
+  background: var(--color-text-muted);
+  color: var(--zhimo-bg);
   font-size: 10px;
   font-weight: 600;
   padding: 2px 5px;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   white-space: nowrap;
   min-width: 16px;
   text-align: center;

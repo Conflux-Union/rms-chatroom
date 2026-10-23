@@ -91,7 +91,7 @@ const updateSpeakLevel = (level: number) => {
 }
 
 .permission-section {
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--surface-glass-darker);
   border-radius: var(--radius-md);
   padding: 16px;
   border: 1px solid var(--color-border);
@@ -134,7 +134,7 @@ const updateSpeakLevel = (level: number) => {
   padding: 6px 12px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--surface-glass-darker);
   color: var(--color-text-muted);
   font-size: 12px;
   font-weight: 500;
@@ -144,14 +144,14 @@ const updateSpeakLevel = (level: number) => {
 }
 
 .level-btn:hover {
-  background: rgba(255, 255, 255, 0.12);
+  background: var(--surface-glass-hover);
   color: var(--color-text-main);
   border-color: var(--color-accent);
 }
 
 .level-btn.active {
   background: var(--color-accent);
-  color: white;
+  color: var(--color-text-light);
   border-color: var(--color-accent);
 }
 

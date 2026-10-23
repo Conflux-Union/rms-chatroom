@@ -738,7 +738,7 @@ onUnmounted(() => {
   padding: 32px 48px;
   background: var(--surface-glass);
   border: 2px dashed var(--color-accent);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-md);
 }
 
 .drag-icon {
@@ -756,7 +756,7 @@ onUnmounted(() => {
   padding: 0 16px;
   display: flex;
   align-items: center;
-  border-bottom: 1px dashed rgba(128, 128, 128, 0.4);
+  border-bottom: 1px dashed var(--color-border);
   /* Frosted band so the channel name reads over the vivid ink canvas. */
   background: var(--zhimo-surface-bg);
   backdrop-filter: var(--zhimo-surface-blur);
@@ -790,9 +790,9 @@ onUnmounted(() => {
   transform: translateX(-50%);
   padding: 4px 14px;
   font-size: 13px;
-  color: var(--text-muted, #b9bbbe);
-  background: var(--background-secondary, #2f3136);
-  border-radius: 8px;
+  color: var(--color-text-muted);
+  background: var(--surface-glass-darker);
+  border-radius: var(--radius-md);
   z-index: 5;
   pointer-events: none;
 }
@@ -821,7 +821,7 @@ onUnmounted(() => {
   justify-content: center;
   align-items: center;
   font-weight: 600;
-  color: #fff;
+  color: var(--color-text-light);
   margin-right: 16px;
   flex-shrink: 0;
   overflow: hidden;
@@ -954,7 +954,7 @@ onUnmounted(() => {
   padding: 1px 5px;
   background: var(--surface-glass-hover);
   border: 1px solid var(--color-border);
-  border-radius: 4px;
+  border-radius: var(--radius-md);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.9em;
 }
@@ -1071,7 +1071,7 @@ onUnmounted(() => {
   flex-wrap: wrap;
   gap: 8px;
   background: var(--surface-glass);
-  border-top: 1px solid rgba(128, 128, 128, 0.2);
+  border-top: 1px solid var(--color-border);
 }
 
 .pending-file {
@@ -1085,7 +1085,7 @@ onUnmounted(() => {
 }
 
 .pending-file.uploaded {
-  background: rgba(34, 197, 94, 0.2);
+  background: rgba(var(--color-success-rgb), 0.15);
 }
 
 .pending-file .file-icon-svg {
@@ -1171,7 +1171,7 @@ onUnmounted(() => {
 
 .send-btn.active {
   background: var(--color-accent);
-  color: white;
+  color: var(--color-text-light);
 }
 
 .message-input {
@@ -1301,7 +1301,7 @@ onUnmounted(() => {
 
 @keyframes highlight-pulse {
   0% {
-    background: rgba(var(--color-accent-rgb, 99, 102, 241), 0.3);
+    background: rgba(var(--color-accent-rgb), 0.3);
   }
   100% {
     background: transparent;
@@ -1383,7 +1383,7 @@ onUnmounted(() => {
   justify-content: space-between;
   padding: 8px 16px;
   background: var(--surface-glass);
-  border-top: 1px solid rgba(128, 128, 128, 0.2);
+  border-top: 1px solid var(--color-border);
   border-left: 3px solid var(--color-accent);
 }
 
@@ -1455,7 +1455,7 @@ onUnmounted(() => {
   right: 0;
   margin-bottom: 8px;
   background: var(--surface-glass);
-  border: 1px solid rgba(128, 128, 128, 0.3);
+  border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-lg);
   max-height: 200px;
@@ -1487,7 +1487,7 @@ onUnmounted(() => {
   align-items: center;
   font-weight: 600;
   font-size: 12px;
-  color: #fff;
+  color: var(--color-text-light);
   flex-shrink: 0;
 }
 
@@ -1500,15 +1500,15 @@ onUnmounted(() => {
 /* Mention highlight in message content */
 .message-text :deep(.mention-highlight) {
   color: var(--color-accent);
-  background: rgba(var(--color-accent-rgb, 99, 102, 241), 0.15);
+  background: rgba(var(--color-accent-rgb), 0.15);
   padding: 0 4px;
-  border-radius: 4px;
+  border-radius: var(--radius-md);
   font-weight: 500;
   cursor: pointer;
 }
 
 .message-text :deep(.mention-highlight:hover) {
-  background: rgba(var(--color-accent-rgb, 99, 102, 241), 0.25);
+  background: rgba(var(--color-accent-rgb), 0.25);
 }
 
 /* Reactions */
@@ -1539,10 +1539,11 @@ onUnmounted(() => {
   padding: 2px 8px;
   background: var(--surface-glass-input);
   border: 1px solid transparent;
-  border-radius: 12px;
+  border-radius: var(--radius-md);
   cursor: pointer;
   transition: all var(--transition-fast);
   font-size: 14px;
+  color: var(--color-text-main);
 }
 
 .reaction-badge:hover {
@@ -1550,7 +1551,7 @@ onUnmounted(() => {
 }
 
 .reaction-badge.reaction-active {
-  background: rgba(var(--color-accent-rgb, 99, 102, 241), 0.2);
+  background: rgba(var(--color-accent-rgb), 0.2);
   border-color: var(--color-accent);
 }
 
@@ -1576,8 +1577,8 @@ onUnmounted(() => {
   width: 28px;
   height: 28px;
   background: var(--surface-glass-input);
-  border: 1px dashed rgba(128, 128, 128, 0.3);
-  border-radius: 12px;
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-md);
   cursor: pointer;
   color: var(--color-text-muted);
   transition: all var(--transition-fast);
@@ -1600,7 +1601,7 @@ onUnmounted(() => {
   position: fixed;
   transform: translateY(-100%);
   background: var(--surface-glass);
-  border: 1px solid rgba(128, 128, 128, 0.3);
+  border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-lg);
   padding: 8px;
@@ -1623,6 +1624,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
+  color: var(--color-text-muted);
   font-size: 20px;
   background: transparent;
   border: none;
@@ -1633,6 +1635,7 @@ onUnmounted(() => {
 
 .emoji-btn:hover {
   background: var(--surface-glass-input);
+  color: var(--color-text-main);
 }
 
 /* Copied-permalink toast */
@@ -1664,7 +1667,7 @@ onUnmounted(() => {
   font-size: 13px;
   color: var(--color-text-main);
   background: var(--surface-glass);
-  border: 1px solid rgba(128, 128, 128, 0.4);
+  border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   cursor: pointer;
   z-index: 5;

@@ -164,7 +164,7 @@ const serverExpressionText = computed(() =>
 
 .permission-section {
   background: linear-gradient(135deg, var(--color-background-soft) 0%, var(--color-background) 100%);
-  border-radius: 12px;
+  border-radius: var(--radius-md);
   padding: 24px;
   border: 1px solid var(--color-border);
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
@@ -221,7 +221,7 @@ const serverExpressionText = computed(() =>
 .operator-btn {
   padding: 12px;
   border: 2px solid var(--color-border);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   background: var(--color-background);
   color: var(--color-text-muted);
   cursor: pointer;
@@ -239,10 +239,10 @@ const serverExpressionText = computed(() =>
 }
 
 .operator-btn.active {
-  background: linear-gradient(135deg, var(--color-accent) 0%, rgba(var(--color-accent-rgb, 100, 150, 200), 0.9) 100%);
-  color: #000000;
+  background: var(--color-accent);
+  color: var(--color-text-light);
   border-color: var(--color-accent);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  box-shadow: var(--shadow-md);
 }
 
 .operator-text {
@@ -276,7 +276,7 @@ const serverExpressionText = computed(() =>
 .level-btn {
   padding: 12px 6px;
   border: 2px solid var(--color-border);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   background: var(--color-background);
   color: var(--color-text-muted);
   font-size: 12px;
@@ -328,10 +328,10 @@ const serverExpressionText = computed(() =>
 }
 
 .level-btn.active {
-  background: linear-gradient(135deg, var(--color-accent) 0%, rgba(var(--color-accent-rgb, 100, 150, 200), 0.9) 100%);
-  color: #000000;
+  background: var(--color-accent);
+  color: var(--color-text-light);
   border-color: var(--color-accent);
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25);
+  box-shadow: var(--shadow-md);
   transform: translateY(-4px);
 }
 
@@ -344,7 +344,7 @@ const serverExpressionText = computed(() =>
 .expression-preview {
   background: var(--color-background);
   border: 1px solid var(--color-border);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   padding: 10px 14px;
   display: flex;
   align-items: center;
@@ -367,10 +367,10 @@ const serverExpressionText = computed(() =>
 
 /* Current selection indicator */
 .current-selection {
-  background: rgba(var(--color-accent-rgb, 100, 150, 200), 0.12);
+  background: rgba(var(--color-accent-rgb), 0.12);
   border-left: 4px solid var(--color-accent);
   padding: 12px 14px;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   font-size: 12px;
   color: var(--color-accent);
   margin-top: 4px;

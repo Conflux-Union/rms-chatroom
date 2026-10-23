@@ -413,7 +413,7 @@ function disconnect() {
   padding: var(--spacing-xxl) var(--spacing-xl);
   background: var(--surface-glass);
   backdrop-filter: blur(var(--blur-strength));
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-md);
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
 }
 
@@ -432,7 +432,7 @@ function disconnect() {
 .loading-spinner {
   width: 48px;
   height: 48px;
-  border: 3px solid rgba(255, 255, 255, 0.2);
+  border: 3px solid var(--color-border);
   border-top-color: var(--color-primary);
   border-radius: 50%;
   animation: spin 1s linear infinite;
@@ -447,7 +447,7 @@ function disconnect() {
 }
 
 .error-icon {
-  color: var(--color-error, #ef4444);
+  color: var(--color-error);
 }
 
 .info-icon {
@@ -494,12 +494,12 @@ function disconnect() {
 .form-input:focus {
   outline: none;
   background: var(--surface-glass-input-focus);
-  border-color: rgba(252, 121, 97, 0.5);
-  box-shadow: 0 0 0 3px rgba(252, 121, 97, 0.15);
+  border-color: rgba(var(--color-accent-rgb), 0.5);
+  box-shadow: var(--zhimo-focus-ring);
 }
 
 .error-text {
-  color: var(--color-error, #ef4444);
+  color: var(--color-error);
   font-size: 0.875rem;
   margin: 0;
 }
@@ -510,7 +510,7 @@ function disconnect() {
   border: none;
   border-radius: var(--radius-md);
   background: var(--color-gradient-primary);
-  color: white;
+  color: var(--color-text-light);
   font-size: 1rem;
   font-weight: 600;
   cursor: pointer;
@@ -545,7 +545,7 @@ function disconnect() {
   align-items: center;
   gap: var(--spacing-sm);
   padding-bottom: var(--spacing-md);
-  border-bottom: 1px dashed rgba(128, 128, 128, 0.4);
+  border-bottom: 1px dashed var(--color-border);
 }
 
 .channel-icon {
@@ -561,14 +561,14 @@ function disconnect() {
 .connection-badge {
   font-size: 0.75rem;
   padding: 4px 10px;
-  border-radius: 10px;
-  background: var(--color-success, #10b981);
-  color: #fff;
+  border-radius: var(--radius-md);
+  background: var(--color-success);
+  color: var(--zhimo-bg);
   font-weight: 500;
 }
 
 .voice-users {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--surface-glass-darker);
   border-radius: var(--radius-md);
   padding: var(--spacing-md);
 }
@@ -581,8 +581,8 @@ function disconnect() {
 }
 
 .voice-user.speaking {
-  background: rgba(16, 185, 129, 0.1);
-  border-radius: 8px;
+  background: rgba(var(--color-success-rgb), 0.1);
+  border-radius: var(--radius-md);
   padding: 8px;
   margin: 0 -8px;
 }
@@ -596,13 +596,13 @@ function disconnect() {
   justify-content: center;
   align-items: center;
   font-weight: 600;
-  color: #fff;
+  color: var(--color-text-light);
   margin-right: 12px;
   font-size: 14px;
 }
 
 .voice-user.speaking .user-avatar {
-  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.5);
+  box-shadow: 0 0 0 3px rgba(var(--color-success-rgb), 0.45);
 }
 
 .user-name {
@@ -630,10 +630,10 @@ function disconnect() {
 .control-btn {
   width: 48px;
   height: 48px;
-  border-radius: 50%;
+  border-radius: var(--radius-md);
   background: var(--surface-glass);
   backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  border: 1px solid var(--color-border);
   cursor: pointer;
   transition: all var(--transition-fast);
   display: flex;
@@ -650,13 +650,13 @@ function disconnect() {
 .control-btn.active {
   background: var(--color-error);
   border-color: var(--color-error);
-  color: #fff;
+  color: var(--color-text-light);
 }
 
 .control-btn.disconnect {
   background: var(--color-error);
   border-color: var(--color-error);
-  color: #fff;
+  color: var(--color-text-light);
 }
 
 .control-btn.disconnect svg {
@@ -674,11 +674,11 @@ function disconnect() {
   gap: 8px;
   margin-bottom: 16px;
   padding: 8px 12px;
-  background: rgba(245, 158, 11, 0.2);
+  background: rgba(var(--color-warning-rgb), 0.18);
   border-radius: var(--radius-md);
   font-size: 13px;
-  color: #f59e0b;
-  border: 1px solid rgba(245, 158, 11, 0.3);
+  color: var(--color-warning);
+  border: 1px solid rgba(var(--color-warning-rgb), 0.3);
 }
 
 @media (max-width: 600px) {

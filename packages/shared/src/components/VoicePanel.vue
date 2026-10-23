@@ -662,7 +662,7 @@ function closeInviteDialog() {
   padding: 0 16px;
   display: flex;
   align-items: center;
-  border-bottom: 1px dashed rgba(128, 128, 128, 0.4);
+  border-bottom: 1px dashed var(--color-border);
 }
 
 .channel-icon {
@@ -679,13 +679,13 @@ function closeInviteDialog() {
   margin-left: auto;
   font-size: 12px;
   padding: 2px 8px;
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   font-weight: 500;
 }
 
 .connection-mode.connected {
-  background: var(--color-success, #10b981);
-  color: #fff;
+  background: var(--color-success);
+  color: var(--zhimo-bg);
 }
 
 .voice-content {
@@ -761,13 +761,13 @@ function closeInviteDialog() {
 .device-select:focus {
   outline: none;
   background: var(--surface-glass-input-focus);
-  border-color: rgba(252, 121, 97, 0.5);
-  box-shadow: 0 0 0 3px rgba(252, 121, 97, 0.15);
+  border-color: rgba(var(--color-accent-rgb), 0.5);
+  box-shadow: var(--zhimo-focus-ring);
   transform: translateY(-1px);
 }
 
 .device-select option {
-  background: #fff;
+  background: var(--zhimo-bg);
   color: var(--color-text-main);
   padding: 8px;
 }
@@ -785,7 +785,7 @@ function closeInviteDialog() {
 
 .join-btn {
   background: var(--color-gradient-primary);
-  color: #fff;
+  color: var(--color-text-light);
   border: none;
   padding: 14px 28px;
   font-size: 16px;
@@ -853,10 +853,10 @@ function closeInviteDialog() {
   transform: translateX(-50%);
   margin-top: 0;
   padding: 8px 16px;
-  border-radius: 999px;
+  border-radius: var(--radius-md);
   background: var(--zhimo-surface-bg);
   backdrop-filter: var(--zhimo-surface-blur);
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  border: 1px solid var(--color-border);
   z-index: 10;
 }
 
@@ -893,8 +893,8 @@ function closeInviteDialog() {
   margin-bottom: 8px;
   background: var(--surface-glass);
   backdrop-filter: blur(20px);
-  border-radius: var(--radius-lg);
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
 }
 
 .voice-users-header h4 {
@@ -907,10 +907,10 @@ function closeInviteDialog() {
 .voice-users {
   background: var(--surface-glass);
   backdrop-filter: blur(20px);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-md);
   padding: 12px 8px;
   margin-bottom: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  border: 1px solid var(--color-border);
 }
 
 .voice-user-wrapper {
@@ -924,15 +924,15 @@ function closeInviteDialog() {
   flex-direction: column;
   padding: 16px 16px;
   transition: all 0.2s ease, transform 0.3s ease;
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-md);
   position: relative;
   z-index: 1;
   background: transparent;
 }
 
 .voice-user.speaking {
-  background: rgba(16, 185, 129, 0.1);
-  border-radius: 8px;
+  background: rgba(var(--color-success-rgb), 0.1);
+  border-radius: var(--radius-md);
   padding: 16px 12px;
   margin: 0px 4px;
 }
@@ -950,9 +950,9 @@ function closeInviteDialog() {
 
 .swipe-action-btn {
   width: 60px;
-  background: #f59e0b;
+  background: var(--color-warning);
   border: none;
-  color: white;
+  color: var(--zhimo-bg);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -963,15 +963,15 @@ function closeInviteDialog() {
 }
 
 .swipe-action-btn:first-child {
-  border-radius: 8px 0 0 8px;
+  border-radius: var(--radius-md) 0 0 var(--radius-md);
 }
 
 .swipe-action-btn:last-child {
-  border-radius: 0 8px 8px 0;
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
 }
 
 .swipe-action-btn.kick {
-  background: var(--color-error, #ef4444);
+  background: var(--color-error);
 }
 
 .voice-user-wrapper.swiped .voice-user {
@@ -999,7 +999,7 @@ function closeInviteDialog() {
   justify-content: center;
   align-items: center;
   font-weight: 600;
-  color: #fff;
+  color: var(--color-text-light);
   margin-right: 12px;
   font-size: 14px;
   transition: box-shadow 0.2s ease;
@@ -1017,7 +1017,7 @@ function closeInviteDialog() {
 }
 
 .voice-user.speaking .user-avatar {
-  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.5);
+  box-shadow: 0 0 0 3px rgba(var(--color-success-rgb), 0.45);
 }
 
 .user-name {
@@ -1059,8 +1059,8 @@ function closeInviteDialog() {
   height: 4px;
   -webkit-appearance: none;
   appearance: none;
-  background: rgba(80, 80, 80, 0.5);
-  border-radius: 2px;
+  background: var(--color-border-strong);
+  border-radius: var(--radius-sm);
   cursor: pointer;
 }
 
@@ -1070,7 +1070,7 @@ function closeInviteDialog() {
   width: 12px;
   height: 12px;
   border-radius: 50%;
-  background: var(--color-primary, #6366f1);
+  background: var(--color-primary);
   cursor: pointer;
   transition: transform 0.15s ease;
 }
@@ -1084,7 +1084,7 @@ function closeInviteDialog() {
   height: 12px;
   border: none;
   border-radius: 50%;
-  background: var(--color-primary, #6366f1);
+  background: var(--color-primary);
   cursor: pointer;
 }
 
@@ -1107,11 +1107,11 @@ function closeInviteDialog() {
 .control-btn {
   width: 48px;
   height: 48px;
-  border-radius: 50%;
+  border-radius: var(--radius-md);
   background: var(--surface-glass);
   backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-main);
   font-size: 20px;
   cursor: pointer;
   transition: all var(--transition-fast);
@@ -1145,9 +1145,9 @@ function closeInviteDialog() {
 }
 
 .control-btn.host-mode-active {
-  background: linear-gradient(135deg, #f59e0b, #d97706);
-  border-color: #f59e0b;
-  color: white;
+  background: var(--color-warning);
+  border-color: var(--color-warning);
+  color: var(--zhimo-bg);
 }
 
 .control-btn.host-mode-active:hover {
@@ -1172,36 +1172,25 @@ function closeInviteDialog() {
   gap: 8px;
   margin-bottom: 16px;
   padding: 8px 12px;
-  background: rgba(245, 158, 11, 0.2);
+  background: rgba(var(--color-warning-rgb), 0.18);
   border-radius: var(--radius-md);
   font-size: 13px;
-  color: #f59e0b;
-  border: 1px solid rgba(245, 158, 11, 0.3);
+  color: var(--color-warning);
+  border: 1px solid rgba(var(--color-warning-rgb), 0.3);
 }
 
 .warning-message {
-  color: var(--color-text-muted, #9ca3af);
+  color: var(--color-text-muted);
   font-size: 14px;
   line-height: 1.5;
   margin: 0;
 }
 
-/* Invite Button */
-.control-btn.invite-btn {
-  background: linear-gradient(135deg, #3b82f6, #2563eb);
-  border-color: #3b82f6;
-  color: white;
-}
-
-.control-btn.invite-btn:hover {
-  filter: brightness(1.1);
-}
-
 /* Screen Share Button */
 .control-btn.screen-share-active {
-  background: linear-gradient(135deg, #10b981, #059669);
-  border-color: #10b981;
-  color: white;
+  background: var(--color-success);
+  border-color: var(--color-success);
+  color: var(--zhimo-bg);
 }
 
 .control-btn.screen-share-active:hover {
@@ -1217,8 +1206,8 @@ function closeInviteDialog() {
   flex-direction: column;
   background: var(--surface-glass);
   backdrop-filter: blur(20px);
-  border-radius: var(--radius-lg);
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
   overflow: hidden;
 }
 
@@ -1227,21 +1216,21 @@ function closeInviteDialog() {
   align-items: center;
   gap: 8px;
   padding: 12px 16px;
-  background: rgba(16, 185, 129, 0.1);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(var(--color-success-rgb), 0.1);
+  border-bottom: 1px solid var(--color-border);
   cursor: pointer;
   font-size: 14px;
-  color: #10b981;
+  color: var(--color-success);
 }
 
 .screen-share-header:hover {
-  background: rgba(16, 185, 129, 0.15);
+  background: rgba(var(--color-success-rgb), 0.15);
 }
 
 .screen-share-toggle {
   padding: 4px 8px;
   font-size: 12px;
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--surface-glass-darker);
   border: none;
   border-radius: var(--radius-sm);
   color: var(--color-text-muted);
@@ -1274,11 +1263,11 @@ margin-left:auto when this control is absent. */
 }
 
 .screen-share-toggle.watch-off {
-  color: #10b981;
+  color: var(--color-success);
 }
 
 .screen-share-toggle:hover {
-  background: rgba(255, 255, 255, 0.2);
+  background: var(--surface-glass-hover);
 }
 
 .screen-share-video {
@@ -1325,15 +1314,11 @@ margin-left:auto when this control is absent. */
   background: rgba(0, 0, 0, 0.6);
   border-radius: var(--radius-sm);
   font-size: 12px;
-  color: #fff;
+  color: var(--color-text-light);
   z-index: 1;
 }
 
 /* Invite Dialog Styles (minimal - ZmModal handles most) */
-.invite-icon {
-  color: #3b82f6;
-}
-
 .invite-loading {
   display: flex;
   flex-direction: column;
@@ -1348,7 +1333,7 @@ margin-left:auto when this control is absent. */
 }
 
 .invite-error p {
-  color: var(--color-error, #ef4444);
+  color: var(--color-error);
   margin: 0;
 }
 

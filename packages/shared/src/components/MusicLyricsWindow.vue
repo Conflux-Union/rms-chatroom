@@ -203,7 +203,7 @@ onBeforeUnmount(() => {
   backdrop-filter: var(--zhimo-surface-blur);
   -webkit-backdrop-filter: var(--zhimo-surface-blur);
   border: 1px solid var(--zhimo-border-strong);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-md);
   box-shadow: var(--zhimo-shadow-lg);
   overflow: hidden;
   user-select: none;

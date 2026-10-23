@@ -9,6 +9,13 @@
   --color-primary-hover: var(--zhimo-seal-hover);
   --color-accent: var(--zhimo-seal);
   --color-accent-rgb: 184, 67, 47;
+
+  /* Music platform brand colors (official marks, fixed across themes) */
+  --brand-qq: #31c27c;
+  --brand-netease: #c20c0c;
+  --color-success-rgb: 74, 103, 65;
+  --color-warning-rgb: 176, 125, 46;
+  --color-danger-rgb: 158, 47, 28;
   --color-gradient-primary: var(--zhimo-seal);
   --color-gradient-secondary: var(--zhimo-bg-hover);
 
@@ -63,4 +70,13 @@
   --transition-fast: var(--zhimo-transition);
   --transition-normal: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   --transition-bounce: 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+/* RGB triplets must be re-declared per theme: the base colors themselves
+   change between light and dark, so a static triplet would tint wrong. */
+[data-theme="dark"] {
+  --color-accent-rgb: 217, 106, 82;
+  --color-success-rgb: 125, 154, 114;
+  --color-warning-rgb: 207, 160, 80;
+  --color-danger-rgb: 217, 106, 82;
 }

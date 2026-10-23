@@ -501,9 +501,9 @@ function stopOutputTest() {
 .hotkey-input {
   flex: 1;
   padding: 8px 12px;
-  border-radius: 8px;
-  border: 1px solid rgba(0, 0, 0, 0.1);
-  background: rgba(255, 255, 255, 0.5);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--surface-glass-input);
   color: var(--color-text-main);
   cursor: pointer;
   transition: all 0.2s ease;
@@ -512,7 +512,7 @@ function stopOutputTest() {
 .hotkey-input:focus {
   outline: none;
   border-color: var(--color-primary);
-  background: rgba(255, 255, 255, 0.65);
+  background: var(--surface-glass-input-focus);
 }
 
 .hotkey-input.capturing {
@@ -525,7 +525,7 @@ function stopOutputTest() {
   font-size: 13px;
   color: var(--color-text-muted);
   background: rgba(0, 0, 0, 0.05);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
 }
 
 .telemetry-desc {
