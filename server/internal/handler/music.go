@@ -381,6 +381,7 @@ func RegisterMusicRoutes(g *echo.Group, jwtSecret string, db *sql.DB) {
 	g.POST("/login/logout", musicLogout())
 	g.POST("/search", musicSearch(jwtSecret))
 	g.GET("/song/:mid/url", musicSongURL())
+	g.GET("/song/:mid/lyric", musicSongLyric(jwtSecret))
 	g.POST("/queue/add", musicQueueAdd(jwtSecret))
 	g.DELETE("/queue/:room_name/:index", musicQueueRemove(jwtSecret))
 	g.GET("/queue/:room_name", musicQueueGet(jwtSecret))

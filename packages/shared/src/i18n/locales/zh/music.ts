@@ -32,6 +32,12 @@ export const messages = {
   'music.searchPlaceholder': '搜索歌曲...',
   'music.searching': '搜索中...',
   'music.noResults': '未找到结果',
+  'music.lyrics': '歌词',
+  'music.lyricsDragHint': '拖动移动',
+  'music.lyricsTranslation': '译文',
+  'music.lyricsLoadFailed': '歌词加载失败',
+  'music.lyricsEmpty': '暂无歌词',
+  'music.lyricsNotPlaying': '未在播放',
 } as const
 
 export type Keys = keyof typeof messages

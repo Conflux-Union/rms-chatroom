@@ -34,4 +34,10 @@ export const messages: Record<Keys, Message> = {
   'music.searchPlaceholder': 'Search songs...',
   'music.searching': 'Searching...',
   'music.noResults': 'No results',
+  'music.lyrics': 'Lyrics',
+  'music.lyricsDragHint': 'Drag to move',
+  'music.lyricsTranslation': 'Translation',
+  'music.lyricsLoadFailed': 'Failed to load lyrics',
+  'music.lyricsEmpty': 'No lyrics available',
+  'music.lyricsNotPlaying': 'Nothing playing',
 }

@@ -6,6 +6,7 @@ import { authFetch } from '../utils/authFetch'
 import { reportTelemetryEvent } from '../utils/telemetry'
 import { createReconnectingWebSocket } from '../composables/useReconnectingWebSocket'
 import { refreshTokenIfExpired } from '../utils/tokenRefresh'
+import { mergeLyricTranslation, parseLrc, type LyricLine } from '../utils/lyrics'
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'https://chatroom.cxu.org.cn'
 const WS_BASE = import.meta.env.VITE_WS_BASE || 'wss://chatroom.cxu.org.cn'
@@ -64,6 +65,14 @@ export const useMusicStore = defineStore('music', () => {
   
   // Current song URL for audio playback
   const currentSongUrl = ref<string | null>(null)
+
+  // Lyrics for the current song (parsed, time-sorted, translation merged)
+  const lyrics = ref<LyricLine[]>([])
+  const lyricsStatus = ref<'idle' | 'loading' | 'ready' | 'empty' | 'error'>('idle')
+  // The floating lyrics window is store-driven so it survives closing the
+  // music panel; position lives in the component, visibility here.
+  const lyricsWindowVisible = ref(localStorage.getItem('musicLyricsWindow') === '1')
+  let lyricsKey = ''
 
   // Room playback state (backend is the master controller per room)
   const playbackActive = ref(false)
@@ -291,6 +300,40 @@ export const useMusicStore = defineStore('music', () => {
       console.error('Failed to get song URL:', e)
       return null
     }
+  }
+
+  async function loadLyrics(song: Song | null) {
+    if (!song) {
+      lyricsKey = ''
+      lyrics.value = []
+      lyricsStatus.value = 'idle'
+      return
+    }
+    // currentSong is replaced on every queue refresh, so dedupe by song.
+    const key = `${song.platform}:${song.mid}`
+    if (key === lyricsKey) return
+    lyricsKey = key
+    lyricsStatus.value = 'loading'
+    try {
+      const res = await authFetch(`${API_BASE}/api/music/song/${song.mid}/lyric?platform=${song.platform}`)
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const data = await res.json() as { lyric?: string; translation?: string }
+      // The song may have advanced while the fetch was in flight.
+      if (lyricsKey !== key) return
+      const lines = mergeLyricTranslation(parseLrc(data.lyric || ''), data.translation || '')
+      lyrics.value = lines
+      lyricsStatus.value = lines.length > 0 ? 'ready' : 'empty'
+    } catch (e) {
+      if (lyricsKey !== key) return
+      console.error('[MusicStore] Failed to load lyrics:', e)
+      lyrics.value = []
+      lyricsStatus.value = 'error'
+    }
+  }
+
+  function setLyricsWindowVisible(visible: boolean) {
+    lyricsWindowVisible.value = visible
+    localStorage.setItem('musicLyricsWindow', visible ? '1' : '0')
   }
   
   function formatDuration(seconds: number): string {
@@ -646,6 +689,11 @@ export const useMusicStore = defineStore('music', () => {
   // Initialize watcher when store is created
   initVoiceChannelWatcher()
 
+  // Load lyrics whenever the current song changes
+  watch(currentSong, (song) => {
+    loadLyrics(song)
+  }, { immediate: true })
+
   return {
     // Login state
     isLoggedIn,
@@ -683,6 +731,12 @@ export const useMusicStore = defineStore('music', () => {
     positionMs,
     durationMs,
     getSongUrl,
+
+    // Lyrics
+    lyrics,
+    lyricsStatus,
+    lyricsWindowVisible,
+    setLyricsWindowVisible,
 
     // Room playback control
     playbackActive,

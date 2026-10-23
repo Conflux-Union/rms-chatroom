@@ -20,6 +20,7 @@ import ChannelList from '../components/ChannelList.vue'
 import ChatArea from '../components/ChatArea.vue'
 import VoicePanel from '../components/VoicePanel.vue'
 import MusicPanel from '../components/MusicPanel.vue'
+import MusicLyricsWindow from '../components/MusicLyricsWindow.vue'
 import ChangelogDialog from '../components/ChangelogDialog.vue'
 import { Music, Menu, X } from 'lucide-vue-next'
 
@@ -499,6 +500,9 @@ watch(
         <MusicPanel />
       </div>
     </Transition>
+
+    <!-- Draggable lyrics overlay (store-driven, survives panel close) -->
+    <MusicLyricsWindow />
 
     <!-- First open of a new release: show what changed (merged across
          skipped versions) -->

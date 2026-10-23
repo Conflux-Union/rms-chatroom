@@ -5,7 +5,7 @@ import { useVoiceStore } from '../stores/voice'
 import { formatDuration } from '../utils/datetime'
 import { t } from '../i18n'
 import { ZmSlider, ZmSelect, ZmModal, ZmButton, ZmSpace, ZmInput } from './ui'
-import { Music, Disc3, SkipBack, Pause, Play, SkipForward, Plus, Trash2, X, Search, Loader2, Volume2 } from 'lucide-vue-next'
+import { Music, Disc3, SkipBack, Pause, Play, SkipForward, Plus, Trash2, X, Search, Loader2, Volume2, Captions } from 'lucide-vue-next'
 
 const music = useMusicStore()
 const voice = useVoiceStore()
@@ -241,6 +241,12 @@ async function handleStopPlayback() {
             <div class="song-artist">{{ music.currentSong.artist }}</div>
           </div>
           <div class="playback-controls">
+            <button
+              class="control-btn lyrics-btn-toggle"
+              :class="{ active: music.lyricsWindowVisible }"
+              @click="music.setLyricsWindowVisible(!music.lyricsWindowVisible)"
+              :title="t('music.lyrics')"
+            ><Captions :size="18" /></button>
             <button class="control-btn" @click="handleSkipPrevious" :title="t('music.previous')"><SkipBack :size="18" /></button>
             <button
               class="control-btn play-btn"
@@ -607,6 +613,11 @@ async function handleStopPlayback() {
 .control-btn:hover {
   background: rgba(255, 255, 255, 0.2);
   transform: scale(1.1);
+}
+
+.control-btn.lyrics-btn-toggle.active {
+  color: var(--zhimo-seal);
+  background: var(--zhimo-bg-hover);
 }
 
 .play-btn {
