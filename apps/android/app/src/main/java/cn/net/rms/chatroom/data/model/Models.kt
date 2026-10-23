@@ -302,6 +302,12 @@ data class MusicSongUrlResponse(
     val mid: String
 )
 
+// Raw LRC text plus an optional translation whose timestamps mirror the lyric.
+data class MusicLyricResponse(
+    val lyric: String,
+    val translation: String? = null
+)
+
 data class MusicSearchRequest(
     val keyword: String,
     val num: Int = 20,

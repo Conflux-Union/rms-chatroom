@@ -17,6 +17,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.Subtitles
 import androidx.compose.material3.*
 import com.smarttoolfactory.slider.ColorfulSlider
 import com.smarttoolfactory.slider.MaterialSliderDefaults
@@ -50,6 +51,7 @@ fun MusicBottomSheet(
     onSkip: () -> Unit,
     onSeek: (Long) -> Unit,
     onVolumeChange: (Float) -> Unit,
+    onToggleLyrics: () -> Unit,
     onRemoveFromQueue: (Int) -> Unit,
     onClearQueue: () -> Unit,
     onShowSearch: () -> Unit,
@@ -91,10 +93,12 @@ fun MusicBottomSheet(
                     durationMs = state.durationMs,
                     volume = state.volume,
                     voiceConnected = voiceConnected,
+                    lyricsVisible = state.lyricsWindowVisible,
                     onTogglePlayPause = onTogglePlayPause,
                     onSkip = onSkip,
                     onSeek = onSeek,
-                    onVolumeChange = onVolumeChange
+                    onVolumeChange = onVolumeChange,
+                    onToggleLyrics = onToggleLyrics
                 )
             } else {
                 EmptyPlayingState(onShowSearch = onShowSearch)
@@ -244,10 +248,12 @@ private fun NowPlayingSection(
     durationMs: Long,
     volume: Float,
     voiceConnected: Boolean,
+    lyricsVisible: Boolean,
     onTogglePlayPause: () -> Unit,
     onSkip: () -> Unit,
     onSeek: (Long) -> Unit,
-    onVolumeChange: (Float) -> Unit
+    onVolumeChange: (Float) -> Unit,
+    onToggleLyrics: () -> Unit
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -310,6 +316,22 @@ private fun NowPlayingSection(
 
                 // Playback controls
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    // Lyrics floating window toggle
+                    IconButton(
+                        onClick = onToggleLyrics,
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .background(Zhimo.paperSubtle)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Subtitles,
+                            contentDescription = stringResource(R.string.music_lyrics),
+                            tint = if (lyricsVisible) Zhimo.seal else Zhimo.ink,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+
                     // Play/Pause button
                     IconButton(
                         onClick = onTogglePlayPause,

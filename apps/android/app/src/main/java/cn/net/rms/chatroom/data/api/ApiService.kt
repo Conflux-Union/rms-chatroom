@@ -246,6 +246,13 @@ interface ApiService {
         @Query("platform") platform: String = "qq"
     ): MusicSongUrlResponse
 
+    @GET("api/music/song/{mid}/lyric")
+    suspend fun getSongLyric(
+        @Header("Authorization") token: String,
+        @Path("mid") mid: String,
+        @Query("platform") platform: String = "qq"
+    ): MusicLyricResponse
+
     // Music - Queue (per room)
     @GET("api/music/queue/{roomName}")
     suspend fun getMusicQueue(

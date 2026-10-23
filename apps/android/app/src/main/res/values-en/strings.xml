@@ -187,6 +187,11 @@
     <string name="music_searching">Searching...</string>
     <string name="music_no_results">No results</string>
     <string name="music_search_hint">Type keywords to search songs</string>
+    <string name="music_lyrics">Lyrics</string>
+    <string name="music_lyrics_empty">No lyrics available</string>
+    <string name="music_lyrics_load_failed">Failed to load lyrics</string>
+    <string name="music_lyrics_not_playing">Nothing playing</string>
+    <string name="music_lyrics_translation">Translation</string>
     <string name="action_pause">Pause</string>
     <string name="action_play">Play</string>
     <string name="music_next">Next</string>

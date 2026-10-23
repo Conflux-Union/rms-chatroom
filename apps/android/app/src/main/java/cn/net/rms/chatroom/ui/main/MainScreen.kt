@@ -28,6 +28,8 @@ import cn.net.rms.chatroom.ui.main.components.ChannelListColumn
 import cn.net.rms.chatroom.ui.main.components.ServerListColumn
 import cn.net.rms.chatroom.ui.common.BatteryOptimizationDialog
 import cn.net.rms.chatroom.ui.common.ChangelogList
+import cn.net.rms.chatroom.ui.music.MusicLyricsWindow
+import cn.net.rms.chatroom.ui.music.MusicViewModel
 import cn.net.rms.chatroom.ui.theme.Zhimo
 import cn.net.rms.chatroom.ui.voice.VoiceScreen
 import cn.net.rms.chatroom.util.BatteryOptimizationHelper
@@ -44,6 +46,8 @@ fun MainScreen(
 ) {
     val mainState by mainViewModel.state.collectAsState()
     val authState by authViewModel.state.collectAsState()
+    val musicViewModel: MusicViewModel = hiltViewModel()
+    val musicState by musicViewModel.state.collectAsState()
     val voiceChannelUsers by mainViewModel.voiceChannelUsers.collectAsState()
     val isVoiceConnected by mainViewModel.isVoiceConnected.collectAsState()
     val voiceChannelName by mainViewModel.voiceChannelName.collectAsState()
@@ -313,6 +317,13 @@ fun MainScreen(
                         Text(error)
                     }
                 }
+
+                // Floating lyrics overlay (manager state, survives screens)
+                MusicLyricsWindow(
+                    state = musicState,
+                    onClose = { musicViewModel.setLyricsWindowVisible(false) },
+                    onToggleTranslation = { musicViewModel.setLyricsTranslationVisible(it) }
+                )
             }
         }
     }

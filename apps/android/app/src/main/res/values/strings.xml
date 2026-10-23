@@ -187,6 +187,11 @@
     <string name="music_searching">搜索中...</string>
     <string name="music_no_results">未找到结果</string>
     <string name="music_search_hint">输入关键词搜索歌曲</string>
+    <string name="music_lyrics">歌词</string>
+    <string name="music_lyrics_empty">暂无歌词</string>
+    <string name="music_lyrics_load_failed">歌词加载失败</string>
+    <string name="music_lyrics_not_playing">未在播放</string>
+    <string name="music_lyrics_translation">译文</string>
     <string name="action_pause">暂停</string>
     <string name="action_play">播放</string>
     <string name="music_next">下一首</string>

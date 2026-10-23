@@ -21,6 +21,8 @@ import cn.net.rms.chatroom.data.repository.isUnauthorized
 import cn.net.rms.chatroom.data.telemetry.TelemetryReporter
 import cn.net.rms.chatroom.data.websocket.MusicWebSocket
 import cn.net.rms.chatroom.data.websocket.MusicWebSocketEvent
+import cn.net.rms.chatroom.util.LrcParser
+import cn.net.rms.chatroom.util.LyricLine
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -30,6 +32,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -59,6 +63,13 @@ data class MusicState(
     val durationMs: Long = 0,
     val volume: Float = 1.0f,  // Volume level (0.0 to 1.0)
     val loudnessGain: Float = 1.0f,  // Server-computed normalization gain for the current song
+
+    // Lyrics for the current song (parsed, time-sorted, translation merged);
+    // the floating window visibility is manager state so it survives screens
+    val lyrics: List<LyricLine> = emptyList(),
+    val lyricsStatus: String = "idle",  // idle, loading, ready, empty, error
+    val lyricsWindowVisible: Boolean = false,
+    val lyricsTranslationVisible: Boolean = true,
 
     // Room playback state (backend is the master controller per room)
     val playbackActive: Boolean = false,
@@ -129,11 +140,64 @@ class MusicPlaybackManager @Inject constructor(
         scope.launch {
             val sharedPrefs = context.getSharedPreferences("music_prefs", Context.MODE_PRIVATE)
             val savedVolume = sharedPrefs.getFloat("volume", 1.0f)
-            _state.value = _state.value.copy(volume = savedVolume)
+            _state.value = _state.value.copy(
+                volume = savedVolume,
+                lyricsWindowVisible = sharedPrefs.getBoolean("lyrics_window_visible", false),
+                lyricsTranslationVisible = sharedPrefs.getBoolean("lyrics_translation_visible", true)
+            )
             applyPlayerVolume()
         }
         observeVoiceChannel()
         observeWebSocketEvents()
+        observeCurrentSongForLyrics()
+    }
+
+    // currentSong is replaced on every queue refresh; load lyrics once per song.
+    private fun observeCurrentSongForLyrics() {
+        scope.launch {
+            _state.map { it.currentSong }.distinctUntilChanged().collect { song ->
+                loadLyrics(song)
+            }
+        }
+    }
+
+    private fun loadLyrics(song: Song?) {
+        if (song == null) {
+            _state.value = _state.value.copy(lyrics = emptyList(), lyricsStatus = "idle")
+            return
+        }
+        scope.launch {
+            _state.value = _state.value.copy(lyricsStatus = "loading")
+            try {
+                val response = api.getSongLyric(getAuthHeader(), song.mid, song.platform)
+                // The song may have advanced while the fetch was in flight.
+                val current = _state.value.currentSong
+                if (current?.mid != song.mid || current.platform != song.platform) return@launch
+                val lines = LrcParser.merge(LrcParser.parse(response.lyric), response.translation.orEmpty())
+                _state.value = _state.value.copy(
+                    lyrics = lines,
+                    lyricsStatus = if (lines.isNotEmpty()) "ready" else "empty"
+                )
+            } catch (e: Exception) {
+                val current = _state.value.currentSong
+                if (current?.mid == song.mid && current.platform == song.platform) {
+                    Log.w(TAG, "Failed to load lyrics for ${song.platform}/${song.mid}: ${e.message}")
+                    _state.value = _state.value.copy(lyrics = emptyList(), lyricsStatus = "error")
+                }
+            }
+        }
+    }
+
+    fun setLyricsWindowVisible(visible: Boolean) {
+        _state.value = _state.value.copy(lyricsWindowVisible = visible)
+        context.getSharedPreferences("music_prefs", Context.MODE_PRIVATE)
+            .edit().putBoolean("lyrics_window_visible", visible).apply()
+    }
+
+    fun setLyricsTranslationVisible(visible: Boolean) {
+        _state.value = _state.value.copy(lyricsTranslationVisible = visible)
+        context.getSharedPreferences("music_prefs", Context.MODE_PRIVATE)
+            .edit().putBoolean("lyrics_translation_visible", visible).apply()
     }
 
     // Player volume is the user slider times the current song's loudness

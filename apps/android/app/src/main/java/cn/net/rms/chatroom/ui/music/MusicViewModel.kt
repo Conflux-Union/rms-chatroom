@@ -51,4 +51,8 @@ class MusicViewModel @Inject constructor(
     // Volume / errors
     fun setVolume(volume: Float) = playback.setVolume(volume)
     fun clearError() = playback.clearError()
+
+    // Lyrics
+    fun setLyricsWindowVisible(visible: Boolean) = playback.setLyricsWindowVisible(visible)
+    fun setLyricsTranslationVisible(visible: Boolean) = playback.setLyricsTranslationVisible(visible)
 }
