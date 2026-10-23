@@ -8,8 +8,8 @@ import { createReconnectingWebSocket } from '../composables/useReconnectingWebSo
 import { refreshTokenIfExpired } from '../utils/tokenRefresh'
 import { mergeLyricTranslation, parseLrc, type LyricLine } from '../utils/lyrics'
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'https://chatroom.cxu.org.cn'
-const WS_BASE = import.meta.env.VITE_WS_BASE || 'wss://chatroom.cxu.org.cn'
+const API_BASE = import.meta.env.VITE_API_BASE || ''
+const WS_BASE = import.meta.env.VITE_WS_BASE || ''
 
 
 export type MusicPlatform = 'qq' | 'netease' | 'all'

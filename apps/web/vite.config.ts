@@ -2,6 +2,12 @@ import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { resolve } from 'path'
 
+// Dev proxy target. Point DEV_PROXY_TARGET at a local backend to test server
+// changes (DEV_PROXY_TARGET=http://localhost:8000 pnpm web:dev); the ws
+// target derives from it unless DEV_PROXY_WS_TARGET overrides it.
+const proxyTarget = process.env.DEV_PROXY_TARGET || 'https://chatroom.cxu.org.cn'
+const proxyWsTarget = process.env.DEV_PROXY_WS_TARGET || proxyTarget.replace(/^http/, 'ws')
+
 export default defineConfig({
   plugins: [
     vue({
@@ -21,11 +27,11 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-        target: 'https://chatroom.cxu.org.cn',
+        target: proxyTarget,
         changeOrigin: true,
       },
       '/ws': {
-        target: 'wss://chatroom.cxu.org.cn',
+        target: proxyWsTarget,
         ws: true,
         changeOrigin: true,
       },
