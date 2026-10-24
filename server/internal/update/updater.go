@@ -194,9 +194,47 @@ func (u *Updater) checkAndApply(ctx context.Context, m *Manifest) error {
 	}
 	log.Printf("update: applied %s(%d): %d files extracted, binary updated: %v", m.Version, m.Code, res.Files, res.BinaryUpdated)
 
+	if n := pruneStaleWebAssets(u.baseDir); n > 0 {
+		log.Printf("update: pruned %d web assets older than %dd", n, assetRetentionDays)
+	}
+
 	u.setState(StateRestarting)
 	u.restart()
 	return nil
+}
+
+// assetRetentionDays is how long a hashed web asset outlives the last bundle
+// that shipped it. Extraction overlays new bundles without deleting anything,
+// so retired assets accumulate and keep stale cached index.html copies
+// bootable. They must outlive browser caches of the HTML that references
+// them: 30 days covers the longest heuristic lifetime a pre-no-cache entry
+// can carry.
+const assetRetentionDays = 30
+
+// pruneStaleWebAssets deletes files under packages/web/dist/assets whose
+// mtime predates the retention window. Extraction stamps deployed files with
+// the deploy time, so an old mtime means no bundle re-shipped the file.
+func pruneStaleWebAssets(baseDir string) int {
+	dir := filepath.Join(baseDir, "packages", "web", "dist", "assets")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return 0
+	}
+	cutoff := time.Now().Add(-assetRetentionDays * 24 * time.Hour)
+	pruned := 0
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil || !info.ModTime().Before(cutoff) {
+			continue
+		}
+		if err := os.Remove(filepath.Join(dir, entry.Name())); err == nil {
+			pruned++
+		}
+	}
+	return pruned
 }
 
 func (u *Updater) fetchManifest(ctx context.Context) (*Manifest, error) {

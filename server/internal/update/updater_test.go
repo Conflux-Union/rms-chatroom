@@ -204,3 +204,46 @@ func TestCheckAndApplySkipsWhenUpToDate(t *testing.T) {
 		t.Errorf("state = %q, want %q", s.State, StateUpToDate)
 	}
 }
+
+func TestPruneStaleWebAssets(t *testing.T) {
+	base := t.TempDir()
+	assets := filepath.Join(base, "packages", "web", "dist", "assets")
+	if err := os.MkdirAll(assets, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	old := time.Now().Add(-(assetRetentionDays + 1) * 24 * time.Hour)
+	files := map[string]time.Time{
+		"index-old.js": old,
+		"index-new.js": time.Now(),
+	}
+	for name, mtime := range files {
+		p := filepath.Join(assets, name)
+		if err := os.WriteFile(p, []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chtimes(p, mtime, mtime); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Mkdir(filepath.Join(assets, "old-dir"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if n := pruneStaleWebAssets(base); n != 1 {
+		t.Fatalf("pruned %d files, want 1", n)
+	}
+	if _, err := os.Stat(filepath.Join(assets, "index-old.js")); !os.IsNotExist(err) {
+		t.Error("stale asset still present")
+	}
+	if _, err := os.Stat(filepath.Join(assets, "index-new.js")); err != nil {
+		t.Error("fresh asset was pruned")
+	}
+	if _, err := os.Stat(filepath.Join(assets, "old-dir")); err != nil {
+		t.Error("directory was pruned")
+	}
+
+	// A missing dist must be a no-op, not an error path for callers.
+	if n := pruneStaleWebAssets(t.TempDir()); n != 0 {
+		t.Fatalf("pruned %d files from missing dist, want 0", n)
+	}
+}

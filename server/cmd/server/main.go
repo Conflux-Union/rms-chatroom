@@ -235,6 +235,25 @@ func main() {
 // only fires for paths the router reports as unrouted 404 HTTPErrors, and
 // handlers write their not-found responses via c.JSON directly.
 func registerFrontend(e *echo.Echo, distPath string) {
+	// Without Cache-Control on index.html, browsers heuristic-cache it per
+	// URL, and the SPA fallback gives every route its own entry. A navigation
+	// served from a still-fresh entry boots an old build whose hashed assets
+	// still sit in dist, so users can ride a weeks-old client until the entry
+	// expires. HTML must always revalidate; hashed assets flip names on
+	// content change and cache hard.
+	e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			switch p := c.Request().URL.Path; {
+			case strings.HasPrefix(p, "/assets/"):
+				c.Response().Header().Set(echo.HeaderCacheControl, "public, max-age=31536000, immutable")
+			case strings.HasPrefix(p, "/api/"), strings.HasPrefix(p, "/ws/"), strings.HasPrefix(p, "/metrics"):
+				// API responses keep their own semantics.
+			default:
+				c.Response().Header().Set(echo.HeaderCacheControl, "no-cache")
+			}
+			return next(c)
+		}
+	})
 	e.Use(middleware.StaticWithConfig(middleware.StaticConfig{
 		Root:  distPath,
 		HTML5: true,

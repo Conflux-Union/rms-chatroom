@@ -48,14 +48,15 @@ func TestRegisterFrontend(t *testing.T) {
 		path     string
 		wantCode int
 		wantBody string
+		wantCC   string
 	}{
-		{"root serves index", "/", http.StatusOK, "<html>spa</html>"},
-		{"public file served as-is", "/favicon.ico", http.StatusOK, "icon-bytes"},
-		{"audio file served as-is", "/mention-notification.wav", http.StatusOK, "wav-bytes"},
-		{"nested asset served as-is", "/assets/app.js", http.StatusOK, "console.log(1)"},
-		{"spa route falls back to index", "/channels/42", http.StatusOK, "<html>spa</html>"},
-		{"registered api route wins", "/api/ping", http.StatusOK, `"pong"`},
-		{"api 404 json is not swallowed", "/api/missing", http.StatusNotFound, `"nope"`},
+		{"root serves index", "/", http.StatusOK, "<html>spa</html>", "no-cache"},
+		{"public file served as-is", "/favicon.ico", http.StatusOK, "icon-bytes", "no-cache"},
+		{"audio file served as-is", "/mention-notification.wav", http.StatusOK, "wav-bytes", "no-cache"},
+		{"nested asset served as-is", "/assets/app.js", http.StatusOK, "console.log(1)", "public, max-age=31536000, immutable"},
+		{"spa route falls back to index", "/channels/42", http.StatusOK, "<html>spa</html>", "no-cache"},
+		{"registered api route wins", "/api/ping", http.StatusOK, `"pong"`, ""},
+		{"api 404 json is not swallowed", "/api/missing", http.StatusNotFound, `"nope"`, ""},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -67,6 +68,9 @@ func TestRegisterFrontend(t *testing.T) {
 			}
 			if !strings.Contains(rec.Body.String(), tc.wantBody) {
 				t.Fatalf("GET %s: body = %q, want it to contain %q", tc.path, rec.Body.String(), tc.wantBody)
+			}
+			if got := rec.Header().Get("Cache-Control"); got != tc.wantCC {
+				t.Fatalf("GET %s: cache-control = %q, want %q", tc.path, got, tc.wantCC)
 			}
 		})
 	}
