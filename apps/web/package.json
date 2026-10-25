@@ -10,9 +10,9 @@
   },
   "dependencies": {
     "@rms-discord/shared": "workspace:*",
-    "pinia": "^3.0.4",
-    "vue": "^3.5.39",
-    "vue-router": "^5.1.0",
+    "pinia": "^4.1.0",
+    "vue": "^3.5.44",
+    "vue-router": "^5.4.0",
     "zhimo-ui": "^0.1.1"
   },
   "devDependencies": {
