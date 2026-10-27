@@ -69,6 +69,41 @@ func TestParseNeteaseSongsWithPrivileges(t *testing.T) {
 	}
 }
 
+// The v1 endpoints (daily recommend, personal radio) return the legacy
+// artists/album/duration song shape; verified against the live
+// /weapi/v1/discovery/recommend/songs response.
+func TestParseNeteaseLegacySongShape(t *testing.T) {
+	resp := mustJSON(t, `{
+		"songs": [
+			{
+				"id": 3403313136,
+				"name": "我们正驶向黎明",
+				"artists": [{"name": "言和"}],
+				"album": {"name": "我们正驶向黎明", "picUrl": "http://p1.music.126.net/5il3iDLXyNxmSrEDARQV5g==/109951173526100743.jpg"},
+				"duration": 226683
+			}
+		],
+		"privileges": [{"id": 3403313136, "st": 0}]
+	}`)
+	songs := parseNeteaseSongsWithPrivileges(resp["songs"], resp["privileges"])
+	if len(songs) != 1 {
+		t.Fatalf("want 1 song, got %d", len(songs))
+	}
+	s := songs[0]
+	if s.Mid != "3403313136" || s.Name != "我们正驶向黎明" {
+		t.Errorf("unexpected id/name: %+v", s)
+	}
+	if s.Artist != "言和" || s.Album != "我们正驶向黎明" {
+		t.Errorf("legacy artist/album not parsed: %+v", s)
+	}
+	if s.Duration != 226 {
+		t.Errorf("legacy duration not parsed: %+v", s)
+	}
+	if s.Cover != "http://p1.music.126.net/5il3iDLXyNxmSrEDARQV5g==/109951173526100743.jpg" {
+		t.Errorf("legacy cover not parsed: %q", s.Cover)
+	}
+}
+
 func TestParseQQPlaylistSearch(t *testing.T) {
 	// Fixture mirrors the live DoSearchForQQMusicMobile search_type=3 shape:
 	// item_songlist entries with nickname/logo and <em> highlight tags.
@@ -152,22 +187,36 @@ func TestParseQQDissTrack(t *testing.T) {
 }
 
 func TestFindQQDailyPlaylistID(t *testing.T) {
+	// Live response shape: the subtype-510 card carries the daily playlist id
+	// as a string ("6059606031"), with plenty of unrelated cards around it.
 	resp := mustJSON(t, `{
 		"music.recommend.RecommendFeed.get_recommend_feed": {
 			"code": 0,
 			"data": {
 				"v_shelf": [
-					{"v_niche": [{"v_card": [{"subtype": 500, "id": 1}]}]},
 					{"v_niche": [{"v_card": [
-						{"subtype": 511, "id": 2},
-						{"subtype": 510, "id": 932184032, "time": 1790000000}
+						{"subtype": 500, "id": "1"},
+						{"subtype": 511, "id": "2"}
+					]}]},
+					{"v_niche": [{"v_card": [
+						{"subtype": 991, "id": "22000", "title": "雷达模式"},
+						{"subtype": 510, "id": "6059606031", "title": "每日30首"}
 					]}]}
 				]
 			}
 		}
 	}`)
-	if got := findQQDailyPlaylistID(resp); got != 932184032 {
-		t.Errorf("daily id = %d, want 932184032", got)
+	if got := findQQDailyPlaylistID(resp); got != 6059606031 {
+		t.Errorf("daily id = %d, want 6059606031", got)
+	}
+
+	numeric := mustJSON(t, `{
+		"music.recommend.RecommendFeed.get_recommend_feed": {
+			"data": {"v_shelf": [{"v_niche": [{"v_card": [{"subtype": 510, "id": 932184032}]}]}]}
+		}
+	}`)
+	if got := findQQDailyPlaylistID(numeric); got != 932184032 {
+		t.Errorf("daily id = %d, want 932184032 for numeric id", got)
 	}
 
 	missing := mustJSON(t, `{"music.recommend.RecommendFeed.get_recommend_feed": {"data": {"v_shelf": []}}}`)

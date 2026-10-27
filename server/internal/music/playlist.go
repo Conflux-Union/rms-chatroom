@@ -124,8 +124,25 @@ func parseNeteasePlaylists(raw interface{}) []PlaylistResult {
 	return playlists
 }
 
-// parseNeteaseSong maps the standard NetEase song object shared by cloudsearch,
-// song/detail, daily recommend and personal FM (name/ar/al/dt shape).
+func joinNeteaseArtists(raw interface{}) string {
+	items, _ := raw.([]interface{})
+	names := make([]string, 0, len(items))
+	for _, item := range items {
+		m, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if n, ok := m["name"].(string); ok && n != "" {
+			names = append(names, n)
+		}
+	}
+	return strings.Join(names, " / ")
+}
+
+// parseNeteaseSong maps the NetEase song object. Cloudsearch and song/detail
+// use the ar/al/dt shape, but the v1 endpoints (daily recommend, personal
+// radio) still return the legacy artists/album/duration shape, so every field
+// falls back to it.
 func parseNeteaseSong(m map[string]interface{}) (SongResult, bool) {
 	sr := SongResult{Platform: "netease"}
 	if id, ok := floatField(m, "id"); ok {
@@ -136,23 +153,22 @@ func parseNeteaseSong(m map[string]interface{}) (SongResult, bool) {
 		return sr, false
 	}
 
-	if ar, ok := m["ar"].([]interface{}); ok {
-		var names []string
-		for _, a := range ar {
-			if am, ok := a.(map[string]interface{}); ok {
-				if n, ok := am["name"].(string); ok && n != "" {
-					names = append(names, n)
-				}
-			}
-		}
-		sr.Artist = strings.Join(names, " / ")
+	sr.Artist = joinNeteaseArtists(m["ar"])
+	if sr.Artist == "" {
+		sr.Artist = joinNeteaseArtists(m["artists"])
 	}
-	if al, ok := m["al"].(map[string]interface{}); ok {
-		sr.Album, _ = al["name"].(string)
-		sr.Cover, _ = al["picUrl"].(string)
+	album, _ := m["al"].(map[string]interface{})
+	if album == nil {
+		album, _ = m["album"].(map[string]interface{})
 	}
-	if dt, ok := floatField(m, "dt"); ok {
-		sr.Duration = int(dt / 1000)
+	if album != nil {
+		sr.Album, _ = album["name"].(string)
+		sr.Cover, _ = album["picUrl"].(string)
+	}
+	if ms, ok := floatField(m, "dt"); ok {
+		sr.Duration = int(ms / 1000)
+	} else if ms, ok := floatField(m, "duration"); ok {
+		sr.Duration = int(ms / 1000)
 	}
 	return sr, true
 }
@@ -640,7 +656,8 @@ func findQQDailyPlaylistID(respData map[string]interface{}) int64 {
 				if subtype, ok := floatField(card, "subtype"); !ok || subtype != 510 {
 					continue
 				}
-				if id := int64Field(card, "id"); id > 0 {
+				// The live feed returns the daily playlist id as a string.
+				if id, err := strconv.ParseInt(stringField(card, "id"), 10, 64); err == nil && id > 0 {
 					return id
 				}
 			}
