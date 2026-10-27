@@ -86,6 +86,15 @@ type RoomMusicState struct {
 	CurrentSongURL    string
 	// LoopMode is one of the loopMode* constants; empty behaves as sequence.
 	LoopMode string
+	// RadioPlatform enables the personalized-radio auto-extension: when the
+	// current song is the last unplayed one in the queue (sequence mode),
+	// another radio batch is appended in the background. Empty = radio off.
+	RadioPlatform string
+	// RadioRequester is the username radio tracks are attributed to.
+	RadioRequester string
+	// RadioRetryAt throttles retries after a failed radio fetch so the 1s
+	// advance loop cannot hammer the provider.
+	RadioRetryAt time.Time
 	// Normalization gain (0, 1] for the current song, derived from its
 	// measured loudness; 1 when not analyzed.
 	CurrentLoudnessGain float64
@@ -317,6 +326,10 @@ func playCurrentSongAsync(state *RoomMusicState, roomName string) {
 
 		state.mu.Unlock()
 		startProgressTimer(state.RoomName)
+
+		// Radio auto-extension fires as soon as the last unplayed song starts,
+		// so the next batch lands long before the track ends.
+		go extendRadioQueue(state)
 	}()
 }
 
@@ -439,7 +452,13 @@ func RegisterMusicRoutes(g *echo.Group, jwtSecret string, db *sql.DB) {
 	g.POST("/search", musicSearch(jwtSecret))
 	g.GET("/song/:mid/url", musicSongURL())
 	g.GET("/song/:mid/lyric", musicSongLyric(jwtSecret))
+	g.GET("/recommend", musicRecommend(jwtSecret))
+	g.POST("/playlist/search", musicPlaylistSearch(jwtSecret))
+	g.GET("/playlist/:platform/:id", musicPlaylistDetail(jwtSecret))
 	g.POST("/queue/add", musicQueueAdd(jwtSecret))
+	g.POST("/queue/add/source", musicQueueAddSource(jwtSecret))
+	g.POST("/radio/start", musicRadioStart(jwtSecret))
+	g.POST("/radio/stop", musicRadioStop(jwtSecret))
 	g.DELETE("/queue/:room_name/:index", musicQueueRemove(jwtSecret))
 	g.GET("/queue/:room_name", musicQueueGet(jwtSecret))
 	g.POST("/queue/clear", musicQueueClear(jwtSecret))
@@ -807,12 +826,13 @@ func musicQueueGet(jwtSecret string) echo.HandlerFunc {
 			currentSong = &s
 		}
 		return c.JSON(http.StatusOK, map[string]interface{}{
-			"room_name":     roomName,
-			"is_playing":    state.IsPlaying,
-			"current_song":  currentSong,
-			"current_index": state.CurrentIndex,
-			"loop_mode":     state.LoopMode,
-			"queue":         state.PlayQueue,
+			"room_name":      roomName,
+			"is_playing":     state.IsPlaying,
+			"current_song":   currentSong,
+			"current_index":  state.CurrentIndex,
+			"loop_mode":      state.LoopMode,
+			"radio_platform": state.RadioPlatform,
+			"queue":          state.PlayQueue,
 		})
 	}
 }
@@ -834,6 +854,11 @@ func musicQueueClear(jwtSecret string) echo.HandlerFunc {
 		state.CurrentIndex = 0
 		state.CurrentSongURL = ""
 		state.CurrentLoudnessGain = 1
+		// Clearing the queue also ends radio mode: otherwise the extension
+		// hook would immediately repopulate what the user just removed.
+		state.RadioPlatform = ""
+		state.RadioRequester = ""
+		state.RadioRetryAt = time.Time{}
 		state.mu.Unlock()
 		broadcastMusicCommand("stop", map[string]interface{}{"room_name": req.RoomName})
 		return c.JSON(http.StatusOK, map[string]interface{}{"success": true, "room_name": req.RoomName})
@@ -896,6 +921,7 @@ func musicPlaybackStatus(jwtSecret string) echo.HandlerFunc {
 			resp["is_playing"] = s.IsPlaying
 			resp["queue_length"] = len(s.PlayQueue)
 			resp["loop_mode"] = s.LoopMode
+			resp["radio_platform"] = s.RadioPlatform
 			s.mu.Unlock()
 		}
 		return c.JSON(http.StatusOK, resp)

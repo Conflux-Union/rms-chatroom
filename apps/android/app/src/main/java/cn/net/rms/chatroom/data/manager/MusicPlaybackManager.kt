@@ -10,10 +10,15 @@ import androidx.media3.exoplayer.ExoPlayer
 import cn.net.rms.chatroom.R
 import cn.net.rms.chatroom.data.api.ApiService
 import cn.net.rms.chatroom.data.model.MusicLoopModeRequest
+import cn.net.rms.chatroom.data.model.MusicPlaylistSearchRequest
 import cn.net.rms.chatroom.data.model.MusicQueueAddRequest
+import cn.net.rms.chatroom.data.model.MusicQueueAddSourceRequest
+import cn.net.rms.chatroom.data.model.MusicRadioRequest
 import cn.net.rms.chatroom.data.model.MusicRoomRequest
 import cn.net.rms.chatroom.data.model.MusicSearchRequest
 import cn.net.rms.chatroom.data.model.MusicSeekRequest
+import cn.net.rms.chatroom.data.model.Playlist
+import cn.net.rms.chatroom.data.model.PlaylistPreview
 import cn.net.rms.chatroom.data.model.QueueItem
 import cn.net.rms.chatroom.data.model.Song
 import cn.net.rms.chatroom.data.repository.AuthRepository
@@ -53,6 +58,17 @@ data class MusicState(
     val searchPlatform: String = "all",  // "all", "qq", or "netease"
     val searchResults: List<Song> = emptyList(),
     val isSearching: Boolean = false,
+
+    // Playlist search / preview state
+    val playlistResults: List<Playlist> = emptyList(),
+    val isSearchingPlaylists: Boolean = false,
+    val playlistPreview: PlaylistPreview? = null,
+    val isLoadingPreview: Boolean = false,
+
+    // Recommendation state: daily mix list plus the room radio toggle
+    val recommendSongs: List<Song> = emptyList(),
+    val isFetchingRecommend: Boolean = false,
+    val radioPlatform: String = "",  // "" off, "qq", or "netease"
 
     // Playback state
     val isPlaying: Boolean = false,
@@ -299,6 +315,11 @@ class MusicPlaybackManager @Inject constructor(
                     is MusicWebSocketEvent.LoopModeChanged -> {
                         if (currentRoom != null && event.roomName == currentRoom) {
                             _state.value = _state.value.copy(loopMode = event.mode)
+                        }
+                    }
+                    is MusicWebSocketEvent.QueueUpdated -> {
+                        if (currentRoom != null && event.roomName == currentRoom) {
+                            refreshQueue(currentRoom)
                         }
                     }
                     is MusicWebSocketEvent.MusicStateUpdate -> {
@@ -571,6 +592,132 @@ class MusicPlaybackManager @Inject constructor(
         _state.value = _state.value.copy(searchResults = emptyList())
     }
 
+    // --- Playlist search / recommendation functions ---
+
+    fun searchPlaylists(keyword: String, platform: String = _state.value.searchPlatform) {
+        if (keyword.isBlank()) {
+            _state.value = _state.value.copy(playlistResults = emptyList())
+            return
+        }
+        scope.launch {
+            try {
+                _state.value = _state.value.copy(isSearchingPlaylists = true)
+                val response = api.searchMusicPlaylists(
+                    getAuthHeader(), MusicPlaylistSearchRequest(keyword, platform = platform)
+                )
+                _state.value = _state.value.copy(
+                    playlistResults = response.playlists,
+                    isSearchingPlaylists = false,
+                    playlistPreview = null
+                )
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(
+                    playlistResults = emptyList(),
+                    isSearchingPlaylists = false,
+                    error = if (e.isUnauthorized) null else context.getString(R.string.music_search_failed, e.message ?: "")
+                )
+            }
+        }
+    }
+
+    fun clearPlaylistResults() {
+        _state.value = _state.value.copy(playlistResults = emptyList(), playlistPreview = null)
+    }
+
+    fun loadPlaylistPreview(platform: String, id: String) {
+        scope.launch {
+            try {
+                _state.value = _state.value.copy(isLoadingPreview = true)
+                val response = api.getMusicPlaylistDetail(getAuthHeader(), platform, id)
+                _state.value = _state.value.copy(
+                    playlistPreview = if (response.playlist != null) {
+                        PlaylistPreview(response.playlist, response.songs, response.total)
+                    } else null,
+                    isLoadingPreview = false
+                )
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(playlistPreview = null, isLoadingPreview = false)
+            }
+        }
+    }
+
+    fun closePlaylistPreview() {
+        _state.value = _state.value.copy(playlistPreview = null)
+    }
+
+    fun fetchRecommend(platform: String = _state.value.searchPlatform) {
+        scope.launch {
+            try {
+                _state.value = _state.value.copy(isFetchingRecommend = true)
+                val response = api.getMusicRecommend(getAuthHeader(), "daily", platform)
+                _state.value = _state.value.copy(
+                    recommendSongs = response.songs,
+                    isFetchingRecommend = false
+                )
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(
+                    recommendSongs = emptyList(),
+                    isFetchingRecommend = false
+                )
+            }
+        }
+    }
+
+    fun clearRecommend() {
+        _state.value = _state.value.copy(recommendSongs = emptyList())
+    }
+
+    // Queue a whole source by identifier; the backend resolves the songs.
+    fun addToQueueFromSource(platform: String, kind: String, id: String? = null, limit: Int? = null) {
+        val roomName = _state.value.currentRoomName ?: return
+        scope.launch {
+            try {
+                api.addToMusicQueueFromSource(
+                    getAuthHeader(),
+                    MusicQueueAddSourceRequest(roomName, platform, kind, id, limit)
+                )
+                refreshQueue(roomName)
+            } catch (e: Exception) {
+                if (!e.isUnauthorized) _state.value = _state.value.copy(error = context.getString(R.string.music_add_failed, e.message ?: ""))
+            }
+        }
+    }
+
+    fun addDailyToQueue() {
+        val platform = _state.value.searchPlatform
+        if (platform == "all") {
+            addToQueueFromSource("qq", "daily")
+            addToQueueFromSource("netease", "daily")
+        } else {
+            addToQueueFromSource(platform, "daily")
+        }
+    }
+
+    fun startRadio(platform: String) {
+        val roomName = _state.value.currentRoomName ?: return
+        scope.launch {
+            try {
+                api.startMusicRadio(getAuthHeader(), MusicRadioRequest(roomName, platform))
+                _state.value = _state.value.copy(radioPlatform = platform)
+                refreshQueue(roomName)
+            } catch (e: Exception) {
+                if (!e.isUnauthorized) _state.value = _state.value.copy(error = context.getString(R.string.music_radio_failed, e.message ?: ""))
+            }
+        }
+    }
+
+    fun stopRadio() {
+        val roomName = _state.value.currentRoomName ?: return
+        scope.launch {
+            try {
+                api.stopMusicRadio(getAuthHeader(), MusicRoomRequest(roomName))
+                _state.value = _state.value.copy(radioPlatform = "")
+            } catch (e: Exception) {
+                if (!e.isUnauthorized) _state.value = _state.value.copy(error = context.getString(R.string.music_radio_failed, e.message ?: ""))
+            }
+        }
+    }
+
     // --- Queue functions ---
 
     fun refreshQueue(roomName: String? = _state.value.currentRoomName) {
@@ -583,7 +730,8 @@ class MusicPlaybackManager @Inject constructor(
                     currentIndex = response.currentIndex,
                     currentSong = response.currentSong,
                     isPlaying = response.isPlaying,
-                    loopMode = response.loopMode ?: _state.value.loopMode
+                    loopMode = response.loopMode ?: _state.value.loopMode,
+                    radioPlatform = response.radioPlatform ?: _state.value.radioPlatform
                 )
             } catch (e: Exception) {
                 // Ignore errors

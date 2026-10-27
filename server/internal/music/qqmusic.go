@@ -101,7 +101,7 @@ func NewQQMusicClient(credentialPath string) *QQMusicClient {
 			SetTLSFingerprintChrome().
 			SetTimeout(15 * time.Second).
 			SetUserAgent(qqUserAgent).
-			SetCommonHeader("Referer", "https://"+qqReferer),
+			SetCommonHeader("Referer", "https://"+qqReferer+"/"),
 		credFile: credentialPath,
 	}
 	if credentialPath != "" {

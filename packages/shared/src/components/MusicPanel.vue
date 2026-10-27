@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useMusicStore, type Song, type LoopMode } from '../stores/music'
 import { useVoiceStore } from '../stores/voice'
 import { formatDuration } from '../utils/datetime'
@@ -15,6 +15,8 @@ const searchInput = ref('')
 const showSearch = ref(false)
 const showLoginSelect = ref(false)
 const isProcessingPlayback = ref(false)
+// Search dialog mode: songs, playlist search, or the recommendation tab.
+const searchTab = ref<'songs' | 'playlists' | 'recommend'>('songs')
 
 // Get current voice room name for music API calls
 const currentRoomName = computed(() => {
@@ -89,17 +91,83 @@ function handleSearch() {
   const query = searchInput.value.trim()
   if (!query) return
   lastSearchedQuery.value = query
-  music.search(query)
+  if (searchTab.value === 'playlists') {
+    music.searchPlaylists(query)
+  } else {
+    music.search(query)
+  }
+}
+
+// The recommendation tab has no search box; its daily list loads on entry
+// and whenever the platform filter changes while it is open.
+watch([searchTab, () => music.searchPlatform], ([tab]) => {
+  if (tab === 'recommend' && !music.isFetchingRecommend) {
+    music.fetchRecommend()
+  }
+})
+
+function formatPlayCount(count: number): string {
+  if (!count) return ''
+  return new Intl.NumberFormat(undefined, { notation: 'compact' }).format(count)
+}
+
+function platformName(platform: string): string {
+  return platform === 'qq' ? t('music.qqMusic') : t('music.neteaseCloudMusic')
+}
+
+function closeSearchDialog() {
+  showSearch.value = false
+  searchInput.value = ''
+  lastSearchedQuery.value = ''
+  music.searchResults = []
+  music.playlistResults = []
+  music.playlistPreview = null
 }
 
 async function handleAddToQueue(song: Song) {
   if (!currentRoomName.value) return
   await music.addToQueue(currentRoomName.value, song)
-  showSearch.value = false
-  searchInput.value = ''
-  lastSearchedQuery.value = ''
-  music.searchResults = []
+  closeSearchDialog()
 }
+
+async function handleOpenPlaylist(platform: 'qq' | 'netease', id: string) {
+  await music.loadPlaylistPreview(platform, id)
+}
+
+async function handleAddPlaylistToQueue() {
+  const preview = music.playlistPreview
+  if (!preview || !currentRoomName.value) return
+  await music.addToQueueFromSource(currentRoomName.value, {
+    platform: preview.playlist.platform,
+    kind: 'playlist',
+    id: preview.playlist.id,
+  })
+  closeSearchDialog()
+}
+
+async function handleAddDailyToQueue() {
+  if (!currentRoomName.value) return
+  await music.addDailyToQueue(currentRoomName.value)
+  closeSearchDialog()
+}
+
+async function handleStartRadio(platform: 'qq' | 'netease') {
+  if (!currentRoomName.value) return
+  const ok = await music.startRadio(currentRoomName.value, platform)
+  if (ok) closeSearchDialog()
+}
+
+async function handleStopRadio() {
+  if (!currentRoomName.value) return
+  await music.stopRadio(currentRoomName.value)
+}
+
+const searchDialogTitle = computed(() => {
+  if (searchTab.value === 'playlists') {
+    return music.playlistPreview ? music.playlistPreview.playlist.name : t('music.searchPlaylists')
+  }
+  return searchTab.value === 'recommend' ? t('music.tabRecommend') : t('music.searchSongs')
+})
 
 async function handlePlayPause() {
   if (!currentRoomName.value && music.playbackState !== 'paused') return
@@ -361,10 +429,22 @@ async function handleSkipPrevious() {
       <!-- Search Dialog -->
       <ZmModal
         v-model:show="showSearch"
-        :title="t('music.searchSongs')"
+        :title="searchDialogTitle"
         style="width: 500px; max-height: 80vh"
       >
         <ZmSpace vertical>
+          <div class="search-tabs">
+            <button class="tab-chip" :class="{ active: searchTab === 'songs' }" @click="searchTab = 'songs'">
+              {{ t('music.tabSongs') }}
+            </button>
+            <button class="tab-chip" :class="{ active: searchTab === 'playlists' }" @click="searchTab = 'playlists'">
+              {{ t('music.tabPlaylists') }}
+            </button>
+            <button class="tab-chip" :class="{ active: searchTab === 'recommend' }" @click="searchTab = 'recommend'">
+              {{ t('music.tabRecommend') }}
+            </button>
+          </div>
+
           <ZmSpace>
             <div class="platform-picker">
               <button
@@ -394,23 +474,26 @@ async function handleSkipPrevious() {
                 </svg>
               </button>
             </div>
-            <ZmInput
-              v-model:value="searchInput"
-              :placeholder="t('music.searchPlaceholder')"
-              @keyup.enter="handleSearch"
-              style="flex: 1"
-            />
-            <ZmButton
-              type="primary"
-              @click="handleSearch"
-              :loading="music.isSearching"
-              style="min-width: 40px"
-            >
-              <Search v-if="!music.isSearching" :size="18" />
-            </ZmButton>
+            <template v-if="searchTab !== 'recommend'">
+              <ZmInput
+                v-model:value="searchInput"
+                :placeholder="t('music.searchPlaceholder')"
+                @keyup.enter="handleSearch"
+                style="flex: 1"
+              />
+              <ZmButton
+                type="primary"
+                @click="handleSearch"
+                :loading="searchTab === 'songs' ? music.isSearching : music.isSearchingPlaylists"
+                style="min-width: 40px"
+              >
+                <Search v-if="searchTab === 'songs' ? !music.isSearching : !music.isSearchingPlaylists" :size="18" />
+              </ZmButton>
+            </template>
           </ZmSpace>
 
-          <div class="search-results">
+          <!-- Songs results -->
+          <div v-if="searchTab === 'songs'" class="search-results">
             <div
               v-for="song in music.searchResults"
               :key="`${song.platform}-${song.mid}`"
@@ -434,6 +517,119 @@ async function handleSkipPrevious() {
               class="search-empty"
             >
               {{ music.isSearching ? t('music.searching') : t('music.noResults') }}
+            </div>
+          </div>
+
+          <!-- Playlist results / preview -->
+          <div v-else-if="searchTab === 'playlists'" class="search-results">
+            <template v-if="!music.playlistPreview">
+              <div
+                v-for="p in music.playlistResults"
+                :key="`${p.platform}-${p.id}`"
+                class="search-item"
+                @click="handleOpenPlaylist(p.platform, p.id)"
+              >
+                <img :src="p.cover" alt="Cover" class="search-cover" />
+                <div class="search-info">
+                  <div class="search-song-name">
+                    {{ p.name }}
+                    <span class="platform-tag" :class="p.platform">
+                      {{ p.platform === 'qq' ? 'QQ' : t('music.netease') }}
+                    </span>
+                  </div>
+                  <div class="search-song-artist">
+                    {{ t('music.songCount', { count: p.track_count }) }}
+                    <template v-if="p.creator"> · {{ p.creator }}</template>
+                    <template v-if="formatPlayCount(p.play_count)"> · {{ formatPlayCount(p.play_count) }}</template>
+                  </div>
+                </div>
+              </div>
+              <div v-if="lastSearchedQuery && music.playlistResults.length === 0" class="search-empty">
+                {{ music.isSearchingPlaylists ? t('music.searching') : t('music.noPlaylists') }}
+              </div>
+            </template>
+            <template v-else>
+              <div class="preview-header">
+                <ZmButton @click="music.playlistPreview = null">{{ t('music.back') }}</ZmButton>
+                <div class="preview-meta">
+                  {{ t('music.songCount', { count: music.playlistPreview.total }) }}
+                  <span v-if="music.playlistPreview.songs.length < music.playlistPreview.total" class="preview-hint">
+                    · {{ t('music.playlistPreviewOnly', { count: music.playlistPreview.songs.length }) }}
+                  </span>
+                </div>
+                <ZmButton
+                  type="primary"
+                  :disabled="music.playlistPreview.songs.length === 0"
+                  @click="handleAddPlaylistToQueue"
+                >{{ t('music.addToQueueAll') }}</ZmButton>
+              </div>
+              <div
+                v-for="song in music.playlistPreview.songs"
+                :key="`${song.platform}-${song.mid}`"
+                class="search-item"
+                @click="handleAddToQueue(song)"
+              >
+                <img :src="song.cover" alt="Cover" class="search-cover" />
+                <div class="search-info">
+                  <div class="search-song-name">
+                    {{ song.name }}
+                    <span class="platform-tag" :class="song.platform">
+                      {{ song.platform === 'qq' ? 'QQ' : t('music.netease') }}
+                    </span>
+                  </div>
+                  <div class="search-song-artist">{{ song.artist }} · {{ song.album }}</div>
+                </div>
+                <span class="search-duration">{{ music.formatDuration(song.duration) }}</span>
+              </div>
+              <div v-if="music.isLoadingPreview" class="search-empty">{{ t('music.loading') }}</div>
+              <div v-else-if="music.playlistPreview.songs.length === 0" class="search-empty">
+                {{ t('music.noResults') }}
+              </div>
+            </template>
+          </div>
+
+          <!-- Recommendations: radio toggle + daily mix -->
+          <div v-else class="search-results">
+            <div class="radio-card">
+              <span class="radio-title">{{ t('music.radio') }}</span>
+              <template v-if="music.radioPlatform">
+                <span class="radio-status">{{ t('music.radioRunning', { platform: platformName(music.radioPlatform) }) }}</span>
+                <ZmButton @click="handleStopRadio">{{ t('music.stopRadio') }}</ZmButton>
+              </template>
+              <template v-else>
+                <ZmButton @click="handleStartRadio('qq')">{{ t('music.qqMusic') }}</ZmButton>
+                <ZmButton @click="handleStartRadio('netease')">{{ t('music.neteaseCloudMusic') }}</ZmButton>
+              </template>
+            </div>
+            <div class="recommend-header">
+              <span class="recommend-title">{{ t('music.dailyRecommend') }}</span>
+              <ZmButton
+                type="primary"
+                :disabled="music.recommendSongs.length === 0"
+                @click="handleAddDailyToQueue"
+              >{{ t('music.addToQueueAll') }}</ZmButton>
+            </div>
+            <div
+              v-for="song in music.recommendSongs"
+              :key="`${song.platform}-${song.mid}`"
+              class="search-item"
+              @click="handleAddToQueue(song)"
+            >
+              <img :src="song.cover" alt="Cover" class="search-cover" />
+              <div class="search-info">
+                <div class="search-song-name">
+                  {{ song.name }}
+                  <span class="platform-tag" :class="song.platform">
+                    {{ song.platform === 'qq' ? 'QQ' : t('music.netease') }}
+                  </span>
+                </div>
+                <div class="search-song-artist">{{ song.artist }} · {{ song.album }}</div>
+              </div>
+              <span class="search-duration">{{ music.formatDuration(song.duration) }}</span>
+            </div>
+            <div v-if="music.isFetchingRecommend" class="search-empty">{{ t('music.loading') }}</div>
+            <div v-else-if="music.recommendSongs.length === 0" class="search-empty">
+              {{ t('music.recommendEmpty') }}
             </div>
           </div>
         </ZmSpace>
@@ -881,6 +1077,86 @@ async function handleSkipPrevious() {
   align-items: center;
   gap: 4px;
   flex-shrink: 0;
+}
+
+.search-tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.tab-chip {
+  display: inline-flex;
+  align-items: center;
+  height: 28px;
+  padding: 0 10px;
+  border: none;
+  background: none;
+  border-radius: var(--radius-md);
+  color: var(--color-text-muted);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.tab-chip:hover {
+  background: var(--surface-glass-hover);
+  color: var(--color-text-main);
+}
+
+.tab-chip.active {
+  background: var(--surface-glass-darker);
+  color: var(--color-text-main);
+}
+
+.preview-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+}
+
+.preview-meta {
+  flex: 1;
+  min-width: 0;
+  color: var(--color-text-light);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.radio-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  background: var(--surface-glass);
+}
+
+.radio-title {
+  font-weight: 600;
+  color: var(--color-text-main);
+  margin-right: auto;
+}
+
+.radio-status {
+  color: var(--color-text-light);
+  font-size: 12px;
+}
+
+.recommend-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px 0;
+}
+
+.recommend-title {
+  font-weight: 600;
+  color: var(--color-text-main);
+  margin-right: auto;
 }
 
 .platform-chip {

@@ -257,7 +257,69 @@ data class MusicQueueResponse(
     val currentIndex: Int,
     @SerializedName("loop_mode")
     val loopMode: String? = null,
+    @SerializedName("radio_platform")
+    val radioPlatform: String? = null,
     val queue: List<QueueItem>
+)
+
+// Playlist card returned by playlist search and embedded in playlist detail.
+data class Playlist(
+    val id: String,
+    val name: String,
+    val cover: String,
+    @SerializedName("track_count")
+    val trackCount: Int = 0,
+    @SerializedName("play_count")
+    val playCount: Long = 0,
+    val creator: String = "",
+    val platform: String = "qq"
+)
+
+data class PlaylistPreview(
+    val playlist: Playlist,
+    val songs: List<Song>,
+    val total: Int
+)
+
+data class MusicPlaylistSearchResponse(
+    val playlists: List<Playlist> = emptyList()
+)
+
+data class MusicPlaylistDetailResponse(
+    val playlist: Playlist? = null,
+    val songs: List<Song> = emptyList(),
+    val total: Int = 0
+)
+
+data class MusicRecommendResponse(
+    val songs: List<Song> = emptyList()
+)
+
+data class MusicPlaylistSearchRequest(
+    val keyword: String,
+    val num: Int = 20,
+    val platform: String = "all"
+)
+
+// Queue a whole source by identifier; the backend resolves it into songs.
+data class MusicQueueAddSourceRequest(
+    @SerializedName("room_name")
+    val roomName: String,
+    val platform: String,  // "qq" or "netease"
+    val kind: String,      // "playlist" or "daily"
+    val id: String? = null,
+    val limit: Int? = null
+)
+
+data class MusicQueueAddSourceResponse(
+    val success: Boolean,
+    val added: Int = 0
+)
+
+data class MusicRadioRequest(
+    @SerializedName("room_name")
+    val roomName: String,
+    val platform: String? = null
 )
 
 data class MusicSearchResponse(

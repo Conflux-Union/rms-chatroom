@@ -35,6 +35,19 @@ class MusicViewModel @Inject constructor(
     fun search(keyword: String) = playback.search(keyword)
     fun clearSearchResults() = playback.clearSearchResults()
 
+    // Playlist search / recommendations / radio
+    fun searchPlaylists(keyword: String) = playback.searchPlaylists(keyword)
+    fun clearPlaylistResults() = playback.clearPlaylistResults()
+    fun loadPlaylistPreview(platform: String, id: String) = playback.loadPlaylistPreview(platform, id)
+    fun closePlaylistPreview() = playback.closePlaylistPreview()
+    fun fetchRecommend() = playback.fetchRecommend()
+    fun clearRecommend() = playback.clearRecommend()
+    fun addToQueueFromSource(platform: String, kind: String, id: String? = null) =
+        playback.addToQueueFromSource(platform, kind, id)
+    fun addDailyToQueue() = playback.addDailyToQueue()
+    fun startRadio(platform: String) = playback.startRadio(platform)
+    fun stopRadio() = playback.stopRadio()
+
     // Queue
     fun addToQueue(song: Song) = playback.addToQueue(song)
     fun removeFromQueue(index: Int) = playback.removeFromQueue(index)

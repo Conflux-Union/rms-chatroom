@@ -34,6 +34,22 @@ export interface PlatformLoginStatus {
   netease: { logged_in: boolean }
 }
 
+export interface Playlist {
+  id: string
+  name: string
+  cover: string
+  track_count: number
+  play_count: number
+  creator: string
+  platform: 'qq' | 'netease'
+}
+
+export interface PlaylistPreview {
+  playlist: Playlist
+  songs: Song[]
+  total: number
+}
+
 export interface QueueItem {
   song: Song
   requested_by: string
@@ -58,6 +74,17 @@ export const useMusicStore = defineStore('music', () => {
   const searchQuery = ref('')
   const searchResults = ref<Song[]>([])
   const isSearching = ref(false)
+
+  // Playlist search / preview state
+  const playlistResults = ref<Playlist[]>([])
+  const isSearchingPlaylists = ref(false)
+  const playlistPreview = ref<PlaylistPreview | null>(null)
+  const isLoadingPreview = ref(false)
+
+  // Recommendation state: daily mix list plus the room radio toggle
+  const recommendSongs = ref<Song[]>([])
+  const isFetchingRecommend = ref(false)
+  const radioPlatform = ref('') // '' off, 'qq', 'netease'
   
   // Playback state
   const isPlaying = ref(false)
@@ -241,6 +268,136 @@ export const useMusicStore = defineStore('music', () => {
     }
   }
   
+  // --- Playlist / recommendation functions ---
+
+  async function searchPlaylists(keyword: string, platform: MusicPlatform = searchPlatform.value) {
+    if (!keyword.trim()) {
+      playlistResults.value = []
+      return
+    }
+    try {
+      isSearchingPlaylists.value = true
+      const res = await authFetch(`${API_BASE}/api/music/playlist/search`, {
+        method: 'POST',
+        headers: jsonHeaders,
+        body: JSON.stringify({ keyword, num: 20, platform })
+      })
+      const data = await res.json()
+      playlistResults.value = data.playlists || []
+    } catch (e) {
+      console.error('Playlist search failed:', e)
+      playlistResults.value = []
+    } finally {
+      isSearchingPlaylists.value = false
+    }
+  }
+
+  async function loadPlaylistPreview(platform: 'qq' | 'netease', id: string) {
+    try {
+      isLoadingPreview.value = true
+      const res = await authFetch(`${API_BASE}/api/music/playlist/${platform}/${encodeURIComponent(id)}`)
+      if (!res.ok) {
+        playlistPreview.value = null
+        return
+      }
+      const data = await res.json()
+      playlistPreview.value = {
+        playlist: data.playlist,
+        songs: data.songs || [],
+        total: data.total || 0,
+      }
+    } catch (e) {
+      console.error('Playlist preview failed:', e)
+      playlistPreview.value = null
+    } finally {
+      isLoadingPreview.value = false
+    }
+  }
+
+  // Fetches a recommendation feed for display. Radio ("guess you like") is a
+  // server-side room mode, so it is driven by startRadio/stopRadio instead.
+  async function fetchRecommend(platform: MusicPlatform = searchPlatform.value) {
+    try {
+      isFetchingRecommend.value = true
+      const res = await authFetch(
+        `${API_BASE}/api/music/recommend?kind=daily&platform=${encodeURIComponent(platform)}`
+      )
+      if (!res.ok) {
+        recommendSongs.value = []
+        return
+      }
+      const data = await res.json()
+      recommendSongs.value = data.songs || []
+    } catch (e) {
+      console.error('Recommend fetch failed:', e)
+      recommendSongs.value = []
+    } finally {
+      isFetchingRecommend.value = false
+    }
+  }
+
+  // Queue a whole source by identifier; the backend resolves the songs.
+  async function addToQueueFromSource(
+    roomName: string,
+    source: { platform: 'qq' | 'netease'; kind: 'playlist' | 'daily'; id?: string; limit?: number }
+  ): Promise<number> {
+    try {
+      const res = await authFetch(`${API_BASE}/api/music/queue/add/source`, {
+        method: 'POST',
+        headers: jsonHeaders,
+        body: JSON.stringify({ room_name: roomName, ...source })
+      })
+      const data = await res.json()
+      await refreshQueue(roomName)
+      return data.added || 0
+    } catch (e) {
+      console.error('Failed to add source to queue:', e)
+      return 0
+    }
+  }
+
+  async function addDailyToQueue(roomName: string, platform: MusicPlatform = searchPlatform.value) {
+    const platforms: Array<'qq' | 'netease'> = platform === 'all' ? ['qq', 'netease'] : [platform]
+    for (const p of platforms) {
+      await addToQueueFromSource(roomName, { platform: p, kind: 'daily' })
+    }
+  }
+
+  async function startRadio(roomName: string, platform: 'qq' | 'netease') {
+    try {
+      const res = await authFetch(`${API_BASE}/api/music/radio/start`, {
+        method: 'POST',
+        headers: jsonHeaders,
+        body: JSON.stringify({ room_name: roomName, platform })
+      })
+      if (res.ok) {
+        radioPlatform.value = platform
+        await refreshQueue(roomName)
+      }
+      return res.ok
+    } catch (e) {
+      console.error('Failed to start radio:', e)
+      return false
+    }
+  }
+
+  async function stopRadio(roomName: string) {
+    try {
+      const res = await authFetch(`${API_BASE}/api/music/radio/stop`, {
+        method: 'POST',
+        headers: jsonHeaders,
+        body: JSON.stringify({ room_name: roomName })
+      })
+      if (res.ok) {
+        radioPlatform.value = ''
+      }
+      return res.ok
+    } catch (e) {
+      console.error('Failed to stop radio:', e)
+      return false
+    }
+  }
+
   // --- Queue functions ---
   
   async function addToQueue(roomName: string, song: Song) {
@@ -290,6 +447,7 @@ export const useMusicStore = defineStore('music', () => {
       currentIndex.value = data.current_index || 0
       currentSong.value = data.current_song || null
       isPlaying.value = data.is_playing || false
+      radioPlatform.value = data.radio_platform || ''
       if (data.loop_mode) {
         loopMode.value = data.loop_mode
       }
@@ -650,6 +808,12 @@ export const useMusicStore = defineStore('music', () => {
         if (roomName) {
           refreshQueue(roomName)
         }
+      } else if (msg.type === 'queue_updated') {
+        // Server-side queue mutation (batch import, radio batch) — refetch.
+        const roomName = msg.room_name || currentWsRoom
+        if (roomName) {
+          refreshQueue(roomName)
+        }
       } else if (msg.type === 'music_state' && msg.data) {
         // Only process if for our room
         if (msg.data.room_name && msg.data.room_name !== currentRoom) {
@@ -746,6 +910,22 @@ export const useMusicStore = defineStore('music', () => {
     searchPlatform,
     isSearching,
     search,
+
+    // Playlist search / recommendations
+    playlistResults,
+    isSearchingPlaylists,
+    playlistPreview,
+    isLoadingPreview,
+    recommendSongs,
+    isFetchingRecommend,
+    radioPlatform,
+    searchPlaylists,
+    loadPlaylistPreview,
+    fetchRecommend,
+    addToQueueFromSource,
+    addDailyToQueue,
+    startRadio,
+    stopRadio,
 
     // Queue state
     queue,

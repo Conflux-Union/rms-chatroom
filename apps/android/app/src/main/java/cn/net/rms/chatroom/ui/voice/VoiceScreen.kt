@@ -172,10 +172,31 @@ fun VoiceScreen(
                 musicViewModel.addToQueue(song)
                 musicViewModel.clearSearchResults()
             },
-            onDismiss = { 
+            onDismiss = {
                 showSearchDialog = false
                 musicViewModel.clearSearchResults()
-            }
+                musicViewModel.clearPlaylistResults()
+                musicViewModel.clearRecommend()
+            },
+            playlists = musicState.playlistResults,
+            isSearchingPlaylists = musicState.isSearchingPlaylists,
+            onSearchPlaylists = { musicViewModel.searchPlaylists(it) },
+            playlistPreview = musicState.playlistPreview,
+            isLoadingPreview = musicState.isLoadingPreview,
+            onOpenPlaylist = { platform, id -> musicViewModel.loadPlaylistPreview(platform, id) },
+            onClosePreview = { musicViewModel.closePlaylistPreview() },
+            onAddPlaylist = {
+                musicState.playlistPreview?.let {
+                    musicViewModel.addToQueueFromSource(it.playlist.platform, "playlist", it.playlist.id)
+                }
+            },
+            recommendSongs = musicState.recommendSongs,
+            isFetchingRecommend = musicState.isFetchingRecommend,
+            onFetchRecommend = { musicViewModel.fetchRecommend() },
+            onAddDaily = { musicViewModel.addDailyToQueue() },
+            radioPlatform = musicState.radioPlatform,
+            onStartRadio = { musicViewModel.startRadio(it) },
+            onStopRadio = { musicViewModel.stopRadio() }
         )
     }
 

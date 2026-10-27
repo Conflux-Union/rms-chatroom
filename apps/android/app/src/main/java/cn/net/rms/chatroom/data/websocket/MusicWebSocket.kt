@@ -39,6 +39,8 @@ sealed class MusicWebSocketEvent {
     data class Stop(val roomName: String) : MusicWebSocketEvent()
     data class QueueFinished(val roomName: String) : MusicWebSocketEvent()
     data class LoopModeChanged(val roomName: String, val mode: String) : MusicWebSocketEvent()
+    // Server-side queue mutation (batch import, radio batch): refetch the queue.
+    data class QueueUpdated(val roomName: String) : MusicWebSocketEvent()
     data class SongUnavailable(val roomName: String, val songName: String, val reason: String) : MusicWebSocketEvent()
     data class MusicLoginStatus(val status: String, val platform: String) : MusicWebSocketEvent()
     object Connected : MusicWebSocketEvent()
@@ -183,6 +185,11 @@ class MusicWebSocket @Inject constructor(
                 val platform = json.get("platform")?.asString ?: "qq"
                 Log.d(TAG, "Music login status: platform=$platform, status=$status")
                 MusicWebSocketEvent.MusicLoginStatus(status, platform)
+            }
+            "queue_updated" -> {
+                val roomName = json.get("room_name")?.asString ?: ""
+                Log.d(TAG, "Queue updated: room=$roomName")
+                MusicWebSocketEvent.QueueUpdated(roomName)
             }
             "connected" -> {
                 Log.d(TAG, "Music WebSocket server confirmed connection")

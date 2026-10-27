@@ -239,6 +239,39 @@ interface ApiService {
         @Body request: MusicSearchRequest
     ): MusicSearchResponse
 
+    // Music - Playlists / recommendations / radio
+    @POST("api/music/playlist/search")
+    suspend fun searchMusicPlaylists(
+        @Header("Authorization") token: String,
+        @Body request: MusicPlaylistSearchRequest
+    ): MusicPlaylistSearchResponse
+
+    @GET("api/music/playlist/{platform}/{id}")
+    suspend fun getMusicPlaylistDetail(
+        @Header("Authorization") token: String,
+        @Path("platform") platform: String,
+        @Path("id") id: String
+    ): MusicPlaylistDetailResponse
+
+    @GET("api/music/recommend")
+    suspend fun getMusicRecommend(
+        @Header("Authorization") token: String,
+        @Query("kind") kind: String = "daily",
+        @Query("platform") platform: String = "all"
+    ): MusicRecommendResponse
+
+    @POST("api/music/radio/start")
+    suspend fun startMusicRadio(
+        @Header("Authorization") token: String,
+        @Body request: MusicRadioRequest
+    ): MusicQueueAddSourceResponse
+
+    @POST("api/music/radio/stop")
+    suspend fun stopMusicRadio(
+        @Header("Authorization") token: String,
+        @Body request: MusicRoomRequest
+    ): MusicSuccessResponse
+
     @GET("api/music/song/{mid}/url")
     suspend fun getSongUrl(
         @Header("Authorization") token: String,
@@ -265,6 +298,12 @@ interface ApiService {
         @Header("Authorization") token: String,
         @Body request: MusicQueueAddRequest
     ): MusicSuccessResponse
+
+    @POST("api/music/queue/add/source")
+    suspend fun addToMusicQueueFromSource(
+        @Header("Authorization") token: String,
+        @Body request: MusicQueueAddSourceRequest
+    ): MusicQueueAddSourceResponse
 
     @DELETE("api/music/queue/{roomName}/{index}")
     suspend fun removeFromMusicQueue(
